@@ -5,6 +5,7 @@ import WorkersPage from '@renderer/pages/WorkersPage'
 import WorkerDetailPage from '@renderer/pages/WorkerDetailPage'
 import LiveCompanyPage from '@renderer/pages/LiveCompanyPage'
 import AutopilotPage from '@renderer/pages/AutopilotPage'
+import DevelopmentOsPage from '@renderer/pages/DevelopmentOsPage'
 import ProductBacklogPage from '@renderer/pages/ProductBacklogPage'
 import ProjectManagerPage from '@renderer/pages/ProjectManagerPage'
 import ApprovalCenterPage from '@renderer/pages/ApprovalCenterPage'
@@ -24,6 +25,8 @@ export default function Router(): JSX.Element {
       return <Dashboard />
     case 'autopilot':
       return <AutopilotPage />
+    case 'devos':
+      return <DevelopmentOsPage />
     case 'backlog':
       return <ProductBacklogPage />
     case 'workers':
