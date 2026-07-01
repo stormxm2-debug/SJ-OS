@@ -7,7 +7,7 @@ import type { DevOsSnapshot } from './types'
  * to import in environments without localStorage.
  */
 
-const STORAGE_KEY = 'sj-os:devos:v1'
+const STORAGE_KEY = 'sj-os:devos:v2'
 
 function hasStorage(): boolean {
   return typeof localStorage !== 'undefined'
@@ -26,7 +26,9 @@ export function loadSnapshot(): DevOsSnapshot | null {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
-    return isSnapshot(parsed) ? parsed : null
+    if (!isSnapshot(parsed)) return null
+    // Tolerate snapshots persisted before the event log existed.
+    return { ...parsed, eventLog: Array.isArray(parsed.eventLog) ? parsed.eventLog : [] }
   } catch {
     return null
   }

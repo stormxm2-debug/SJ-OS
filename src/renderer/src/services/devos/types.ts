@@ -50,8 +50,28 @@ export interface WorkerMemory {
   lastUpdated: string
 }
 
+/** Kinds of events recorded in the persisted Sprint event log. */
+export type DevOsLogType =
+  | 'task-completed'
+  | 'worker-updated'
+  | 'blocker-added'
+  | 'blocker-cleared'
+  | 'progress-changed'
+  | 'next-action-changed'
+  | 'reset'
+
+/** A single, human-readable entry in the persisted Sprint event log. */
+export interface DevOsLogEntry {
+  id: string
+  type: DevOsLogType
+  message: string
+  createdAt: string
+}
+
 /** The full persisted Development OS memory snapshot. */
 export interface DevOsSnapshot {
   session: DevSession
   workers: WorkerMemory[]
+  /** Newest-first log of meaningful DevOS changes. */
+  eventLog: DevOsLogEntry[]
 }
