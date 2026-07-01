@@ -2,6 +2,7 @@ import { CompanyEvents, type CompanyEventName } from './CompanyEvents'
 import { CompanyState } from './CompanyState'
 import type {
   ActivityRecord,
+  ApprovalRecord,
   AppointmentRecord,
   CompanySnapshot,
   CustomerRecord,
@@ -24,6 +25,7 @@ export type CompanyEntity =
   | TaskRecord
   | NotificationRecord
   | ActivityRecord
+  | ApprovalRecord
   | KpiRecord
 
 export interface RepositoryOperationResult<T> {
@@ -118,6 +120,8 @@ export class CompanyRepository {
         return snapshot.notifications
       case 'activity':
         return snapshot.activity
+      case 'approvals':
+        return snapshot.approvals
       case 'kpis':
         return snapshot.kpis
       default:
@@ -152,6 +156,9 @@ export class CompanyRepository {
         break
       case 'activity':
         nextSnapshot.activity = value as ActivityRecord[]
+        break
+      case 'approvals':
+        nextSnapshot.approvals = value as ApprovalRecord[]
         break
       case 'kpis':
         nextSnapshot.kpis = value as KpiRecord[]

@@ -1,19 +1,27 @@
-import { useState, type ReactNode } from 'react'
-import type { ActivityActor } from '@shared/types'
+import { useEffect, useState, type ReactNode } from 'react'
+import type { ActivityActor, ActivityEvent } from '@shared/types'
 import Card from '@renderer/components/ui/Card'
 import { actorLabel, actorIcon } from '@renderer/lib/companyMeta'
-import { activityLog } from '@renderer/data/mockManagement'
+import { companyManagementService, useCompanyManagementWidget } from '@renderer/services/company/companyManagementService'
 
 type Filter = 'all' | ActivityActor
 
 export default function CompanyActivityLogPage(): JSX.Element {
+  const activity = useCompanyManagementWidget(() => companyManagementService.loadActivityLog())
   const [filter, setFilter] = useState<Filter>('all')
+  const [events, setEvents] = useState<ActivityEvent[]>([])
 
-  const actors = Array.from(new Set(activityLog.map((e) => e.actor)))
+  useEffect(() => {
+    if (activity.status === 'success') {
+      setEvents(activity.data as ActivityEvent[])
+    }
+  }, [activity])
+
+  const actors = Array.from(new Set(events.map((e) => e.actor)))
   const visible =
     filter === 'all'
-      ? activityLog
-      : activityLog.filter((e) => e.actor === filter)
+      ? events
+      : events.filter((e) => e.actor === filter)
 
   return (
     <div className="space-y-5">

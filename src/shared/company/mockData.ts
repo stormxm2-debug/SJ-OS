@@ -109,6 +109,19 @@ export const mockCompanySnapshot: CompanySnapshot = {
       createdAt: '2026-07-02 09:00'
     }
   ],
+  approvals: [
+    {
+      id: 'approval-001',
+      title: 'Publish release v0.3.0',
+      description: 'Release manager is ready to publish the next release.',
+      kind: 'release',
+      requestedBy: 'release',
+      projectId: 'p-landing',
+      risk: 'high',
+      status: 'pending',
+      createdAt: '8m ago'
+    }
+  ],
   kpis: [
     {
       id: 'kpi-001',

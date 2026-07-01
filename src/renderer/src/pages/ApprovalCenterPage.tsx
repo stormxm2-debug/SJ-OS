@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Check, X, ShieldCheck } from 'lucide-react'
 import type { ApprovalRequest, ApprovalRisk, ApprovalStatus } from '@shared/types'
 import Chip, { type ChipTone } from '@renderer/components/ui/Chip'
 import { ROLE_LABEL, ROLE_META } from '@renderer/lib/companyMeta'
-import { approvals as seedApprovals } from '@renderer/data/mockManagement'
+import { companyManagementService, useCompanyManagementWidget } from '@renderer/services/company/companyManagementService'
 
 const RISK_TONE: Record<ApprovalRisk, ChipTone> = {
   low: 'emerald',
@@ -14,8 +14,15 @@ const RISK_TONE: Record<ApprovalRisk, ChipTone> = {
 type Filter = 'pending' | 'resolved'
 
 export default function ApprovalCenterPage(): JSX.Element {
-  const [items, setItems] = useState<ApprovalRequest[]>(seedApprovals)
+  const approvals = useCompanyManagementWidget(() => companyManagementService.loadApprovals())
+  const [items, setItems] = useState<ApprovalRequest[]>([])
   const [filter, setFilter] = useState<Filter>('pending')
+
+  useEffect(() => {
+    if (approvals.status === 'success') {
+      setItems(approvals.data as ApprovalRequest[])
+    }
+  }, [approvals])
 
   function resolve(id: string, status: ApprovalStatus): void {
     setItems((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)))

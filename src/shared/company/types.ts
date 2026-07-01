@@ -1,4 +1,4 @@
-export type CompanyEntityKind = 'fc' | 'customer' | 'policy' | 'sale' | 'appointment' | 'task' | 'notification' | 'activity' | 'kpi'
+export type CompanyEntityKind = 'fc' | 'customer' | 'policy' | 'sale' | 'appointment' | 'task' | 'notification' | 'activity' | 'kpi' | 'approval'
 
 export interface CompanySnapshot {
   fc: FcRecord[]
@@ -9,6 +9,7 @@ export interface CompanySnapshot {
   tasks: TaskRecord[]
   notifications: NotificationRecord[]
   activity: ActivityRecord[]
+  approvals: ApprovalRecord[]
   kpis: KpiRecord[]
 }
 
@@ -82,6 +83,18 @@ export interface ActivityRecord {
   id: string
   summary: string
   actor: string
+  createdAt: string
+}
+
+export interface ApprovalRecord {
+  id: string
+  title: string
+  description: string
+  kind: string
+  requestedBy: string
+  projectId: string
+  risk: 'low' | 'medium' | 'high'
+  status: 'pending' | 'approved' | 'rejected'
   createdAt: string
 }
 
