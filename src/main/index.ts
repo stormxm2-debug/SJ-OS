@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { runCoding } from './coding/engine'
+import { CompanyStartupService } from './companyStartupService'
 import type { CodingExecRequest } from '@shared/providers'
 
 /**
@@ -11,6 +12,8 @@ import type { CodingExecRequest } from '@shared/providers'
  * streams progress back. All other logic (Kernel, Chief of Staff) still runs in
  * the renderer for now.
  */
+
+const startupService = new CompanyStartupService()
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -32,6 +35,10 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+  })
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    startupService.notifyRendererReady()
   })
 
   // Open external links in the system browser, never in-app.
@@ -59,6 +66,8 @@ app.whenReady().then(() => {
   ipcMain.handle('coding:execute', (event, request: CodingExecRequest) =>
     runCoding(request, (ev) => event.sender.send('coding:event', ev))
   )
+
+  ipcMain.handle('company:start', () => startupService.start())
 
   createWindow()
 

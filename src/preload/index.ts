@@ -4,6 +4,7 @@ import type {
   CodingExecRequest,
   CodingExecResult
 } from '@shared/providers'
+import type { CompanyStartupSnapshot } from '@shared/startup'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -27,6 +28,18 @@ const api = {
       ipcRenderer.on('coding:event', handler)
       return () => {
         ipcRenderer.removeListener('coding:event', handler)
+      }
+    }
+  },
+  companyStartup: {
+    start: (): Promise<CompanyStartupSnapshot> =>
+      ipcRenderer.invoke('company:start'),
+    onStateChange: (callback: (snapshot: CompanyStartupSnapshot) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, payload: CompanyStartupSnapshot): void =>
+        callback(payload)
+      ipcRenderer.on('company:startup:state', handler)
+      return () => {
+        ipcRenderer.removeListener('company:startup:state', handler)
       }
     }
   }

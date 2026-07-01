@@ -7,6 +7,7 @@ import ProjectsPanel from './panels/ProjectsPanel'
 import RunningTasksPanel from './panels/RunningTasksPanel'
 import NotificationsPanel from './panels/NotificationsPanel'
 import ActivityTimelinePanel from './panels/ActivityTimelinePanel'
+import StartupPanel from './StartupPanel'
 
 /**
  * The CEO Dashboard — the company at a glance. No chat UI: the CEO supervises
@@ -25,6 +26,8 @@ export default function Dashboard(): JSX.Element {
 
   return (
     <div className="space-y-6">
+      <StartupPanel />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Active Workers"
