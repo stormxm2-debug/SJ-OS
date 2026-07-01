@@ -1,0 +1,72 @@
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { join } from 'node:path'
+import { runCoding } from './coding/engine'
+import type { CodingExecRequest } from '@shared/providers'
+
+/**
+ * SJ AI Company — Electron main process (Node backend).
+ *
+ * Hosts the real coding engine: the renderer's Developer worker delegates
+ * execution here over IPC, and this process performs real file generation and
+ * streams progress back. All other logic (Kernel, Chief of Staff) still runs in
+ * the renderer for now.
+ */
+
+function createWindow(): void {
+  const mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 832,
+    minWidth: 1024,
+    minHeight: 700,
+    show: false,
+    backgroundColor: '#020617',
+    title: 'SJ AI Company',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+
+  mainWindow.on('ready-to-show', () => {
+    mainWindow.show()
+  })
+
+  // Open external links in the system browser, never in-app.
+  mainWindow.webContents.setWindowOpenHandler((details) => {
+    void shell.openExternal(details.url)
+    return { action: 'deny' }
+  })
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+  } else {
+    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+}
+
+app.whenReady().then(() => {
+  // Static app metadata.
+  ipcMain.handle('app:getInfo', () => ({
+    name: app.getName(),
+    version: app.getVersion()
+  }))
+
+  // Real coding execution: run the engine and stream progress back to the
+  // requesting renderer over the 'coding:event' channel.
+  ipcMain.handle('coding:execute', (event, request: CodingExecRequest) =>
+    runCoding(request, (ev) => event.sender.send('coding:event', ev))
+  )
+
+  createWindow()
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit()
+})
