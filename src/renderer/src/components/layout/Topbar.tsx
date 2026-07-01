@@ -1,7 +1,8 @@
-import { Bell, Crown } from 'lucide-react'
+import { Bell, Crown, Sparkles } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View } from '@renderer/navigation/types'
 import { approvals, getWorkerById } from '@renderer/data/mockManagement'
+import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 
 function titleFor(route: View): { title: string; subtitle: string } {
   switch (route.name) {
@@ -41,6 +42,18 @@ export default function Topbar(): JSX.Element {
       </div>
 
       <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => {
+            jarvisService.open()
+          }}
+          className="inline-flex items-center gap-2 rounded-lg border border-indigo-500/20 bg-indigo-500/10 px-3 py-1.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
+          aria-label="Open Jarvis"
+        >
+          <Sparkles className="h-4 w-4" />
+          Jarvis
+        </button>
+
         <button
           type="button"
           onClick={() => navigate({ name: 'approvals' })}
