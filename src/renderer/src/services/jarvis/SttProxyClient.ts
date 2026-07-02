@@ -12,7 +12,12 @@
  *  - The backend adds the key server-side and returns transcript text only.
  */
 
-import { detectProxyStatus, primaryProxyUrl, activeProxyUrl } from './proxyConfig'
+import {
+  detectProxyStatus,
+  forceDetectProxyStatus,
+  primaryProxyUrl,
+  activeProxyUrl
+} from './proxyConfig'
 
 /** Where a transcript came from, or why it is unavailable. */
 export type SttSource = 'stt-proxy' | 'disabled' | 'error'
@@ -90,13 +95,8 @@ export class SttProxyClient {
     return this.getConfig().enabled
   }
 
-  /**
-   * Backend readiness check via shared multi-URL auto-detection (GET /ai/status).
-   * Never calls OpenAI, never touches the API key, and never throws —
-   * proxy-offline is a normal result.
-   */
-  async checkStatus(): Promise<SttStatusResult> {
-    const d = await detectProxyStatus()
+  /** Map a shared ProxyDetection into the UI-ready STT status shape. */
+  private toStatusResult(d: Awaited<ReturnType<typeof detectProxyStatus>>): SttStatusResult {
     const label: SttStatusLabel = !d.reachable
       ? 'Proxy Offline'
       : !d.enabled
@@ -117,6 +117,25 @@ export class SttProxyClient {
       triedUrls: d.triedUrls,
       lastError: d.lastError
     }
+  }
+
+  /**
+   * Backend readiness check via shared multi-URL auto-detection (GET /ai/status).
+   * Never calls OpenAI, never touches the API key, and never throws —
+   * proxy-offline is a normal result.
+   */
+  async checkStatus(): Promise<SttStatusResult> {
+    return this.toStatusResult(await detectProxyStatus())
+  }
+
+  /**
+   * Force a fresh readiness check for the manual "프록시 상태 새로고침" button.
+   * Ignores any cached working URL and probes the hard fallbacks first
+   * (http://localhost:8787 then http://127.0.0.1:8787). If either answers,
+   * selectedProxyUrl is set and the proxy is marked connected.
+   */
+  async forceCheckStatus(): Promise<SttStatusResult> {
+    return this.toStatusResult(await forceDetectProxyStatus())
   }
 
   /**

@@ -310,8 +310,10 @@ export default function JarvisPanel(): JSX.Element | null {
 
   const refreshDiagnostics = (): void => setDiagnostics(voice.getDiagnostics())
 
+  // Manual "프록시 상태 새로고침": force a fresh probe that ignores any cached
+  // working URL and hits http://localhost:8787 then http://127.0.0.1:8787.
   const refreshSttStatus = (): void => {
-    void sttProxyClient.checkStatus().then(setSttStatus)
+    void sttProxyClient.forceCheckStatus().then(setSttStatus)
   }
 
   // --- Web Speech engine (browser-local recognition) ---

@@ -101,16 +101,12 @@ export function activeProxyUrl(): string {
 }
 
 /**
- * Probe candidate proxy URLs' GET /ai/status and return the first reachable.
- * Never throws — an unreachable proxy is a normal result. The last working URL
- * is tried first on subsequent calls so repeat checks are fast.
+ * Probe an ordered list of proxy base URLs' GET /ai/status and return the first
+ * reachable one. Never throws — an unreachable proxy is a normal result. On
+ * success it records the working URL (tried first by detectProxyStatus next
+ * time); on total failure it forgets any stale working URL.
  */
-export async function detectProxyStatus(): Promise<ProxyDetection> {
-  const candidates = resolveProxyUrls()
-  const ordered =
-    lastWorkingUrl && candidates.includes(lastWorkingUrl)
-      ? [lastWorkingUrl, ...candidates.filter((u) => u !== lastWorkingUrl)]
-      : candidates
+async function probeCandidates(ordered: string[]): Promise<ProxyDetection> {
   const checkedAt = new Date().toISOString()
   let lastError: string | null = null
 
@@ -180,4 +176,31 @@ export async function detectProxyStatus(): Promise<ProxyDetection> {
     lastError,
     checkedAt
   }
+}
+
+/**
+ * Probe candidate proxy URLs' GET /ai/status and return the first reachable.
+ * Never throws — an unreachable proxy is a normal result. The last working URL
+ * is tried first on subsequent calls so repeat checks are fast.
+ */
+export async function detectProxyStatus(): Promise<ProxyDetection> {
+  const candidates = resolveProxyUrls()
+  const ordered =
+    lastWorkingUrl && candidates.includes(lastWorkingUrl)
+      ? [lastWorkingUrl, ...candidates.filter((u) => u !== lastWorkingUrl)]
+      : candidates
+  return probeCandidates(ordered)
+}
+
+/**
+ * Force a fresh probe for the manual "프록시 상태 새로고침" button. Ignores any
+ * cached working URL and always tries the hard fallbacks FIRST, in the exact
+ * order required — http://localhost:8787 then http://127.0.0.1:8787 — followed
+ * by any configured env candidates. Guarantees the two loopback URLs are hit
+ * even if an env override is stale/wrong.
+ */
+export async function forceDetectProxyStatus(): Promise<ProxyDetection> {
+  lastWorkingUrl = null
+  const ordered = Array.from(new Set([...FALLBACK_URLS, ...resolveProxyUrls()]))
+  return probeCandidates(ordered)
 }
