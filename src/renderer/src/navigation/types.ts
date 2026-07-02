@@ -11,6 +11,7 @@ export type View =
   | { name: 'schedule' }
   | { name: 'performance' }
   | { name: 'team-leader' }
+  | { name: 'consultation' }
   | { name: 'cto' }
   | { name: 'qa' }
   | { name: 'release' }
