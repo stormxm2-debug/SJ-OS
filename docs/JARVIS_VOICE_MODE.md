@@ -175,8 +175,17 @@ npm install
 npm run dev
 ```
 
-`.env` is gitignored and must never be committed. See also
-[`OPENAI_PROXY_SETUP.md`](./OPENAI_PROXY_SETUP.md).
+**Or** start the proxy and SJ OS together from the repo root with one command:
+
+```
+npm run dev:all
+```
+
+Handy checks: `npm run proxy:env` (config, no secrets), `npm run proxy:status`
+(reachable + ready), `npm run proxy:kill` (free port 8787). See
+[`OPENAI_PROXY_SETUP.md`](./OPENAI_PROXY_SETUP.md) for the full launcher guide.
+
+`.env` is gitignored and must never be committed.
 
 > ⚠️ **Never paste your API key into ChatGPT, Claude, or any frontend UI.** The
 > key belongs only in the backend `.env`. If a key ever leaks, rotate it

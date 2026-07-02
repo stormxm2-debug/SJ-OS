@@ -89,7 +89,53 @@ Examples:
 | `VITE_AI_PROXY_URL`         | `http://localhost:8787`     | Proxy base URL.                                |
 | `VITE_AI_PROXY_MODEL_LABEL` | `gpt-4o-mini (server-side)` | Display-only label shown in Settings.          |
 
-## Running the proxy locally
+## One-command local dev (`npm run dev:all`)
+
+The root package exposes a launcher that starts the proxy **and** the SJ OS app
+together, plus helper scripts so you don't have to hunt PIDs or ports.
+
+**First-time setup** (once):
+
+```powershell
+cd C:\Users\GalaxyBook5\.vscode\SJ-OS\sj-ai-proxy
+copy .env.example .env
+# open .env in an editor and set (backend .env ONLY — never the frontend):
+#   OPENAI_ENABLED=true
+#   OPENAI_API_KEY=sk-...       (your real key)
+cd C:\Users\GalaxyBook5\.vscode\SJ-OS
+```
+
+**Daily startup** (from the repo root):
+
+```powershell
+npm run dev:all
+```
+
+This runs the proxy (`proxy:dev`) and the Electron/Vite app (`dev`) side by side
+with prefixed logs. Closing the app or pressing Ctrl+C stops **both** (no more
+orphaned proxy on port 8787).
+
+**Helper scripts:**
+
+| Script | What it does |
+| --- | --- |
+| `npm run dev:all` | Start proxy + SJ OS app together. |
+| `npm run proxy:dev` | Start only the proxy (`sj-ai-proxy`). |
+| `npm run proxy:env` | Preflight `sj-ai-proxy/.env` — prints `OPENAI_ENABLED`, whether a key is configured (**never the key**), and model labels. |
+| `npm run proxy:status` | Probe `http://localhost:8787` and `http://127.0.0.1:8787` `/ai/status` and print readiness. |
+| `npm run proxy:check` | `node --check` the proxy `server.mjs` (syntax). |
+| `npm run proxy:kill` | Stop **only** the process listening on port 8787 (never a broad kill). |
+
+**Troubleshooting flow:**
+
+```powershell
+npm run proxy:env       # is the backend .env set up? (no secrets printed)
+npm run proxy:status    # is the proxy reachable + ready?
+npm run proxy:kill      # free port 8787 if a stale proxy is stuck
+npm run dev:all         # restart everything
+```
+
+## Running the proxy standalone
 
 ```bash
 cd sj-ai-proxy
