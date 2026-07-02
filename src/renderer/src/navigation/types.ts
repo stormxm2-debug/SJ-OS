@@ -8,6 +8,7 @@ export type View =
   | { name: 'fcos' }
   | { name: 'customer' }
   | { name: 'sales-activity' }
+  | { name: 'schedule' }
   | { name: 'cto' }
   | { name: 'qa' }
   | { name: 'release' }
