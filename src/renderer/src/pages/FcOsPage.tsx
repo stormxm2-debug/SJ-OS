@@ -27,6 +27,9 @@ import Card from '@renderer/components/ui/Card'
 import ProgressBar from '@renderer/components/ui/ProgressBar'
 import { useFc } from '@renderer/services/fc/useFc'
 import { fcRepository, formatKrw } from '@renderer/services/fc/FcRepository'
+import { useCustomer } from '@renderer/services/customer/useCustomer'
+import { customerRepository } from '@renderer/services/customer/CustomerRepository'
+import type { FcCustomerSummary } from '@renderer/services/customer/types'
 import type {
   FcAttendanceStatus,
   FcMember,
@@ -114,11 +117,13 @@ function promptTeam(member: FcMember): void {
  */
 export default function FcOsPage(): JSX.Element {
   useFc() // re-render on any FC OS change
+  useCustomer() // re-render when the customer pipeline changes
   const summary = fcRepository.getSummary()
   const members = fcRepository.listMembers()
   const topPerformers = fcRepository.getTopPerformers()
   const teams = fcRepository.getTeamSummaries()
   const priorityActions = fcRepository.getPriorityActions()
+  const fcCustomers = customerRepository.getFcCustomerSummaries()
 
   const handleReset = (): void => {
     if (typeof window !== 'undefined' && !window.confirm('FC OS 데모 데이터를 초기값으로 리셋할까요?')) {
@@ -221,6 +226,23 @@ export default function FcOsPage(): JSX.Element {
         </div>
       </Card>
 
+      {/* FC customer pipeline (Customer Workspace integration) */}
+      <Card
+        title="FC별 고객 현황"
+        icon={<Users className="h-4 w-4" />}
+        action={<span className="text-xs text-slate-500">{fcCustomers.length} FC</span>}
+      >
+        {fcCustomers.length === 0 ? (
+          <p className="text-sm text-slate-500">배정된 고객이 없습니다.</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {fcCustomers.map((fc) => (
+              <FcCustomerCard key={fc.assignedFcId} fc={fc} />
+            ))}
+          </div>
+        )}
+      </Card>
+
       {/* FC attendance board (with actions) */}
       <Card
         title="FC 출근 보드"
@@ -298,6 +320,26 @@ function ActivityCard({ member }: { member: FcMember }): JSX.Element {
         <IconAction title="실적 입력" icon={<CircleDollarSign className="h-3.5 w-3.5" />} onClick={() => promptPremium(member)} />
         <IconAction title="팀 이동" icon={<ArrowRightLeft className="h-3.5 w-3.5" />} onClick={() => promptTeam(member)} />
       </div>
+    </div>
+  )
+}
+
+// --- FC customer card ------------------------------------------------------
+
+function FcCustomerCard({ fc }: { fc: FcCustomerSummary }): JSX.Element {
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-medium text-slate-100">{fc.assignedFcName}</div>
+        <span className="text-[11px] text-slate-500">{fc.team} · 고객 {fc.total}명</span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-1.5 text-[11px]">
+        <span className="text-sky-300">활동 {fc.active}</span>
+        <span className="text-amber-300">후속 {fc.followUpNeeded}</span>
+        <span className="text-violet-300">제안 {fc.proposalReady}</span>
+        <span className="text-rose-300">휴면 {fc.dormant}</span>
+      </div>
+      <div className="mt-2 text-[11px] text-slate-500">월 보험료 {formatKrw(fc.monthlyPremium)}</div>
     </div>
   )
 }
