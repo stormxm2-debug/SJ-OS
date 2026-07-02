@@ -19,7 +19,7 @@
     "proxy:status": "node scripts/proxy-status.mjs",
     "proxy:env": "node scripts/check-proxy-env.mjs",
     "proxy:kill": "node scripts/kill-proxy-port.mjs",
-    "dev:all": "concurrently -k -n proxy,app -c blue,green \"npm run proxy:dev\" \"npm run dev\""
+    "dev:all": "node scripts/dev-all.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.22.0",
@@ -32,7 +32,6 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "concurrently": "^10.0.3",
     "electron": "^33.2.1",
     "electron-vite": "^2.3.0",
     "postcss": "^8.4.49",

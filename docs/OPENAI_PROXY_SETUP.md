@@ -111,9 +111,14 @@ cd C:\Users\GalaxyBook5\.vscode\SJ-OS
 npm run dev:all
 ```
 
-This runs the proxy (`proxy:dev`) and the Electron/Vite app (`dev`) side by side
-with prefixed logs. Closing the app or pressing Ctrl+C stops **both** (no more
-orphaned proxy on port 8787).
+This runs the proxy and the Electron/Vite app side by side with prefixed
+`[proxy]` / `[app]` logs. It is self-healing and Windows-safe:
+
+- **On startup** it frees port 8787 first (stops a stale proxy if one is stuck),
+  so `dev:all` "just works" even after a previous crash.
+- **On shutdown** — closing the Electron window **or** pressing Ctrl+C — it stops
+  **both** process trees (`taskkill /T` on Windows), so the proxy never orphans
+  on port 8787.
 
 **Helper scripts:**
 
