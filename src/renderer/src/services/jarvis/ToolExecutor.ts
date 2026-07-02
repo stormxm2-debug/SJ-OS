@@ -1,8 +1,16 @@
-import type { JarvisExecutionResult, ToolCall } from './types'
+import type { JarvisStatus, ToolCall } from './types'
 import type { RoutedIntent } from './IntentRouter'
 
+/** Legacy answer-shaped result (mode is applied by JarvisService). */
+export interface LegacyExecutionResult {
+  intent: string
+  response: string
+  toolCalls: ToolCall[]
+  status: JarvisStatus
+}
+
 export default class ToolExecutor {
-  execute(action: RoutedIntent): JarvisExecutionResult {
+  execute(action: RoutedIntent): LegacyExecutionResult {
     const toolCalls: ToolCall[] = [
       {
         id: `tool-${Date.now()}-1`,

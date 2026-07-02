@@ -65,6 +65,7 @@ export interface PmTask extends PmNodeBase {
 
 /** Kinds of events recorded in the persisted PM Planner event log. */
 export type PmLogType =
+  | 'backlog-added'
   | 'plan-generated'
   | 'task-completed'
   | 'task-assigned'

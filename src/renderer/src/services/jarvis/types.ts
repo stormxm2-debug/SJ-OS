@@ -1,10 +1,29 @@
 export type JarvisStatus = 'idle' | 'thinking' | 'running' | 'completed' | 'error'
 
+/** The high-level mode Jarvis resolves a command into. */
+export type JarvisMode =
+  | 'answer'
+  | 'implementation-request'
+  | 'navigation'
+  | 'briefing'
+  | 'unknown'
+
 export interface ParsedCommand {
   raw: string
   normalized: string
   intent: string
   confidence: number
+}
+
+/** Result of classifying a raw command into a mode + fine-grained intent. */
+export interface JarvisClassification {
+  mode: JarvisMode
+  intent: string
+  confidence: number
+  /** Inferred SJ OS workspace the command concerns (implementation/nav). */
+  targetWorkspace: string
+  /** Navigation target view name, when the command implies navigation. */
+  navigationTarget: string | null
 }
 
 export interface ToolCall {
@@ -22,21 +41,66 @@ export interface ConversationEntry {
   toolCalls?: ToolCall[]
 }
 
+/** A compact metric card shown alongside an answer. */
+export interface AnswerCard {
+  label: string
+  value: string
+  tone?: string
+}
+
+/** Structured result for Answer Mode. */
+export interface JarvisAnswerResult {
+  commandUnderstood: string
+  sourceWorkspace: string
+  summary: string
+  cards: AnswerCard[]
+  recommendedNextAction: string
+  navigationTarget: string | null
+  suggestedCommands: string[]
+}
+
+/** Structured result for Implementation Mode. */
+export interface JarvisImplementationResult {
+  requestId: string
+  title: string
+  interpretedGoal: string
+  targetWorkspace: string
+  priority: string
+  approvalRequired: boolean
+  riskLevel: string
+  nextAction: string
+  status: string
+  routeTarget: string
+  pmPlanId: string | null
+  routingLog: string[]
+  suggestedCommands: string[]
+}
+
 export interface JarvisExecutionResult {
+  mode: JarvisMode
   intent: string
   response: string
   toolCalls: ToolCall[]
   status: JarvisStatus
   error?: string
+  answer?: JarvisAnswerResult
+  implementation?: JarvisImplementationResult
+  navigationTarget?: string | null
+  suggestedCommands?: string[]
 }
 
 export interface JarvisState {
   isOpen: boolean
   input: string
   status: JarvisStatus
+  mode: JarvisMode
   response: string
   toolCalls: ToolCall[]
   history: ConversationEntry[]
   recentCommands: string[]
   lastError?: string
+  answer?: JarvisAnswerResult
+  implementation?: JarvisImplementationResult
+  navigationTarget?: string | null
+  suggestedCommands: string[]
 }

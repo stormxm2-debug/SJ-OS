@@ -106,6 +106,50 @@ export class PmRepository {
     return JSON.stringify(this.state.getSnapshot(), null, 2)
   }
 
+  // --- backlog intake ------------------------------------------------------
+
+  /**
+   * Append a new high-level backlog item (the root of a future plan tree). Used
+   * by Jarvis to intake a CEO implementation command as a safe backlog item —
+   * no plan is generated yet; that stays an explicit follow-up action. Local
+   * only, no external API.
+   */
+  addBacklogItem(input: {
+    title: string
+    description?: string
+    priority?: PmPriority
+    ownerWorkerId?: string
+    acceptanceCriteria?: string[]
+    estimatedComplexity?: PmComplexity
+  }): PmOperationResult<PmBacklogItem> {
+    const title = input.title.trim()
+    if (!title) return { success: false, error: 'title is empty' }
+    const now = new Date().toISOString()
+    const item: PmBacklogItem = {
+      id: this.nextId('backlog'),
+      kind: 'backlogItem',
+      title,
+      description: (input.description ?? '').trim(),
+      priority: input.priority ?? 'P2',
+      status: 'planned',
+      ownerWorkerId: input.ownerWorkerId ?? 'pm',
+      dependencies: [],
+      acceptanceCriteria: input.acceptanceCriteria ?? [],
+      estimatedComplexity: input.estimatedComplexity ?? 'M',
+      createdAt: now,
+      updatedAt: now
+    }
+    const snapshot = this.state.getSnapshot()
+    this.commit(
+      this.withLog(
+        { ...snapshot, backlogItems: [item, ...snapshot.backlogItems] },
+        'backlog-added',
+        `백로그 추가: ${title}`
+      )
+    )
+    return { success: true, data: item }
+  }
+
   // --- plan generation -----------------------------------------------------
 
   /**

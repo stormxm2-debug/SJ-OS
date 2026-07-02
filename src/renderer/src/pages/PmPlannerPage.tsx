@@ -54,6 +54,7 @@ const STATUS_LABELS: Record<PmStatus, string> = {
 }
 
 const LOG_STYLES: Record<PmLogType, { label: string; className: string }> = {
+  'backlog-added': { label: 'Backlog added', className: 'text-sky-300' },
   'plan-generated': { label: 'Plan generated', className: 'text-indigo-300' },
   'task-completed': { label: 'Task completed', className: 'text-emerald-300' },
   'task-assigned': { label: 'Task assigned', className: 'text-sky-300' },

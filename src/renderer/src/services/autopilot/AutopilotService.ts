@@ -6,6 +6,8 @@ import { qaRepository } from '@renderer/services/qa/QaRepository'
 import { releaseRepository } from '@renderer/services/release/ReleaseRepository'
 import { devOpsRepository } from '@renderer/services/devops/DevOpsRepository'
 import { liveCompanyService } from '@renderer/services/live-company/LiveCompanyService'
+import { implementationRepository } from '@renderer/services/implementation/ImplementationRepository'
+import type { ImplementationRequest } from '@renderer/services/implementation/types'
 import { loadState, saveState } from './autopilotPersistence'
 import { autopilotSeed } from './seed'
 import type {
@@ -93,6 +95,25 @@ export class AutopilotService {
   /** Pretty-printed JSON of the current run, for the Export report action. */
   serializeReport(): string {
     return JSON.stringify(this.state, null, 2)
+  }
+
+  // --- Jarvis implementation-request visibility ----------------------------
+  // Thin read-through views so a future operating-loop step can act on the
+  // Jarvis implementation queue without a deep Autopilot redesign this sprint.
+
+  /** Implementation requests still working through planning / approval. */
+  getPendingImplementationRequests(): ImplementationRequest[] {
+    return implementationRepository.getPendingRequests()
+  }
+
+  /** Implementation requests explicitly approved and awaiting promotion. */
+  getApprovedImplementationRequests(): ImplementationRequest[] {
+    return implementationRepository.getApprovedRequests()
+  }
+
+  /** The single next implementation request Autopilot should promote (or null). */
+  getNextImplementationRequestToPromote(): ImplementationRequest | null {
+    return implementationRepository.getNextToPromote()
   }
 
   // --- internal state plumbing ---------------------------------------------
