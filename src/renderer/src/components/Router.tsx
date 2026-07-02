@@ -8,6 +8,7 @@ import FcOsPage from '@renderer/pages/FcOsPage'
 import CustomerWorkspacePage from '@renderer/pages/CustomerWorkspacePage'
 import SalesActivityWorkspacePage from '@renderer/pages/SalesActivityWorkspacePage'
 import SchedulePage from '@renderer/pages/SchedulePage'
+import PerformancePage from '@renderer/pages/PerformancePage'
 import AutopilotPage from '@renderer/pages/AutopilotPage'
 import CtoRoomPage from '@renderer/pages/CtoRoomPage'
 import QaCenterPage from '@renderer/pages/QaCenterPage'
@@ -40,6 +41,8 @@ export default function Router(): JSX.Element {
       return <SalesActivityWorkspacePage />
     case 'schedule':
       return <SchedulePage />
+    case 'performance':
+      return <PerformancePage />
     case 'cto':
       return <CtoRoomPage />
     case 'qa':
