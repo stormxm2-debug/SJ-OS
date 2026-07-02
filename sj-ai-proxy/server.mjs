@@ -29,18 +29,37 @@ const OPENAI_ENABLED = String(process.env.OPENAI_ENABLED ?? 'false').toLowerCase
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '*'
 const REQUEST_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS ?? 20000)
 
+/**
+ * Shared instruction applied to every mode (Sprint 4 GPT prompt contract).
+ * Jarvis answers in Korean, concise but useful, from a CEO/operator viewpoint,
+ * action-oriented, grounded ONLY in the provided SJ OS context — and says when
+ * data is missing instead of inventing real-world numbers.
+ */
+const BASE_INSTRUCTION =
+  '당신은 SJ Invest의 CEO 커맨드 센터를 돕는 AI 비서 "자비스"입니다. ' +
+  '반드시 한국어로, 간결하지만 실질적으로 답하세요. CEO/운영자 관점에서 실행 가능한 조언을 제시하고, ' +
+  '가능하면 마지막에 "권장 다음 액션:" 한 줄을 덧붙이세요. ' +
+  '반드시 제공된 SJ OS 컨텍스트(snapshot)에 근거해서만 답하고, 컨텍스트에 없는 정보는 "데이터가 없습니다"라고 명확히 말하세요. ' +
+  '실제 세계의 수치나 사실을 지어내지 마세요.'
+
 /** GPT modes the Jarvis brain can request. Each maps to a Korean system prompt. */
 const MODE_SYSTEM_PROMPTS = {
   'business-briefing':
-    '당신은 SJ Invest의 AI 비서 "자비스"입니다. 제공된 로컬 SJ OS 요약 데이터만 근거로 간결한 경영 브리핑을 작성합니다. 추측하지 말고, 핵심 지표와 리스크, 권장 다음 액션을 한국어로 정리하세요.',
+    '제공된 로컬 SJ OS 요약 데이터만 근거로 간결한 경영 브리핑을 작성합니다. 핵심 지표와 리스크, 우선순위를 정리하세요.',
+  strategy:
+    '제공된 SJ OS 컨텍스트를 근거로 운영/영업 전략을 제안합니다. 문제를 진단하고 구체적이고 실행 가능한 전략 옵션을 제시하세요.',
   'data-question':
-    '당신은 SJ Invest의 AI 비서 "자비스"입니다. 제공된 로컬 SJ OS 요약 데이터만 근거로 질문에 답합니다. 데이터에 없는 내용은 모른다고 말하고, 한국어로 간결하게 답하세요.',
+    '제공된 로컬 SJ OS 요약 데이터만 근거로 질문에 답합니다. 데이터에 없는 내용은 모른다고 말하세요.',
   'implementation-planning':
-    '당신은 SJ OS의 제품/개발 기획 보조입니다. 요청받은 기능을 안전하고 점진적인 스프린트 단위로 분해해 한국어로 제안합니다. 실제 코드 실행이나 배포는 하지 않으며, 계획과 권장 다음 액션만 제시합니다.',
-  'general-assistant':
-    '당신은 SJ Invest의 AI 비서 "자비스"입니다. CEO를 돕는 실용적이고 간결한 한국어 어시스턴트로서 답하세요.',
-  'unknown-fallback':
-    '당신은 SJ Invest의 AI 비서 "자비스"입니다. 명령이 모호하면 무엇을 도와줄 수 있는지 한국어로 간단히 안내하세요.'
+    'SJ OS의 제품/개발 기획을 돕습니다. 요청받은 기능을 안전하고 점진적인 스프린트 단위로 분해해 제안합니다. 실제 코드 실행이나 배포는 하지 않으며, 계획과 권장 다음 액션만 제시합니다.',
+  'general-assistant': 'CEO를 돕는 실용적이고 간결한 어시스턴트로서 답하세요.',
+  'unknown-fallback': '명령이 모호하면 무엇을 도와줄 수 있는지 간단히 안내하세요.'
+}
+
+/** Compose the full system prompt for a mode. */
+function systemPromptFor(mode) {
+  const modePrompt = MODE_SYSTEM_PROMPTS[mode] ?? MODE_SYSTEM_PROMPTS['general-assistant']
+  return `${BASE_INSTRUCTION}\n\n[모드: ${mode ?? 'general-assistant'}] ${modePrompt}`
 }
 
 const app = express()
@@ -111,19 +130,31 @@ app.post('/ai/chat', async (req, res) => {
     return
   }
 
-  const systemPrompt = MODE_SYSTEM_PROMPTS[mode] ?? MODE_SYSTEM_PROMPTS['general-assistant']
-  const contextBlock = [
-    context ? `요청 맥락:\n${typeof context === 'string' ? context : JSON.stringify(context)}` : '',
-    localSnapshot
-      ? `로컬 SJ OS 요약(민감정보 제외):\n${
-          typeof localSnapshot === 'string' ? localSnapshot : JSON.stringify(localSnapshot)
-        }`
-      : ''
-  ]
-    .filter(Boolean)
-    .join('\n\n')
+  const systemPrompt = systemPromptFor(mode)
 
-  const userContent = contextBlock ? `${contextBlock}\n\n질문/명령:\n${message}` : message
+  // Sprint 4 contract: context = { app, role, snapshot }. Accept a plain object,
+  // a JSON/string context, and the legacy top-level localSnapshot for back-compat.
+  let app = 'SJ OS'
+  let role = 'CEO command center'
+  let snapshot = localSnapshot
+  if (context && typeof context === 'object') {
+    app = context.app ?? app
+    role = context.role ?? role
+    snapshot = context.snapshot ?? snapshot
+  } else if (typeof context === 'string' && context.trim()) {
+    snapshot = snapshot ?? context
+  }
+
+  const contextBlock = [
+    `앱: ${app} · 역할: ${role}`,
+    snapshot
+      ? `SJ OS 컨텍스트(민감정보 제외, 집계/상태만):\n${
+          typeof snapshot === 'string' ? snapshot : JSON.stringify(snapshot, null, 2)
+        }`
+      : 'SJ OS 컨텍스트: (제공되지 않음)'
+  ].join('\n\n')
+
+  const userContent = `${contextBlock}\n\n질문/명령:\n${message}`
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)

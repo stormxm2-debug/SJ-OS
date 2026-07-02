@@ -15,6 +15,7 @@ import type {
   JarvisExternalResult,
   JarvisGptResult,
   JarvisImplementationResult,
+  JarvisSource,
   JarvisState,
   ParsedCommand,
   ToolCall
@@ -169,6 +170,9 @@ export class JarvisService {
           break
         case 'external-action':
           result = await this.handleExternal(classification)
+          break
+        case 'gpt':
+          result = await this.handleGpt(command, classification)
           break
         default:
           // Local-first: if the command is not a deterministic local intent and
@@ -368,6 +372,9 @@ export class JarvisService {
       ? []
       : [this.tool('callAiProxy', `POST /ai/chat · mode ${brain.mode} · ${brain.source}`)]
     const status = brain.success ? 'completed' : brain.disabled ? 'completed' : 'error'
+    // 'disabled'/'fallback' → Fallback badge; 'gpt'/'error' → GPT badge.
+    const source: JarvisSource =
+      brain.source === 'disabled' || brain.source === 'fallback' ? 'fallback' : 'gpt'
     return {
       mode: 'gpt',
       intent: brain.mode,
@@ -375,15 +382,68 @@ export class JarvisService {
       toolCalls,
       status,
       gpt,
-      source: 'gpt',
+      source,
       error: brain.error,
       suggestedCommands: [
         '오늘 조직 상황 브리핑 해줘',
-        '이번 달 실적에서 문제점 알려줘',
+        '이번 달 실적에서 문제점 분석해줘',
         '미활동 FC 관리 전략 짜줘',
-        'FC OS에 필요한 다음 기능 추천해줘'
+        '우리 회사 앱 다음 기능 추천해줘'
       ]
     }
+  }
+
+  /** Map the classifier's GPT sub-mode string to a concrete GptMode. */
+  private toGptMode(mode?: string): GptMode {
+    switch (mode) {
+      case 'business-briefing':
+        return 'business-briefing'
+      case 'implementation-planning':
+        return 'implementation-planning'
+      case 'strategy':
+        return 'strategy'
+      case 'data-question':
+        return 'data-question'
+      default:
+        return 'general-assistant'
+    }
+  }
+
+  /**
+   * Handle a command classified as GPT-needed. When the brain is enabled it
+   * calls the proxy; when disabled it returns a useful Korean fallback —
+   * business briefings fall back to the local briefing summary so the CEO still
+   * gets real local numbers.
+   */
+  private async handleGpt(
+    command: string,
+    classification: JarvisClassification
+  ): Promise<JarvisExecutionResult> {
+    const mode = this.toGptMode(classification.gptMode)
+    if (this.gpt.isEnabled()) {
+      return this.askGpt(command, mode)
+    }
+
+    // Disabled: business-briefing degrades to the local briefing (real numbers).
+    if (mode === 'business-briefing') {
+      const briefing = this.answers.briefing()
+      const response = `${briefing.summary}\n\n[GPT proxy disabled fallback] 위 내용은 로컬 데이터 요약입니다. 심층 분석/전략 코멘트는 GPT 브레인을 활성화하면 제공됩니다.`
+      return {
+        mode: 'gpt',
+        intent: 'business-briefing',
+        response,
+        toolCalls: [this.tool('localBriefingFallback', 'GPT 비활성화 · 로컬 브리핑 요약')],
+        status: 'completed',
+        gpt: { source: 'fallback', mode: 'business-briefing', disabled: true, canRetry: false },
+        source: 'fallback',
+        answer: briefing,
+        navigationTarget: briefing.navigationTarget,
+        suggestedCommands: briefing.suggestedCommands
+      }
+    }
+
+    // Other GPT modes: return the labeled disabled-fallback guidance.
+    return this.askGpt(command, mode)
   }
 
   private handleUnknown(command: string): JarvisExecutionResult {

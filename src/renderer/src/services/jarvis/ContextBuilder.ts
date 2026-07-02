@@ -6,6 +6,8 @@ import { performanceRepository } from '@renderer/services/performance/Performanc
 import { consultationRepository } from '@renderer/services/consultation/ConsultationRepository'
 import { analysisRepository } from '@renderer/services/insurance-analysis/AnalysisRepository'
 import { teamLeaderRepository } from '@renderer/services/team-leader/TeamLeaderRepository'
+import { implementationRepository } from '@renderer/services/implementation/ImplementationRepository'
+import { approvalRepository } from '@renderer/services/approvals/ApprovalRepository'
 
 /**
  * Jarvis Safe Context Builder.
@@ -74,6 +76,17 @@ export interface SjOsSnapshot {
     highSeverityGaps: number
     reviewed: number
   }
+  implementation: {
+    total: number
+    open: number
+    waitingForApproval: number
+    readyToPromote: number
+    inProgress: number
+    completed: number
+  }
+  approvals: {
+    pending: number
+  }
 }
 
 export default class ContextBuilder {
@@ -87,6 +100,10 @@ export default class ContextBuilder {
     const consultation = consultationRepository.getSummary()
     const analysis = analysisRepository.getSummary()
     const teams = teamLeaderRepository.listTeams()
+    const impl = implementationRepository.getSummary()
+    const pendingApprovals = approvalRepository
+      .listApprovals()
+      .filter((a) => a.status === 'pending').length
 
     return {
       fcOs: {
@@ -140,6 +157,17 @@ export default class ContextBuilder {
         totalGaps: analysis.totalGaps,
         highSeverityGaps: analysis.highSeverityGaps,
         reviewed: analysis.reviewed
+      },
+      implementation: {
+        total: impl.total,
+        open: impl.drafted + impl.planned + impl.waitingForApproval + impl.inProgress,
+        waitingForApproval: impl.waitingForApproval,
+        readyToPromote: impl.readyToPromote,
+        inProgress: impl.inProgress,
+        completed: impl.completed
+      },
+      approvals: {
+        pending: pendingApprovals
       }
     }
   }
@@ -155,7 +183,9 @@ export default class ContextBuilder {
       `고객: 전체 ${s.customer.total}, 상담중 ${s.customer.consulting}, 계약 ${s.customer.contracted}, 후속필요 ${s.customer.followUpNeeded}, 휴면 ${s.customer.dormant}`,
       `팀: ${s.teamLeader.teams}개 팀`,
       `상담: 진행중 ${s.consultation.active}, 클로징단계 ${s.consultation.closingStage}, 성공률 ${s.consultation.winRate}%, 보류 ${s.consultation.onHold}, 실패 ${s.consultation.lost}`,
-      `보험분석: 분석 ${s.insuranceAnalysis.total}, 보장부족 ${s.insuranceAnalysis.underinsured}, 공백 ${s.insuranceAnalysis.totalGaps}(고위험 ${s.insuranceAnalysis.highSeverityGaps}), 검토완료 ${s.insuranceAnalysis.reviewed}`
+      `보험분석: 분석 ${s.insuranceAnalysis.total}, 보장부족 ${s.insuranceAnalysis.underinsured}, 공백 ${s.insuranceAnalysis.totalGaps}(고위험 ${s.insuranceAnalysis.highSeverityGaps}), 검토완료 ${s.insuranceAnalysis.reviewed}`,
+      `구현요청: 전체 ${s.implementation.total}, 진행중 ${s.implementation.open}(승인대기 ${s.implementation.waitingForApproval}, 승격대기 ${s.implementation.readyToPromote}, 작업중 ${s.implementation.inProgress}), 완료 ${s.implementation.completed}`,
+      `승인: 대기 ${s.approvals.pending}건`
     ].join('\n')
   }
 }

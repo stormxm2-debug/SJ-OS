@@ -58,11 +58,12 @@ const COMMAND_CHIPS = [
   '미완료 활동',
   '클로징 예정 고객',
   '유튜브 켜줘',
-  '네이버 열어줘',
-  '구글 열어줘',
-  'SJ OS 깃허브 열어줘',
   '오토파일럿 열어줘',
-  'FC OS에 팀별 필터 추가해'
+  'FC OS에 팀별 필터 추가해',
+  '오늘 조직 상황 브리핑 해줘',
+  '이번 달 실적에서 문제점 분석해줘',
+  '미활동 FC 관리 전략 짜줘',
+  '우리 회사 앱 다음 기능 추천해줘'
 ]
 
 function statusLabel(status: JarvisStatus): string {
@@ -127,6 +128,20 @@ export default function JarvisPanel(): JSX.Element | null {
   const synthesisSupported = voice.isSynthesisSupported()
   const gptConfig = jarvisGptBrainService.getConfig()
   const { navigate } = useNavigation()
+
+  // Persistent GPT status badge: Ready / Disabled / Proxy Error / Local Only.
+  const gptStatus = ((): { label: string; classes: string } => {
+    if (!gptConfig.enabled) {
+      return { label: 'GPT Disabled', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
+    }
+    if (state.gpt?.source === 'error') {
+      return { label: 'Proxy Error', classes: 'border-rose-500/30 bg-rose-500/10 text-rose-300' }
+    }
+    if (state.source === 'local') {
+      return { label: 'Local Only', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
+    }
+    return { label: 'GPT Ready', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' }
+  })()
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -313,13 +328,28 @@ export default function JarvisPanel(): JSX.Element | null {
                 className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
                   state.source === 'gpt'
                     ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300'
-                    : 'border-slate-700 bg-slate-800/70 text-slate-300'
+                    : state.source === 'fallback'
+                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                      : 'border-slate-700 bg-slate-800/70 text-slate-300'
                 }`}
               >
-                {state.source === 'gpt' ? <Cpu className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
-                {state.source === 'gpt' ? 'GPT' : 'Local'}
+                {state.source === 'gpt' ? (
+                  <Cpu className="h-3 w-3" />
+                ) : state.source === 'fallback' ? (
+                  <CloudOff className="h-3 w-3" />
+                ) : (
+                  <Bot className="h-3 w-3" />
+                )}
+                {state.source === 'gpt' ? 'GPT' : state.source === 'fallback' ? 'Fallback' : 'Local'}
               </span>
             ) : null}
+            <span
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${gptStatus.classes}`}
+              title="OpenAI 프록시 상태"
+            >
+              <Brain className="h-3 w-3" />
+              {gptStatus.label}
+            </span>
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${MODE_META[state.mode].classes}`}>
               {MODE_META[state.mode].label}
             </span>

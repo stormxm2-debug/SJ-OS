@@ -14,6 +14,7 @@ import type { SjOsSnapshot } from './ContextBuilder'
 
 export type GptMode =
   | 'business-briefing'
+  | 'strategy'
   | 'data-question'
   | 'implementation-planning'
   | 'general-assistant'
@@ -83,7 +84,8 @@ export class JarvisGptBrainService {
     if (has(['sprint', '스프린트', '구현', '기능 추천', '기능', '나눠', '로드맵', '설계'])) {
       return 'implementation-planning'
     }
-    if (has(['실적', '문제', '현황', '분석', '왜', '전략', '개선'])) return 'data-question'
+    if (has(['전략', '방안', '개선'])) return 'strategy'
+    if (has(['실적', '문제', '현황', '분석', '왜'])) return 'data-question'
     return 'general-assistant'
   }
 
@@ -95,9 +97,11 @@ export class JarvisGptBrainService {
       mode,
       canRetry: false,
       answer:
-        'GPT 브레인이 비활성화되어 있습니다. 로컬 자비스 명령은 그대로 사용할 수 있습니다.\n' +
-        '활성화하려면 SJ OS AI Proxy를 실행하고, 렌더러 환경변수 VITE_AI_PROXY_ENABLED=true 및 ' +
-        'VITE_AI_PROXY_URL 을 설정하세요. (OpenAI API 키는 프록시(백엔드)에만 두세요 — 프론트엔드에 넣지 마세요.)'
+        '[GPT proxy disabled fallback]\n' +
+        'GPT 브레인이 아직 활성화되지 않았습니다. 로컬 자비스 명령(일정/실적/출근/네비게이션 등)은 그대로 사용할 수 있습니다.\n' +
+        '활성화하려면: (1) 백엔드 프록시에서 OPENAI_ENABLED=true 와 OPENAI_API_KEY 를 설정하고, ' +
+        '(2) 렌더러 환경변수 VITE_AI_PROXY_ENABLED=true 및 VITE_AI_PROXY_URL 을 설정하세요.\n' +
+        'OpenAI API 키는 반드시 백엔드에만 두세요 — SJ OS 프론트엔드에는 절대 넣지 마세요.'
     }
   }
 
@@ -113,14 +117,11 @@ export class JarvisGptBrainService {
     }
 
     let snapshot: SjOsSnapshot | null = null
-    let contextText = ''
     try {
       snapshot = contextBuilder.buildSnapshot()
-      contextText = contextBuilder.buildContextText()
     } catch {
       // Snapshot is best-effort context; proceed without it if it fails.
       snapshot = null
-      contextText = ''
     }
 
     const controller = new AbortController()
@@ -130,11 +131,15 @@ export class JarvisGptBrainService {
       const response = await fetch(`${config.proxyUrl.replace(/\/$/, '')}/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // GPT prompt contract (Sprint 4): context is an object with app/role/snapshot.
         body: JSON.stringify({
           message: command,
           mode: resolvedMode,
-          context: contextText,
-          localSnapshot: snapshot
+          context: {
+            app: 'SJ OS',
+            role: 'CEO command center',
+            snapshot: snapshot ?? {}
+          }
         }),
         signal: controller.signal
       })

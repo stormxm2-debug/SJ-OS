@@ -11,7 +11,7 @@ export type JarvisMode =
   | 'unknown'
 
 /** Where a Jarvis answer came from. */
-export type JarvisSource = 'local' | 'gpt'
+export type JarvisSource = 'local' | 'gpt' | 'fallback'
 
 export interface ParsedCommand {
   raw: string
@@ -31,6 +31,8 @@ export interface JarvisClassification {
   navigationTarget: string | null
   /** Approved external-link key, when the command is an external action. */
   externalKey: string | null
+  /** GPT sub-mode, when the command is routed to the GPT brain (mode 'gpt'). */
+  gptMode?: string
 }
 
 export interface ToolCall {
