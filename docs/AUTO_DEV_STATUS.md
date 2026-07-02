@@ -3,6 +3,21 @@
 A running status log of the Jarvis / OpenAI-proxy workstream. Newest first.
 No secrets are ever recorded here.
 
+## Proxy env-loading fix (2026-07-02)
+
+**Problem:** with `sj-ai-proxy/.env` set (`OPENAI_ENABLED=true`, key present),
+`npm run dev` still logged `enabled=false` / `keyConfigured=false` — `server.mjs`
+read `process.env` without loading the `.env` file.
+
+**Fix:** added `dotenv` and load `sj-ai-proxy/.env` resolved relative to the
+server file (via `import.meta.url`) before any `process.env` read, so it works
+regardless of the launch cwd.
+
+- ✅ Verified: startup log → `enabled=true keyConfigured=true ready=true`;
+  `GET /ai/status` → `enabled: true, apiKeyConfigured: true, ready: true`.
+- ✅ Startup log still prints booleans only — the key is never logged or exposed.
+- ✅ No `.env` committed; no key in the diff.
+
 ## Sprint 3C-4 — Local proxy verification (2026-07-02)
 
 **Goal:** run and verify the SJ AI Proxy locally; document exact safe steps for

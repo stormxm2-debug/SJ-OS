@@ -93,13 +93,21 @@ Examples:
 
 ```bash
 cd sj-ai-proxy
-npm install                 # installs express + openai
+npm install                 # installs express + openai + dotenv
 cp .env.example .env        # then edit .env: set OPENAI_ENABLED=true and OPENAI_API_KEY
 npm start                   # listens on :8787
 ```
 
 Then, in the SJ OS root, set `VITE_AI_PROXY_ENABLED=true` (and the URL if not
 default) in `.env` and run `npm run dev`.
+
+> **How `.env` is loaded:** `server.mjs` uses `dotenv` to load
+> `sj-ai-proxy/.env` resolved **relative to the server file** (via
+> `import.meta.url`), not the current working directory. So the proxy picks up
+> `OPENAI_*` variables whether you run `npm run dev` from `sj-ai-proxy/`, the
+> repo root, or an IDE task. If the startup log shows `enabled=false` /
+> `keyConfigured=false` while your `.env` is set, confirm the file is at
+> `sj-ai-proxy/.env` (not the repo root) and restart the proxy so it re-reads it.
 
 ## Enabling OpenAI locally (exact steps)
 

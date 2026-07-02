@@ -20,6 +20,15 @@
  */
 
 import express from 'express'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { config as loadEnv } from 'dotenv'
+
+// Load sj-ai-proxy/.env explicitly, resolved relative to THIS file (not the
+// process cwd), so the proxy reliably picks up OPENAI_* variables regardless of
+// where `npm run dev` is launched from. Runs before any process.env read below.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+loadEnv({ path: path.join(__dirname, '.env') })
 
 const SERVICE_NAME = 'SJ OS AI Proxy'
 const ENVIRONMENT = process.env.NODE_ENV ?? 'development'
