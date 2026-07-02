@@ -97,7 +97,7 @@ export interface JarvisExternalResult {
 
 /** Structured result for GPT Brain Mode (proxy-backed). */
 export interface JarvisGptResult {
-  source: 'gpt' | 'fallback' | 'disabled' | 'error'
+  source: 'gpt' | 'openai' | 'fallback' | 'disabled' | 'error' | 'backend'
   mode: string
   model?: string
   /** True when the GPT brain/proxy is disabled — show setup guidance. */

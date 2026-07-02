@@ -11,14 +11,16 @@ services:
     startCommand: npm start
     healthCheckPath: /health
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: OPENAI_ENABLED
         value: "false"
       - key: OPENAI_MODEL
         value: gpt-4o-mini
       - key: OPENAI_TIMEOUT_MS
-        value: "20000"
+        value: "30000"
       # Set these in the Render dashboard — do NOT hardcode secrets here.
       - key: OPENAI_API_KEY
         sync: false
-      - key: CORS_ORIGIN
+      - key: ALLOWED_ORIGINS
         sync: false

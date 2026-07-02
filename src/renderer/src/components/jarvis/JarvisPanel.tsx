@@ -134,6 +134,9 @@ export default function JarvisPanel(): JSX.Element | null {
     if (!gptConfig.enabled) {
       return { label: 'GPT Disabled', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
     }
+    if (state.gpt?.source === 'backend') {
+      return { label: 'Key Missing', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-300' }
+    }
     if (state.gpt?.source === 'error') {
       return { label: 'Proxy Error', classes: 'border-rose-500/30 bg-rose-500/10 text-rose-300' }
     }

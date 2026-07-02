@@ -1,5 +1,11 @@
 node_modules/
+
+# Secrets — never commit real env files. Only .env.example is tracked.
 .env
+.env.local
+.env.production
 .env.*
+*.env
 !.env.example
+
 *.log

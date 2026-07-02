@@ -21,13 +21,31 @@
 
 import express from 'express'
 
+const SERVICE_NAME = 'SJ OS AI Proxy'
+const ENVIRONMENT = process.env.NODE_ENV ?? 'development'
 const PORT = Number(process.env.PORT ?? 8787)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ?? ''
 const OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini'
 const OPENAI_ENABLED = String(process.env.OPENAI_ENABLED ?? 'false').toLowerCase() === 'true'
-// Comma-separated allowlist of renderer origins; '*' allows any (dev only).
-const CORS_ORIGIN = process.env.CORS_ORIGIN ?? '*'
-const REQUEST_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS ?? 20000)
+const REQUEST_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS ?? 30000)
+
+// Whether a real key is present (never expose the key itself, anywhere).
+const API_KEY_CONFIGURED = OPENAI_API_KEY.trim().length > 0
+// GPT is truly ready only when explicitly enabled AND a key is configured.
+const GPT_READY = OPENAI_ENABLED && API_KEY_CONFIGURED
+
+/**
+ * Allowed CORS origins. Prefer ALLOWED_ORIGINS (comma-separated); fall back to
+ * the legacy CORS_ORIGIN; default to local dev ports. '*' allows any (dev only).
+ */
+const ALLOWED_ORIGINS = (
+  process.env.ALLOWED_ORIGINS ??
+  process.env.CORS_ORIGIN ??
+  'http://localhost:5173,http://localhost:5174'
+)
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
 
 /**
  * Shared instruction applied to every mode (Sprint 4 GPT prompt contract).
@@ -65,9 +83,15 @@ function systemPromptFor(mode) {
 const app = express()
 app.use(express.json({ limit: '256kb' }))
 
-// Minimal, explicit CORS for the Electron renderer.
+// Explicit CORS: reflect only allow-listed origins (no wildcard unless set).
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN)
+  const origin = req.headers.origin
+  if (ALLOWED_ORIGINS.includes('*')) {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+  }
+  res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') {
@@ -79,10 +103,35 @@ app.use((req, res, next) => {
 
 app.get('/health', (_req, res) => {
   res.json({
-    ok: true,
-    service: 'sj-ai-proxy',
-    enabled: OPENAI_ENABLED && Boolean(OPENAI_API_KEY),
-    model: OPENAI_MODEL
+    service: SERVICE_NAME,
+    status: 'ok',
+    openaiEnabled: OPENAI_ENABLED,
+    apiKeyConfigured: API_KEY_CONFIGURED,
+    model: OPENAI_MODEL,
+    environment: ENVIRONMENT,
+    timestamp: new Date().toISOString()
+  })
+})
+
+/**
+ * Diagnostic status — does NOT call OpenAI and NEVER exposes the key. Reports
+ * whether the brain is enabled, whether a key is configured, and readiness.
+ */
+app.get('/ai/status', (_req, res) => {
+  const message = !OPENAI_ENABLED
+    ? 'GPT 프록시가 비활성화되어 있습니다 (OPENAI_ENABLED=false).'
+    : !API_KEY_CONFIGURED
+      ? 'OPENAI_ENABLED=true 이지만 OPENAI_API_KEY 가 설정되지 않았습니다.'
+      : 'GPT 프록시가 준비되었습니다.'
+  res.json({
+    service: SERVICE_NAME,
+    enabled: OPENAI_ENABLED,
+    apiKeyConfigured: API_KEY_CONFIGURED,
+    model: OPENAI_MODEL,
+    ready: GPT_READY,
+    environment: ENVIRONMENT,
+    timestamp: new Date().toISOString(),
+    message
   })
 })
 
@@ -124,9 +173,24 @@ app.post('/ai/chat', async (req, res) => {
     return
   }
 
-  // Disabled or no key → safe fallback (never fail hard, never leak config).
-  if (!OPENAI_ENABLED || !OPENAI_API_KEY) {
-    res.json(fallbackResponse(mode, !OPENAI_ENABLED ? 'disabled' : 'missing-api-key'))
+  // Disabled → safe fallback (never fail hard, never leak config).
+  if (!OPENAI_ENABLED) {
+    res.json(fallbackResponse(mode, 'disabled'))
+    return
+  }
+
+  // Enabled but no key → explicit setup error (safe, no secret exposure).
+  if (!API_KEY_CONFIGURED) {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'OPENAI_API_KEY_MISSING',
+      error:
+        'OPENAI_ENABLED=true 이지만 OPENAI_API_KEY 가 설정되지 않았습니다. ' +
+        '백엔드 환경변수에 API 키를 설정하세요 (프론트엔드에는 절대 입력하지 마세요).',
+      mode: mode ?? 'unknown-fallback',
+      model: OPENAI_MODEL
+    })
     return
   }
 
@@ -176,7 +240,7 @@ app.post('/ai/chat', async (req, res) => {
     const answer = completion.choices?.[0]?.message?.content?.trim() ?? ''
     res.json({
       success: true,
-      source: 'gpt',
+      source: 'openai',
       answer: answer || '응답을 생성하지 못했습니다.',
       mode: mode ?? 'general-assistant',
       model: completion.model ?? OPENAI_MODEL,
@@ -187,7 +251,7 @@ app.post('/ai/chat', async (req, res) => {
     const aborted = error?.name === 'AbortError'
     res.status(aborted ? 504 : 502).json({
       success: false,
-      source: 'gpt',
+      source: 'openai',
       error: aborted
         ? 'GPT 응답이 시간 내에 도착하지 않았습니다. 잠시 후 다시 시도해 주세요.'
         : 'GPT 요청 처리 중 오류가 발생했습니다.',
@@ -201,8 +265,9 @@ app.post('/ai/chat', async (req, res) => {
 })
 
 app.listen(PORT, () => {
+  // Log only booleans/labels — NEVER the API key.
   // eslint-disable-next-line no-console
   console.log(
-    `[sj-ai-proxy] listening on :${PORT} · enabled=${OPENAI_ENABLED && Boolean(OPENAI_API_KEY)} · model=${OPENAI_MODEL}`
+    `[${SERVICE_NAME}] :${PORT} · env=${ENVIRONMENT} · enabled=${OPENAI_ENABLED} · keyConfigured=${API_KEY_CONFIGURED} · ready=${GPT_READY} · model=${OPENAI_MODEL} · origins=${ALLOWED_ORIGINS.join(',')}`
   )
 })

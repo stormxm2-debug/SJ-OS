@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Plus, ShieldCheck, Cpu } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Plus, ShieldCheck, Cpu, RefreshCw, LoaderCircle } from 'lucide-react'
 import type {
   CompanySettings,
   AutonomyLevel,
@@ -12,6 +12,15 @@ import Toggle from '@renderer/components/ui/Toggle'
 import { ROLE_LABEL } from '@renderer/lib/companyMeta'
 import { companySettings } from '@renderer/data/mockManagement'
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
+import type { ProxyStatusResult, ProxyStatusLabel } from '@renderer/services/jarvis/JarvisGptBrainService'
+
+/** Chip tone for each derived proxy status label. */
+const STATUS_TONE: Record<ProxyStatusLabel, 'emerald' | 'slate' | 'amber' | 'rose'> = {
+  'GPT Ready': 'emerald',
+  'GPT Disabled': 'slate',
+  'Key Missing': 'amber',
+  'Proxy Offline': 'rose'
+}
 
 const ROLES: WorkerRole[] = [
   'cto',
@@ -38,6 +47,20 @@ const POLICIES: { key: keyof ApprovalPolicy; label: string }[] = [
 export default function CompanySettingsPage(): JSX.Element {
   const [settings, setSettings] = useState<CompanySettings>(companySettings)
   const gptConfig = jarvisGptBrainService.getConfig()
+  const [proxyStatus, setProxyStatus] = useState<ProxyStatusResult | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  async function refreshProxyStatus(): Promise<void> {
+    setChecking(true)
+    const result = await jarvisGptBrainService.checkStatus()
+    setProxyStatus(result)
+    setChecking(false)
+  }
+
+  // Probe proxy status once on mount so the CEO sees live reachability.
+  useEffect(() => {
+    void refreshProxyStatus()
+  }, [])
 
   function update(patch: Partial<CompanySettings>): void {
     setSettings((prev) => ({ ...prev, ...patch }))
@@ -186,6 +209,50 @@ export default function CompanySettingsPage(): JSX.Element {
               <div className="mt-0.5 truncate text-sm text-slate-200">{gptConfig.modelLabel}</div>
             </div>
           </div>
+
+          {/* Live proxy status (GET /ai/status) with a refresh action. */}
+          <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Proxy status</span>
+                {proxyStatus ? (
+                  <Chip tone={STATUS_TONE[proxyStatus.label]}>{proxyStatus.label}</Chip>
+                ) : (
+                  <Chip tone="slate">Checking…</Chip>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshProxyStatus()}
+                disabled={checking}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1 text-xs text-slate-300 transition hover:border-slate-500 disabled:opacity-60"
+              >
+                {checking ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                새로고침
+              </button>
+            </div>
+            {proxyStatus ? (
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <StatusRow label="프록시 연결" ok={proxyStatus.reachable} okText="정상" failText="오프라인" />
+                <StatusRow label="OpenAI 활성화" ok={proxyStatus.enabled} okText="ON" failText="OFF" />
+                <StatusRow label="API 키 설정" ok={proxyStatus.apiKeyConfigured} okText="설정됨" failText="없음" />
+                <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                  <div className="text-[11px] text-slate-500">서버 모델 · 확인 시각</div>
+                  <div className="mt-0.5 truncate text-sm text-slate-200">
+                    {proxyStatus.model ?? '—'} · {new Date(proxyStatus.checkedAt).toLocaleTimeString('ko-KR')}
+                  </div>
+                </div>
+                {proxyStatus.message ? (
+                  <div className="sm:col-span-2 text-xs text-slate-500">{proxyStatus.message}</div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
@@ -224,6 +291,28 @@ export default function CompanySettingsPage(): JSX.Element {
       <p className="text-xs text-slate-600">
         Settings are local to this preview — nothing is persisted yet.
       </p>
+    </div>
+  )
+}
+
+/** A compact ok/fail row for the proxy status grid. */
+function StatusRow({
+  label,
+  ok,
+  okText,
+  failText
+}: {
+  label: string
+  ok: boolean
+  okText: string
+  failText: string
+}): JSX.Element {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+      <span className="text-xs text-slate-400">{label}</span>
+      <span className={ok ? 'text-xs font-medium text-emerald-300' : 'text-xs font-medium text-slate-500'}>
+        {ok ? okText : failText}
+      </span>
     </div>
   )
 }

@@ -26,7 +26,7 @@ Renderer (JarvisGptBrainService)
 sj-ai-proxy (Express, server.mjs)  ── holds OPENAI_API_KEY ──►  OpenAI API
     │  { success, answer, mode, model, usage? }
     ▼
-Renderer renders the answer (source = gpt | fallback | disabled | error)
+Renderer renders the answer (source = openai | fallback | disabled | backend | error)
 ```
 
 The renderer sends only a **sanitized** local snapshot built by
@@ -71,14 +71,15 @@ Examples:
 
 ### Backend proxy — `sj-ai-proxy/.env` (copy from `.env.example`, never commit)
 
-| Variable            | Default        | Purpose                                                      |
-| ------------------- | -------------- | ------------------------------------------------------------ |
-| `OPENAI_ENABLED`    | `false`        | Master switch. When `false`, `/ai/chat` returns a fallback.  |
-| `OPENAI_API_KEY`    | _(empty)_      | Your OpenAI key. **Server-side only.**                       |
-| `OPENAI_MODEL`      | `gpt-4o-mini`  | Model used for completions.                                  |
-| `PORT`              | `8787`         | Port the proxy listens on.                                   |
-| `CORS_ORIGIN`       | `*`            | Allowed renderer origin(s). Use a specific origin in prod.   |
-| `OPENAI_TIMEOUT_MS` | `20000`        | Upstream request timeout.                                    |
+| Variable            | Default                                            | Purpose                                                     |
+| ------------------- | -------------------------------------------------- | ----------------------------------------------------------- |
+| `OPENAI_ENABLED`    | `false`                                            | Master switch. When `false`, `/ai/chat` returns a fallback. |
+| `OPENAI_API_KEY`    | _(empty)_                                          | Your OpenAI key. **Server-side only.** Never commit.        |
+| `OPENAI_MODEL`      | `gpt-4o-mini`                                      | Model used for completions.                                 |
+| `OPENAI_TIMEOUT_MS` | `30000`                                            | Upstream request timeout (ms).                              |
+| `ALLOWED_ORIGINS`   | `http://localhost:5173,http://localhost:5174`      | Comma-separated CORS allowlist. Legacy `CORS_ORIGIN` still honored. |
+| `PORT`              | `8787`                                             | Port the proxy listens on.                                  |
+| `NODE_ENV`          | `development`                                      | Reported as `environment` in `/health` and `/ai/status`.    |
 
 ### Renderer — root `.env` (copy from root `.env.example`, non-secret only)
 
@@ -100,15 +101,34 @@ npm start                   # listens on :8787
 Then, in the SJ OS root, set `VITE_AI_PROXY_ENABLED=true` (and the URL if not
 default) in `.env` and run `npm run dev`.
 
+## Enabling OpenAI locally (exact steps)
+
+1. `cd sj-ai-proxy && npm install` (installs `express` + `openai`).
+2. `cp .env.example .env` — creates a **gitignored** local env file.
+3. In `.env`, set `OPENAI_ENABLED=true`.
+4. In `.env`, set `OPENAI_API_KEY=sk-...` **manually** (server-side only; never
+   paste it into SJ OS frontend or anywhere else).
+5. In `.env`, set `OPENAI_MODEL` (default `gpt-4o-mini`).
+6. Start the proxy: `npm start` (listens on `:8787`).
+7. Start SJ OS: from the repo root, set `VITE_AI_PROXY_ENABLED=true` in root
+   `.env`, then `npm run dev`.
+8. Test `GET /health` and `GET /ai/status` (see below).
+9. In Jarvis, run: `오늘 조직 상황 브리핑 해줘` → answer should come back with
+   source `openai` and the header badge **GPT Ready**.
+
 ## Render deployment env variables
 
 `render.yaml` defines a `sj-ai-proxy` web service. Set secrets in the **Render
-dashboard** (marked `sync: false`), not in the file:
+dashboard**, not in the file:
 
-- `OPENAI_ENABLED=true`
-- `OPENAI_API_KEY=<your key>`  ← dashboard only, never committed
-- `OPENAI_MODEL=gpt-4o-mini`
-- `CORS_ORIGIN=<your renderer origin>`
+1. Open the Render Dashboard → the `sj-ai-proxy` service.
+2. Go to **Environment**.
+3. Add `OPENAI_ENABLED=true`.
+4. Add `OPENAI_API_KEY=<your key>` (dashboard only; `sync: false`, never committed).
+5. Add `OPENAI_MODEL=gpt-4o-mini`.
+6. Add `ALLOWED_ORIGINS=<your renderer origin(s)>`.
+7. **Redeploy**.
+8. Test `GET /health` and `GET /ai/status` on the deployed URL.
 
 Health check path is `/health`.
 
@@ -118,10 +138,31 @@ Health check path is `/health`.
 
 ```bash
 curl http://localhost:8787/health
-# { "ok": true, "service": "sj-ai-proxy", "enabled": false, "model": "gpt-4o-mini" }
 ```
 
-`enabled` is `true` only when `OPENAI_ENABLED=true` **and** a key is present.
+```json
+{
+  "service": "SJ OS AI Proxy",
+  "status": "ok",
+  "openaiEnabled": false,
+  "apiKeyConfigured": false,
+  "model": "gpt-4o-mini",
+  "environment": "development",
+  "timestamp": "2026-07-02T00:00:00.000Z"
+}
+```
+
+### `/ai/status` (diagnostic — never calls OpenAI, never exposes the key)
+
+```bash
+curl http://localhost:8787/ai/status
+# { "enabled": false, "apiKeyConfigured": false, "model": "gpt-4o-mini", "ready": false, "message": "..." }
+```
+
+`ready` is `true` only when `OPENAI_ENABLED=true` **and** a key is present. The
+SJ OS Settings → "AI · GPT Brain" panel calls this endpoint and shows a
+**GPT Ready / GPT Disabled / Key Missing / Proxy Offline** badge with a refresh
+button.
 
 ### `/ai/chat`
 
@@ -131,9 +172,10 @@ curl -X POST http://localhost:8787/ai/chat \
   -d '{"message":"오늘 조직 상황 브리핑 해줘","mode":"business-briefing","context":{"app":"SJ OS","role":"CEO command center","snapshot":{}}}'
 ```
 
-- **Disabled / no key:** returns `{ success: true, source: "fallback", disabled: true, ... }`
-  with a Korean setup message. No upstream call is made.
-- **Enabled:** returns `{ success: true, source: "gpt", answer, model, usage }`.
+- **Disabled (`OPENAI_ENABLED=false`):** `{ success: true, source: "fallback", disabled: true, ... }`.
+  No upstream call is made.
+- **Enabled but no key:** HTTP 503 `{ success: false, source: "backend", code: "OPENAI_API_KEY_MISSING", ... }`.
+- **Enabled with key:** `{ success: true, source: "openai", answer, model, usage }`.
 
 ## Testing the GPT fallback (no key needed)
 
@@ -168,10 +210,16 @@ The system is **safe by default**:
 
 - **Never** put `OPENAI_API_KEY` in the renderer, in any `VITE_*` variable, in
   `CompanySettings`, or anywhere in frontend code — it would ship to users.
+- **Never** paste your API key into ChatGPT (or any chat/LLM), a screenshot, or
+  an issue/PR.
 - **Never** commit a real `.env`. Only `.env.example` templates are committed
-  (`.gitignore` enforces this).
+  (`.gitignore` enforces this: `.env`, `.env.local`, `.env.production`, `*.env`).
+- The proxy **never logs the full key** — startup logs only booleans
+  (`keyConfigured`, `ready`) and labels, never the secret.
 - The frontend has **no** API-key input field by design; Settings only shows
-  enabled/URL/model and server-side-only guidance.
+  enabled/URL/model, live proxy status, and server-side-only guidance.
+- **If a key leaks, rotate it immediately** in the OpenAI dashboard and update
+  the backend/Render env — do not attempt to "hide" a leaked key.
 
 ## GPT modes
 
