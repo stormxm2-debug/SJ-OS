@@ -9,6 +9,7 @@ import CustomerWorkspacePage from '@renderer/pages/CustomerWorkspacePage'
 import SalesActivityWorkspacePage from '@renderer/pages/SalesActivityWorkspacePage'
 import SchedulePage from '@renderer/pages/SchedulePage'
 import PerformancePage from '@renderer/pages/PerformancePage'
+import TeamLeaderPage from '@renderer/pages/TeamLeaderPage'
 import AutopilotPage from '@renderer/pages/AutopilotPage'
 import CtoRoomPage from '@renderer/pages/CtoRoomPage'
 import QaCenterPage from '@renderer/pages/QaCenterPage'
@@ -43,6 +44,8 @@ export default function Router(): JSX.Element {
       return <SchedulePage />
     case 'performance':
       return <PerformancePage />
+    case 'team-leader':
+      return <TeamLeaderPage />
     case 'cto':
       return <CtoRoomPage />
     case 'qa':
