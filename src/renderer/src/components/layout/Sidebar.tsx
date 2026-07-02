@@ -30,13 +30,13 @@ const NAV: NavItem[] = [
   { key: 'company', label: 'Live Company', icon: Radio, view: { name: 'company' }, match: ['company'] },
   { key: 'dashboard', label: 'CEO Dashboard', icon: LayoutDashboard, view: { name: 'dashboard' }, match: ['dashboard'] },
   { key: 'cto', label: 'CTO Room', icon: Gauge, view: { name: 'cto' }, match: ['cto'] },
+  { key: 'approvals', label: 'Approval Center', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
   { key: 'autopilot', label: 'Autopilot', icon: Rocket, view: { name: 'autopilot' }, match: ['autopilot'] },
   { key: 'devos', label: 'Development OS', icon: Cpu, view: { name: 'devos' }, match: ['devos'] },
   { key: 'pm', label: 'PM Planner', icon: KanbanSquare, view: { name: 'pm' }, match: ['pm'] },
   { key: 'backlog', label: 'Product Backlog', icon: ClipboardList, view: { name: 'backlog' }, match: ['backlog'] },
   { key: 'workers', label: 'AI Workers', icon: Users, view: { name: 'workers' }, match: ['workers', 'worker'] },
   { key: 'projects', label: 'Projects', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] },
-  { key: 'approvals', label: 'Approval Center', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
   { key: 'activity', label: 'Activity Log', icon: Activity, view: { name: 'activity' }, match: ['activity'] },
   { key: 'settings', label: 'Settings', icon: Settings, view: { name: 'settings' }, match: ['settings'] }
 ]

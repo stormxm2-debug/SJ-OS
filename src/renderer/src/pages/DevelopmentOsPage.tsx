@@ -43,6 +43,7 @@ const LOG_STYLES: Record<DevOsLogType, { label: string; className: string }> = {
   'blocker-cleared': { label: 'Blocker cleared', className: 'text-emerald-300' },
   'progress-changed': { label: 'Progress changed', className: 'text-indigo-300' },
   'next-action-changed': { label: 'Next action changed', className: 'text-indigo-300' },
+  'external-note': { label: 'Note', className: 'text-slate-300' },
   reset: { label: 'Reset', className: 'text-amber-300' }
 }
 

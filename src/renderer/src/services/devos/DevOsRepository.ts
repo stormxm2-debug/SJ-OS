@@ -249,6 +249,23 @@ export class DevOsRepository {
     return this.commitSession(session, snapshot, 'blocker-cleared', 'Blocker cleared')
   }
 
+  /**
+   * Append a note to the DevOS event log without changing the session or any
+   * worker. Lets other services (e.g. the Approval Center) record that a
+   * cross-cutting event touched development state, while keeping DevOS the owner
+   * of its own log. Does not affect nextAction — callers that impact current
+   * work should also call setNextAction.
+   */
+  recordEvent(message: string): DevOsOperationResult<DevOsLogEntry> {
+    const text = message.trim()
+    if (!text) return { success: false, error: 'event message is empty' }
+    const snapshot = this.state.getSnapshot()
+    const withEvent = this.withLog(snapshot, 'external-note', text)
+    this.state.setSnapshot(withEvent)
+    this.emit('snapshot:updated')
+    return { success: true, data: withEvent.eventLog[0] }
+  }
+
   // --- worker operations ---------------------------------------------------
 
   private commitWorker(

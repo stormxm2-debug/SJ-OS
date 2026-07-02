@@ -58,6 +58,7 @@ export type DevOsLogType =
   | 'blocker-cleared'
   | 'progress-changed'
   | 'next-action-changed'
+  | 'external-note'
   | 'reset'
 
 /** A single, human-readable entry in the persisted Sprint event log. */
