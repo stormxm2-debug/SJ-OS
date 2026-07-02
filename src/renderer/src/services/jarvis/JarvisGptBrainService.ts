@@ -1,5 +1,6 @@
 import { contextBuilder } from './ContextBuilder'
 import type { SjOsSnapshot } from './ContextBuilder'
+import { detectProxyStatus, primaryProxyUrl, activeProxyUrl, getLastWorkingUrl } from './proxyConfig'
 
 /**
  * Jarvis GPT Brain Service (renderer side).
@@ -61,16 +62,14 @@ export interface ProxyStatusResult {
   ready: boolean
   label: ProxyStatusLabel
   message: string
+  /** The proxy URL that answered (null when unreachable). */
+  proxyUrl: string | null
+  /** All proxy URLs tried, in order. */
+  triedUrls: string[]
+  /** Low-level connection error detail, when unreachable. */
+  lastError: string | null
   /** ISO timestamp of when this check ran (renderer clock). */
   checkedAt: string
-}
-
-interface AiStatusResponse {
-  enabled?: boolean
-  apiKeyConfigured?: boolean
-  model?: string
-  ready?: boolean
-  message?: string
 }
 
 /** Read renderer config from Vite env (non-secret values only). */
@@ -79,9 +78,7 @@ function readEnv(key: string): string | undefined {
   return env?.[key]
 }
 
-const DEFAULT_PROXY_URL = 'http://localhost:8787'
 const REQUEST_TIMEOUT_MS = 30000
-const STATUS_TIMEOUT_MS = 6000
 
 export interface GptBrainConfig {
   enabled: boolean
@@ -93,7 +90,7 @@ export class JarvisGptBrainService {
   getConfig(): GptBrainConfig {
     return {
       enabled: String(readEnv('VITE_AI_PROXY_ENABLED') ?? 'false').toLowerCase() === 'true',
-      proxyUrl: readEnv('VITE_AI_PROXY_URL') ?? DEFAULT_PROXY_URL,
+      proxyUrl: primaryProxyUrl(),
       modelLabel: readEnv('VITE_AI_PROXY_MODEL_LABEL') ?? '서버 설정 (server-side)'
     }
   }
@@ -103,61 +100,31 @@ export class JarvisGptBrainService {
   }
 
   /**
-   * Diagnostic status check against GET /ai/status. Does not call OpenAI and
-   * never touches the API key. Never throws — proxy-offline is a normal result.
+   * Diagnostic status check via shared multi-URL auto-detection (GET /ai/status).
+   * Does not call OpenAI and never touches the API key. Never throws —
+   * proxy-offline is a normal result.
    */
   async checkStatus(): Promise<ProxyStatusResult> {
-    const config = this.getConfig()
-    const url = `${config.proxyUrl.replace(/\/$/, '')}/ai/status`
-    const controller = new AbortController()
-    const timer = window.setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS)
-    const checkedAt = new Date().toISOString()
-    try {
-      const response = await fetch(url, { signal: controller.signal })
-      if (!response.ok) {
-        return {
-          reachable: true,
-          enabled: false,
-          apiKeyConfigured: false,
-          model: null,
-          ready: false,
-          label: 'Proxy Offline',
-          message: `프록시 상태 응답 오류 (HTTP ${response.status}).`,
-          checkedAt
-        }
-      }
-      const data = (await response.json()) as AiStatusResponse
-      const enabled = Boolean(data.enabled)
-      const apiKeyConfigured = Boolean(data.apiKeyConfigured)
-      const label: ProxyStatusLabel = !enabled
+    const d = await detectProxyStatus()
+    const label: ProxyStatusLabel = !d.reachable
+      ? 'Proxy Offline'
+      : !d.enabled
         ? 'GPT Disabled'
-        : !apiKeyConfigured
+        : !d.apiKeyConfigured
           ? 'Key Missing'
           : 'GPT Ready'
-      return {
-        reachable: true,
-        enabled,
-        apiKeyConfigured,
-        model: data.model ?? null,
-        ready: Boolean(data.ready),
-        label,
-        message: data.message ?? '',
-        checkedAt
-      }
-    } catch {
-      return {
-        reachable: false,
-        enabled: false,
-        apiKeyConfigured: false,
-        model: null,
-        ready: false,
-        label: 'Proxy Offline',
-        message:
-          '프록시에 연결할 수 없습니다. 프록시가 실행 중인지, VITE_AI_PROXY_URL 설정이 맞는지 확인하세요.',
-        checkedAt
-      }
-    } finally {
-      window.clearTimeout(timer)
+    return {
+      reachable: d.reachable,
+      enabled: d.enabled,
+      apiKeyConfigured: d.apiKeyConfigured,
+      model: d.model,
+      ready: d.ready,
+      label,
+      message: d.message,
+      proxyUrl: d.selectedProxyUrl,
+      triedUrls: d.triedUrls,
+      lastError: d.lastError,
+      checkedAt: d.checkedAt
     }
   }
 
@@ -209,11 +176,18 @@ export class JarvisGptBrainService {
       snapshot = null
     }
 
+    // Target the auto-detected reachable proxy. Detect once if we haven't yet,
+    // so a localhost/127.0.0.1 mismatch doesn't fail the very first chat call.
+    if (!getLastWorkingUrl()) {
+      await detectProxyStatus()
+    }
+    const base = activeProxyUrl()
+
     const controller = new AbortController()
     const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
     try {
-      const response = await fetch(`${config.proxyUrl.replace(/\/$/, '')}/ai/chat`, {
+      const response = await fetch(`${base}/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // GPT prompt contract (Sprint 4): context is an object with app/role/snapshot.

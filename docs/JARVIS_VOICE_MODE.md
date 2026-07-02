@@ -133,7 +133,15 @@ nothing crashes.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `VITE_AI_PROXY_URL` | `http://localhost:8787` | Proxy base URL (shared with the GPT brain). |
+| `VITE_OPENAI_PROXY_URL` | — | Accepted alias for the proxy URL (tried if `VITE_AI_PROXY_URL` is unset). |
+| `VITE_JARVIS_PROXY_URL` | — | Accepted alias for the proxy URL (tried third). |
 | `VITE_STT_PROXY_ENABLED` | `false` | Optional: default the voice engine to STT Proxy. Not required — selecting the STT Proxy engine in the UI and recording is itself the explicit opt-in, and audio is uploaded only after the backend reports it is enabled + keyed. |
+
+The renderer resolves the proxy URL in this order: `VITE_AI_PROXY_URL` →
+`VITE_OPENAI_PROXY_URL` → `VITE_JARVIS_PROXY_URL` → `http://localhost:8787` →
+`http://127.0.0.1:8787`. Each URL is trimmed and stripped of a trailing slash.
+A `.env.local` is **optional** — if the proxy runs on the default port, no
+renderer env is needed at all.
 
 ### Backend (`sj-ai-proxy`, secrets — backend only)
 
@@ -173,3 +181,38 @@ npm run dev
 > ⚠️ **Never paste your API key into ChatGPT, Claude, or any frontend UI.** The
 > key belongs only in the backend `.env`. If a key ever leaks, rotate it
 > immediately in the OpenAI dashboard.
+
+## Troubleshooting — "프록시 오프라인"
+
+If Jarvis reports the proxy is offline:
+
+1. **Confirm the proxy runs and answers directly.** Open in a browser:
+   - http://localhost:8787/ai/status
+   - http://127.0.0.1:8787/ai/status
+
+   Both should return JSON with `enabled`, `apiKeyConfigured`, `ready`.
+
+2. **If the browser `/ai/status` works but Jarvis still says offline**, it was a
+   renderer proxy-URL or CORS issue. This is now handled automatically:
+   - The renderer tries **both** `http://localhost:8787` and
+     `http://127.0.0.1:8787` (Windows `localhost` may resolve to IPv6 `::1`
+     while the proxy answers on IPv4 `127.0.0.1`, or vice versa).
+   - The proxy's CORS allowlist includes `localhost` and `127.0.0.1` on ports
+     `5173`/`5174`, plus the Electron `null` origin in dev.
+   Use the **"프록시 상태 새로고침"** button in Jarvis → Voice mode → *Proxy
+   diagnostics* to re-probe. It shows the current URL, every URL tried, and the
+   last connection error.
+
+3. **Default fallback is `http://localhost:8787`** — no `.env.local` is required
+   when the proxy uses the default port. To override, set (renderer, non-secret):
+
+   ```
+   VITE_AI_PROXY_URL=http://localhost:8787
+   ```
+
+4. **"프록시는 연결됐지만 OpenAI 설정이 준비되지 않았습니다."** means the proxy is
+   reachable but not ready — set `OPENAI_ENABLED=true` and `OPENAI_API_KEY` in the
+   **backend** `sj-ai-proxy/.env`, then restart the proxy.
+
+5. **Restart after `.env` changes.** The proxy reads env at startup; restart it so
+   new values take effect.

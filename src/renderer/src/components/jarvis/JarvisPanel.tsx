@@ -711,6 +711,68 @@ export default function JarvisPanel(): JSX.Element | null {
                   <p className="text-xs text-slate-500">이 환경에서는 음성 인식을 사용할 수 없습니다.</p>
                 ) : null}
 
+                {/* Proxy diagnostics — surfaces exactly why STT/GPT can't connect. */}
+                {voiceEngine === 'stt-proxy' ? (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                        <Server className="h-3.5 w-3.5 text-sky-400" />
+                        Proxy diagnostics
+                      </div>
+                      <button
+                        type="button"
+                        onClick={refreshSttStatus}
+                        className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        프록시 상태 새로고침
+                      </button>
+                    </div>
+                    {sttStatus ? (
+                      <>
+                        <div className="mt-1.5 grid grid-cols-1 gap-y-1 text-[11px]">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-slate-500">현재 프록시 URL</span>
+                            <span className="font-mono text-slate-300">{sttStatus.proxyUrl ?? '—'}</span>
+                          </div>
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="shrink-0 text-slate-500">시도한 URL</span>
+                            <span className="text-right font-mono text-[10px] text-slate-400">
+                              {sttStatus.triedUrls.length > 0 ? sttStatus.triedUrls.join(', ') : '—'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                          <DiagBool label="프록시 연결" value={sttStatus.reachable} />
+                          <DiagBool label="OpenAI 활성화" value={sttStatus.enabled} />
+                          <DiagBool label="API 키 설정" value={sttStatus.apiKeyConfigured} />
+                          <DiagBool label="준비됨(ready)" value={sttStatus.ready} />
+                        </div>
+                        {sttStatus.lastError ? (
+                          <p className="mt-1.5 font-mono text-[10px] text-slate-500">
+                            마지막 오류: {sttStatus.lastError}
+                          </p>
+                        ) : null}
+                        {!sttStatus.reachable ? (
+                          <p className="mt-1.5 text-[11px] text-rose-300">
+                            프록시에 연결할 수 없습니다. sj-ai-proxy 서버가 실행 중인지 확인하세요.
+                          </p>
+                        ) : !sttStatus.ready ? (
+                          <p className="mt-1.5 text-[11px] text-amber-300">
+                            프록시는 연결됐지만 OpenAI 설정이 준비되지 않았습니다.
+                          </p>
+                        ) : (
+                          <p className="mt-1.5 text-[11px] text-emerald-300">
+                            프록시 준비 완료 — 녹음/전사를 사용할 수 있습니다.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="mt-1.5 text-[11px] text-slate-500">프록시 상태 확인 중…</p>
+                    )}
+                  </div>
+                ) : null}
+
                 {/* Compact voice diagnostics — honest capability + last error report. */}
                 <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
                   <div className="flex items-center justify-between">

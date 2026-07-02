@@ -53,14 +53,27 @@ const GPT_READY = OPENAI_ENABLED && API_KEY_CONFIGURED
  * Allowed CORS origins. Prefer ALLOWED_ORIGINS (comma-separated); fall back to
  * the legacy CORS_ORIGIN; default to local dev ports. '*' allows any (dev only).
  */
-const ALLOWED_ORIGINS = (
-  process.env.ALLOWED_ORIGINS ??
-  process.env.CORS_ORIGIN ??
-  'http://localhost:5173,http://localhost:5174'
-)
+// Standard local dev renderer origins (Vite on localhost + 127.0.0.1).
+const DEV_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174'
+]
+const CONFIGURED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? process.env.CORS_ORIGIN ?? '')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean)
+// In dev, always allow the standard local dev origins PLUS any configured ones,
+// so a narrow .env allowlist never blocks localhost/127.0.0.1 during development.
+// In production, use only the configured origins (fall back to dev origins if
+// none are set, to avoid a fully-closed default).
+const ALLOWED_ORIGINS =
+  ENVIRONMENT === 'production'
+    ? CONFIGURED_ORIGINS.length > 0
+      ? CONFIGURED_ORIGINS
+      : DEV_ORIGINS
+    : Array.from(new Set([...DEV_ORIGINS, ...CONFIGURED_ORIGINS]))
 
 /**
  * Shared instruction applied to every mode (Sprint 4 GPT prompt contract).
@@ -99,13 +112,20 @@ const app = express()
 app.use(express.json({ limit: '256kb' }))
 
 // Explicit CORS: reflect only allow-listed origins (no wildcard unless set).
+// No credentials are used, so we never combine wildcard with credentials.
 app.use((req, res, next) => {
   const origin = req.headers.origin
   if (ALLOWED_ORIGINS.includes('*')) {
     res.setHeader('Access-Control-Allow-Origin', '*')
   } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
+  } else if (origin === 'null' && ENVIRONMENT !== 'production') {
+    // Electron / file:// renderer sends `Origin: null` in local dev. Allowed in
+    // dev only (never in production) so the desktop app can reach the proxy.
+    res.setHeader('Access-Control-Allow-Origin', 'null')
   }
+  // Requests with no Origin header (curl, same-origin, server-to-server) need no
+  // CORS header and are allowed through by default.
   res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')

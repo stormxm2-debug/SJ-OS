@@ -12,6 +12,8 @@
  *  - The backend adds the key server-side and returns transcript text only.
  */
 
+import { detectProxyStatus, primaryProxyUrl, activeProxyUrl } from './proxyConfig'
+
 /** Where a transcript came from, or why it is unavailable. */
 export type SttSource = 'stt-proxy' | 'disabled' | 'error'
 
@@ -50,15 +52,12 @@ export interface SttStatusResult {
   maxAudioSeconds: number | null
   label: SttStatusLabel
   message: string
-}
-
-interface AiStatusResponse {
-  enabled?: boolean
-  apiKeyConfigured?: boolean
-  ready?: boolean
-  sttModel?: string
-  maxAudioSeconds?: number
-  message?: string
+  /** The proxy URL that answered (null when unreachable). */
+  proxyUrl: string | null
+  /** All proxy URLs tried, in order. */
+  triedUrls: string[]
+  /** Low-level connection error detail, when unreachable. */
+  lastError: string | null
 }
 
 interface TranscribeResponse {
@@ -76,15 +75,13 @@ function readEnv(key: string): string | undefined {
   return env?.[key]
 }
 
-const DEFAULT_PROXY_URL = 'http://localhost:8787'
 const REQUEST_TIMEOUT_MS = 30000
-const STATUS_TIMEOUT_MS = 6000
 
 export class SttProxyClient {
   getConfig(): SttProxyConfig {
     return {
       enabled: String(readEnv('VITE_STT_PROXY_ENABLED') ?? 'false').toLowerCase() === 'true',
-      proxyUrl: readEnv('VITE_AI_PROXY_URL') ?? DEFAULT_PROXY_URL
+      proxyUrl: primaryProxyUrl()
     }
   }
 
@@ -93,59 +90,32 @@ export class SttProxyClient {
     return this.getConfig().enabled
   }
 
-  private baseUrl(): string {
-    return this.getConfig().proxyUrl.replace(/\/$/, '')
-  }
-
   /**
-   * Backend readiness check via GET /ai/status. Never calls OpenAI, never touches
-   * the API key, and never throws — proxy-offline is a normal result.
+   * Backend readiness check via shared multi-URL auto-detection (GET /ai/status).
+   * Never calls OpenAI, never touches the API key, and never throws —
+   * proxy-offline is a normal result.
    */
   async checkStatus(): Promise<SttStatusResult> {
-    const controller = new AbortController()
-    const timer = window.setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS)
-    try {
-      const response = await fetch(`${this.baseUrl()}/ai/status`, { signal: controller.signal })
-      if (!response.ok) {
-        return this.offlineStatus(`프록시 상태 응답 오류 (HTTP ${response.status}).`)
-      }
-      const data = (await response.json()) as AiStatusResponse
-      const enabled = Boolean(data.enabled)
-      const apiKeyConfigured = Boolean(data.apiKeyConfigured)
-      const label: SttStatusLabel = !enabled
+    const d = await detectProxyStatus()
+    const label: SttStatusLabel = !d.reachable
+      ? 'Proxy Offline'
+      : !d.enabled
         ? 'STT Disabled'
-        : !apiKeyConfigured
+        : !d.apiKeyConfigured
           ? 'Key Missing'
           : 'STT Ready'
-      return {
-        reachable: true,
-        enabled,
-        apiKeyConfigured,
-        ready: enabled && apiKeyConfigured,
-        model: data.sttModel ?? null,
-        maxAudioSeconds: typeof data.maxAudioSeconds === 'number' ? data.maxAudioSeconds : null,
-        label,
-        message: data.message ?? ''
-      }
-    } catch {
-      return this.offlineStatus(
-        '프록시에 연결할 수 없습니다. 프록시가 실행 중인지, VITE_AI_PROXY_URL 설정이 맞는지 확인하세요.'
-      )
-    } finally {
-      window.clearTimeout(timer)
-    }
-  }
-
-  private offlineStatus(message: string): SttStatusResult {
     return {
-      reachable: false,
-      enabled: false,
-      apiKeyConfigured: false,
-      ready: false,
-      model: null,
-      maxAudioSeconds: null,
-      label: 'Proxy Offline',
-      message
+      reachable: d.reachable,
+      enabled: d.enabled,
+      apiKeyConfigured: d.apiKeyConfigured,
+      ready: d.ready,
+      model: d.sttModel,
+      maxAudioSeconds: d.maxAudioSeconds,
+      label,
+      message: d.message,
+      proxyUrl: d.selectedProxyUrl,
+      triedUrls: d.triedUrls,
+      lastError: d.lastError
     }
   }
 
@@ -191,7 +161,10 @@ export class SttProxyClient {
       const form = new FormData()
       form.append('audio', audioBlob, 'audio.webm')
       form.append('lang', 'ko')
-      const response = await fetch(`${this.baseUrl()}/ai/transcribe`, {
+      // Use the URL that just answered the readiness check (falls back to the
+      // primary candidate) so audio goes to the reachable proxy.
+      const base = status.proxyUrl ?? activeProxyUrl()
+      const response = await fetch(`${base}/ai/transcribe`, {
         method: 'POST',
         body: form,
         signal: controller.signal
