@@ -30,6 +30,9 @@ import { fcRepository, formatKrw } from '@renderer/services/fc/FcRepository'
 import { useCustomer } from '@renderer/services/customer/useCustomer'
 import { customerRepository } from '@renderer/services/customer/CustomerRepository'
 import type { FcCustomerSummary } from '@renderer/services/customer/types'
+import { useSalesActivity } from '@renderer/services/sales-activity/useSalesActivity'
+import { salesActivityRepository } from '@renderer/services/sales-activity/SalesActivityRepository'
+import type { FcActivityRank } from '@renderer/services/sales-activity/types'
 import type {
   FcAttendanceStatus,
   FcMember,
@@ -124,6 +127,9 @@ export default function FcOsPage(): JSX.Element {
   const teams = fcRepository.getTeamSummaries()
   const priorityActions = fcRepository.getPriorityActions()
   const fcCustomers = customerRepository.getFcCustomerSummaries()
+  useSalesActivity() // re-render when sales activity changes
+  const activitySummary = salesActivityRepository.getSummary()
+  const activityRanking = salesActivityRepository.getFcActivityRanking()
 
   const handleReset = (): void => {
     if (typeof window !== 'undefined' && !window.confirm('FC OS 데모 데이터를 초기값으로 리셋할까요?')) {
@@ -243,6 +249,29 @@ export default function FcOsPage(): JSX.Element {
         )}
       </Card>
 
+      {/* Sales activity summary (Sales Activity Workspace integration) */}
+      <Card
+        title="영업활동 요약"
+        icon={<Activity className="h-4 w-4" />}
+        action={<span className="text-xs text-slate-500">오늘 {activitySummary.today}건</span>}
+      >
+        <div className="mb-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Metric icon={<Activity className="h-4 w-4" />} label="오늘 활동" value={`${activitySummary.today}건`} tone="text-sky-300" />
+          <Metric icon={<Activity className="h-4 w-4" />} label="완료" value={`${activitySummary.completed}건`} tone="text-emerald-300" />
+          <Metric icon={<Activity className="h-4 w-4" />} label="연기/노쇼" value={`${activitySummary.delayed}/${activitySummary.noShow}`} tone="text-rose-300" />
+          <Metric icon={<Activity className="h-4 w-4" />} label="클로징 파이프라인" value={`${activitySummary.closingPipeline}건`} tone="text-amber-300" />
+        </div>
+        {activityRanking.length === 0 ? (
+          <p className="text-sm text-slate-500">기록된 영업활동이 없습니다.</p>
+        ) : (
+          <ol className="space-y-1.5">
+            {activityRanking.map((r, i) => (
+              <FcActivityRankRow key={r.fcId} rank={r} index={i} />
+            ))}
+          </ol>
+        )}
+      </Card>
+
       {/* FC attendance board (with actions) */}
       <Card
         title="FC 출근 보드"
@@ -341,6 +370,21 @@ function FcCustomerCard({ fc }: { fc: FcCustomerSummary }): JSX.Element {
       </div>
       <div className="mt-2 text-[11px] text-slate-500">월 보험료 {formatKrw(fc.monthlyPremium)}</div>
     </div>
+  )
+}
+
+// --- FC activity rank row --------------------------------------------------
+
+function FcActivityRankRow({ rank, index }: { rank: FcActivityRank; index: number }): JSX.Element {
+  return (
+    <li className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
+      <span className="w-5 shrink-0 text-center text-sm font-semibold text-slate-500">{index + 1}</span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-slate-100">{rank.fcName} <span className="text-xs text-slate-500">· {rank.team}</span></div>
+        <div className="text-[11px] text-slate-500">오늘 {rank.today} · 완료 {rank.completed}/{rank.total} · 연기 {rank.delayed} · 노쇼 {rank.noShow}</div>
+      </div>
+      <span className="shrink-0 text-sm font-medium text-emerald-300">{rank.completionRate}%</span>
+    </li>
   )
 }
 

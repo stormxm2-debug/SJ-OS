@@ -29,6 +29,8 @@ import ProgressBar from '@renderer/components/ui/ProgressBar'
 import { useCustomer } from '@renderer/services/customer/useCustomer'
 import { customerRepository, isDueForContact } from '@renderer/services/customer/CustomerRepository'
 import { fcRepository, formatKrw } from '@renderer/services/fc/FcRepository'
+import { useSalesActivity } from '@renderer/services/sales-activity/useSalesActivity'
+import { salesActivityRepository } from '@renderer/services/sales-activity/SalesActivityRepository'
 import type {
   ConsultationStage,
   CustomerPriority,
@@ -108,6 +110,7 @@ function exportWorkspace(): void {
  */
 export default function CustomerWorkspacePage(): JSX.Element {
   const snapshot = useCustomer()
+  useSalesActivity() // re-render when linked sales activity changes
   const [query, setQuery] = useState('')
   const summary = customerRepository.getSummary()
 
@@ -236,6 +239,8 @@ function CustomerDetail({ customer }: { customer: CustomerRecord }): JSX.Element
   const id = customer.customerId
   const checklist = customerRepository.getConsultationChecklist(id)
   const nextAction = customerRepository.getNextActionLabel(customer)
+  const activitySummary = salesActivityRepository.getCustomerActivitySummary(id)
+  const linkedActivities = salesActivityRepository.listByCustomer(id)
 
   const promptMemo = (): void => {
     const text = window.prompt(`${customer.name} 메모 추가`)
@@ -380,6 +385,43 @@ function CustomerDetail({ customer }: { customer: CustomerRecord }): JSX.Element
             FC 배정
           </ActionButton>
         </div>
+      </Card>
+
+      {/* Linked sales activities (Sales Activity Workspace integration) */}
+      <Card
+        title="영업활동"
+        icon={<Activity className="h-4 w-4" />}
+        action={<span className="text-xs text-slate-500">진행중 {activitySummary.openCount} · 후속 {activitySummary.followUpNeeded}</span>}
+      >
+        <div className="mb-3 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2">
+            <div className="text-[11px] text-slate-500">최근 완료 활동</div>
+            <div className="mt-0.5 truncate text-sm text-slate-200">
+              {activitySummary.lastActivity ? activitySummary.lastActivity.title : '—'}
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2">
+            <div className="text-[11px] text-slate-500">다음 예정 활동</div>
+            <div className="mt-0.5 truncate text-sm text-slate-200">
+              {activitySummary.nextActivity ? `${activitySummary.nextActivity.title} · ${formatDate(activitySummary.nextActivity.scheduledAt)}` : '—'}
+            </div>
+          </div>
+        </div>
+        {linkedActivities.length === 0 ? (
+          <p className="text-sm text-slate-500">연결된 영업활동이 없습니다.</p>
+        ) : (
+          <ol className="space-y-2">
+            {linkedActivities.map((a) => (
+              <li key={a.activityId} className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm text-slate-200">{a.title}</div>
+                  <div className="text-[11px] text-slate-500">{a.fcName} · {formatDate(a.scheduledAt)}</div>
+                </div>
+                <span className="shrink-0 text-[11px] text-slate-500">{a.status}</span>
+              </li>
+            ))}
+          </ol>
+        )}
       </Card>
 
       {/* Policies */}

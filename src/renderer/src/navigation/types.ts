@@ -7,6 +7,7 @@ export type View =
   | { name: 'dashboard' }
   | { name: 'fcos' }
   | { name: 'customer' }
+  | { name: 'sales-activity' }
   | { name: 'cto' }
   | { name: 'qa' }
   | { name: 'release' }
