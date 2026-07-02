@@ -1,6 +1,8 @@
-import { Activity, BellRing, CalendarDays, BriefcaseBusiness, CircleDollarSign, Users, RefreshCw, AlertTriangle, Sparkles, ShieldCheck } from 'lucide-react'
+import { Activity, BellRing, CalendarDays, BriefcaseBusiness, CircleDollarSign, Users, RefreshCw, AlertTriangle, Sparkles, ShieldCheck, Target } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import { companyDashboardService, useCompanyDashboardWidget } from '@renderer/services/company/companyDashboardService'
+import { fcRepository, formatKrw } from '@renderer/services/fc/FcRepository'
+import { useFc } from '@renderer/services/fc/useFc'
 import type { ActivityRecord, AppointmentRecord, CustomerRecord, FcRecord, NotificationRecord, SalesRecord, TaskRecord } from '@shared/company/types'
 
 function WidgetState({ status, error }: { status: string; error: string | null }) {
@@ -17,6 +19,8 @@ function WidgetState({ status, error }: { status: string; error: string | null }
 }
 
 export default function CompanyDashboardView(): JSX.Element {
+  useFc() // re-render when the FC OS changes
+  const fcSummary = fcRepository.getSummary()
   const sales = useCompanyDashboardWidget(() => companyDashboardService.loadSalesToday())
   const premium = useCompanyDashboardWidget(() => companyDashboardService.loadPremiumToday())
   const attendance = useCompanyDashboardWidget(() => companyDashboardService.loadFcAttendance())
@@ -65,6 +69,27 @@ export default function CompanyDashboardView(): JSX.Element {
           </div>
         ))}
       </div>
+
+      <Card title="FC OS Summary" icon={<BriefcaseBusiness className="h-4 w-4 text-indigo-300" />} action={<span className="text-xs text-slate-500">SJ Invest 조직 현황</span>}>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <div className="flex items-center gap-1.5 text-sm text-slate-400"><Users className="h-4 w-4" /> FC count</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{fcSummary.totalFc}</div>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <div className="flex items-center gap-1.5 text-sm text-slate-400"><BriefcaseBusiness className="h-4 w-4" /> Checked-in</div>
+            <div className="mt-2 text-2xl font-semibold text-emerald-300">{fcSummary.checkedIn}</div>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <div className="flex items-center gap-1.5 text-sm text-slate-400"><CircleDollarSign className="h-4 w-4" /> Monthly premium</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{formatKrw(fcSummary.monthlyPremiumTotal)}</div>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+            <div className="flex items-center gap-1.5 text-sm text-slate-400"><Target className="h-4 w-4" /> Target achievement</div>
+            <div className="mt-2 text-2xl font-semibold text-white">{fcSummary.achievementRate}%</div>
+          </div>
+        </div>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-6">
