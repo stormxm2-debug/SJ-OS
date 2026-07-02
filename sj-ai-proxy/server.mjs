@@ -264,6 +264,58 @@ app.post('/ai/chat', async (req, res) => {
   }
 })
 
+/**
+ * POST /ai/transcribe — safe, disabled-by-default STT (speech-to-text) endpoint.
+ *
+ * SAFETY
+ *  - We do NOT parse, read, log, or store the uploaded audio body in this stub.
+ *    express.json only parses application/json, so a multipart audio upload is
+ *    ignored entirely here — nothing is buffered to disk or memory beyond the
+ *    request lifecycle, and no audio content is logged.
+ *  - Disabled by default (OPENAI_ENABLED=false) → returns a clear fallback.
+ *  - Enabled but no key → explicit OPENAI_API_KEY_MISSING (no secret exposure).
+ *  - Enabled + key → real Whisper transcription is intentionally deferred to a
+ *    future sprint (needs multipart upload handling); we report that honestly
+ *    instead of adding upload dependencies now.
+ */
+app.post('/ai/transcribe', (_req, res) => {
+  if (!OPENAI_ENABLED) {
+    res.json({
+      success: false,
+      source: 'disabled',
+      code: 'STT_DISABLED',
+      text: '',
+      error:
+        'STT 프록시가 아직 활성화되지 않았습니다. OpenAI API 키는 백엔드에서만 설정해야 합니다.'
+    })
+    return
+  }
+
+  if (!API_KEY_CONFIGURED) {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'OPENAI_API_KEY_MISSING',
+      text: '',
+      error:
+        'OPENAI_ENABLED=true 이지만 OPENAI_API_KEY 가 설정되지 않았습니다. ' +
+        '백엔드 환경변수에 API 키를 설정하세요 (프론트엔드에는 절대 입력하지 마세요).'
+    })
+    return
+  }
+
+  // Enabled + key present, but transcription is not wired up yet.
+  res.status(501).json({
+    success: false,
+    source: 'backend',
+    code: 'STT_NOT_IMPLEMENTED',
+    text: '',
+    error:
+      'STT 전사(transcription)는 아직 구현되지 않았습니다. ' +
+      '다음 스프린트에서 안전한 파일 업로드 처리와 Whisper 연동을 추가할 예정입니다.'
+  })
+})
+
 app.listen(PORT, () => {
   // Log only booleans/labels — NEVER the API key.
   // eslint-disable-next-line no-console

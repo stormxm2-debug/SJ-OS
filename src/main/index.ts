@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import { join } from 'node:path'
 import { runCoding } from './coding/engine'
 import { CompanyStartupService } from './companyStartupService'
@@ -15,6 +15,54 @@ import type { CodingExecRequest } from '@shared/providers'
  */
 
 const startupService = new CompanyStartupService()
+
+/**
+ * Origins allowed to request the microphone for Jarvis Voice Mode.
+ *  - The packaged app loads the renderer from a local file:// origin.
+ *  - `npm run dev` serves the renderer from a localhost dev port.
+ * Only these local origins may use the mic; nothing else is trusted.
+ */
+const MIC_ALLOWED_HTTP_ORIGINS = new Set([
+  'http://localhost:5173',
+  'http://localhost:5174'
+])
+
+/** A request/origin is trusted for the mic if it is our own file:// app or a local dev origin. */
+function isMicOriginAllowed(originOrUrl: string): boolean {
+  if (!originOrUrl || originOrUrl.startsWith('file://')) return true
+  try {
+    return MIC_ALLOWED_HTTP_ORIGINS.has(new URL(originOrUrl).origin)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Restrict Electron permission grants: allow ONLY microphone (audio media) for
+ * our own local origins, and deny every other permission (camera, geolocation,
+ * notifications, etc.). Voice Mode needs the mic; nothing here needs more.
+ */
+function installPermissionHandlers(): void {
+  const ses = session.defaultSession
+
+  ses.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+    if (permission === 'media') {
+      // 'media' covers mic and/or camera — allow audio only, never video.
+      const mediaTypes = 'mediaTypes' in details ? details.mediaTypes : undefined
+      const wantsVideo = Array.isArray(mediaTypes) && mediaTypes.includes('video')
+      const requestingUrl = 'requestingUrl' in details ? details.requestingUrl : ''
+      callback(!wantsVideo && isMicOriginAllowed(requestingUrl ?? ''))
+      return
+    }
+    // Default-deny all other permissions.
+    callback(false)
+  })
+
+  ses.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
+    if (permission === 'media') return isMicOriginAllowed(requestingOrigin ?? '')
+    return false
+  })
+}
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -56,6 +104,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Restrict permissions (mic-only, local origins) before any window loads.
+  installPermissionHandlers()
+
   // Static app metadata.
   ipcMain.handle('app:getInfo', () => ({
     name: app.getName(),

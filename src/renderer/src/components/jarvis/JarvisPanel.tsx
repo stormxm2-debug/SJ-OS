@@ -23,14 +23,19 @@ import {
   Brain,
   Cpu,
   RefreshCw,
-  CloudOff
+  CloudOff,
+  Activity
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import Card from '@renderer/components/ui/Card'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import { voiceService } from '@renderer/services/jarvis/VoiceService'
-import type { VoiceStatus } from '@renderer/services/jarvis/VoiceService'
+import type {
+  VoiceStatus,
+  VoiceEngineMode,
+  VoiceDiagnostics
+} from '@renderer/services/jarvis/VoiceService'
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 import { normalizeCommand } from '@renderer/services/jarvis/normalize'
 import type { JarvisMode, JarvisState, JarvisStatus } from '@renderer/services/jarvis/types'
@@ -113,6 +118,21 @@ const RISK_TONE: Record<string, string> = {
   critical: 'text-rose-400'
 }
 
+/** Korean label + tone for the current voice engine mode. */
+const ENGINE_META: Record<VoiceEngineMode, { label: string; classes: string }> = {
+  'web-speech': { label: 'Web Speech (로컬 브라우저)', classes: 'text-emerald-300' },
+  'stt-proxy-ready': { label: 'STT 프록시 (준비됨)', classes: 'text-emerald-300' },
+  'stt-proxy-disabled': { label: 'STT 프록시 권장 (비활성화)', classes: 'text-amber-300' },
+  unavailable: { label: '사용 불가', classes: 'text-rose-300' }
+}
+
+const MIC_PERMISSION_LABEL: Record<string, string> = {
+  granted: '허용됨',
+  denied: '차단됨',
+  prompt: '요청 필요',
+  unknown: '알 수 없음'
+}
+
 export default function JarvisPanel(): JSX.Element | null {
   const [service] = useState(() => jarvisService)
   const [voice] = useState(() => voiceService)
@@ -123,6 +143,7 @@ export default function JarvisPanel(): JSX.Element | null {
   const [interimTranscript, setInterimTranscript] = useState('')
   const [voiceError, setVoiceError] = useState<string | null>(null)
   const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false)
+  const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics>(() => voice.getDiagnostics())
   const [lastCommand, setLastCommand] = useState('')
   const recognitionSupported = voice.isRecognitionSupported()
   const synthesisSupported = voice.isSynthesisSupported()
@@ -249,6 +270,8 @@ export default function JarvisPanel(): JSX.Element | null {
     await runCommand(normalized)
   }
 
+  const refreshDiagnostics = (): void => setDiagnostics(voice.getDiagnostics())
+
   const startListening = (): void => {
     setVoiceError(null)
     setInterimTranscript('')
@@ -256,8 +279,12 @@ export default function JarvisPanel(): JSX.Element | null {
     voice.startListening({
       onStatusChange: setVoiceStatus,
       onInterim: setInterimTranscript,
-      onError: (message) => setVoiceError(message),
+      onError: (message) => {
+        setVoiceError(message)
+        refreshDiagnostics()
+      },
       onFinal: (text) => {
+        refreshDiagnostics()
         void handleVoiceTranscript(text)
       }
     })
@@ -281,7 +308,10 @@ export default function JarvisPanel(): JSX.Element | null {
       voice.stopSpeaking()
       setInterimTranscript('')
       setVoiceStatus('idle')
+      return
     }
+    // On open, refresh mic permission + capability diagnostics (best-effort).
+    void voice.refreshMicPermission().then(() => setDiagnostics(voice.getDiagnostics()))
   }, [isOpen, voice])
 
   const goToTarget = (target: string | null | undefined): void => {
@@ -496,6 +526,53 @@ export default function JarvisPanel(): JSX.Element | null {
                 {!recognitionSupported ? (
                   <p className="text-xs text-slate-500">이 환경에서는 음성 인식을 사용할 수 없습니다.</p>
                 ) : null}
+
+                {/* Compact voice diagnostics — honest capability + last error report. */}
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                      <Activity className="h-3.5 w-3.5 text-sky-400" />
+                      Voice diagnostics
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void voice.refreshMicPermission().then(() => setDiagnostics(voice.getDiagnostics()))
+                      }
+                      className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      새로고침
+                    </button>
+                  </div>
+                  <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                    <DiagBool label="SpeechRecognition" value={diagnostics.speechRecognitionSupported} />
+                    <DiagBool label="webkitSpeechRecognition" value={diagnostics.webkitSpeechRecognitionSupported} />
+                    <DiagBool label="speechSynthesis" value={diagnostics.speechSynthesisSupported} />
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-500">마이크 권한</span>
+                      <span className="text-slate-300">
+                        {MIC_PERMISSION_LABEL[diagnostics.microphonePermission]}
+                      </span>
+                    </div>
+                    <div className="col-span-2 flex items-center justify-between gap-2">
+                      <span className="text-slate-500">음성 엔진</span>
+                      <span className={ENGINE_META[diagnostics.engine].classes}>
+                        {ENGINE_META[diagnostics.engine].label}
+                      </span>
+                    </div>
+                    <div className="col-span-2 flex items-center justify-between gap-2">
+                      <span className="text-slate-500">마지막 오류 코드</span>
+                      <span className="font-mono text-slate-300">{diagnostics.lastErrorCode ?? '—'}</span>
+                    </div>
+                  </div>
+                  {diagnostics.lastErrorMessage ? (
+                    <p className="mt-1.5 text-[11px] text-slate-400">{diagnostics.lastErrorMessage}</p>
+                  ) : null}
+                  {diagnostics.recommendedFix ? (
+                    <p className="mt-1 text-[11px] text-sky-300">권장 조치: {diagnostics.recommendedFix}</p>
+                  ) : null}
+                </div>
 
                 <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
                   <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
@@ -790,6 +867,16 @@ export default function JarvisPanel(): JSX.Element | null {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** A compact yes/no capability row for the voice diagnostics panel. */
+function DiagBool({ label, value }: { label: string; value: boolean }): JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="truncate text-slate-500" title={label}>{label}</span>
+      <span className={value ? 'text-emerald-300' : 'text-rose-300'}>{value ? 'yes' : 'no'}</span>
     </div>
   )
 }
