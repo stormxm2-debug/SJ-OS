@@ -116,6 +116,51 @@ default) in `.env` and run `npm run dev`.
 9. In Jarvis, run: `오늘 조직 상황 브리핑 해줘` → answer should come back with
    source `openai` and the header badge **GPT Ready**.
 
+### Windows PowerShell — exact commands (CEO)
+
+The proxy listens on **port 8787** (change with `PORT` in `.env`).
+
+```powershell
+# 1) Go to the proxy folder
+cd C:\Users\GalaxyBook5\.vscode\SJ-OS\sj-ai-proxy
+
+# 2) Install dependencies (first time only)
+npm install
+
+# 3) Create your local env file (gitignored — never committed)
+copy .env.example .env
+```
+
+Then **open `.env` in an editor** (e.g. `notepad .env`) and set these values
+manually. Do **not** paste the key into any chat/AI tool, terminal history, or
+the SJ OS app — only into this `.env` file:
+
+```
+OPENAI_ENABLED=true
+OPENAI_API_KEY=실제키는 여기에만 직접 입력   # sk-... (본인 키, 백엔드 전용)
+OPENAI_MODEL=gpt-4o-mini
+```
+
+Start the proxy:
+
+```powershell
+npm run dev    # equivalent to npm start → node server.mjs (listens on :8787)
+```
+
+Verify in a browser or a second PowerShell window:
+
+- http://localhost:8787/health
+- http://localhost:8787/ai/status
+
+With a valid key + `OPENAI_ENABLED=true`, `/ai/status` returns
+`"ready": true`. To connect Jarvis, set `VITE_AI_PROXY_ENABLED=true` (and
+`VITE_AI_PROXY_URL=http://localhost:8787` if not default) in the **repo-root**
+`.env`, then run `npm run dev` from the repo root.
+
+> Verified locally (Sprint 3C-4) with defaults (no key): `/health` →
+> `status: "ok", openaiEnabled: false, apiKeyConfigured: false`; `/ai/status` →
+> `ready: false`. No secrets are exposed by either endpoint.
+
 ## Render deployment env variables
 
 `render.yaml` defines a `sj-ai-proxy` web service. Set secrets in the **Render
