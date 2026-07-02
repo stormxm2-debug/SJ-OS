@@ -118,12 +118,22 @@ export async function detectProxyStatus(): Promise<ProxyDetection> {
     const controller = new AbortController()
     const timer = window.setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS)
     try {
-      const response = await fetch(`${url}/ai/status`, { signal: controller.signal })
+      const response = await fetch(`${url}/ai/status`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' }
+      })
       if (!response.ok) {
         lastError = `HTTP ${response.status} @ ${url}`
         continue
       }
-      const data = (await response.json()) as AiStatusResponse
+      let data: AiStatusResponse
+      try {
+        data = (await response.json()) as AiStatusResponse
+      } catch {
+        // Reachable but the body was not valid JSON (wrong port / not the proxy).
+        lastError = `invalid response (not JSON) @ ${url}`
+        continue
+      }
       lastWorkingUrl = url
       return {
         reachable: true,
@@ -140,10 +150,15 @@ export async function detectProxyStatus(): Promise<ProxyDetection> {
         checkedAt
       }
     } catch (error) {
-      lastError =
-        error instanceof DOMException && error.name === 'AbortError'
-          ? `timeout @ ${url}`
-          : `unreachable @ ${url}`
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        lastError = `timeout (>${STATUS_TIMEOUT_MS}ms) @ ${url}`
+      } else {
+        // A cross-origin (CORS) block or a refused connection both surface as a
+        // TypeError "Failed to fetch" here — keep the real message so the UI can
+        // show whether it was CORS/refused vs. some other error.
+        const detail = error instanceof Error ? error.message : String(error)
+        lastError = `${detail || 'failed to fetch'} @ ${url}`
+      }
     } finally {
       window.clearTimeout(timer)
     }

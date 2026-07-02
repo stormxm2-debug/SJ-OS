@@ -111,13 +111,32 @@ function systemPromptFor(mode) {
 const app = express()
 app.use(express.json({ limit: '256kb' }))
 
+/**
+ * True for any local loopback dev origin (localhost / 127.0.0.1 / [::1]) on ANY
+ * port. In development, Vite auto-picks the next free port (5173 → 5174 → 5175…)
+ * when earlier ones are taken, so a fixed 5173/5174 allowlist can silently block
+ * the renderer. Reflecting any loopback origin in dev keeps the local proxy
+ * reachable regardless of the chosen dev port. Never used in production.
+ */
+function isLoopbackDevOrigin(origin) {
+  try {
+    const { protocol, hostname } = new URL(origin)
+    if (protocol !== 'http:' && protocol !== 'https:') return false
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+  } catch {
+    return false
+  }
+}
+
 // Explicit CORS: reflect only allow-listed origins (no wildcard unless set).
 // No credentials are used, so we never combine wildcard with credentials.
 app.use((req, res, next) => {
   const origin = req.headers.origin
+  const devLoopback = ENVIRONMENT !== 'production' && !!origin && isLoopbackDevOrigin(origin)
   if (ALLOWED_ORIGINS.includes('*')) {
     res.setHeader('Access-Control-Allow-Origin', '*')
-  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+  } else if (origin && (ALLOWED_ORIGINS.includes(origin) || devLoopback)) {
+    // Allow-listed origin, or (dev only) any localhost/127.0.0.1 port.
     res.setHeader('Access-Control-Allow-Origin', origin)
   } else if (origin === 'null' && ENVIRONMENT !== 'production') {
     // Electron / file:// renderer sends `Origin: null` in local dev. Allowed in

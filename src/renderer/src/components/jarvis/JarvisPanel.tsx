@@ -422,9 +422,11 @@ export default function JarvisPanel(): JSX.Element | null {
     void voice.refreshMicPermission().then(() => setDiagnostics(voice.getDiagnostics()))
   }, [isOpen, voice, recorder])
 
-  // Refresh backend STT readiness when the STT Proxy engine is active/selected.
+  // Probe backend proxy readiness whenever the panel is open (any engine) and
+  // again when the engine changes, so the proxy connection status reflects
+  // reality even in Web Speech mode and refreshes if the proxy started later.
   useEffect(() => {
-    if (isOpen && voiceEngine === 'stt-proxy') {
+    if (isOpen) {
       void sttProxyClient.checkStatus().then(setSttStatus)
     }
   }, [isOpen, voiceEngine])

@@ -341,3 +341,26 @@ The system is **safe by default**:
 The proxy composes a shared CEO-perspective base instruction (Korean, concise,
 action-oriented, grounded only in the provided `context.snapshot`, says when
 data is missing, never invents real-world numbers) with the per-mode prompt.
+
+## Troubleshooting: browser shows proxy ready, but Jarvis shows offline
+
+If `http://localhost:8787/ai/status` returns `ready=true` in a browser tab but
+Jarvis still reports the proxy offline, it is almost always a **CORS / dev-port**
+mismatch, not the proxy itself:
+
+- A browser tab opens the status URL as a top-level navigation (no `Origin`
+  header), so CORS never applies there. The renderer, however, does a
+  **cross-origin `fetch`** and needs the proxy to allow its origin.
+- Vite auto-picks the next free port (5173 -> 5174 -> 5175 ...). If both 5173 and
+  5174 were taken, the renderer may run on 5175+, which a fixed allowlist would
+  block. In **development** the proxy now reflects **any** `localhost` /
+  `127.0.0.1` origin on any port (and `Origin: null` for the Electron `file://`
+  app), so the local dev port no longer matters.
+- Jarvis probes both `http://localhost:8787` and `http://127.0.0.1:8787`
+  (IPv6/IPv4), independent of `VITE_AI_PROXY_URL`.
+
+Open Jarvis (Ctrl+Space) -> Voice/GPT diagnostics to see the exact result: the
+tried URLs, which one answered, the four readiness booleans (proxy connected /
+OpenAI enabled / API key configured / ready), and the real last error
+(`Failed to fetch` = CORS/refused, `timeout`, `invalid response`, `HTTP 4xx/5xx`).
+Use the refresh button to re-probe after starting the proxy.
