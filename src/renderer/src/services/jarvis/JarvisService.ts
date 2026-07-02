@@ -6,6 +6,7 @@ import IntentClassifier from './IntentClassifier'
 import AnswerService from './AnswerService'
 import ImplementationIntake, { WORKSPACE_LABEL } from './ImplementationIntake'
 import type {
+  JarvisAnswerResult,
   JarvisClassification,
   JarvisExecutionResult,
   JarvisImplementationResult,
@@ -13,6 +14,52 @@ import type {
   ParsedCommand,
   ToolCall
 } from './types'
+
+/** Per-target navigation copy for the Jarvis Command Router. */
+interface NavInfo {
+  summary: string
+  nextAction: string
+  suggested: string[]
+}
+
+const NAV_INFO: Record<string, NavInfo> = {
+  autopilot: {
+    summary:
+      'Autopilot 화면으로 이동할 수 있습니다. 여기서 Start Company 또는 Run one loop step을 실행해 AI Company 운영 루프를 돌릴 수 있습니다.',
+    nextAction: 'Autopilot에서 Start Company 또는 Run one loop step 실행',
+    suggested: ['오늘 브리핑', '회사 시작', '자비스가 오토파일럿 실행하게 해']
+  },
+  company: {
+    summary: 'Live Company 화면으로 이동할 수 있습니다. 회사 전체 운영 현황과 최근 이벤트를 확인할 수 있습니다.',
+    nextAction: 'Live Company에서 오늘 운영 현황 확인',
+    suggested: ['오늘 브리핑', '오늘 FC 출근 현황', '이번 달 실적']
+  },
+  'fc-os': {
+    summary: 'FC OS 화면으로 이동할 수 있습니다. FC 출근/활동/월 실적을 확인하고 관리할 수 있습니다.',
+    nextAction: 'FC OS에서 오늘 출근 현황 확인',
+    suggested: ['오늘 FC 출근 현황', '이번 달 실적', 'FC OS에 팀별 필터 추가해']
+  },
+  approvals: {
+    summary: '승인센터 화면으로 이동할 수 있습니다. 대기 중인 승인 요청을 검토/승인/반려할 수 있습니다.',
+    nextAction: '승인센터에서 대기 중 요청 검토',
+    suggested: ['오늘 브리핑', '이번 달 실적']
+  },
+  qa: {
+    summary: 'QA 센터 화면으로 이동할 수 있습니다. 품질 점검과 QA 준비 상태를 확인할 수 있습니다.',
+    nextAction: 'QA 센터에서 QA 준비 상태 확인',
+    suggested: ['오늘 브리핑', 'DevOps']
+  },
+  release: {
+    summary: '릴리즈센터 화면으로 이동할 수 있습니다. 릴리스 준비 상태와 배포 파이프라인을 확인할 수 있습니다.',
+    nextAction: '릴리즈센터에서 릴리스 준비 상태 확인',
+    suggested: ['오늘 브리핑', 'DevOps']
+  },
+  devops: {
+    summary: 'DevOps Center 화면으로 이동할 수 있습니다. 운영/배포 상태를 확인할 수 있습니다.',
+    nextAction: 'DevOps Center에서 운영 상태 확인',
+    suggested: ['오늘 브리핑', 'QA 센터']
+  }
+}
 
 /**
  * JarvisService — the CEO-facing control layer for SJ OS. It classifies a
@@ -214,15 +261,35 @@ export class JarvisService {
   }
 
   private handleNavigation(classification: JarvisClassification): JarvisExecutionResult {
-    const label = WORKSPACE_LABEL[classification.targetWorkspace] ?? classification.targetWorkspace
+    const ws = classification.targetWorkspace
+    const label = WORKSPACE_LABEL[ws] ?? ws
+    const info: NavInfo =
+      NAV_INFO[ws] ??
+      {
+        summary: `${label} 화면으로 이동할 수 있습니다. 해당 워크스페이스에서 세부 현황을 확인하세요.`,
+        nextAction: `${label}에서 세부 현황 확인`,
+        suggested: ['오늘 브리핑', '이번 달 실적']
+      }
+    const commandUnderstood =
+      classification.intent === 'autopilot-control' ? '오토파일럿 · 회사 운영' : `${label} 이동`
+    const answer: JarvisAnswerResult = {
+      commandUnderstood,
+      sourceWorkspace: 'Jarvis Command Router',
+      summary: info.summary,
+      cards: [],
+      recommendedNextAction: info.nextAction,
+      navigationTarget: classification.navigationTarget,
+      suggestedCommands: info.suggested
+    }
     return {
       mode: 'navigation',
-      intent: 'navigate',
-      response: `${label} 화면으로 이동합니다.`,
-      toolCalls: [this.tool('navigate', `대상: ${label}`)],
+      intent: classification.intent,
+      response: info.summary,
+      toolCalls: [this.tool('navigate', `대상: ${label} (${classification.navigationTarget ?? '—'})`)],
       status: 'completed',
+      answer,
       navigationTarget: classification.navigationTarget,
-      suggestedCommands: ['오늘 브리핑', '이번 달 실적']
+      suggestedCommands: info.suggested
     }
   }
 
@@ -243,11 +310,23 @@ export class JarvisService {
     return {
       mode: 'unknown',
       intent: 'unknown',
-      response:
-        '아직 이해하지 못한 명령입니다. 예: "오늘 브리핑", "이번 달 실적", "FC OS에 팀별 필터 추가해" 같은 명령을 사용해 보세요.',
+      response: [
+        '아직 이해하지 못한 명령입니다. 아래 예시를 사용해 보세요.',
+        '• 업무 질문: "오늘 브리핑", "오늘 FC 출근 현황", "이번 달 실적", "미완료 활동", "클로징 예정 고객"',
+        '• 화면 이동: "FC OS", "고객 워크스페이스", "오토파일럿 열어줘", "라이브 컴퍼니", "승인센터"',
+        '• 회사 운영: "회사 시작", "운영 루프 시작"',
+        '• 구현 요청: "FC OS에 팀별 필터 추가해", "고객 워크스페이스 개선해", "자비스가 오토파일럿 실행하게 해"'
+      ].join('\n'),
       toolCalls: [],
       status: 'completed',
-      suggestedCommands: ['오늘 브리핑', '오늘 FC 출근 현황', '이번 달 실적', 'FC OS에 팀별 필터 추가해']
+      suggestedCommands: [
+        '오늘 브리핑',
+        'FC OS',
+        '오토파일럿 열어줘',
+        '회사 시작',
+        'FC OS에 팀별 필터 추가해',
+        '자비스가 오토파일럿 실행하게 해'
+      ]
     }
   }
 

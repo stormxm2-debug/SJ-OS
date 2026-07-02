@@ -2,12 +2,20 @@ import type { JarvisClassification } from './types'
 
 /**
  * Local, rule-based Jarvis intent classifier. No AI/API call — pure keyword
- * matching over Korean command phrases. Classifies a raw command into one of
- * five modes (answer / implementation-request / navigation / briefing /
- * unknown) and infers the target workspace + navigation view.
+ * matching over Korean + simple English/technical command phrases. Classifies a
+ * raw command into one of five modes (answer / implementation-request /
+ * navigation / briefing / unknown) and infers the target workspace + navigation
+ * view.
  *
- * Precedence matters: implementation verbs are checked BEFORE answer keywords so
- * that "보험분석 기능 다음 스프린트로 올려" routes to implementation, not answer.
+ * Precedence matters:
+ *  1) implementation verbs win first ("보험분석 기능 다음 스프린트로 올려",
+ *     "자비스가 오토파일럿 실행하게 해")
+ *  2) briefing
+ *  3) control phrases (autopilot / company operation) → navigate to Autopilot
+ *  4) explicit navigation ("... 열어/이동/보여줘")
+ *  5) answerable business question ("오늘 일정", "이번 달 실적")
+ *  6) bare workspace name ("FC OS", "autopilot", "라이브 컴퍼니") → navigation
+ *  7) unknown
  */
 
 /** Verbs/phrases that signal a product/development (implementation) command. */
@@ -36,14 +44,40 @@ const IMPLEMENTATION_MARKERS = [
   '개선해',
   '개선하',
   '바꿔',
-  '고쳐'
+  '고쳐',
+  '하게 해',
+  '되게 해',
+  '하도록',
+  '실행하게'
 ]
 
 /** Phrases that signal an explicit navigation request. */
-const NAVIGATION_MARKERS = ['열어', '이동', '화면으로', '로 가', '바로가기', '보여줘 화면']
+const NAVIGATION_MARKERS = ['열어', '열어줘', '이동', '화면으로', '로 가', '바로가기', '보여줘', '띄워', '가줘', 'open ', 'go to']
 
 /** Phrases that signal a daily briefing. */
 const BRIEFING_MARKERS = ['브리핑', 'briefing', '오늘 요약', '전체 요약']
+
+/**
+ * Control phrases that start/operate the AI Company loop. These route to the
+ * Autopilot workspace (Answer/Nav card explains Start Company / Run one loop
+ * step). Implementation markers are checked first, so "자비스가 오토파일럿
+ * 실행하게 해" is a request, while "회사 시작" / "autopilot" are control.
+ */
+const CONTROL_MARKERS = [
+  '오토파일럿',
+  'autopilot',
+  '운영 루프',
+  '운영루프',
+  'start company',
+  'company start',
+  '회사 시작',
+  '회사 운영',
+  '자동 운영',
+  '자동운영',
+  '자동 개발',
+  '자동개발',
+  '운영 시작'
+]
 
 /** Workspace inference: ordered so more specific phrases win. */
 const WORKSPACE_KEYWORDS: Array<{ workspace: string; nav: string | null; keys: string[] }> = [
@@ -54,8 +88,13 @@ const WORKSPACE_KEYWORDS: Array<{ workspace: string; nav: string | null; keys: s
   { workspace: 'schedule', nav: 'schedule', keys: ['일정', '캘린더', '스케줄'] },
   { workspace: 'sales-activity', nav: 'sales-activity', keys: ['영업활동', '영업 활동', '활동', 'ap', '클로징'] },
   { workspace: 'customer', nav: 'customer', keys: ['고객'] },
-  { workspace: 'fc-os', nav: 'fcos', keys: ['fc os', 'fc', '출근', '설계사'] },
-  { workspace: 'autopilot', nav: 'autopilot', keys: ['오토파일럿', 'autopilot', '자동 운영'] },
+  { workspace: 'fc-os', nav: 'fcos', keys: ['fc os', 'fcos', 'fc', '출근', '설계사'] },
+  { workspace: 'company', nav: 'company', keys: ['라이브 컴퍼니', '라이브컴퍼니', 'live company', '회사 현황', '컴퍼니'] },
+  { workspace: 'approvals', nav: 'approvals', keys: ['승인센터', '승인 센터', '승인', 'approval'] },
+  { workspace: 'qa', nav: 'qa', keys: ['qa 센터', 'qa센터', 'qa'] },
+  { workspace: 'release', nav: 'release', keys: ['릴리즈센터', '릴리즈 센터', '릴리스센터', '릴리스', '릴리즈', 'release'] },
+  { workspace: 'devops', nav: 'devops', keys: ['devops', '데브옵스'] },
+  { workspace: 'autopilot', nav: 'autopilot', keys: ['오토파일럿', 'autopilot', '운영 루프', '운영루프', '자동 운영', '자동운영', '자동 개발', '자동개발', '회사 시작', 'start company'] },
   { workspace: 'jarvis', nav: null, keys: ['자비스', 'jarvis'] }
 ]
 
@@ -106,19 +145,29 @@ export default class IntentClassifier {
       return { mode: 'briefing', intent: 'daily-briefing', confidence: 0.95, targetWorkspace: 'company', navigationTarget: 'company' }
     }
 
-    // 3) Explicit navigation.
+    // 3) Control phrases — start / operate the AI Company loop (→ Autopilot).
+    if (includesAny(lowered, CONTROL_MARKERS)) {
+      return { mode: 'navigation', intent: 'autopilot-control', confidence: 0.9, targetWorkspace: 'autopilot', navigationTarget: 'autopilot' }
+    }
+
+    // 4) Explicit navigation ("... 열어/이동/보여줘").
     if (includesAny(lowered, NAVIGATION_MARKERS) && nav) {
       return { mode: 'navigation', intent: 'navigate', confidence: 0.85, targetWorkspace: workspace, navigationTarget: nav }
     }
 
-    // 4) Answerable business question.
+    // 5) Answerable business question.
     for (const entry of ANSWER_INTENTS) {
       if (includesAny(lowered, entry.keys)) {
         return { mode: 'answer', intent: entry.intent, confidence: 0.85, targetWorkspace: workspace, navigationTarget: nav }
       }
     }
 
-    // 5) Fallback.
+    // 6) Bare workspace name ("FC OS", "라이브 컴퍼니", "승인센터") → navigation.
+    if (nav) {
+      return { mode: 'navigation', intent: 'navigate', confidence: 0.7, targetWorkspace: workspace, navigationTarget: nav }
+    }
+
+    // 7) Fallback.
     return { mode: 'unknown', intent: 'unknown', confidence: 0.3, targetWorkspace: workspace, navigationTarget: nav }
   }
 }

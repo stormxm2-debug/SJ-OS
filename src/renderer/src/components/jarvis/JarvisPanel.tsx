@@ -38,13 +38,14 @@ function toView(target: string | null | undefined): View | null {
 const COMMAND_CHIPS = [
   '오늘 브리핑',
   '오늘 FC 출근 현황',
-  '이번 달 실적',
   '오늘 일정',
+  '이번 달 실적',
   '미완료 활동',
   '클로징 예정 고객',
+  '오토파일럿 열어줘',
+  '회사 시작',
   'FC OS에 팀별 필터 추가해',
-  '고객 워크스페이스 개선해',
-  '보험분석 기능 다음 스프린트로 올려'
+  '자비스가 오토파일럿 실행하게 해'
 ]
 
 function statusLabel(status: JarvisStatus): string {
@@ -260,7 +261,7 @@ export default function JarvisPanel(): JSX.Element | null {
             </Card>
 
             <Card title="Assistant response" icon={<Bot className="h-4 w-4 text-indigo-300" />}>
-              <div className="min-h-[110px] rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-sm leading-7 text-slate-300">
+              <div className="min-h-[110px] whitespace-pre-line rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-sm leading-7 text-slate-300">
                 {state.status === 'thinking' || state.status === 'running' ? (
                   <div className="flex items-center gap-2 text-slate-400">
                     <LoaderCircle className="h-4 w-4 animate-spin" />
