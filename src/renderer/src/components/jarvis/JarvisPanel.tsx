@@ -24,7 +24,10 @@ import {
   Cpu,
   RefreshCw,
   CloudOff,
-  Activity
+  Activity,
+  AudioLines,
+  Server,
+  Loader2
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -36,6 +39,9 @@ import type {
   VoiceEngineMode,
   VoiceDiagnostics
 } from '@renderer/services/jarvis/VoiceService'
+import { AudioRecorder } from '@renderer/services/jarvis/AudioRecorder'
+import { sttProxyClient } from '@renderer/services/jarvis/SttProxyClient'
+import type { SttStatusResult } from '@renderer/services/jarvis/SttProxyClient'
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 import { normalizeCommand } from '@renderer/services/jarvis/normalize'
 import type { JarvisMode, JarvisState, JarvisStatus } from '@renderer/services/jarvis/types'
@@ -133,6 +139,25 @@ const MIC_PERMISSION_LABEL: Record<string, string> = {
   unknown: '알 수 없음'
 }
 
+/** The selectable Jarvis voice engine. */
+type VoiceEngineChoice = 'web-speech' | 'stt-proxy'
+
+/** Segmented-control tab classes for the voice engine selector. */
+function engineTabClasses(active: boolean): string {
+  return [
+    'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition',
+    active ? 'bg-indigo-500/15 text-indigo-200' : 'bg-slate-900/40 text-slate-400 hover:text-slate-200'
+  ].join(' ')
+}
+
+/** Korean label + tone for the backend STT readiness status. */
+const STT_STATUS_META: Record<string, { label: string; classes: string }> = {
+  'STT Ready': { label: 'STT 프록시 준비됨', classes: 'text-emerald-300' },
+  'STT Disabled': { label: 'STT 프록시 비활성화', classes: 'text-amber-300' },
+  'Key Missing': { label: 'API 키 없음 (백엔드)', classes: 'text-amber-300' },
+  'Proxy Offline': { label: '프록시 오프라인', classes: 'text-rose-300' }
+}
+
 export default function JarvisPanel(): JSX.Element | null {
   const [service] = useState(() => jarvisService)
   const [voice] = useState(() => voiceService)
@@ -147,6 +172,17 @@ export default function JarvisPanel(): JSX.Element | null {
   const [lastCommand, setLastCommand] = useState('')
   const recognitionSupported = voice.isRecognitionSupported()
   const synthesisSupported = voice.isSynthesisSupported()
+
+  // STT Proxy engine: recorder + backend status + record/transcribe state.
+  const [recorder] = useState(() => new AudioRecorder(10))
+  const recorderSupported = recorder.isSupported()
+  const [voiceEngine, setVoiceEngine] = useState<VoiceEngineChoice>(() =>
+    voice.isRecognitionSupported() ? 'web-speech' : 'stt-proxy'
+  )
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const [sttStatus, setSttStatus] = useState<SttStatusResult | null>(null)
+  const [lastTranscript, setLastTranscript] = useState('')
   const gptConfig = jarvisGptBrainService.getConfig()
   const { navigate } = useNavigation()
 
@@ -262,16 +298,23 @@ export default function JarvisPanel(): JSX.Element | null {
   }
 
   // Route a completed voice transcript through the SAME command router as typed
-  // input, after normalizing it with the shared Jarvis helper.
+  // input, after normalizing it with the shared Jarvis helper. Identical to the
+  // typed path, so voice and text behave the same and share command history.
   const handleVoiceTranscript = async (transcript: string): Promise<void> => {
     const normalized = normalizeCommand(transcript).spaced
     if (!normalized) return
     setInterimTranscript('')
+    setLastTranscript(normalized)
     await runCommand(normalized)
   }
 
   const refreshDiagnostics = (): void => setDiagnostics(voice.getDiagnostics())
 
+  const refreshSttStatus = (): void => {
+    void sttProxyClient.checkStatus().then(setSttStatus)
+  }
+
+  // --- Web Speech engine (browser-local recognition) ---
   const startListening = (): void => {
     setVoiceError(null)
     setInterimTranscript('')
@@ -279,9 +322,15 @@ export default function JarvisPanel(): JSX.Element | null {
     voice.startListening({
       onStatusChange: setVoiceStatus,
       onInterim: setInterimTranscript,
-      onError: (message) => {
+      onError: (message, code) => {
         setVoiceError(message)
         refreshDiagnostics()
+        // A network failure means Web Speech is unreliable here — recommend the
+        // stable STT Proxy engine by switching the selection to it.
+        if (code === 'network' || code === 'service-not-allowed') {
+          setVoiceEngine('stt-proxy')
+          refreshSttStatus()
+        }
       },
       onFinal: (text) => {
         refreshDiagnostics()
@@ -294,25 +343,91 @@ export default function JarvisPanel(): JSX.Element | null {
     voice.stopListening()
   }
 
+  // --- STT Proxy engine (record → backend transcription) ---
+  const startSttRecording = (): void => {
+    setVoiceError(null)
+    setInterimTranscript('')
+    voice.stopSpeaking()
+    void recorder.start({
+      onStart: () => {
+        setRecording(true)
+        setVoiceStatus('listening')
+      },
+      onError: (message) => {
+        setRecording(false)
+        setVoiceStatus('error')
+        setVoiceError(message)
+      },
+      onStop: (blob) => {
+        setRecording(false)
+        setVoiceStatus('idle')
+        void transcribeAndRoute(blob)
+      }
+    })
+  }
+
+  const stopSttRecording = (): void => {
+    recorder.stop()
+  }
+
+  // Send the recorded clip to the backend STT proxy, then route the transcript
+  // through the same local Jarvis router. Never crashes on failure.
+  const transcribeAndRoute = async (blob: Blob): Promise<void> => {
+    setTranscribing(true)
+    const result = await sttProxyClient.transcribeAudio(blob)
+    setTranscribing(false)
+    refreshSttStatus()
+    if (!result.success) {
+      setVoiceError(result.errorMessage ?? 'STT 전사에 실패했습니다. 텍스트 입력을 사용해 주세요.')
+      return
+    }
+    if (!result.transcript) {
+      setVoiceError('음성에서 명령을 인식하지 못했습니다. 다시 시도해 주세요.')
+      return
+    }
+    await handleVoiceTranscript(result.transcript)
+  }
+
+  // The mic button dispatches to the selected engine.
+  const startVoice = (): void => {
+    if (voiceEngine === 'stt-proxy') startSttRecording()
+    else startListening()
+  }
+  const stopVoice = (): void => {
+    if (voiceEngine === 'stt-proxy') stopSttRecording()
+    else stopListening()
+  }
+  const voiceActive = voiceStatus === 'listening' || recording
+  const canStartVoice = voiceEngine === 'stt-proxy' ? recorderSupported : recognitionSupported
+
   const toggleVoiceOutput = (): void => {
     const next = voice.setVoiceOutput(!voiceOutputEnabled)
     setVoiceOutputEnabled(next)
     if (!next) voice.stopSpeaking()
   }
 
-  // Stop mic + speech when the panel closes so nothing keeps listening/speaking.
+  // Stop mic + speech + recording when the panel closes so nothing keeps running.
   const isOpen = state.isOpen
   useEffect(() => {
     if (!isOpen) {
       voice.stopListening()
       voice.stopSpeaking()
+      recorder.stop()
       setInterimTranscript('')
+      setRecording(false)
       setVoiceStatus('idle')
       return
     }
     // On open, refresh mic permission + capability diagnostics (best-effort).
     void voice.refreshMicPermission().then(() => setDiagnostics(voice.getDiagnostics()))
-  }, [isOpen, voice])
+  }, [isOpen, voice, recorder])
+
+  // Refresh backend STT readiness when the STT Proxy engine is active/selected.
+  useEffect(() => {
+    if (isOpen && voiceEngine === 'stt-proxy') {
+      void sttProxyClient.checkStatus().then(setSttStatus)
+    }
+  }, [isOpen, voiceEngine])
 
   const goToTarget = (target: string | null | undefined): void => {
     const view = toView(target)
@@ -453,31 +568,80 @@ export default function JarvisPanel(): JSX.Element | null {
 
             <Card title="Voice mode" icon={<Mic className="h-4 w-4 text-indigo-300" />}>
               <div className="space-y-3">
+                {/* Voice engine selection: Web Speech (local) vs STT Proxy (backend). */}
                 <div className="flex flex-wrap items-center gap-2">
-                  {recognitionSupported ? (
-                    voiceStatus === 'listening' ? (
+                  <div className="inline-flex overflow-hidden rounded-xl border border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!voiceActive) setVoiceEngine('web-speech')
+                      }}
+                      className={engineTabClasses(voiceEngine === 'web-speech')}
+                    >
+                      <Mic className="h-3.5 w-3.5" />
+                      Web Speech
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!voiceActive) {
+                          setVoiceEngine('stt-proxy')
+                          refreshSttStatus()
+                        }
+                      }}
+                      className={engineTabClasses(voiceEngine === 'stt-proxy')}
+                    >
+                      <Server className="h-3.5 w-3.5" />
+                      STT Proxy
+                    </button>
+                  </div>
+
+                  {/* Engine status label */}
+                  {voiceEngine === 'web-speech' ? (
+                    <span className={recognitionSupported ? 'text-[11px] text-emerald-300' : 'text-[11px] text-rose-300'}>
+                      {recognitionSupported ? 'Web Speech 사용 가능' : 'Web Speech 미지원'}
+                    </span>
+                  ) : sttStatus ? (
+                    <span className={`text-[11px] ${STT_STATUS_META[sttStatus.label]?.classes ?? 'text-slate-400'}`}>
+                      {STT_STATUS_META[sttStatus.label]?.label ?? sttStatus.label}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-slate-500">상태 확인 중…</span>
+                  )}
+                </div>
+
+                {/* Controls: engine-aware mic/stop button + voice output toggle. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {canStartVoice ? (
+                    voiceActive ? (
                       <button
                         type="button"
-                        onClick={stopListening}
+                        onClick={stopVoice}
                         className="inline-flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/15 px-3 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/25"
                       >
                         <MicOff className="h-4 w-4" />
-                        듣기 중지
+                        {voiceEngine === 'stt-proxy' ? '녹음 중지' : '듣기 중지'}
                       </button>
                     ) : (
                       <button
                         type="button"
-                        onClick={startListening}
-                        className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
+                        onClick={startVoice}
+                        disabled={transcribing}
+                        className={[
+                          'inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
+                          transcribing
+                            ? 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
+                            : 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20'
+                        ].join(' ')}
                       >
-                        <Mic className="h-4 w-4" />
+                        {voiceEngine === 'stt-proxy' ? <AudioLines className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                         마이크 (눌러서 말하기)
                       </button>
                     )
                   ) : (
                     <span className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2.5 text-sm text-slate-400">
                       <MicOff className="h-4 w-4" />
-                      음성 인식 미지원
+                      {voiceEngine === 'stt-proxy' ? '오디오 녹음 미지원' : '음성 인식 미지원'}
                     </span>
                   )}
 
@@ -499,13 +663,22 @@ export default function JarvisPanel(): JSX.Element | null {
                   </button>
                 </div>
 
-                {voiceStatus === 'listening' ? (
+                {voiceActive ? (
                   <div className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
                     <span className="relative flex h-2.5 w-2.5">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
                       <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-400" />
                     </span>
-                    자비스가 듣고 있습니다…
+                    {voiceEngine === 'stt-proxy'
+                      ? `녹음 중입니다… (최대 ${recorder.getMaxSeconds()}초 · 눌러서 중지)`
+                      : '자비스가 듣고 있습니다…'}
+                  </div>
+                ) : null}
+
+                {transcribing ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-sm text-sky-200">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    음성을 텍스트로 변환하는 중입니다…
                   </div>
                 ) : null}
 
@@ -516,6 +689,13 @@ export default function JarvisPanel(): JSX.Element | null {
                   </div>
                 ) : null}
 
+                {lastTranscript && !voiceActive && !interimTranscript ? (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">
+                    <span className="text-slate-500">인식된 명령: </span>
+                    {lastTranscript}
+                  </div>
+                ) : null}
+
                 {voiceError ? (
                   <div className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
                     <AlertCircle className="h-4 w-4 shrink-0" />
@@ -523,7 +703,11 @@ export default function JarvisPanel(): JSX.Element | null {
                   </div>
                 ) : null}
 
-                {!recognitionSupported ? (
+                {voiceEngine === 'stt-proxy' ? (
+                  <p className="text-xs text-slate-500">
+                    STT 프록시: 녹음을 백엔드로 전송해 전사합니다. API 키는 백엔드에만 있습니다 · 오디오는 저장되지 않습니다.
+                  </p>
+                ) : !recognitionSupported ? (
                   <p className="text-xs text-slate-500">이 환경에서는 음성 인식을 사용할 수 없습니다.</p>
                 ) : null}
 
@@ -580,10 +764,19 @@ export default function JarvisPanel(): JSX.Element | null {
                     Voice safety
                   </div>
                   <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-500">
-                    <li>· 눌러서 말하기(push-to-talk) 전용 · 상시 청취 없음</li>
-                    <li>· 로컬 브라우저 음성 인식만 사용</li>
-                    <li>· 음성 저장 없음 · 외부로 오디오 전송 없음</li>
-                    <li>· 외부 AI/API 사용 없음</li>
+                    <li>· 눌러서 말하기(push-to-talk) 전용 · 상시 청취 없음 · 웨이크워드 없음</li>
+                    <li>· 오디오 파일 저장 없음 (메모리에서만 처리)</li>
+                    {voiceEngine === 'stt-proxy' ? (
+                      <>
+                        <li>· STT 프록시: 녹음을 백엔드 프록시로만 전송해 전사</li>
+                        <li>· OpenAI API 키는 백엔드에만 존재 · 프론트엔드에는 없음</li>
+                      </>
+                    ) : (
+                      <>
+                        <li>· 로컬 브라우저 음성 인식만 사용 · 외부로 오디오 전송 없음</li>
+                        <li>· 외부 AI/API 사용 없음</li>
+                      </>
+                    )}
                   </ul>
                 </div>
               </div>

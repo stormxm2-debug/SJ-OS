@@ -29,6 +29,12 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini'
 const OPENAI_ENABLED = String(process.env.OPENAI_ENABLED ?? 'false').toLowerCase() === 'true'
 const REQUEST_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS ?? 30000)
 
+// Speech-to-text (Jarvis Voice Mode) — model + upload limits. The renderer
+// enforces the recording duration; the byte-size limit is the backend guard.
+const OPENAI_STT_MODEL = process.env.OPENAI_STT_MODEL ?? 'gpt-4o-mini-transcribe'
+const MAX_AUDIO_SECONDS = Number(process.env.MAX_AUDIO_SECONDS ?? 10)
+const MAX_AUDIO_UPLOAD_MB = Number(process.env.MAX_AUDIO_UPLOAD_MB ?? 10)
+
 // Whether a real key is present (never expose the key itself, anywhere).
 const API_KEY_CONFIGURED = OPENAI_API_KEY.trim().length > 0
 // GPT is truly ready only when explicitly enabled AND a key is configured.
@@ -129,6 +135,9 @@ app.get('/ai/status', (_req, res) => {
     apiKeyConfigured: API_KEY_CONFIGURED,
     model: OPENAI_MODEL,
     ready: GPT_READY,
+    // STT (Jarvis Voice Mode) capability — same enable/key gates as the brain.
+    sttModel: OPENAI_STT_MODEL,
+    maxAudioSeconds: MAX_AUDIO_SECONDS,
     environment: ENVIRONMENT,
     timestamp: new Date().toISOString(),
     message
@@ -158,6 +167,23 @@ async function getOpenAiClient() {
   const OpenAI = mod.default ?? mod.OpenAI
   cachedClient = new OpenAI({ apiKey: OPENAI_API_KEY })
   return cachedClient
+}
+
+let cachedAudioUpload = null
+/**
+ * Lazily build the multipart audio upload middleware. In-memory storage only —
+ * audio is NEVER written to disk. Lazy import keeps /health and the disabled
+ * paths working even before `npm install` adds multer.
+ */
+async function getAudioUpload() {
+  if (cachedAudioUpload) return cachedAudioUpload
+  const mod = await import('multer')
+  const multer = mod.default ?? mod
+  cachedAudioUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_AUDIO_UPLOAD_MB * 1024 * 1024, files: 1 }
+  }).single('audio')
+  return cachedAudioUpload
 }
 
 app.post('/ai/chat', async (req, res) => {
@@ -265,28 +291,31 @@ app.post('/ai/chat', async (req, res) => {
 })
 
 /**
- * POST /ai/transcribe — safe, disabled-by-default STT (speech-to-text) endpoint.
+ * POST /ai/transcribe — Jarvis Voice Mode speech-to-text.
+ *
+ * Input: multipart/form-data with an `audio` file (webm/ogg/mp4…), optional
+ * `lang` (default ko) and `mode`/`context` text fields.
  *
  * SAFETY
- *  - We do NOT parse, read, log, or store the uploaded audio body in this stub.
- *    express.json only parses application/json, so a multipart audio upload is
- *    ignored entirely here — nothing is buffered to disk or memory beyond the
- *    request lifecycle, and no audio content is logged.
- *  - Disabled by default (OPENAI_ENABLED=false) → returns a clear fallback.
- *  - Enabled but no key → explicit OPENAI_API_KEY_MISSING (no secret exposure).
- *  - Enabled + key → real Whisper transcription is intentionally deferred to a
- *    future sprint (needs multipart upload handling); we report that honestly
- *    instead of adding upload dependencies now.
+ *  - The OpenAI API key is read from the environment ONLY and never exposed.
+ *  - Audio is held IN MEMORY only (multer memoryStorage) — never written to
+ *    disk — and the buffer reference is dropped after the request. No audio
+ *    content is ever logged.
+ *  - Enable/key gates run BEFORE the upload is parsed, so when STT is off no
+ *    audio is buffered at all.
+ *  - Disabled by default (OPENAI_ENABLED=false) → clear Korean fallback.
  */
-app.post('/ai/transcribe', (_req, res) => {
+app.post('/ai/transcribe', async (req, res) => {
+  // Gate before reading any audio — never buffer audio we won't use.
   if (!OPENAI_ENABLED) {
     res.json({
       success: false,
       source: 'disabled',
-      code: 'STT_DISABLED',
+      code: 'OPENAI_DISABLED',
       text: '',
       error:
-        'STT 프록시가 아직 활성화되지 않았습니다. OpenAI API 키는 백엔드에서만 설정해야 합니다.'
+        'STT 프록시가 비활성화되어 있습니다 (OPENAI_ENABLED=false). ' +
+        '백엔드 환경변수에서 OPENAI_ENABLED=true 로 설정하세요. API 키는 백엔드에만 두세요.'
     })
     return
   }
@@ -304,15 +333,91 @@ app.post('/ai/transcribe', (_req, res) => {
     return
   }
 
-  // Enabled + key present, but transcription is not wired up yet.
-  res.status(501).json({
-    success: false,
-    source: 'backend',
-    code: 'STT_NOT_IMPLEMENTED',
-    text: '',
-    error:
-      'STT 전사(transcription)는 아직 구현되지 않았습니다. ' +
-      '다음 스프린트에서 안전한 파일 업로드 처리와 Whisper 연동을 추가할 예정입니다.'
+  let upload
+  try {
+    upload = await getAudioUpload()
+  } catch {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'STT_DEPENDENCY_MISSING',
+      text: '',
+      error: 'STT 업로드 처리를 위한 서버 의존성이 없습니다. sj-ai-proxy 에서 npm install 을 실행하세요.'
+    })
+    return
+  }
+
+  upload(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const tooLarge = uploadErr.code === 'LIMIT_FILE_SIZE'
+      res.status(tooLarge ? 413 : 400).json({
+        success: false,
+        source: 'backend',
+        code: tooLarge ? 'AUDIO_TOO_LARGE' : 'AUDIO_UPLOAD_ERROR',
+        text: '',
+        error: tooLarge
+          ? `오디오 파일이 너무 큽니다 (최대 ${MAX_AUDIO_UPLOAD_MB}MB).`
+          : '오디오 업로드 처리 중 오류가 발생했습니다.'
+      })
+      return
+    }
+
+    const file = req.file
+    if (!file || !file.buffer || file.buffer.length === 0) {
+      res.status(400).json({
+        success: false,
+        source: 'backend',
+        code: 'AUDIO_MISSING',
+        text: '',
+        error: '오디오 데이터가 전송되지 않았습니다. audio 필드로 녹음을 업로드하세요.'
+      })
+      return
+    }
+
+    const language =
+      typeof req.body?.lang === 'string' && req.body.lang.trim() ? req.body.lang.trim() : 'ko'
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    const startedAt = Date.now()
+
+    try {
+      const mod = await import('openai')
+      const toFile = mod.toFile ?? mod.default?.toFile
+      const client = await getOpenAiClient()
+      const audioFile = await toFile(file.buffer, file.originalname || 'audio.webm', {
+        type: file.mimetype || 'audio/webm'
+      })
+      const result = await client.audio.transcriptions.create(
+        { file: audioFile, model: OPENAI_STT_MODEL, language },
+        { signal: controller.signal }
+      )
+      const text = (typeof result?.text === 'string' ? result.text : '').trim()
+      res.json({
+        success: true,
+        source: 'openai',
+        text,
+        model: OPENAI_STT_MODEL,
+        durationMs: Date.now() - startedAt
+      })
+    } catch (error) {
+      const aborted = error?.name === 'AbortError'
+      res.status(aborted ? 504 : 502).json({
+        success: false,
+        source: 'openai',
+        code: aborted ? 'STT_TIMEOUT' : 'STT_FAILED',
+        text: '',
+        error: aborted
+          ? 'STT 응답이 시간 내에 도착하지 않았습니다. 다시 시도해 주세요.'
+          : 'STT 전사 처리 중 오류가 발생했습니다.',
+        // OpenAI error message only — never audio content.
+        detail: error?.message ?? String(error)
+      })
+    } finally {
+      clearTimeout(timer)
+      // Drop the in-memory audio buffer promptly (never stored, never logged).
+      if (req.file) req.file.buffer = null
+    }
   })
 })
 

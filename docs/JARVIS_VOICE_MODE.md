@@ -47,25 +47,43 @@ mode, and keeps text input fully usable.
 ### Stable production mode: backend STT proxy
 
 For reliable, production-grade transcription, use the backend STT proxy instead
-of the browser engine. The renderer records audio (only while enabled) and sends
-it to the proxy, which runs transcription server-side and returns text. The API
-key never touches the frontend.
+of the browser engine. Web Speech depends on a remote browser service that can be
+blocked in Electron; the STT proxy runs transcription through OpenAI server-side
+with the key kept in the backend env — so it is **more stable** and works
+wherever the backend can reach OpenAI.
 
-- Renderer interface: `src/renderer/src/services/jarvis/SttProxyClient.ts`
-  (`transcribeAudio(blob) → TranscriptResult`).
+**Flow (push-to-talk → transcript → command):**
+
+1. CEO selects the **STT Proxy** engine and clicks the mic button.
+2. The renderer records a short clip with `MediaRecorder` — memory only, no file
+   saved, `audio/webm` preferred (safe fallback if unsupported).
+3. Recording stops on click or auto-stops after `MAX_AUDIO_SECONDS` (default 10s).
+4. The client first checks backend readiness (`GET /ai/status`) and uploads the
+   clip to `POST /ai/transcribe` as `multipart/form-data` **only** when STT is
+   enabled and a key is configured — otherwise no audio leaves the device.
+5. The backend reads `OPENAI_API_KEY` from the environment, calls the OpenAI
+   transcription model, and returns Korean transcript text.
+6. Jarvis routes the transcript through the **same local command router** as
+   typed input, shows the transcript + result, and (if TTS is on) speaks the reply.
+
+- Renderer capture: `src/renderer/src/services/jarvis/AudioRecorder.ts`.
+- Renderer client: `src/renderer/src/services/jarvis/SttProxyClient.ts`
+  (`transcribeAudio(blob) → TranscriptResult` with `transcript`, `source`,
+  `model`, `durationMs`, `errorCode`, `errorMessage`).
 - Backend endpoint: `POST /ai/transcribe` in `sj-ai-proxy/server.mjs`.
 
-Current status: the endpoint is a **safe, disabled-by-default stub**. Real
-Whisper transcription (multipart upload handling) is intentionally deferred to a
-future sprint to avoid adding upload dependencies prematurely. Responses today:
+**Endpoint behavior:**
 
 | Condition | Code | Behavior |
 | --- | --- | --- |
-| `OPENAI_ENABLED` not `true` | `STT_DISABLED` | Clear Korean fallback; no OpenAI call. |
+| `OPENAI_ENABLED` not `true` | `OPENAI_DISABLED` | Clear Korean fallback; no OpenAI call; no audio buffered. |
 | Enabled but no key | `OPENAI_API_KEY_MISSING` | Explicit setup error; no secret exposure. |
-| Enabled + key present | `STT_NOT_IMPLEMENTED` | Honest "deferred to next sprint" message. |
+| No `audio` field | `AUDIO_MISSING` | Rejected before any OpenAI call. |
+| Upload over `MAX_AUDIO_UPLOAD_MB` | `AUDIO_TOO_LARGE` | Rejected by the size guard. |
+| Enabled + key + audio | — | Transcribes and returns `{ success, text, model, durationMs }`. |
 
-The stub does **not** parse, read, log, or store the uploaded audio.
+Audio is held **in memory only** (multer `memoryStorage`), never written to disk,
+and the buffer is dropped after the request. **No audio content is ever logged.**
 
 ## Error diagnostics
 
@@ -97,19 +115,61 @@ restart.
 
 ## Command flow
 
-A successful voice transcript is normalized with the shared
-`normalizeCommand(...)` helper and routed through the **same local Jarvis command
-router** as typed input — so voice and text behave identically, and the
+A successful voice transcript (from **either** engine) is normalized with the
+shared `normalizeCommand(...)` helper and routed through the **same local Jarvis
+command router** as typed input — so voice and text behave identically, and the
 transcript is saved to recent-command history. If voice output is on, the Jarvis
-response is read aloud via `speechSynthesis` (Korean voice preferred).
+response is read aloud via `speechSynthesis` (Korean voice preferred). These
+spoken commands all route correctly: `유튜브켜줘`, `오늘 일정`, `오토파일럿열어줘`,
+`FCOS`, `FC OS에 팀별 필터 추가해`.
 
-## Configuration (non-secret renderer env)
+If transcription fails, a Korean error is shown, typed input stays usable, and
+nothing crashes.
+
+## Configuration
+
+### Renderer (non-secret Vite env)
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `VITE_STT_PROXY_ENABLED` | `false` | Opt into sending recorded audio to the backend STT proxy. |
 | `VITE_AI_PROXY_URL` | `http://localhost:8787` | Proxy base URL (shared with the GPT brain). |
+| `VITE_STT_PROXY_ENABLED` | `false` | Optional: default the voice engine to STT Proxy. Not required — selecting the STT Proxy engine in the UI and recording is itself the explicit opt-in, and audio is uploaded only after the backend reports it is enabled + keyed. |
 
-Backend (`sj-ai-proxy`) secrets live only in the backend env — see
-[`OPENAI_PROXY_SETUP.md`](./OPENAI_PROXY_SETUP.md). **Never put `OPENAI_API_KEY`
-in the renderer.**
+### Backend (`sj-ai-proxy`, secrets — backend only)
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `OPENAI_ENABLED` | `false` | Master switch. STT is disabled until this is `true`. |
+| `OPENAI_API_KEY` | — | Server-side only. Never in the renderer. |
+| `OPENAI_STT_MODEL` | `gpt-4o-mini-transcribe` | Transcription model. |
+| `MAX_AUDIO_SECONDS` | `10` | Max push-to-talk length (renderer-enforced). |
+| `MAX_AUDIO_UPLOAD_MB` | `10` | Max accepted upload size (backend guard). |
+
+## Local setup (STT proxy)
+
+```
+cd C:\Users\GalaxyBook5\.vscode\SJ-OS\sj-ai-proxy
+copy .env.example .env
+```
+
+Then edit `.env` (backend only) and set:
+
+```
+OPENAI_ENABLED=true
+OPENAI_API_KEY=sk-...          # your real key — in .env ONLY, never committed
+OPENAI_STT_MODEL=gpt-4o-mini-transcribe
+```
+
+Install and run the proxy:
+
+```
+npm install
+npm run dev
+```
+
+`.env` is gitignored and must never be committed. See also
+[`OPENAI_PROXY_SETUP.md`](./OPENAI_PROXY_SETUP.md).
+
+> ⚠️ **Never paste your API key into ChatGPT, Claude, or any frontend UI.** The
+> key belongs only in the backend `.env`. If a key ever leaks, rotate it
+> immediately in the OpenAI dashboard.
