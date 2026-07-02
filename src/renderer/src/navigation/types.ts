@@ -5,6 +5,7 @@ export type View =
   | { name: 'assistant' }
   | { name: 'company' }
   | { name: 'dashboard' }
+  | { name: 'cto' }
   | { name: 'autopilot' }
   | { name: 'devos' }
   | { name: 'pm' }
