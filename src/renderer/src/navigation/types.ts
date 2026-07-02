@@ -7,6 +7,7 @@ export type View =
   | { name: 'dashboard' }
   | { name: 'autopilot' }
   | { name: 'devos' }
+  | { name: 'pm' }
   | { name: 'backlog' }
   | { name: 'workers' }
   | { name: 'worker'; workerId: string; tab: WorkerTab }
