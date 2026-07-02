@@ -1,4 +1,5 @@
 import type { JarvisClassification } from './types'
+import { matchesAny, normalizeCommand, type NormalizedCommand } from './normalize'
 
 /**
  * Local, rule-based Jarvis intent classifier. No AI/API call — pure keyword
@@ -68,9 +69,9 @@ const EXTERNAL_KEYWORDS: Array<{ key: string; aliases: string[] }> = [
   { key: 'github', aliases: ['깃허브', 'github', 'sj os 깃허브'] }
 ]
 
-function inferExternalKey(lowered: string): string | null {
+function inferExternalKey(command: NormalizedCommand): string | null {
   for (const entry of EXTERNAL_KEYWORDS) {
-    if (entry.aliases.some((a) => lowered.includes(a))) return entry.key
+    if (matchesAny(command, entry.aliases)) return entry.key
   }
   return null
 }
@@ -130,27 +131,22 @@ const ANSWER_INTENTS: Array<{ intent: string; keys: string[] }> = [
   { intent: 'insurance-needed', keys: ['보험분석 필요', '보험 분석 필요', '보험분석', '보험 분석'] }
 ]
 
-function includesAny(haystack: string, needles: string[]): boolean {
-  return needles.some((n) => haystack.includes(n))
-}
-
-function inferWorkspace(lowered: string): { workspace: string; nav: string | null } {
+function inferWorkspace(command: NormalizedCommand): { workspace: string; nav: string | null } {
   for (const entry of WORKSPACE_KEYWORDS) {
-    if (includesAny(lowered, entry.keys)) return { workspace: entry.workspace, nav: entry.nav }
+    if (matchesAny(command, entry.keys)) return { workspace: entry.workspace, nav: entry.nav }
   }
   return { workspace: 'unknown', nav: null }
 }
 
 export default class IntentClassifier {
   classify(raw: string): JarvisClassification {
-    const compact = raw.trim().replace(/\s+/g, ' ')
-    const lowered = compact.toLowerCase()
-    const { workspace, nav } = inferWorkspace(lowered)
-    const externalKey = inferExternalKey(lowered)
+    const command = normalizeCommand(raw)
+    const { workspace, nav } = inferWorkspace(command)
+    const externalKey = inferExternalKey(command)
 
     // 1) Implementation commands take precedence over everything else, so that
     //    "유튜브 임베드 기능 추가해" is a request, not an external open.
-    if (includesAny(lowered, IMPLEMENTATION_MARKERS)) {
+    if (matchesAny(command, IMPLEMENTATION_MARKERS)) {
       return {
         mode: 'implementation-request',
         intent: 'implementation-request',
@@ -174,23 +170,23 @@ export default class IntentClassifier {
     }
 
     // 3) Briefing.
-    if (includesAny(lowered, BRIEFING_MARKERS)) {
+    if (matchesAny(command, BRIEFING_MARKERS)) {
       return { mode: 'briefing', intent: 'daily-briefing', confidence: 0.95, targetWorkspace: 'company', navigationTarget: 'company', externalKey: null }
     }
 
     // 4) Control phrases — start / operate the AI Company loop (→ Autopilot).
-    if (includesAny(lowered, CONTROL_MARKERS)) {
+    if (matchesAny(command, CONTROL_MARKERS)) {
       return { mode: 'navigation', intent: 'autopilot-control', confidence: 0.9, targetWorkspace: 'autopilot', navigationTarget: 'autopilot', externalKey: null }
     }
 
     // 5) Explicit navigation ("... 열어/이동/보여줘").
-    if (includesAny(lowered, NAVIGATION_MARKERS) && nav) {
+    if (matchesAny(command, NAVIGATION_MARKERS) && nav) {
       return { mode: 'navigation', intent: 'navigate', confidence: 0.85, targetWorkspace: workspace, navigationTarget: nav, externalKey: null }
     }
 
     // 6) Answerable business question.
     for (const entry of ANSWER_INTENTS) {
-      if (includesAny(lowered, entry.keys)) {
+      if (matchesAny(command, entry.keys)) {
         return { mode: 'answer', intent: entry.intent, confidence: 0.85, targetWorkspace: workspace, navigationTarget: nav, externalKey: null }
       }
     }
