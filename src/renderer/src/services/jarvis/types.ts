@@ -6,6 +6,7 @@ export type JarvisMode =
   | 'implementation-request'
   | 'navigation'
   | 'briefing'
+  | 'external-action'
   | 'unknown'
 
 export interface ParsedCommand {
@@ -24,6 +25,8 @@ export interface JarvisClassification {
   targetWorkspace: string
   /** Navigation target view name, when the command implies navigation. */
   navigationTarget: string | null
+  /** Approved external-link key, when the command is an external action. */
+  externalKey: string | null
 }
 
 export interface ToolCall {
@@ -76,6 +79,16 @@ export interface JarvisImplementationResult {
   suggestedCommands: string[]
 }
 
+/** Structured result for External Action Mode (opening an approved link). */
+export interface JarvisExternalResult {
+  commandUnderstood: string
+  target: string
+  action: string
+  url: string | null
+  ok: boolean
+  error?: string
+}
+
 export interface JarvisExecutionResult {
   mode: JarvisMode
   intent: string
@@ -85,6 +98,7 @@ export interface JarvisExecutionResult {
   error?: string
   answer?: JarvisAnswerResult
   implementation?: JarvisImplementationResult
+  external?: JarvisExternalResult
   navigationTarget?: string | null
   suggestedCommands?: string[]
 }
@@ -101,6 +115,7 @@ export interface JarvisState {
   lastError?: string
   answer?: JarvisAnswerResult
   implementation?: JarvisImplementationResult
+  external?: JarvisExternalResult
   navigationTarget?: string | null
   suggestedCommands: string[]
 }

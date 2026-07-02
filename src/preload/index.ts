@@ -31,6 +31,14 @@ const api = {
       }
     }
   },
+  external: {
+    /**
+     * Open an APPROVED external link by key (e.g. 'youtube'). The main process
+     * validates the key against its whitelist — raw URLs are never accepted.
+     */
+    open: (key: string): Promise<{ ok: boolean; key?: string; url?: string; error?: string }> =>
+      ipcRenderer.invoke('external:open', key)
+  },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>
       ipcRenderer.invoke('company:start'),

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { runCoding } from './coding/engine'
 import { CompanyStartupService } from './companyStartupService'
+import { openApprovedExternal } from './externalLinks'
 import type { CodingExecRequest } from '@shared/providers'
 
 /**
@@ -68,6 +69,11 @@ app.whenReady().then(() => {
   )
 
   ipcMain.handle('company:start', () => startupService.start())
+
+  // Safe external-link opener: the renderer sends an approved key only; the
+  // whitelist in externalLinks.ts maps it to a vetted URL. No raw URL, shell
+  // execution, or filesystem access is exposed.
+  ipcMain.handle('external:open', (_event, key: unknown) => openApprovedExternal(key))
 
   createWindow()
 

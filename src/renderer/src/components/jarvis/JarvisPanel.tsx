@@ -12,7 +12,9 @@ import {
   Compass,
   ArrowRight,
   ShieldAlert,
-  GitBranch
+  GitBranch,
+  ExternalLink,
+  XCircle
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -42,10 +44,12 @@ const COMMAND_CHIPS = [
   '이번 달 실적',
   '미완료 활동',
   '클로징 예정 고객',
+  '유튜브 켜줘',
+  '네이버 열어줘',
+  '구글 열어줘',
+  'SJ OS 깃허브 열어줘',
   '오토파일럿 열어줘',
-  '회사 시작',
-  'FC OS에 팀별 필터 추가해',
-  '자비스가 오토파일럿 실행하게 해'
+  'FC OS에 팀별 필터 추가해'
 ]
 
 function statusLabel(status: JarvisStatus): string {
@@ -83,6 +87,7 @@ const MODE_META: Record<JarvisMode, { label: string; classes: string }> = {
   briefing: { label: 'Briefing', classes: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' },
   'implementation-request': { label: 'Implementation', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
   navigation: { label: 'Navigation', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
+  'external-action': { label: 'External', classes: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
   unknown: { label: 'Unknown', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
 }
 
@@ -162,6 +167,7 @@ export default function JarvisPanel(): JSX.Element | null {
       toolCalls: result.toolCalls,
       answer: result.answer,
       implementation: result.implementation,
+      external: result.external,
       navigationTarget: result.navigationTarget ?? null,
       suggestedCommands: result.suggestedCommands ?? []
     })
@@ -186,6 +192,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
   const answer = state.answer
   const impl = state.implementation
+  const external = state.external
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
@@ -306,6 +313,35 @@ export default function JarvisPanel(): JSX.Element | null {
                       해당 워크스페이스로 이동
                     </button>
                   ) : null}
+                </div>
+              </Card>
+            ) : null}
+
+            {/* External action result */}
+            {external ? (
+              <Card title="External action" icon={<ExternalLink className="h-4 w-4 text-sky-300" />}>
+                <div className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Field label="명령 이해" value={external.commandUnderstood} />
+                    <Field label="대상" value={external.target} />
+                    <Field label="동작" value={external.action} />
+                    <Field
+                      label="상태"
+                      value={external.ok ? 'completed' : 'failed'}
+                      tone={external.ok ? 'text-emerald-300' : 'text-rose-300'}
+                    />
+                  </div>
+                  {external.ok ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+                      <CheckCircle2 className="h-4 w-4" />
+                      승인된 외부 URL을 시스템 브라우저에서 열었습니다{external.url ? ` · ${external.url}` : ''}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                      <XCircle className="h-4 w-4" />
+                      {external.error ?? '외부 링크를 열지 못했습니다.'}
+                    </div>
+                  )}
                 </div>
               </Card>
             ) : null}

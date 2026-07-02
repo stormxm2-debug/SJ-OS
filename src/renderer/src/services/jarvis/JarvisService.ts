@@ -5,10 +5,12 @@ import ConversationHistory from './ConversationHistory'
 import IntentClassifier from './IntentClassifier'
 import AnswerService from './AnswerService'
 import ImplementationIntake, { WORKSPACE_LABEL } from './ImplementationIntake'
+import ExternalActionService from './ExternalActionService'
 import type {
   JarvisAnswerResult,
   JarvisClassification,
   JarvisExecutionResult,
+  JarvisExternalResult,
   JarvisImplementationResult,
   JarvisState,
   ParsedCommand,
@@ -81,6 +83,7 @@ export class JarvisService {
   private classifier = new IntentClassifier()
   private answers = new AnswerService()
   private intake = new ImplementationIntake()
+  private externals = new ExternalActionService()
 
   private state: JarvisState = {
     isOpen: false,
@@ -134,6 +137,7 @@ export class JarvisService {
     this.state.lastError = undefined
     this.state.answer = undefined
     this.state.implementation = undefined
+    this.state.external = undefined
     this.state.navigationTarget = null
     this.state.suggestedCommands = []
     this.history.addUserMessage(command)
@@ -157,6 +161,9 @@ export class JarvisService {
         case 'navigation':
           result = this.handleNavigation(classification)
           break
+        case 'external-action':
+          result = await this.handleExternal(classification)
+          break
         default:
           result = this.handleUnknown(command)
       }
@@ -166,6 +173,7 @@ export class JarvisService {
       this.state.toolCalls = result.toolCalls
       this.state.answer = result.answer
       this.state.implementation = result.implementation
+      this.state.external = result.external
       this.state.navigationTarget = result.navigationTarget ?? null
       this.state.suggestedCommands = result.suggestedCommands ?? []
       this.history.addAssistantMessage(result.response, result.toolCalls)
@@ -290,6 +298,43 @@ export class JarvisService {
       answer,
       navigationTarget: classification.navigationTarget,
       suggestedCommands: info.suggested
+    }
+  }
+
+  private async handleExternal(classification: JarvisClassification): Promise<JarvisExecutionResult> {
+    const key = classification.externalKey
+    const target = key ? this.externals.labelFor(key) : '외부 링크'
+    const suggested = ['유튜브 켜줘', '네이버 열어줘', '구글 열어줘', 'SJ OS 깃허브 열어줘']
+    if (!key) {
+      return {
+        mode: 'external-action',
+        intent: 'external-open',
+        response: '열 수 있는 승인된 외부 링크를 찾지 못했습니다.',
+        toolCalls: [],
+        status: 'error',
+        suggestedCommands: suggested
+      }
+    }
+    const outcome = await this.externals.open(key)
+    const external: JarvisExternalResult = {
+      commandUnderstood: `${target} 열기`,
+      target,
+      action: '승인된 외부 URL을 시스템 브라우저에서 엽니다',
+      url: outcome.url ?? null,
+      ok: outcome.ok,
+      error: outcome.error
+    }
+    const response = outcome.ok
+      ? `${target}을(를) 시스템 브라우저에서 열었습니다.`
+      : `${target}을(를) 열지 못했습니다. ${outcome.error ?? '알 수 없는 오류입니다.'}`
+    return {
+      mode: 'external-action',
+      intent: 'external-open',
+      response,
+      toolCalls: [this.tool('openExternal', `${target} · ${outcome.ok ? 'opened' : 'failed'}`)],
+      status: outcome.ok ? 'completed' : 'error',
+      external,
+      suggestedCommands: suggested
     }
   }
 

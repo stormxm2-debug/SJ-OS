@@ -58,6 +58,24 @@ const NAVIGATION_MARKERS = ['열어', '열어줘', '이동', '화면으로', '�
 const BRIEFING_MARKERS = ['브리핑', 'briefing', '오늘 요약', '전체 요약']
 
 /**
+ * Approved external-link aliases. Detection yields only a KEY — never a URL.
+ * The main process maps the key to a whitelisted URL (see main/externalLinks).
+ */
+const EXTERNAL_KEYWORDS: Array<{ key: string; aliases: string[] }> = [
+  { key: 'youtube', aliases: ['유튜브', 'youtube'] },
+  { key: 'naver', aliases: ['네이버', 'naver'] },
+  { key: 'google', aliases: ['구글', 'google'] },
+  { key: 'github', aliases: ['깃허브', 'github', 'sj os 깃허브'] }
+]
+
+function inferExternalKey(lowered: string): string | null {
+  for (const entry of EXTERNAL_KEYWORDS) {
+    if (entry.aliases.some((a) => lowered.includes(a))) return entry.key
+  }
+  return null
+}
+
+/**
  * Control phrases that start/operate the AI Company loop. These route to the
  * Autopilot workspace (Answer/Nav card explains Start Company / Run one loop
  * step). Implementation markers are checked first, so "자비스가 오토파일럿
@@ -128,46 +146,61 @@ export default class IntentClassifier {
     const compact = raw.trim().replace(/\s+/g, ' ')
     const lowered = compact.toLowerCase()
     const { workspace, nav } = inferWorkspace(lowered)
+    const externalKey = inferExternalKey(lowered)
 
-    // 1) Implementation commands take precedence over everything else.
+    // 1) Implementation commands take precedence over everything else, so that
+    //    "유튜브 임베드 기능 추가해" is a request, not an external open.
     if (includesAny(lowered, IMPLEMENTATION_MARKERS)) {
       return {
         mode: 'implementation-request',
         intent: 'implementation-request',
         confidence: 0.9,
         targetWorkspace: workspace,
-        navigationTarget: nav
+        navigationTarget: nav,
+        externalKey: null
       }
     }
 
-    // 2) Briefing.
+    // 2) Approved external action ("유튜브 켜줘", "SJ OS 깃허브 열어줘").
+    if (externalKey) {
+      return {
+        mode: 'external-action',
+        intent: 'external-open',
+        confidence: 0.9,
+        targetWorkspace: 'external',
+        navigationTarget: null,
+        externalKey
+      }
+    }
+
+    // 3) Briefing.
     if (includesAny(lowered, BRIEFING_MARKERS)) {
-      return { mode: 'briefing', intent: 'daily-briefing', confidence: 0.95, targetWorkspace: 'company', navigationTarget: 'company' }
+      return { mode: 'briefing', intent: 'daily-briefing', confidence: 0.95, targetWorkspace: 'company', navigationTarget: 'company', externalKey: null }
     }
 
-    // 3) Control phrases — start / operate the AI Company loop (→ Autopilot).
+    // 4) Control phrases — start / operate the AI Company loop (→ Autopilot).
     if (includesAny(lowered, CONTROL_MARKERS)) {
-      return { mode: 'navigation', intent: 'autopilot-control', confidence: 0.9, targetWorkspace: 'autopilot', navigationTarget: 'autopilot' }
+      return { mode: 'navigation', intent: 'autopilot-control', confidence: 0.9, targetWorkspace: 'autopilot', navigationTarget: 'autopilot', externalKey: null }
     }
 
-    // 4) Explicit navigation ("... 열어/이동/보여줘").
+    // 5) Explicit navigation ("... 열어/이동/보여줘").
     if (includesAny(lowered, NAVIGATION_MARKERS) && nav) {
-      return { mode: 'navigation', intent: 'navigate', confidence: 0.85, targetWorkspace: workspace, navigationTarget: nav }
+      return { mode: 'navigation', intent: 'navigate', confidence: 0.85, targetWorkspace: workspace, navigationTarget: nav, externalKey: null }
     }
 
-    // 5) Answerable business question.
+    // 6) Answerable business question.
     for (const entry of ANSWER_INTENTS) {
       if (includesAny(lowered, entry.keys)) {
-        return { mode: 'answer', intent: entry.intent, confidence: 0.85, targetWorkspace: workspace, navigationTarget: nav }
+        return { mode: 'answer', intent: entry.intent, confidence: 0.85, targetWorkspace: workspace, navigationTarget: nav, externalKey: null }
       }
     }
 
-    // 6) Bare workspace name ("FC OS", "라이브 컴퍼니", "승인센터") → navigation.
+    // 7) Bare workspace name ("FC OS", "라이브 컴퍼니", "승인센터") → navigation.
     if (nav) {
-      return { mode: 'navigation', intent: 'navigate', confidence: 0.7, targetWorkspace: workspace, navigationTarget: nav }
+      return { mode: 'navigation', intent: 'navigate', confidence: 0.7, targetWorkspace: workspace, navigationTarget: nav, externalKey: null }
     }
 
-    // 7) Fallback.
-    return { mode: 'unknown', intent: 'unknown', confidence: 0.3, targetWorkspace: workspace, navigationTarget: nav }
+    // 8) Fallback.
+    return { mode: 'unknown', intent: 'unknown', confidence: 0.3, targetWorkspace: workspace, navigationTarget: nav, externalKey: null }
   }
 }
