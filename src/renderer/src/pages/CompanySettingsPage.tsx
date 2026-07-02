@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, ShieldCheck, Cpu } from 'lucide-react'
 import type {
   CompanySettings,
   AutonomyLevel,
@@ -11,6 +11,7 @@ import Chip from '@renderer/components/ui/Chip'
 import Toggle from '@renderer/components/ui/Toggle'
 import { ROLE_LABEL } from '@renderer/lib/companyMeta'
 import { companySettings } from '@renderer/data/mockManagement'
+import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 
 const ROLES: WorkerRole[] = [
   'cto',
@@ -36,6 +37,7 @@ const POLICIES: { key: keyof ApprovalPolicy; label: string }[] = [
 
 export default function CompanySettingsPage(): JSX.Element {
   const [settings, setSettings] = useState<CompanySettings>(companySettings)
+  const gptConfig = jarvisGptBrainService.getConfig()
 
   function update(patch: Partial<CompanySettings>): void {
     setSettings((prev) => ({ ...prev, ...patch }))
@@ -159,6 +161,41 @@ export default function CompanySettingsPage(): JSX.Element {
             </li>
           ))}
         </ul>
+      </Card>
+
+      <Card title="AI · GPT Brain (Jarvis)">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-fuchsia-300" />
+              <span className="text-sm text-slate-200">OpenAI 프록시</span>
+            </div>
+            <Chip tone={gptConfig.enabled ? 'emerald' : 'slate'}>
+              {gptConfig.enabled ? 'Enabled' : 'Disabled'}
+            </Chip>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+              <div className="text-[11px] text-slate-500">Proxy URL</div>
+              <div className="mt-0.5 truncate text-sm text-slate-200" title={gptConfig.proxyUrl}>
+                {gptConfig.proxyUrl}
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+              <div className="text-[11px] text-slate-500">Model</div>
+              <div className="mt-0.5 truncate text-sm text-slate-200">{gptConfig.modelLabel}</div>
+            </div>
+          </div>
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              OpenAI API 키는 <strong>백엔드 프록시에만</strong> 저장됩니다. SJ OS 프론트엔드에는 API 키를
+              절대 입력하지 마세요. 이 화면에서는 키를 입력할 수 없습니다 — 설정 안내만 제공합니다.
+              활성화는 프록시의 환경변수(OPENAI_ENABLED, OPENAI_API_KEY)와 렌더러의 VITE_AI_PROXY_ENABLED /
+              VITE_AI_PROXY_URL 로 제어합니다. 자세한 내용은 docs/OPENAI_PROXY_SETUP.md 를 참고하세요.
+            </div>
+          </div>
+        </div>
       </Card>
 
       <Card title="Approval Policy">

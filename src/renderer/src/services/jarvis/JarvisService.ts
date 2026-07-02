@@ -6,11 +6,14 @@ import IntentClassifier from './IntentClassifier'
 import AnswerService from './AnswerService'
 import ImplementationIntake, { WORKSPACE_LABEL } from './ImplementationIntake'
 import ExternalActionService from './ExternalActionService'
+import { jarvisGptBrainService } from './JarvisGptBrainService'
+import type { GptMode } from './JarvisGptBrainService'
 import type {
   JarvisAnswerResult,
   JarvisClassification,
   JarvisExecutionResult,
   JarvisExternalResult,
+  JarvisGptResult,
   JarvisImplementationResult,
   JarvisState,
   ParsedCommand,
@@ -84,6 +87,7 @@ export class JarvisService {
   private answers = new AnswerService()
   private intake = new ImplementationIntake()
   private externals = new ExternalActionService()
+  private gpt = jarvisGptBrainService
 
   private state: JarvisState = {
     isOpen: false,
@@ -138,6 +142,8 @@ export class JarvisService {
     this.state.answer = undefined
     this.state.implementation = undefined
     this.state.external = undefined
+    this.state.gpt = undefined
+    this.state.source = undefined
     this.state.navigationTarget = null
     this.state.suggestedCommands = []
     this.history.addUserMessage(command)
@@ -165,7 +171,9 @@ export class JarvisService {
           result = await this.handleExternal(classification)
           break
         default:
-          result = this.handleUnknown(command)
+          // Local-first: if the command is not a deterministic local intent and
+          // the GPT brain is enabled, fall back to the proxy-backed GPT brain.
+          result = this.gpt.isEnabled() ? await this.askGpt(command) : this.handleUnknown(command)
       }
 
       this.state.status = result.status
@@ -174,6 +182,9 @@ export class JarvisService {
       this.state.answer = result.answer
       this.state.implementation = result.implementation
       this.state.external = result.external
+      this.state.gpt = result.gpt
+      this.state.source = result.source
+      this.state.mode = result.mode
       this.state.navigationTarget = result.navigationTarget ?? null
       this.state.suggestedCommands = result.suggestedCommands ?? []
       this.history.addAssistantMessage(result.response, result.toolCalls)
@@ -338,6 +349,43 @@ export class JarvisService {
     }
   }
 
+  /**
+   * Ask the proxy-backed GPT brain. Used as the fallback for non-deterministic
+   * commands and by the UI's explicit "GPT에게 물어보기" action. When the brain
+   * is disabled it returns a setup-guidance result (never throws).
+   */
+  async askGpt(command: string, mode?: GptMode): Promise<JarvisExecutionResult> {
+    const brain = await this.gpt.ask(command, mode)
+    const gpt: JarvisGptResult = {
+      source: brain.source,
+      mode: brain.mode,
+      model: brain.model,
+      disabled: brain.disabled,
+      error: brain.error,
+      canRetry: brain.canRetry
+    }
+    const toolCalls: ToolCall[] = brain.disabled
+      ? []
+      : [this.tool('callAiProxy', `POST /ai/chat · mode ${brain.mode} · ${brain.source}`)]
+    const status = brain.success ? 'completed' : brain.disabled ? 'completed' : 'error'
+    return {
+      mode: 'gpt',
+      intent: brain.mode,
+      response: brain.answer,
+      toolCalls,
+      status,
+      gpt,
+      source: 'gpt',
+      error: brain.error,
+      suggestedCommands: [
+        '오늘 조직 상황 브리핑 해줘',
+        '이번 달 실적에서 문제점 알려줘',
+        '미활동 FC 관리 전략 짜줘',
+        'FC OS에 필요한 다음 기능 추천해줘'
+      ]
+    }
+  }
+
   private handleUnknown(command: string): JarvisExecutionResult {
     // Fall back to the legacy parser/executor for backwards compatibility.
     const parsed = this.parser.parse(command)
@@ -364,6 +412,13 @@ export class JarvisService {
       ].join('\n'),
       toolCalls: [],
       status: 'completed',
+      source: 'local',
+      gpt: {
+        source: 'disabled',
+        mode: 'unknown-fallback',
+        disabled: true,
+        canRetry: false
+      },
       suggestedCommands: [
         '오늘 브리핑',
         'FC OS',

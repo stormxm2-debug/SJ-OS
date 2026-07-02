@@ -1,0 +1,24 @@
+# Render deployment blueprint for the SJ OS AI Proxy.
+# The proxy keeps OPENAI_API_KEY server-side. Set secrets in the Render
+# dashboard (sync: false) — NEVER commit real keys to this file.
+services:
+  - type: web
+    name: sj-ai-proxy
+    runtime: node
+    rootDir: sj-ai-proxy
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: OPENAI_ENABLED
+        value: "false"
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: OPENAI_TIMEOUT_MS
+        value: "20000"
+      # Set these in the Render dashboard — do NOT hardcode secrets here.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false

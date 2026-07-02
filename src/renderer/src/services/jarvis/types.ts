@@ -7,7 +7,11 @@ export type JarvisMode =
   | 'navigation'
   | 'briefing'
   | 'external-action'
+  | 'gpt'
   | 'unknown'
+
+/** Where a Jarvis answer came from. */
+export type JarvisSource = 'local' | 'gpt'
 
 export interface ParsedCommand {
   raw: string
@@ -89,6 +93,18 @@ export interface JarvisExternalResult {
   error?: string
 }
 
+/** Structured result for GPT Brain Mode (proxy-backed). */
+export interface JarvisGptResult {
+  source: 'gpt' | 'fallback' | 'disabled' | 'error'
+  mode: string
+  model?: string
+  /** True when the GPT brain/proxy is disabled — show setup guidance. */
+  disabled?: boolean
+  error?: string
+  /** True when a retry is safe. */
+  canRetry?: boolean
+}
+
 export interface JarvisExecutionResult {
   mode: JarvisMode
   intent: string
@@ -99,6 +115,8 @@ export interface JarvisExecutionResult {
   answer?: JarvisAnswerResult
   implementation?: JarvisImplementationResult
   external?: JarvisExternalResult
+  gpt?: JarvisGptResult
+  source?: JarvisSource
   navigationTarget?: string | null
   suggestedCommands?: string[]
 }
@@ -116,6 +134,8 @@ export interface JarvisState {
   answer?: JarvisAnswerResult
   implementation?: JarvisImplementationResult
   external?: JarvisExternalResult
+  gpt?: JarvisGptResult
+  source?: JarvisSource
   navigationTarget?: string | null
   suggestedCommands: string[]
 }

@@ -1,0 +1,19 @@
+{
+  "name": "sj-ai-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SJ OS AI Proxy — a minimal backend that keeps the OpenAI API key server-side and exposes POST /ai/chat to the SJ OS Jarvis brain.",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "openai": "^4.67.3"
+  }
+}

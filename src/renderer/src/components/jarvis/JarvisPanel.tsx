@@ -19,7 +19,11 @@ import {
   MicOff,
   Volume2,
   VolumeX,
-  ShieldCheck
+  ShieldCheck,
+  Brain,
+  Cpu,
+  RefreshCw,
+  CloudOff
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -27,6 +31,7 @@ import Card from '@renderer/components/ui/Card'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import { voiceService } from '@renderer/services/jarvis/VoiceService'
 import type { VoiceStatus } from '@renderer/services/jarvis/VoiceService'
+import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 import { normalizeCommand } from '@renderer/services/jarvis/normalize'
 import type { JarvisMode, JarvisState, JarvisStatus } from '@renderer/services/jarvis/types'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -96,6 +101,7 @@ const MODE_META: Record<JarvisMode, { label: string; classes: string }> = {
   'implementation-request': { label: 'Implementation', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
   navigation: { label: 'Navigation', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
   'external-action': { label: 'External', classes: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
+  gpt: { label: 'GPT Brain', classes: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300' },
   unknown: { label: 'Unknown', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
 }
 
@@ -116,8 +122,10 @@ export default function JarvisPanel(): JSX.Element | null {
   const [interimTranscript, setInterimTranscript] = useState('')
   const [voiceError, setVoiceError] = useState<string | null>(null)
   const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false)
+  const [lastCommand, setLastCommand] = useState('')
   const recognitionSupported = voice.isRecognitionSupported()
   const synthesisSupported = voice.isSynthesisSupported()
+  const gptConfig = jarvisGptBrainService.getConfig()
   const { navigate } = useNavigation()
 
   useEffect(() => {
@@ -169,11 +177,7 @@ export default function JarvisPanel(): JSX.Element | null {
     return undefined
   }, [state.response, state.status])
 
-  const runCommand = async (command: string): Promise<void> => {
-    const trimmed = command.trim()
-    if (!trimmed) return
-    setDraft('')
-    const result = await service.executeCommand(trimmed)
+  const applyResult = (result: Awaited<ReturnType<typeof service.executeCommand>>): void => {
     setState({
       ...service.getState(),
       response: result.response,
@@ -183,6 +187,8 @@ export default function JarvisPanel(): JSX.Element | null {
       answer: result.answer,
       implementation: result.implementation,
       external: result.external,
+      gpt: result.gpt,
+      source: result.source,
       navigationTarget: result.navigationTarget ?? null,
       suggestedCommands: result.suggestedCommands ?? []
     })
@@ -190,6 +196,25 @@ export default function JarvisPanel(): JSX.Element | null {
     if (voiceOutputEnabled) {
       voice.speak(result.response)
     }
+  }
+
+  const runCommand = async (command: string): Promise<void> => {
+    const trimmed = command.trim()
+    if (!trimmed) return
+    setDraft('')
+    setLastCommand(trimmed)
+    const result = await service.executeCommand(trimmed)
+    applyResult(result)
+  }
+
+  // Explicitly route a command to the GPT brain (bypasses the local router).
+  const askGpt = async (command: string): Promise<void> => {
+    const trimmed = command.trim()
+    if (!trimmed) return
+    setLastCommand(trimmed)
+    setState({ ...service.getState(), status: 'running', mode: 'gpt', response: 'GPT 브레인에 질의하는 중입니다…' })
+    const result = await service.askGpt(trimmed)
+    applyResult(result)
   }
 
   const submitCommand = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -256,6 +281,7 @@ export default function JarvisPanel(): JSX.Element | null {
   const answer = state.answer
   const impl = state.implementation
   const external = state.external
+  const gpt = state.gpt
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
@@ -280,6 +306,18 @@ export default function JarvisPanel(): JSX.Element | null {
               <span className="inline-flex items-center gap-1 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-300">
                 <Volume2 className="h-3 w-3" />
                 Voice
+              </span>
+            ) : null}
+            {state.source ? (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                  state.source === 'gpt'
+                    ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300'
+                    : 'border-slate-700 bg-slate-800/70 text-slate-300'
+                }`}
+              >
+                {state.source === 'gpt' ? <Cpu className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
+                {state.source === 'gpt' ? 'GPT' : 'Local'}
               </span>
             ) : null}
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${MODE_META[state.mode].classes}`}>
@@ -323,6 +361,15 @@ export default function JarvisPanel(): JSX.Element | null {
                   >
                     <SendHorizontal className="h-4 w-4" />
                     Run
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => askGpt(draft)}
+                    title={gptConfig.enabled ? 'GPT 브레인에 질의' : 'GPT 브레인이 비활성화됨 (설정 안내 표시)'}
+                    className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-2.5 text-sm font-medium text-fuchsia-300 transition hover:bg-fuchsia-500/20"
+                  >
+                    <Brain className="h-4 w-4" />
+                    GPT
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -507,6 +554,50 @@ export default function JarvisPanel(): JSX.Element | null {
                       {external.error ?? '외부 링크를 열지 못했습니다.'}
                     </div>
                   )}
+                </div>
+              </Card>
+            ) : null}
+
+            {/* GPT brain result */}
+            {gpt ? (
+              <Card title="GPT brain" icon={<Brain className="h-4 w-4 text-fuchsia-300" />}>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-0.5 text-fuchsia-300">
+                      <Cpu className="h-3 w-3" /> {gpt.source}
+                    </span>
+                    <span className="rounded-full border border-slate-700 bg-slate-800/60 px-2 py-0.5">{gpt.mode}</span>
+                    {gpt.model ? <span>· {gpt.model}</span> : null}
+                  </div>
+
+                  {gpt.disabled ? (
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                      <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div>
+                        GPT 브레인이 비활성화되어 있습니다. 설정 → “AI · GPT Brain” 안내와
+                        docs/OPENAI_PROXY_SETUP.md 를 참고해 프록시를 설정하세요. API 키는 프론트엔드에
+                        넣지 마세요.
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {gpt.error ? (
+                    <div className="flex items-start gap-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div>{gpt.error}</div>
+                    </div>
+                  ) : null}
+
+                  {gpt.canRetry && lastCommand ? (
+                    <button
+                      type="button"
+                      onClick={() => askGpt(lastCommand)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-xs font-medium text-fuchsia-300 transition hover:bg-fuchsia-500/20"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      다시 시도
+                    </button>
+                  ) : null}
                 </div>
               </Card>
             ) : null}

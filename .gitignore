@@ -8,3 +8,6 @@ dist-electron/
 .env
 .env.*
 !.env.example
+
+# Editor settings (do not commit local IDE config)
+.vscode/
