@@ -8,6 +8,7 @@ export type View =
   | { name: 'cto' }
   | { name: 'qa' }
   | { name: 'release' }
+  | { name: 'devops' }
   | { name: 'autopilot' }
   | { name: 'devos' }
   | { name: 'pm' }
