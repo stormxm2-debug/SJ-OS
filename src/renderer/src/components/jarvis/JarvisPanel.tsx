@@ -823,7 +823,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-[#0a1030]/70 via-[#151038]/70 to-[#0a1030]/70 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-[#0a1030]/85 via-[#151038]/85 to-[#0a1030]/85 p-4"
       onClick={(event) => {
         // Defensive recovery: clicking the backdrop (never bubbled clicks from
         // the panel itself) closes Jarvis, so the full-screen overlay can always
@@ -840,7 +840,7 @@ export default function JarvisPanel(): JSX.Element | null {
           <span className="pointer-events-none absolute -left-10 -top-16 h-40 w-40 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 blur-3xl" />
           <div className="relative flex items-center gap-3">
             <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/40">
-              <span className="absolute inset-0 animate-pulse rounded-2xl bg-white/10" />
+              <span className="pointer-events-none absolute inset-0 animate-pulse rounded-2xl bg-white/10" />
               <Bot className="relative h-5 w-5" />
             </div>
             <div>

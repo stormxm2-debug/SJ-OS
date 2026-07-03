@@ -112,7 +112,8 @@ export default function JarvisAiCore({ status }: { status: AiCoreStatus }): JSX.
     status === 'executing'
 
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-3">
+    // Purely decorative — never captures clicks (interaction-lock safety).
+    <div className="pointer-events-none flex flex-col items-center justify-center gap-3 py-3">
       <div className="relative flex h-28 w-28 items-center justify-center">
         {/* Soft radial aura */}
         <span

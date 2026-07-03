@@ -35,7 +35,7 @@ export default function Topbar(): JSX.Element {
   const pending = approvals.filter((a) => a.status === 'pending').length
 
   return (
-    <header className="flex items-center justify-between border-b border-slate-800 bg-white/80 px-6 py-4 shadow-sm backdrop-blur">
+    <header className="flex items-center justify-between border-b border-slate-800 bg-white px-6 py-4 shadow-sm">
       <div>
         <h1 className="text-lg font-semibold text-slate-100">{title}</h1>
         <p className="text-xs text-slate-500">{subtitle}</p>
