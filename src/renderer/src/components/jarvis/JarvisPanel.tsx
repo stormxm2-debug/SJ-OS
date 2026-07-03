@@ -33,7 +33,7 @@ import {
   Check,
   Layers
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import Card from '@renderer/components/ui/Card'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
@@ -51,7 +51,16 @@ import type { GatewayStatusResult } from '@renderer/services/jarvis/ElectronAiGa
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 import { normalizeCommand } from '@renderer/services/jarvis/normalize'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
-import type { JarvisMode, JarvisState, JarvisStatus } from '@renderer/services/jarvis/types'
+import { startSession } from '@renderer/services/jarvis/commandSession'
+import type {
+  JarvisCommandSession,
+  JarvisMode,
+  JarvisState,
+  JarvisStatus,
+  JarvisTimelineStepStatus
+} from '@renderer/services/jarvis/types'
+import JarvisAiCore, { type AiCoreStatus } from './JarvisAiCore'
+import JarvisCommandTimeline from './JarvisCommandTimeline'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View } from '@renderer/navigation/types'
 
@@ -194,6 +203,9 @@ export default function JarvisPanel(): JSX.Element | null {
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics>(() => voice.getDiagnostics())
   const [lastCommand, setLastCommand] = useState('')
   const [promptCopied, setPromptCopied] = useState(false)
+  // Fast-UX command session + progressive timeline reveal.
+  const [session, setSession] = useState<JarvisCommandSession | null>(null)
+  const [revealed, setRevealed] = useState(0)
   const recognitionSupported = voice.isRecognitionSupported()
   const synthesisSupported = voice.isSynthesisSupported()
 
@@ -291,6 +303,18 @@ export default function JarvisPanel(): JSX.Element | null {
     return undefined
   }, [state.response, state.status])
 
+  // Progressive timeline reveal: advance one step at a time so the command
+  // timeline animates even though local processing is near-instant. The
+  // optimistic "analyzing" session holds until the finalized session arrives.
+  useEffect(() => {
+    if (!session || session.status === 'analyzing') return undefined
+    if (revealed >= session.steps.length) return undefined
+    const timer = window.setTimeout(() => {
+      setRevealed((r) => Math.min(r + 1, session.steps.length))
+    }, 200)
+    return () => window.clearTimeout(timer)
+  }, [session, revealed])
+
   const applyResult = (result: Awaited<ReturnType<typeof service.executeCommand>>): void => {
     setState({
       ...service.getState(),
@@ -318,9 +342,18 @@ export default function JarvisPanel(): JSX.Element | null {
     if (!trimmed) return
     setDraft('')
     setLastCommand(trimmed)
+    // Optimistic UI: show "명령 수신 완료" + timeline instantly, before any
+    // processing runs, so Jarvis feels immediate even if later steps take time.
+    setSession(startSession(trimmed, new Date().toISOString()))
+    setRevealed(1)
     try {
       const result = await service.executeCommand(trimmed)
       applyResult(result)
+      if (result.session) {
+        // Adopt the finalized session and replay its timeline progressively.
+        setSession(result.session)
+        setRevealed(1)
+      }
     } finally {
       // Defensive recovery: always resync from the authoritative service state so
       // the panel can never be left stuck showing 'running' after an unexpected
@@ -533,6 +566,37 @@ export default function JarvisPanel(): JSX.Element | null {
     }
     selectFallback()
   }
+
+  // The command session with per-step statuses resolved for the current reveal
+  // frame (steps before `revealed` show their final status; the current one
+  // shows running; the rest stay pending).
+  const displayedSession = useMemo<JarvisCommandSession | null>(() => {
+    if (!session) return null
+    const steps = session.steps.map((step, index) => {
+      let status: JarvisTimelineStepStatus
+      if (index < revealed) status = step.status
+      else if (index === revealed) status = step.status === 'pending' ? 'pending' : 'running'
+      else status = 'pending'
+      return { ...step, status }
+    })
+    return { ...session, steps }
+  }, [session, revealed])
+
+  // Drive the AI Core visual from the current session phase.
+  const coreStatus = useMemo<AiCoreStatus>(() => {
+    if (!displayedSession) {
+      return state.status === 'thinking' || state.status === 'running' ? 'analyzing' : 'idle'
+    }
+    const total = displayedSession.steps.length
+    if (revealed >= total) return displayedSession.status === 'failed' ? 'failed' : 'completed'
+    const running = displayedSession.steps.find((s) => s.status === 'running')
+    if (!running) return 'analyzing'
+    if (running.label.includes('프롬프트')) return 'prompting'
+    if (running.label.includes('계획') || running.label.includes('분류') || running.label.includes('설계')) {
+      return 'planning'
+    }
+    return 'analyzing'
+  }, [displayedSession, revealed, state.status])
 
   if (!state.isOpen) {
     return null
@@ -1048,6 +1112,46 @@ export default function JarvisPanel(): JSX.Element | null {
                   </ul>
                 </div>
               </div>
+            </Card>
+
+            {/* AI Core + command execution timeline (fast UX) */}
+            <Card title="AI 코어" icon={<Cpu className="h-4 w-4 text-indigo-300" />}>
+              <JarvisAiCore status={coreStatus} />
+              {displayedSession ? (
+                <div className="mt-3 space-y-3 border-t border-slate-800 pt-3">
+                  <JarvisCommandTimeline session={displayedSession} />
+                  {displayedSession.promptPacketId ? (
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-300">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        개발 프롬프트 생성 완료
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => goToTarget('devprompt')}
+                        className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/20"
+                      >
+                        <ArrowRight className="h-3 w-3" />
+                        프롬프트 센터로 이동
+                      </button>
+                    </div>
+                  ) : null}
+                  {displayedSession.status === 'failed' ? (
+                    <button
+                      type="button"
+                      onClick={() => runCommand(displayedSession.command)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      다시 시도
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-1 text-center text-xs text-slate-500">
+                  명령을 입력하면 실행 타임라인이 여기에 표시됩니다.
+                </p>
+              )}
             </Card>
 
             <Card title="자비스 응답" icon={<Bot className="h-4 w-4 text-indigo-300" />}>

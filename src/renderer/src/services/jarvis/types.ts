@@ -142,6 +142,50 @@ export interface JarvisGptResult {
   canRetry?: boolean
 }
 
+/**
+ * Fast-UX command category — the fast local classification bucket surfaced to
+ * the UI (a coarser view of JarvisMode). Drives the optimistic command session +
+ * AI Core visual before any heavy processing runs.
+ */
+export type JarvisCommandCategory =
+  | 'local-command'
+  | 'navigation'
+  | 'external-action'
+  | 'developer-command'
+  | 'universal-build-command'
+  | 'unknown'
+  | 'ai-needed'
+
+/** Status of a single step in the command execution timeline. */
+export type JarvisTimelineStepStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+/** One step in the command execution timeline (명령 수신 → 다음 작업 대기 …). */
+export interface JarvisTimelineStep {
+  id: string
+  label: string
+  status: JarvisTimelineStepStatus
+}
+
+/** Lifecycle of an optimistic command session. */
+export type JarvisSessionStatus = 'analyzing' | 'processing' | 'completed' | 'failed'
+
+/**
+ * An optimistic command session created the instant the CEO submits a command.
+ * It shows "명령 수신 완료" + the original command + a live execution timeline
+ * before (and while) heavy processing runs, so Jarvis feels instant.
+ */
+export interface JarvisCommandSession {
+  id: string
+  command: string
+  /** Fast local classification bucket (null while still analyzing). */
+  category: JarvisCommandCategory | null
+  receivedAt: string
+  status: JarvisSessionStatus
+  steps: JarvisTimelineStep[]
+  /** Developer Prompt Center packet id, when a prompt was generated. */
+  promptPacketId?: string | null
+}
+
 export interface JarvisExecutionResult {
   mode: JarvisMode
   intent: string
@@ -157,6 +201,7 @@ export interface JarvisExecutionResult {
   source?: JarvisSource
   navigationTarget?: string | null
   suggestedCommands?: string[]
+  session?: JarvisCommandSession
 }
 
 export interface JarvisState {
@@ -177,4 +222,6 @@ export interface JarvisState {
   source?: JarvisSource
   navigationTarget?: string | null
   suggestedCommands: string[]
+  /** The current optimistic command session + execution timeline (fast UX). */
+  session?: JarvisCommandSession
 }

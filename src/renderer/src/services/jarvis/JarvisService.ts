@@ -11,6 +11,8 @@ import { jarvisGptBrainService } from './JarvisGptBrainService'
 import type { GptMode } from './JarvisGptBrainService'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import { generateImplementationPrompt } from '@renderer/services/developer-prompt/implementationPromptGenerator'
+import { categoryFor, startSession, finalizeSession, failSession } from './commandSession'
+import type { JarvisCommandSession } from './types'
 import type {
   DeveloperPromptPriority,
   DeveloperPromptRiskLevel
@@ -177,6 +179,9 @@ export class JarvisService {
     this.state.source = undefined
     this.state.navigationTarget = null
     this.state.suggestedCommands = []
+    // Fast UX: create the optimistic command session immediately so the panel
+    // can show "명령 수신 완료" + a live timeline before any planning runs.
+    this.state.session = startSession(command, new Date().toISOString())
     this.history.addUserMessage(command)
     this.emit()
 
@@ -226,6 +231,15 @@ export class JarvisService {
       this.state.mode = result.mode
       this.state.navigationTarget = result.navigationTarget ?? null
       this.state.suggestedCommands = result.suggestedCommands ?? []
+      // Finalize the command session timeline for the fast-UX visual.
+      const promptPacketId =
+        result.implementation?.promptPacketId ?? result.universalBuild?.promptPacketId ?? null
+      const base = this.state.session ?? startSession(command, new Date().toISOString())
+      const session: JarvisCommandSession = finalizeSession(base, categoryFor(result.mode), {
+        promptPacketId
+      })
+      this.state.session = session
+      result.session = session
       this.history.addAssistantMessage(result.response, result.toolCalls)
       this.emit()
       return result
@@ -234,6 +248,8 @@ export class JarvisService {
       this.state.status = 'error'
       this.state.response = '명령 실행 중 문제가 발생했습니다.'
       this.state.lastError = message
+      const failedSession = this.state.session ? failSession(this.state.session) : undefined
+      this.state.session = failedSession
       this.history.addAssistantMessage(this.state.response)
       this.emit()
       return {
@@ -242,7 +258,8 @@ export class JarvisService {
         response: this.state.response,
         toolCalls: [],
         status: 'error',
-        error: message
+        error: message,
+        session: failedSession
       }
     }
   }

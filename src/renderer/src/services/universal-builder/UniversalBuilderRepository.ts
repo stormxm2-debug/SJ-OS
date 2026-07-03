@@ -8,6 +8,7 @@ import { classifyAppType } from './appTypeClassifier'
 import { buildPlan, buildSprintPlan, interpretGoal } from './planningEngine'
 import { planTools } from './toolOrchestrationPlanner'
 import { generateDeveloperPrompt, type PromptSource } from './developerPromptGenerator'
+import { isShoppingAutomation, shoppingAutomationPlan, shoppingAutomationToolPlan } from './shoppingAutomation'
 import type {
   NewUniversalBuildInput,
   UniversalBuildLogEntry,
@@ -181,15 +182,17 @@ export class UniversalBuilderRepository {
 
     // 1) Interpret — app type + risk.
     const classified = classifyAppType(raw)
-    // 2) Plan — modules / screens / data models / integrations.
-    const plan = buildPlan(classified.appType)
+    // 2) Plan — modules / screens / data models / integrations. Shopping-mall
+    //    automation commands get a focused automation plan + AI-tool orchestration.
+    const shoppingAuto = isShoppingAutomation(raw)
+    const plan = shoppingAuto ? shoppingAutomationPlan() : buildPlan(classified.appType)
     const sprintPlan = buildSprintPlan(classified.appType, plan, (prefix) => this.nextId(prefix))
-    const aiToolPlan = planTools(raw, classified.appType)
+    const aiToolPlan = shoppingAuto ? shoppingAutomationToolPlan() : planTools(raw, classified.appType)
     const interpretedGoal = interpretGoal(raw, classified.appType)
 
     const routingLog: string[] = [
       `명령 캡처: "${raw}"`,
-      `앱 타입 해석: ${classified.appType} (${classified.industry})`,
+      `앱 타입 해석: ${classified.appType} (${classified.industry})${shoppingAuto ? ' · 쇼핑몰 업무 자동화 포커스' : ''}`,
       `계획 생성: 모듈 ${plan.requiredModules.length} · 화면 ${plan.suggestedScreens.length} · 데이터 모델 ${plan.suggestedDataModels.length}`,
       `AI 도구 오케스트레이션: ${aiToolPlan.map((t) => t.toolName).join(', ')}`
     ]
