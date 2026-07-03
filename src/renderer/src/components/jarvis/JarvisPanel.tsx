@@ -95,6 +95,9 @@ function clearGlobalPointerLocks(): void {
   document.documentElement.style.pointerEvents = ''
 }
 
+/** Minimum push-to-talk duration; shorter clips are treated as "too short". */
+const MIN_RECORDING_MS = 800
+
 // CEO-mode quick commands — company/dev/build focus.
 const CEO_COMMAND_CHIPS = [
   '오늘 조직 상황 브리핑 해줘',
@@ -235,7 +238,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
   // Voice engines: recorder (gateway + proxy) + per-engine status + record state.
   // Command mode: short 5s auto-send cap, 10s hard safety cap.
-  const [recorder] = useState(() => new AudioRecorder(5, 10))
+  const [recorder] = useState(() => new AudioRecorder(8, 12))
   const recorderSupported = recorder.isSupported()
   const gatewayAvailable = electronAiGateway.isAvailable()
   // Default to the Electron Main AI Gateway on desktop; fall back to Web Speech
@@ -263,6 +266,13 @@ export default function JarvisPanel(): JSX.Element | null {
   const wakeEnabledRef = useRef(false)
   // Live elapsed recording time (seconds) shown while holding the mic.
   const [recordingElapsed, setRecordingElapsed] = useState(0)
+  // Why the last recording stopped (손을 뗌 / 최대 시간 도달 / 취소됨 / 오류 / 너무 짧음).
+  const [stopReason, setStopReason] = useState<string | null>(null)
+  // Cleanup for the temporary window pointerup/cancel listener armed while holding
+  // the mic (so release is detected even if the cursor leaves the button).
+  const micReleaseRef = useRef<null | (() => void)>(null)
+  // True when the current recording ended by hitting the max duration.
+  const maxReachedRef = useRef(false)
   // Last time the interaction state was reset (for the stability diagnostics).
   const [lastReset, setLastReset] = useState<string>('—')
   const gptConfig = jarvisGptBrainService.getConfig()
@@ -556,6 +566,8 @@ export default function JarvisPanel(): JSX.Element | null {
     setInterimTranscript('')
     setVoiceTiming(null)
     setRecordingElapsed(0)
+    setStopReason(null)
+    maxReachedRef.current = false
     voice.stopSpeaking()
     // Release the mic from wake-mode Web Speech while push-to-talk records.
     if (wakeEnabledRef.current) voice.stopListening()
@@ -569,15 +581,28 @@ export default function JarvisPanel(): JSX.Element | null {
         setVoiceStatus('listening')
       },
       onMaxReached: () => {
+        maxReachedRef.current = true
         setVoiceNotice('최대 녹음 시간 도달, 전사합니다')
       },
       onError: (message) => {
+        disarmMicRelease()
         setRecording(false)
         setVoiceStatus('error')
+        setStopReason('오류')
         setVoiceError(message)
       },
       onStop: (blob, _mime, durationMs) => {
+        disarmMicRelease()
         setRecording(false)
+        setVoiceStatus('idle')
+        // Guard against a too-short clip (accidental tap) — MediaRecorder may not
+        // have collected any audio yet, which would fail transcription.
+        if (!maxReachedRef.current && durationMs < MIN_RECORDING_MS) {
+          setStopReason('너무 짧음')
+          setVoiceNotice('너무 짧게 녹음되었습니다. 다시 말해주세요.')
+          return
+        }
+        setStopReason(maxReachedRef.current ? '최대 시간 도달' : '손을 뗌')
         void transcribeAndRoute(blob, durationMs)
       }
     })
@@ -647,26 +672,43 @@ export default function JarvisPanel(): JSX.Element | null {
   const voiceActive = voiceStatus === 'listening' || recording
   const canStartVoice = usesRecorder ? recorderSupported : recognitionSupported
 
+  // Remove the temporary window release listener armed while holding the mic.
+  const disarmMicRelease = (): void => {
+    micReleaseRef.current?.()
+    micReleaseRef.current = null
+  }
+
+  // Arm a ONE-TIME window pointerup/cancel listener so releasing the mouse/pen
+  // ANYWHERE stops recording — even if the cursor drifted off the button while
+  // held. This replaces the old onPointerLeave stop, which killed recording on
+  // the slightest jitter ("금방 꺼짐"). The listener removes itself on release
+  // (and via disarmMicRelease); it is never a permanent global listener.
+  const armMicRelease = (): void => {
+    disarmMicRelease()
+    const onRelease = (): void => {
+      disarmMicRelease()
+      stopVoice() // idempotent — recorder.stop() is safe even if already stopped
+    }
+    window.addEventListener('pointerup', onRelease)
+    window.addEventListener('pointercancel', onRelease)
+    micReleaseRef.current = () => {
+      window.removeEventListener('pointerup', onRelease)
+      window.removeEventListener('pointercancel', onRelease)
+    }
+  }
+
   // True push-to-talk for the recorder engines: hold to record, release to send.
-  //  - pointerdown         → start recording immediately
-  //  - pointerup           → stop + send immediately
-  //  - pointerleave/cancel → stop safely so the mic is never left open
-  //  - Space/Enter hold    → same, for keyboard accessibility
-  // No onClick is attached to the recorder button, so the trailing click after a
-  // pointer gesture can never double-trigger. Web Speech keeps a click toggle.
+  //  - pointerdown → start recording immediately + arm the window release listener
+  //  - release (pointerup/cancel anywhere) → stop + send
+  //  - Space/Enter hold → same, for keyboard accessibility
+  // No onClick / onPointerLeave is attached, so a slight cursor drift never stops
+  // recording and a trailing click can never double-trigger.
   const handleMicPointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
     if (!usesRecorder) return
     event.preventDefault()
     if (transcribing || voiceActive) return
     startVoice()
-  }
-  const handleMicPointerUp = (): void => {
-    if (!usesRecorder) return
-    if (recording) stopVoice()
-  }
-  const handleMicPointerLeave = (): void => {
-    if (!usesRecorder) return
-    if (recording) stopVoice()
+    armMicRelease()
   }
   const handleMicKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
     if (!usesRecorder) return
@@ -778,6 +820,9 @@ export default function JarvisPanel(): JSX.Element | null {
       // keeps listening in the background.
       wakeEnabledRef.current = false
       setWakeEnabled(false)
+      // Remove any armed push-to-talk window release listener.
+      micReleaseRef.current?.()
+      micReleaseRef.current = null
       voice.stopListening()
       voice.stopSpeaking()
       recorder.stop()
@@ -1186,9 +1231,6 @@ export default function JarvisPanel(): JSX.Element | null {
                       <button
                         type="button"
                         onPointerDown={handleMicPointerDown}
-                        onPointerUp={handleMicPointerUp}
-                        onPointerLeave={handleMicPointerLeave}
-                        onPointerCancel={handleMicPointerUp}
                         onKeyDown={handleMicKeyDown}
                         onKeyUp={handleMicKeyUp}
                         disabled={transcribing}
@@ -1313,6 +1355,14 @@ export default function JarvisPanel(): JSX.Element | null {
                     {(voiceTiming.routingMs / 1000).toFixed(1)}초
                   </p>
                 ) : null}
+
+                {stopReason ? (
+                  <p className="font-mono text-[10px] text-slate-500">
+                    마이크 안정화 빌드 · 정지 사유: {stopReason} · 녹음 {recordingElapsed.toFixed(1)}초
+                  </p>
+                ) : (
+                  <p className="font-mono text-[10px] text-slate-600">마이크 안정화 빌드 · 누르고 있는 동안 녹음됩니다</p>
+                )}
 
                 {interimTranscript ? (
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">
