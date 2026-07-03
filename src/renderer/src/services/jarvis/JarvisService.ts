@@ -105,16 +105,35 @@ export class JarvisService {
     suggestedCommands: []
   }
 
+  // Store contract — mirrors AutopilotService / useLiveCompany so React views
+  // stay in sync with the singleton. Without this, mutating the singleton (e.g.
+  // the Topbar "자비스" button calling open()) never re-renders the panel, and the
+  // full-screen modal desyncs from the state the rest of the app mutates — the
+  // overlay then traps clicks app-wide. Every state change must call emit().
+  private listeners = new Set<() => void>()
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  private emit(): void {
+    this.listeners.forEach((listener) => listener())
+  }
+
   open(): void {
     this.state.isOpen = true
+    this.emit()
   }
 
   close(): void {
     this.state.isOpen = false
+    this.emit()
   }
 
   toggle(): void {
     this.state.isOpen = !this.state.isOpen
+    this.emit()
   }
 
   getState(): JarvisState {
@@ -127,6 +146,7 @@ export class JarvisService {
 
   updateInput(input: string): void {
     this.state.input = input
+    this.emit()
   }
 
   classify(raw: string): JarvisClassification {
@@ -152,6 +172,7 @@ export class JarvisService {
     this.state.navigationTarget = null
     this.state.suggestedCommands = []
     this.history.addUserMessage(command)
+    this.emit()
 
     try {
       const classification = this.classifier.classify(command)
@@ -200,6 +221,7 @@ export class JarvisService {
       this.state.navigationTarget = result.navigationTarget ?? null
       this.state.suggestedCommands = result.suggestedCommands ?? []
       this.history.addAssistantMessage(result.response, result.toolCalls)
+      this.emit()
       return result
     } catch (error) {
       const message = error instanceof Error ? error.message : 'command failed'
@@ -207,6 +229,7 @@ export class JarvisService {
       this.state.response = '명령 실행 중 문제가 발생했습니다.'
       this.state.lastError = message
       this.history.addAssistantMessage(this.state.response)
+      this.emit()
       return {
         mode: 'unknown',
         intent: 'error',

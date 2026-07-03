@@ -230,6 +230,17 @@ export default function JarvisPanel(): JSX.Element | null {
     return { label: 'GPT 준비됨', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' }
   })()
 
+  // Subscribe to the Jarvis singleton so any state change (Topbar "자비스" button,
+  // command execution, close) re-renders the panel. Without this the singleton
+  // and the panel's local copy desync, leaving the full-screen modal open/closed
+  // out of step with the rest of the app and trapping clicks. Sync once on mount
+  // to catch any state that changed before the subscription attached.
+  useEffect(() => {
+    const sync = (): void => setState(service.getState())
+    sync()
+    return service.subscribe(sync)
+  }, [service])
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if ((event.ctrlKey || event.metaKey) && event.code === 'Space') {
@@ -513,7 +524,18 @@ export default function JarvisPanel(): JSX.Element | null {
   const gpt = state.gpt
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+      onClick={(event) => {
+        // Defensive recovery: clicking the backdrop (never bubbled clicks from
+        // the panel itself) closes Jarvis, so the full-screen overlay can always
+        // be dismissed and never leaves the app feeling locked.
+        if (event.target === event.currentTarget) {
+          service.close()
+          setState(service.getState())
+        }
+      }}
+    >
       <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/95 shadow-2xl shadow-black/50">
         <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/60 px-5 py-4">
           <div className="flex items-center gap-3">
