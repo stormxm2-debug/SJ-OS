@@ -3,6 +3,7 @@ export type WorkerTab = 'profile' | 'memory' | 'chat'
 /** The set of top-level views the CEO can navigate between. */
 export type View =
   | { name: 'assistant' }
+  | { name: 'staff-home' }
   | { name: 'company' }
   | { name: 'dashboard' }
   | { name: 'fcos' }

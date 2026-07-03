@@ -1,5 +1,6 @@
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import CommandCenterPage from '@renderer/pages/CommandCenterPage'
+import StaffHomePage from '@renderer/pages/StaffHomePage'
 import Dashboard from './dashboard/Dashboard'
 import WorkersPage from '@renderer/pages/WorkersPage'
 import WorkerDetailPage from '@renderer/pages/WorkerDetailPage'
@@ -34,6 +35,8 @@ export default function Router(): JSX.Element {
   switch (route.name) {
     case 'assistant':
       return <CommandCenterPage />
+    case 'staff-home':
+      return <StaffHomePage />
     case 'company':
       return <LiveCompanyPage />
     case 'dashboard':

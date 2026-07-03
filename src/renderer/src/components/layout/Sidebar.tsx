@@ -42,6 +42,7 @@ type NavItem = {
 }
 
 const NAV: NavItem[] = [
+  { key: 'staff-home', label: '직원 홈', icon: Home, view: { name: 'staff-home' }, match: ['staff-home'] },
   { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, match: ['assistant'] },
   { key: 'company', label: '라이브 컴퍼니', icon: Radio, view: { name: 'company' }, match: ['company'] },
   { key: 'dashboard', label: 'CEO 대시보드', icon: LayoutDashboard, view: { name: 'dashboard' }, match: ['dashboard'] },
@@ -76,7 +77,7 @@ const NAV: NavItem[] = [
  * 자비스 button below the nav is available in both modes.
  */
 const STAFF_NAV: NavItem[] = [
-  { key: 'home', label: '홈', icon: Home, view: { name: 'dashboard' }, match: ['dashboard'] },
+  { key: 'home', label: '홈', icon: Home, view: { name: 'staff-home' }, match: ['staff-home'] },
   { key: 'schedule', label: '오늘 일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
   { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
   { key: 'sales-activity', label: '영업활동', icon: ActivityIcon, view: { name: 'sales-activity' }, match: ['sales-activity'] },
@@ -98,7 +99,7 @@ export default function Sidebar(): JSX.Element {
   const switchMode = (next: AppMode): void => {
     setMode(next)
     if (next === 'staff' && !STAFF_NAV.some((item) => item.match.includes(route.name))) {
-      navigate({ name: 'dashboard' })
+      navigate({ name: 'staff-home' })
     }
   }
 
