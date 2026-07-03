@@ -40,7 +40,7 @@ export default function AppShell(): JSX.Element {
           clicks; confirms the stabilization build is running. */}
       <div className="pointer-events-none fixed bottom-2 left-2 z-30 inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-white/90 px-2 py-0.5 text-[10px] font-medium text-emerald-600 shadow-sm">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-        안정화 모드 · UI 클릭 가능
+        밝은 UI 안전 빌드 · UI 클릭 가능
       </div>
     </div>
   )
