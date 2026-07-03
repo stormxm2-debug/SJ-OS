@@ -35,7 +35,7 @@ export default function Topbar(): JSX.Element {
   const pending = approvals.filter((a) => a.status === 'pending').length
 
   return (
-    <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/40 px-6 py-4">
+    <header className="flex items-center justify-between border-b border-slate-800 bg-white/80 px-6 py-4 shadow-sm backdrop-blur">
       <div>
         <h1 className="text-lg font-semibold text-slate-100">{title}</h1>
         <p className="text-xs text-slate-500">{subtitle}</p>
@@ -47,10 +47,10 @@ export default function Topbar(): JSX.Element {
           onClick={() => {
             jarvisService.open()
           }}
-          className="inline-flex items-center gap-2 rounded-lg border border-indigo-500/20 bg-indigo-500/10 px-3 py-1.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
+          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-500/30 transition hover:shadow-lg hover:shadow-indigo-500/40"
           aria-label="자비스 열기"
         >
-          <Sparkles className="h-4 w-4" />
+          <Sparkles className="h-4 w-4 text-[#fcd34d]" />
           자비스
         </button>
 

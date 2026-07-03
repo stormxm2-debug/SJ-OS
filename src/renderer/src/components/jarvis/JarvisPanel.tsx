@@ -699,7 +699,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-[#0a1030]/70 via-[#151038]/70 to-[#0a1030]/70 p-4 backdrop-blur-md"
       onClick={(event) => {
         // Defensive recovery: clicking the backdrop (never bubbled clicks from
         // the panel itself) closes Jarvis, so the full-screen overlay can always
@@ -710,15 +710,23 @@ export default function JarvisPanel(): JSX.Element | null {
         }
       }}
     >
-      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/95 shadow-2xl shadow-black/50">
-        <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900/60 px-5 py-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-2 text-indigo-300">
-              <Bot className="h-5 w-5" />
+      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 shadow-2xl shadow-indigo-900/25 ring-1 ring-indigo-500/10">
+        <header className="relative flex items-center justify-between overflow-hidden border-b border-slate-800 bg-gradient-to-r from-indigo-50 via-white to-violet-50 px-5 py-4">
+          {/* Soft radial glow behind the AI badge for a premium control-center feel. */}
+          <span className="pointer-events-none absolute -left-10 -top-16 h-40 w-40 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 blur-3xl" />
+          <div className="relative flex items-center gap-3">
+            <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/40">
+              <span className="absolute inset-0 animate-pulse rounded-2xl bg-white/10" />
+              <Bot className="relative h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-100">SJ 자비스 코어</p>
-              <p className="text-xs text-slate-500">CEO 컨트롤 레이어 · 응답 & 구현 모드</p>
+              <p className="flex items-center gap-2 text-sm font-bold text-slate-100">
+                SJ 자비스 코어
+                <span className="rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
+                  AI Core
+                </span>
+              </p>
+              <p className="text-xs text-slate-500">AI 업무 어시스턴트 · 명령 · 분석 · 실행</p>
             </div>
           </div>
           <div className="flex items-center gap-2">

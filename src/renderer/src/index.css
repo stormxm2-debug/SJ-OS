@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
@@ -14,7 +14,32 @@ body,
 }
 
 body {
+  /* slate-950 / slate-100 now resolve to the bright theme (soft blue-white
+     background + dark navy text) via the Tailwind token remap. */
   @apply bg-slate-950 text-slate-100 antialiased;
   font-family:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Light, unobtrusive scrollbars for the bright office theme. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+::selection {
+  background-color: rgba(37, 99, 235, 0.18);
 }

@@ -19,7 +19,7 @@ export default function Card({
   return (
     <section
       className={[
-        'rounded-xl border border-slate-800 bg-slate-900/40',
+        'rounded-2xl border border-slate-800 bg-white shadow-sm shadow-slate-300/40',
         className ?? ''
       ].join(' ')}
     >

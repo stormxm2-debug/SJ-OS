@@ -94,35 +94,49 @@ export default function JarvisAiCore({ status }: { status: AiCoreStatus }): JSX.
     status === 'prompting'
 
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-2">
-      <div className="relative flex h-24 w-24 items-center justify-center">
+    <div className="flex flex-col items-center justify-center gap-3 py-3">
+      <div className="relative flex h-28 w-28 items-center justify-center">
+        {/* Soft radial aura */}
+        <span
+          className={[
+            'absolute inset-0 rounded-full bg-gradient-to-br opacity-25 blur-2xl',
+            tone.core,
+            active ? 'animate-pulse' : ''
+          ].join(' ')}
+        />
         {/* Outer pulse ring — only animates while actively processing */}
         <span
           className={[
-            'absolute inset-0 rounded-full border-2',
+            'absolute inset-1 rounded-full border-2',
             tone.ring,
             active ? 'animate-ping opacity-60' : 'opacity-25'
           ].join(' ')}
         />
-        {/* Middle breathing halo */}
+        {/* Static mid ring for depth */}
+        <span className={['absolute inset-4 rounded-full border', tone.ring, 'opacity-50'].join(' ')} />
+        {/* Breathing halo */}
         <span
           className={[
-            'absolute inset-3 rounded-full bg-gradient-to-br opacity-40 blur-md',
+            'absolute inset-6 rounded-full bg-gradient-to-br opacity-50 blur-md',
             tone.core,
             active ? 'animate-pulse' : ''
           ].join(' ')}
         />
-        {/* Core orb */}
+        {/* Glossy core orb with a specular highlight */}
         <span
           className={[
-            'relative h-12 w-12 rounded-full bg-gradient-to-br',
+            'relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br',
             tone.core,
             tone.glow,
             active ? 'animate-pulse' : ''
           ].join(' ')}
-        />
+        >
+          <span className="absolute left-3 top-2.5 h-3.5 w-3.5 rounded-full bg-white/60 blur-[2px]" />
+        </span>
       </div>
-      <div className={['text-sm font-medium', tone.text].join(' ')}>{STATUS_TEXT[status]}</div>
+      <div className={['text-sm font-semibold tracking-wide', tone.text].join(' ')}>
+        {STATUS_TEXT[status]}
+      </div>
     </div>
   )
 }

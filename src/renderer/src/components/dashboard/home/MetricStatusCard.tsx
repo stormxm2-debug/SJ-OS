@@ -47,7 +47,7 @@ export default function MetricStatusCard({
           </div>
           <div>
             <div className="text-sm font-medium text-slate-200">{label}</div>
-            <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
+            <div className="mt-1 text-2xl font-semibold text-slate-100">{value}</div>
           </div>
         </div>
         {onRefresh && (

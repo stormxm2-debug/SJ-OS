@@ -10,7 +10,7 @@ import JarvisLauncher from '@renderer/components/jarvis/JarvisLauncher'
  */
 export default function AppShell(): JSX.Element {
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex h-screen w-screen overflow-hidden bg-gradient-to-br from-[#eef3fb] via-[#f5f8fd] to-[#e9eff9] text-slate-100">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />

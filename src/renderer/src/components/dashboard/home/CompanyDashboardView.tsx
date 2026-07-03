@@ -43,17 +43,17 @@ export default function CompanyDashboardView(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950/70 p-6 shadow-lg shadow-slate-950/30">
+      <section className="rounded-2xl border border-indigo-700/40 bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 p-6 shadow-lg shadow-indigo-500/30">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-indigo-300">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-white">
               <Sparkles className="h-3.5 w-3.5" />
               실시간 회사 대시보드
             </div>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white">CEO 관제 센터</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-400">모든 위젯은 공유 회사 리포지토리로 구동되며 독립적으로 새로고침됩니다.</p>
+            <p className="mt-2 max-w-2xl text-sm text-indigo-100">모든 위젯은 공유 회사 리포지토리로 구동되며 독립적으로 새로고침됩니다.</p>
           </div>
-          <button type="button" onClick={() => { void companyDashboardService.refreshAll() }} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-300 transition hover:border-indigo-500/40 hover:text-white">
+          <button type="button" onClick={() => { void companyDashboardService.refreshAll() }} className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/15 px-3 py-2 text-sm font-medium text-white transition hover:bg-white/25">
             <RefreshCw className="h-4 w-4" />
             전체 새로고침
           </button>
@@ -64,7 +64,7 @@ export default function CompanyDashboardView(): JSX.Element {
         {summaryCards.map((card) => (
           <div key={card.label} className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
             <div className="text-sm font-medium text-slate-200">{card.label}</div>
-            <div className="mt-2 text-2xl font-semibold text-white">{card.value}</div>
+            <div className="mt-2 text-2xl font-semibold text-slate-100">{card.value}</div>
             <div className="mt-2 text-sm text-slate-500">{card.hint}</div>
           </div>
         ))}
@@ -74,7 +74,7 @@ export default function CompanyDashboardView(): JSX.Element {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
             <div className="flex items-center gap-1.5 text-sm text-slate-400"><Users className="h-4 w-4" /> FC 수</div>
-            <div className="mt-2 text-2xl font-semibold text-white">{fcSummary.totalFc}</div>
+            <div className="mt-2 text-2xl font-semibold text-slate-100">{fcSummary.totalFc}</div>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
             <div className="flex items-center gap-1.5 text-sm text-slate-400"><BriefcaseBusiness className="h-4 w-4" /> 출근</div>
@@ -82,11 +82,11 @@ export default function CompanyDashboardView(): JSX.Element {
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
             <div className="flex items-center gap-1.5 text-sm text-slate-400"><CircleDollarSign className="h-4 w-4" /> 월 보험료</div>
-            <div className="mt-2 text-2xl font-semibold text-white">{formatKrw(fcSummary.monthlyPremiumTotal)}</div>
+            <div className="mt-2 text-2xl font-semibold text-slate-100">{formatKrw(fcSummary.monthlyPremiumTotal)}</div>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
             <div className="flex items-center gap-1.5 text-sm text-slate-400"><Target className="h-4 w-4" /> 목표 달성</div>
-            <div className="mt-2 text-2xl font-semibold text-white">{fcSummary.achievementRate}%</div>
+            <div className="mt-2 text-2xl font-semibold text-slate-100">{fcSummary.achievementRate}%</div>
           </div>
         </div>
       </Card>
