@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import ProgressBar from '@renderer/components/ui/ProgressBar'
+import StaffCustomerBoard from '@renderer/components/customer/StaffCustomerBoard'
 import { useCustomer } from '@renderer/services/customer/useCustomer'
 import { customerRepository, isDueForContact } from '@renderer/services/customer/CustomerRepository'
 import { fcRepository, formatKrw } from '@renderer/services/fc/FcRepository'
@@ -132,6 +133,9 @@ export default function CustomerWorkspacePage(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      {/* Staff-friendly customer board (additive, preview data) */}
+      <StaffCustomerBoard />
+
       {/* Header + org summary */}
       <Card
         title="고객 워크스페이스 — SJ Invest 영업 파이프라인"
