@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { companyRepository } from '@shared/company/CompanyRepository'
 import { customerService } from '@shared/company/services/CustomerService'
 import { fcService } from '@shared/company/services/FCService'
@@ -205,16 +205,26 @@ export function useCompanyDashboardWidget<T>(loader: () => Promise<DashboardWidg
     refreshedAt: null
   })
 
+  // Keep the latest loader in a ref so `refresh` can be STABLE. Consumers pass an
+  // inline arrow (a new function every render); depending on it directly made
+  // `refresh` change every render, which re-ran the effects below on every
+  // render → an infinite load/setState/render loop (×N widgets) that froze the
+  // app once the dashboard mounted. The ref breaks that loop.
+  const loaderRef = useRef(loader)
+  loaderRef.current = loader
+
   const refresh = useCallback(async () => {
     setState((current) => ({ ...current, status: 'loading', error: null }))
-    const next = await loader()
+    const next = await loaderRef.current()
     setState(next)
-  }, [loader])
+  }, [])
 
+  // Initial load, and reload when the caller bumps refreshKey.
   useEffect(() => {
     void refresh()
   }, [refresh, refreshKey])
 
+  // Periodic auto-refresh — a single interval, set once (refresh is stable).
   useEffect(() => {
     const interval = window.setInterval(() => {
       void refresh()

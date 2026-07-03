@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { approvalService } from '@shared/company/services/ApprovalService'
 import { activityService } from '@shared/company/services/ActivityService'
 import { customerService } from '@shared/company/services/CustomerService'
@@ -72,11 +72,16 @@ export function useCompanyManagementWidget<T>(loader: () => Promise<ManagementWi
     refreshedAt: null
   })
 
+  // Stable refresh via a loader ref — depending on the inline `loader` directly
+  // recreated `refresh` every render, re-running the load effect every render
+  // (an infinite load/setState/render loop that froze the app).
+  const loaderRef = useRef(loader)
+  loaderRef.current = loader
   const refresh = useCallback(async () => {
     setState((current) => ({ ...current, status: 'loading', error: null }))
-    const next = await loader()
+    const next = await loaderRef.current()
     setState(next)
-  }, [loader])
+  }, [])
 
   useEffect(() => {
     void refresh()

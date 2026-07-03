@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { mockCompanyData, type DashboardMockSnapshot } from './mockDashboardData'
 import type { ActivityEvent, Notification, Worker } from '@shared/types'
 
@@ -176,11 +176,16 @@ export function useDashboardMetric(loader: () => Promise<DashboardMetricState>, 
     isFallback: false
   })
 
+  // Stable refresh via a loader ref — depending on the inline `loader` directly
+  // recreated `refresh` every render, re-running the load effect every render
+  // (an infinite load/setState/render loop that froze the app).
+  const loaderRef = useRef(loader)
+  loaderRef.current = loader
   const refresh = useCallback(async () => {
     setState((current) => ({ ...current, status: 'loading', error: null }))
-    const data = await loader()
+    const data = await loaderRef.current()
     setState(data)
-  }, [loader])
+  }, [])
 
   useEffect(() => {
     void refresh()
@@ -197,11 +202,16 @@ export function useDashboardNotifications(loader: () => Promise<DashboardNotific
     isFallback: false
   })
 
+  // Stable refresh via a loader ref — depending on the inline `loader` directly
+  // recreated `refresh` every render, re-running the load effect every render
+  // (an infinite load/setState/render loop that froze the app).
+  const loaderRef = useRef(loader)
+  loaderRef.current = loader
   const refresh = useCallback(async () => {
     setState((current) => ({ ...current, status: 'loading', error: null }))
-    const data = await loader()
+    const data = await loaderRef.current()
     setState(data)
-  }, [loader])
+  }, [])
 
   useEffect(() => {
     void refresh()
@@ -218,11 +228,16 @@ export function useDashboardActivity(loader: () => Promise<DashboardActivityStat
     isFallback: false
   })
 
+  // Stable refresh via a loader ref — depending on the inline `loader` directly
+  // recreated `refresh` every render, re-running the load effect every render
+  // (an infinite load/setState/render loop that froze the app).
+  const loaderRef = useRef(loader)
+  loaderRef.current = loader
   const refresh = useCallback(async () => {
     setState((current) => ({ ...current, status: 'loading', error: null }))
-    const data = await loader()
+    const data = await loaderRef.current()
     setState(data)
-  }, [loader])
+  }, [])
 
   useEffect(() => {
     void refresh()
