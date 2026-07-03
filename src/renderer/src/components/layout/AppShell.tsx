@@ -2,6 +2,7 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import Router from '../Router'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
+import JarvisLauncher from '@renderer/components/jarvis/JarvisLauncher'
 
 /**
  * The CEO command center frame: persistent sidebar + topbar wrapping the
@@ -18,6 +19,7 @@ export default function AppShell(): JSX.Element {
         </main>
       </div>
       <JarvisPanel />
+      <JarvisLauncher />
     </div>
   )
 }

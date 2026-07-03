@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
+import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 
 type NavItem = {
   key: string
@@ -101,6 +102,19 @@ export default function Sidebar(): JSX.Element {
           )
         })}
       </nav>
+
+      <div className="border-t border-slate-800 px-3 py-3">
+        <button
+          type="button"
+          onClick={() => jarvisService.open()}
+          title="자비스 열기"
+          aria-label="자비스 열기"
+          className="flex w-full items-center gap-3 rounded-lg border border-indigo-500/20 bg-indigo-600/15 px-3 py-2 text-sm font-medium text-indigo-300 transition hover:bg-indigo-600/25 hover:text-indigo-200"
+        >
+          <Bot className="h-4 w-4" />
+          자비스
+        </button>
+      </div>
 
       <div className="border-t border-slate-800 px-5 py-4 text-xs text-slate-600">
         MVP Shell · v0.0.0
