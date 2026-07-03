@@ -744,6 +744,69 @@ export default function JarvisPanel(): JSX.Element | null {
               </form>
             </Card>
 
+            {/* AI Core + command execution timeline (fast UX). Placed directly
+                under the command input so the timeline + response are visible
+                immediately on submit — never buried below the Voice mode card. */}
+            <Card
+              title="AI 코어"
+              icon={<Cpu className="h-4 w-4 text-indigo-300" />}
+              action={
+                <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-medium text-indigo-300">
+                  Fast Command UX 활성화됨
+                </span>
+              }
+            >
+              <JarvisAiCore status={coreStatus} />
+
+              {/* Immediate response text — visible without scrolling. */}
+              <div className="mt-3 min-h-[44px] whitespace-pre-line rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs leading-6 text-slate-300">
+                {state.status === 'thinking' || state.status === 'running' ? (
+                  <span className="flex items-center gap-2 text-slate-400">
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    {streamedResponse || '분석 중입니다…'}
+                  </span>
+                ) : (
+                  streamedResponse || state.response
+                )}
+              </div>
+
+              {displayedSession ? (
+                <div className="mt-3 space-y-3 border-t border-slate-800 pt-3">
+                  <JarvisCommandTimeline session={displayedSession} />
+                  {displayedSession.promptPacketId ? (
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-300">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        개발 프롬프트 생성 완료
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => goToTarget('devprompt')}
+                        className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/20"
+                      >
+                        <ArrowRight className="h-3 w-3" />
+                        프롬프트 센터로 이동
+                      </button>
+                    </div>
+                  ) : null}
+                  {displayedSession.status === 'failed' ? (
+                    <button
+                      type="button"
+                      onClick={() => runCommand(displayedSession.command)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      다시 시도
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-2 text-center text-xs text-slate-500">
+                  명령을 입력하면 실행 타임라인이 여기에 표시됩니다.
+                </p>
+              )}
+            </Card>
+
             <Card title="Voice mode" icon={<Mic className="h-4 w-4 text-indigo-300" />}>
               <div className="space-y-3">
                 {/* Voice engine selection, in preference order:
@@ -1112,46 +1175,6 @@ export default function JarvisPanel(): JSX.Element | null {
                   </ul>
                 </div>
               </div>
-            </Card>
-
-            {/* AI Core + command execution timeline (fast UX) */}
-            <Card title="AI 코어" icon={<Cpu className="h-4 w-4 text-indigo-300" />}>
-              <JarvisAiCore status={coreStatus} />
-              {displayedSession ? (
-                <div className="mt-3 space-y-3 border-t border-slate-800 pt-3">
-                  <JarvisCommandTimeline session={displayedSession} />
-                  {displayedSession.promptPacketId ? (
-                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-300">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        개발 프롬프트 생성 완료
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => goToTarget('devprompt')}
-                        className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/20"
-                      >
-                        <ArrowRight className="h-3 w-3" />
-                        프롬프트 센터로 이동
-                      </button>
-                    </div>
-                  ) : null}
-                  {displayedSession.status === 'failed' ? (
-                    <button
-                      type="button"
-                      onClick={() => runCommand(displayedSession.command)}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      다시 시도
-                    </button>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="mt-1 text-center text-xs text-slate-500">
-                  명령을 입력하면 실행 타임라인이 여기에 표시됩니다.
-                </p>
-              )}
             </Card>
 
             <Card title="자비스 응답" icon={<Bot className="h-4 w-4 text-indigo-300" />}>

@@ -91,3 +91,44 @@ action (status `generated`).
 - The Jarvis overlay renders `null` when closed (no invisible full-screen
   blocker), so the sidebar and Jarvis stay clickable after any command.
 - No microphone/STT/voice work and no OpenAI key are involved in this path.
+
+## Where it renders (important)
+
+The AI Core + command timeline card is rendered **directly under the command
+input**, above the Voice mode card, inside `JarvisPanel` (the overlay opened by
+the 자비스 button / `Ctrl + Space`). It also shows the immediate response text, so
+command feedback is visible without scrolling. A small `Fast Command UX 활성화됨`
+badge on the card header confirms the correct UI path is active. (Earlier the card
+was placed below the ~370-line Voice mode card and fell off-screen — the fix moves
+it up so it is always visible.)
+
+The `assistant` route (`CommandCenterPage`) is a **separate** Chief-of-Staff
+workflow screen — not Jarvis. Jarvis is always the `JarvisPanel` overlay.
+
+## Live test checklist
+
+Open Jarvis (자비스 button or `Ctrl + Space`), then for each command below confirm:
+
+- [ ] **명령이 즉시 표시됨** — `명령 수신 완료` + the original command appears instantly
+      under the input (no wait).
+- [ ] **타임라인이 나타남** — the step list (명령 수신 → … → 다음 작업 대기) is visible
+      and animates.
+- [ ] **AI 코어가 보임** — the glowing orb + status text (`명령 분석 중` → … → `완료`)
+      is visible without scrolling; the `Fast Command UX 활성화됨` badge is shown.
+- [ ] **반복 명령 동작** — running several commands in a row keeps working.
+- [ ] **사이드바 클릭 가능** — after a command, the sidebar and 자비스 open/close still
+      respond (no click lock, no invisible overlay).
+
+Commands to run:
+
+| Command | Expect |
+| --- | --- |
+| `쇼핑몰 업무 자동화해` | 앱 빌드 timeline (7 steps) + `개발 프롬프트 생성 완료` + 프롬프트 센터로 이동 |
+| `쇼핑몰 시스템 만들어` | same, automation-focused project |
+| `FC OS에 팀별 필터 만들어` | developer-command timeline + prompt packet |
+| `오늘 일정` | local-command timeline + schedule answer |
+| `유튜브 켜줘` | external-action timeline + opens link |
+| `오토파일럿 열어줘` | navigation timeline + jumps to Autopilot |
+
+If a command fails, the timeline still shows `명령 수신 완료`, marks classification
+`실패`, shows the error text, and offers `다시 시도` — the UI stays clickable.
