@@ -55,10 +55,12 @@ interface QuickAction {
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { key: 'customer', label: '고객 등록', icon: <UserPlus className="h-5 w-5" />, tone: 'from-blue-500 to-indigo-600', onClick: (n) => n({ name: 'customer' }) },
-  { key: 'schedule', label: '일정 확인', icon: <CalendarDays className="h-5 w-5" />, tone: 'from-sky-500 to-blue-600', onClick: (n) => n({ name: 'schedule' }) },
+  { key: 'schedule', label: '오늘 일정 보기', icon: <CalendarDays className="h-5 w-5" />, tone: 'from-sky-500 to-blue-600', onClick: (n) => n({ name: 'schedule' }) },
+  { key: 'customer-new', label: '고객 등록', icon: <UserPlus className="h-5 w-5" />, tone: 'from-blue-500 to-indigo-600', onClick: (n) => n({ name: 'customer' }) },
+  { key: 'customer', label: '고객 관리', icon: <UserRound className="h-5 w-5" />, tone: 'from-indigo-500 to-blue-600', onClick: (n) => n({ name: 'customer' }) },
   { key: 'sales-activity', label: '영업활동 입력', icon: <Activity className="h-5 w-5" />, tone: 'from-indigo-500 to-violet-600', onClick: (n) => n({ name: 'sales-activity' }) },
   { key: 'performance', label: '실적 확인', icon: <BarChart3 className="h-5 w-5" />, tone: 'from-emerald-500 to-teal-600', onClick: (n) => n({ name: 'performance' }) },
+  { key: 'consultation', label: '상담 준비', icon: <ClipboardList className="h-5 w-5" />, tone: 'from-cyan-500 to-sky-600', onClick: (n) => n({ name: 'consultation' }) },
   { key: 'insurance-analysis', label: '보험분석 시작', icon: <FileSearch className="h-5 w-5" />, tone: 'from-amber-500 to-orange-600', onClick: (n) => n({ name: 'insurance-analysis' }) },
   { key: 'jarvis', label: '자비스에게 요청', icon: <Bot className="h-5 w-5" />, tone: 'from-violet-500 to-fuchsia-600', onClick: () => jarvisService.open() }
 ]
@@ -66,9 +68,12 @@ const QUICK_ACTIONS: QuickAction[] = [
 const JARVIS_COMMANDS = [
   '오늘 일정 알려줘',
   '이번 달 실적 보여줘',
-  '미완료 활동 정리해줘',
+  '미완료 영업활동 정리해줘',
   '클로징 예정 고객 알려줘',
-  '고객 상담 준비해줘'
+  '고객 상담 준비해줘',
+  '보험분석 시작해줘',
+  '오늘 해야 할 일 정리해줘',
+  '팀 실적 요약해줘'
 ]
 
 export default function StaffHomePage(): JSX.Element {
@@ -132,8 +137,9 @@ export default function StaffHomePage(): JSX.Element {
       </Card>
 
       {/* B. Quick Action Cards */}
-      <Card title="빠른 작업" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <Card title="빠른 실행" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
+        <p className="mb-3 text-xs text-slate-500">자주 쓰는 업무를 빠르게 실행하세요.</p>
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8">
           {QUICK_ACTIONS.map((a) => (
             <button
               key={a.key}
@@ -200,7 +206,9 @@ export default function StaffHomePage(): JSX.Element {
       </div>
 
       {/* E. Jarvis Quick Commands */}
-      <Card title="자비스 빠른 명령" icon={<Bot className="h-4 w-4 text-indigo-300" />} action={<span className="text-xs text-slate-500">클릭하면 복사 + 자비스 열기</span>}>
+      <Card title="자비스 추천 명령" icon={<Bot className="h-4 w-4 text-indigo-300" />} action={<span className="text-xs text-slate-500">클릭하면 복사 + 자비스 열기</span>}>
+        <p className="mb-1 text-xs text-slate-500">자비스에게 자연어로 요청할 수 있습니다.</p>
+        <p className="mb-3 text-[11px] text-slate-500">예: 오늘 일정 알려줘 / 이번 달 실적 보여줘</p>
         <div className="flex flex-wrap gap-2">
           {JARVIS_COMMANDS.map((cmd) => (
             <button
@@ -224,7 +232,7 @@ export default function StaffHomePage(): JSX.Element {
         </button>
       </Card>
 
-      <p className="pb-2 text-center text-[10px] text-slate-500">직원 홈 안전 빌드 · 미리보기 데이터</p>
+      <p className="pb-2 text-center text-[10px] text-slate-500">빠른 실행 안전 빌드 · 미리보기 데이터</p>
     </div>
   )
 }
