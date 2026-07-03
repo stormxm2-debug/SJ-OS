@@ -890,6 +890,9 @@ export default function JarvisPanel(): JSX.Element | null {
                 <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[9px] font-bold text-indigo-300">
                   {mode === 'staff' ? '직원 모드' : '대표 모드'}
                 </span>
+                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-600">
+                  안전 시각화 모드
+                </span>
               </p>
               <p className="text-xs text-slate-500">
                 {mode === 'staff'
@@ -1035,6 +1038,7 @@ export default function JarvisPanel(): JSX.Element | null {
                 under the command input so the timeline + response are visible
                 immediately on submit — never buried below the Voice mode card. */}
             <Card
+              className="border-indigo-500/20 bg-gradient-to-b from-indigo-50/60 to-white ring-1 ring-indigo-500/10"
               title="AI 코어"
               icon={<Cpu className="h-4 w-4 text-indigo-300" />}
               action={

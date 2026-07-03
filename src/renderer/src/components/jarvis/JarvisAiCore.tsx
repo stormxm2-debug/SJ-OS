@@ -113,30 +113,33 @@ export default function JarvisAiCore({ status }: { status: AiCoreStatus }): JSX.
 
   return (
     // Purely decorative — never captures clicks (interaction-lock safety).
-    // STABILIZATION: simplified to a lightweight core + ring (no GPU-heavy blur
-    // layers), so it stays smooth on machines with limited/failing GPUs.
-    <div className="pointer-events-none flex flex-col items-center justify-center gap-3 py-3">
-      <div className="relative flex h-24 w-24 items-center justify-center">
-        {/* Outer ring — animates only while actively processing */}
+    // CSS-only visuals: one slow-rotating conic aura + rings + glossy core. No
+    // JS animation loop, no timers, no listeners; stays lightweight on any GPU.
+    <div className="pointer-events-none flex flex-col items-center justify-center gap-3 py-4">
+      <div className="relative flex h-28 w-28 items-center justify-center">
+        {/* Rotating energy aura — a single cheap CSS transform (spin) */}
+        <span className="absolute inset-0 rounded-full opacity-30 animate-[spin_11s_linear_infinite] [background:conic-gradient(from_0deg,#6366f1,#a78bfa,#22d3ee,#818cf8,#6366f1)]" />
+        {/* Outer ring — gently pulses only while actively processing */}
         <span
           className={[
             'absolute inset-1 rounded-full border-2',
             tone.ring,
-            active ? 'animate-pulse opacity-70' : 'opacity-30'
+            active ? 'animate-pulse opacity-80' : 'opacity-40'
           ].join(' ')}
         />
         {/* Static mid ring for depth */}
         <span className={['absolute inset-5 rounded-full border', tone.ring, 'opacity-50'].join(' ')} />
-        {/* Core orb */}
+        {/* Glossy core orb with a specular highlight + status glow */}
         <span
           className={[
-            'relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br',
+            'relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br ring-1 ring-white/20',
             tone.core,
             tone.glow,
             active ? 'animate-pulse' : ''
           ].join(' ')}
         >
-          <span className="absolute left-3 top-2.5 h-3 w-3 rounded-full bg-white/50" />
+          <span className="absolute left-3 top-2.5 h-3.5 w-3.5 rounded-full bg-white/60" />
+          <span className="absolute inset-0 rounded-full bg-gradient-to-t from-black/15 to-transparent" />
         </span>
       </div>
       <div className={['text-sm font-semibold tracking-wide', tone.text].join(' ')}>
