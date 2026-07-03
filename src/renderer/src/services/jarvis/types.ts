@@ -1,9 +1,12 @@
+import type { AiToolAssignment, SprintPlanEntry } from '@renderer/services/universal-builder/types'
+
 export type JarvisStatus = 'idle' | 'thinking' | 'running' | 'completed' | 'error'
 
 /** The high-level mode Jarvis resolves a command into. */
 export type JarvisMode =
   | 'answer'
   | 'implementation-request'
+  | 'universal-build'
   | 'navigation'
   | 'briefing'
   | 'external-action'
@@ -85,6 +88,32 @@ export interface JarvisImplementationResult {
   suggestedCommands: string[]
 }
 
+/** Structured result for Universal App Builder Mode. */
+export interface JarvisUniversalBuildResult {
+  projectId: string
+  projectName: string
+  appType: string
+  industry: string
+  targetUsers: string
+  interpretedGoal: string
+  requiredModules: string[]
+  suggestedScreens: string[]
+  suggestedDataModels: string[]
+  suggestedIntegrations: string[]
+  aiToolPlan: AiToolAssignment[]
+  sprintPlan: SprintPlanEntry[]
+  riskLevel: string
+  approvalRequired: boolean
+  status: string
+  assumptions: string[]
+  pmPlanId: string | null
+  routingLog: string[]
+  nextAction: string
+  /** Claude Code-ready developer prompt (paste to start development). */
+  generatedDeveloperPrompt: string
+  suggestedCommands: string[]
+}
+
 /** Structured result for External Action Mode (opening an approved link). */
 export interface JarvisExternalResult {
   commandUnderstood: string
@@ -116,6 +145,7 @@ export interface JarvisExecutionResult {
   error?: string
   answer?: JarvisAnswerResult
   implementation?: JarvisImplementationResult
+  universalBuild?: JarvisUniversalBuildResult
   external?: JarvisExternalResult
   gpt?: JarvisGptResult
   source?: JarvisSource
@@ -135,6 +165,7 @@ export interface JarvisState {
   lastError?: string
   answer?: JarvisAnswerResult
   implementation?: JarvisImplementationResult
+  universalBuild?: JarvisUniversalBuildResult
   external?: JarvisExternalResult
   gpt?: JarvisGptResult
   source?: JarvisSource

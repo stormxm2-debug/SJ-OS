@@ -18,12 +18,16 @@ import {
   CheckCircle2,
   Circle,
   Loader2,
-  Ban
+  Ban,
+  Boxes
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import ProgressBar from '@renderer/components/ui/ProgressBar'
 import { useAutopilot } from '@renderer/services/autopilot/useAutopilot'
 import { autopilotService } from '@renderer/services/autopilot/AutopilotService'
+import { useUniversalBuilder } from '@renderer/services/universal-builder/useUniversalBuilder'
+import { universalBuilderRepository } from '@renderer/services/universal-builder/UniversalBuilderRepository'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type {
   AutopilotState,
   AutopilotStatus,
@@ -83,6 +87,10 @@ function exportReport(): void {
  */
 export default function AutopilotPage(): JSX.Element {
   const state = useAutopilot()
+  // Subscribe to the Universal Builder queue so the pending count stays live.
+  useUniversalBuilder()
+  const buildSummary = universalBuilderRepository.getSummary()
+  const { navigate } = useNavigation()
   const tone = STATUS_TONE[state.status]
 
   const running = state.status === 'running'
@@ -192,6 +200,33 @@ export default function AutopilotPage(): JSX.Element {
             Reset autopilot demo state
           </ActionButton>
         </div>
+      </Card>
+
+      {/* Universal App Builder queue — read-through count (no code edits here) */}
+      <Card
+        title="Universal App Builder Queue"
+        icon={<Boxes className="h-4 w-4" />}
+        action={
+          <button
+            type="button"
+            onClick={() => navigate({ name: 'app-builder' })}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition hover:bg-violet-500/20"
+          >
+            <ArrowRight className="h-3.5 w-3.5" />
+            Open App Builder
+          </button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Tile icon={<Boxes className="h-4 w-4" />} label="Pending build projects" value={String(buildSummary.pending)} />
+          <Tile icon={<AlertCircle className="h-4 w-4" />} label="Needs approval" value={String(buildSummary.needsApproval)} />
+          <Tile icon={<ListChecks className="h-4 w-4" />} label="Prompt generated" value={String(buildSummary.promptGenerated)} />
+          <Tile icon={<CheckCircle2 className="h-4 w-4" />} label="Total projects" value={String(buildSummary.total)} />
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Autopilot는 이번 스프린트에서 앱 빌드 프로젝트의 대기 현황만 표시합니다(읽기 전용). 코드를 직접
+          수정하거나 프로젝트를 자동 승격하지 않습니다.
+        </p>
       </Card>
 
       {/* Blockers + warnings */}

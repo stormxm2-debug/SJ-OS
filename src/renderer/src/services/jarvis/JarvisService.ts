@@ -5,6 +5,7 @@ import ConversationHistory from './ConversationHistory'
 import IntentClassifier from './IntentClassifier'
 import AnswerService from './AnswerService'
 import ImplementationIntake, { WORKSPACE_LABEL } from './ImplementationIntake'
+import UniversalBuildIntake from './UniversalBuildIntake'
 import ExternalActionService from './ExternalActionService'
 import { jarvisGptBrainService } from './JarvisGptBrainService'
 import type { GptMode } from './JarvisGptBrainService'
@@ -17,6 +18,7 @@ import type {
   JarvisImplementationResult,
   JarvisSource,
   JarvisState,
+  JarvisUniversalBuildResult,
   ParsedCommand,
   ToolCall
 } from './types'
@@ -87,6 +89,7 @@ export class JarvisService {
   private classifier = new IntentClassifier()
   private answers = new AnswerService()
   private intake = new ImplementationIntake()
+  private universalBuild = new UniversalBuildIntake()
   private externals = new ExternalActionService()
   private gpt = jarvisGptBrainService
 
@@ -142,6 +145,7 @@ export class JarvisService {
     this.state.lastError = undefined
     this.state.answer = undefined
     this.state.implementation = undefined
+    this.state.universalBuild = undefined
     this.state.external = undefined
     this.state.gpt = undefined
     this.state.source = undefined
@@ -158,6 +162,9 @@ export class JarvisService {
       switch (classification.mode) {
         case 'implementation-request':
           result = this.handleImplementation(command, classification)
+          break
+        case 'universal-build':
+          result = this.handleUniversalBuild(command)
           break
         case 'briefing':
           result = this.handleAnswer('daily-briefing', classification, true)
@@ -185,6 +192,7 @@ export class JarvisService {
       this.state.toolCalls = result.toolCalls
       this.state.answer = result.answer
       this.state.implementation = result.implementation
+      this.state.universalBuild = result.universalBuild
       this.state.external = result.external
       this.state.gpt = result.gpt
       this.state.source = result.source
@@ -258,6 +266,73 @@ export class JarvisService {
       implementation: impl,
       navigationTarget: null,
       suggestedCommands: impl.suggestedCommands
+    }
+  }
+
+  /**
+   * Handle a Universal App Builder command ("쇼핑몰 시스템 만들어"). Turns the
+   * command into a structured, locally-planned build project (modules, screens,
+   * data models, AI-tool orchestration plan, Claude Code-ready developer prompt)
+   * and routes it into PM / Approval / DevOS. No files edited, no external API.
+   */
+  private handleUniversalBuild(command: string): JarvisExecutionResult {
+    const project = this.universalBuild.intake(command)
+    if (!project) {
+      return {
+        mode: 'universal-build',
+        intent: 'universal-build-command',
+        response: '앱 빌드 프로젝트를 생성하지 못했습니다. 명령을 다시 확인해 주세요.',
+        toolCalls: [],
+        status: 'error'
+      }
+    }
+    const nextAction =
+      '생성된 개발자 프롬프트를 복사해 Claude Code에 붙여넣어 개발을 진행하세요.'
+    const universalBuild: JarvisUniversalBuildResult = {
+      projectId: project.id,
+      projectName: project.projectName,
+      appType: project.appType,
+      industry: project.industry,
+      targetUsers: project.targetUsers,
+      interpretedGoal: project.interpretedGoal,
+      requiredModules: project.requiredModules,
+      suggestedScreens: project.suggestedScreens,
+      suggestedDataModels: project.suggestedDataModels,
+      suggestedIntegrations: project.suggestedIntegrations,
+      aiToolPlan: project.aiToolPlan,
+      sprintPlan: project.sprintPlan,
+      riskLevel: project.riskLevel,
+      approvalRequired: project.approvalRequired,
+      status: project.status,
+      assumptions: project.assumptions,
+      pmPlanId: project.pmPlanId,
+      routingLog: project.routingLog,
+      nextAction,
+      generatedDeveloperPrompt: project.generatedDeveloperPrompt,
+      suggestedCommands: [
+        '쇼핑몰 시스템 만들어',
+        '학원 관리 프로그램 만들어',
+        'AI 영상 광고 제작 시스템 만들어',
+        'Canva랑 Gamma랑 연결해서 제안서 자동 생성하게 해'
+      ]
+    }
+    const toolCalls: ToolCall[] = [
+      this.tool('classifyAppType', `앱 타입: ${project.appType} (${project.industry})`),
+      this.tool('generateAppPlan', `모듈 ${project.requiredModules.length} · 화면 ${project.suggestedScreens.length} · 데이터 모델 ${project.suggestedDataModels.length}`),
+      this.tool('planAiToolOrchestration', project.aiToolPlan.map((t) => t.toolName).join(', ')),
+      this.tool('generateDeveloperPrompt', `Claude Code 프롬프트 생성 · ${project.generatedDeveloperPrompt.length}자`),
+      this.tool('routeToPmPlanner', `PM 백로그: ${project.pmPlanId ?? '—'}`)
+    ]
+    const response = `Universal App Builder — "${project.projectName}" 프로젝트를 생성했습니다. 앱 타입 ${project.appType} · 위험도 ${project.riskLevel} · 상태 ${project.status}. ${project.approvalRequired ? 'CEO 승인이 필요합니다. ' : ''}개발자 프롬프트가 준비되었습니다. ${nextAction}`
+    return {
+      mode: 'universal-build',
+      intent: 'universal-build-command',
+      response,
+      toolCalls,
+      status: 'completed',
+      universalBuild,
+      navigationTarget: 'app-builder',
+      suggestedCommands: universalBuild.suggestedCommands
     }
   }
 

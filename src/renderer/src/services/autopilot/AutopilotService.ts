@@ -8,6 +8,8 @@ import { devOpsRepository } from '@renderer/services/devops/DevOpsRepository'
 import { liveCompanyService } from '@renderer/services/live-company/LiveCompanyService'
 import { implementationRepository } from '@renderer/services/implementation/ImplementationRepository'
 import type { ImplementationRequest } from '@renderer/services/implementation/types'
+import { universalBuilderRepository } from '@renderer/services/universal-builder/UniversalBuilderRepository'
+import type { UniversalBuildProject } from '@renderer/services/universal-builder/types'
 import { loadState, saveState } from './autopilotPersistence'
 import { autopilotSeed } from './seed'
 import type {
@@ -114,6 +116,15 @@ export class AutopilotService {
   /** The single next implementation request Autopilot should promote (or null). */
   getNextImplementationRequestToPromote(): ImplementationRequest | null {
     return implementationRepository.getNextToPromote()
+  }
+
+  /**
+   * Universal App Builder projects still working through planning / approval.
+   * Read-through only — Autopilot surfaces the pending count and does NOT edit
+   * code or promote these projects itself this sprint.
+   */
+  getPendingUniversalBuildProjects(): UniversalBuildProject[] {
+    return universalBuilderRepository.getPendingProjects()
   }
 
   // --- internal state plumbing ---------------------------------------------

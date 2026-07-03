@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Activity,
   Settings,
+  Boxes,
   Bot
 } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -48,6 +49,7 @@ const NAV: NavItem[] = [
   { key: 'team-leader', label: 'Team Leader', icon: UsersRound, view: { name: 'team-leader' }, match: ['team-leader'] },
   { key: 'consultation', label: 'Consultation', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'insurance-analysis', label: 'Insurance Analysis', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
+  { key: 'app-builder', label: 'App Builder', icon: Boxes, view: { name: 'app-builder' }, match: ['app-builder'] },
   { key: 'cto', label: 'CTO Room', icon: Gauge, view: { name: 'cto' }, match: ['cto'] },
   { key: 'approvals', label: 'Approval Center', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
   { key: 'qa', label: 'QA Center', icon: ClipboardCheck, view: { name: 'qa' }, match: ['qa'] },

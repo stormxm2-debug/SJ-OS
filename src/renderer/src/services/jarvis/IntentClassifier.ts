@@ -19,6 +19,53 @@ import { matchesAny, normalizeCommand, type NormalizedCommand } from './normaliz
  *  7) unknown
  */
 
+/**
+ * Universal App Builder markers — CEO commands that ask SJ OS to build a whole
+ * business system/app/platform ("쇼핑몰 시스템 만들어", "학원 관리 프로그램 만들어",
+ * "병원 예약 시스템 만들어", "상세페이지 자동 제작 시스템 만들어", "제안서 자동 생성").
+ *
+ * These are checked FIRST (before GPT + implementation markers), because "만들어"
+ * is also a plain implementation verb — a bare "FC OS에 팀별 필터 만들어" must NOT
+ * be captured here. Each marker therefore requires a whole-system noun
+ * (시스템/프로그램/앱/플랫폼/쇼핑몰/예약 시스템/관리 프로그램) or a concrete
+ * production/automation phrase, so only true "build me a system" commands match.
+ */
+const UNIVERSAL_BUILD_MARKERS = [
+  '시스템 만들',
+  '시스템만들',
+  '프로그램 만들',
+  '프로그램만들',
+  '앱 만들',
+  '앱만들',
+  '플랫폼 만들',
+  '플랫폼만들',
+  '쇼핑몰',
+  '커머스',
+  '이커머스',
+  '온라인몰',
+  '예약 시스템',
+  '예약시스템',
+  '관리 프로그램',
+  '관리프로그램',
+  '관리 시스템',
+  '관리시스템',
+  '자동 제작',
+  '자동제작',
+  '자동화 시스템',
+  '자동화시스템',
+  '랜딩페이지',
+  '랜딩 페이지',
+  '상세페이지',
+  '상세 페이지',
+  '영상 광고',
+  '영상광고',
+  '광고 제작',
+  '제안서 자동 생성',
+  '제안서 자동생성',
+  '제안서 생성',
+  '제안서 자동'
+]
+
 /** Verbs/phrases that signal a product/development (implementation) command. */
 const IMPLEMENTATION_MARKERS = [
   '만들어',
@@ -205,7 +252,21 @@ export default class IntentClassifier {
     const { workspace, nav } = inferWorkspace(command)
     const externalKey = inferExternalKey(command)
 
-    // 0) GPT-needed reasoning/analysis/strategy/planning questions route to the
+    // 0a) Universal App Builder — "쇼핑몰 시스템 만들어", "학원 관리 프로그램
+    //     만들어", "병원 예약 시스템 만들어". Checked before GPT + implementation
+    //     so a whole-system build command becomes a structured app-build project.
+    if (matchesAny(command, UNIVERSAL_BUILD_MARKERS)) {
+      return {
+        mode: 'universal-build',
+        intent: 'universal-build-command',
+        confidence: 0.92,
+        targetWorkspace: 'app-builder',
+        navigationTarget: 'app-builder',
+        externalKey: null
+      }
+    }
+
+    // 0b) GPT-needed reasoning/analysis/strategy/planning questions route to the
     //    GPT brain. Checked before implementation so "다음 기능 추천해줘" is a
     //    planning question, while concrete "... 추가해/구현해" stays a request.
     if (needsGpt(command)) {

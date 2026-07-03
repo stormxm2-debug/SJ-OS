@@ -27,7 +27,11 @@ import {
   Activity,
   AudioLines,
   Server,
-  Loader2
+  Loader2,
+  Boxes,
+  Copy,
+  Check,
+  Layers
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -55,7 +59,7 @@ const NAV_VIEWS = new Set([
   'assistant', 'company', 'dashboard', 'fcos', 'customer', 'sales-activity', 'schedule',
   'performance', 'team-leader', 'consultation', 'insurance-analysis', 'cto', 'qa', 'release',
   'devops', 'autopilot', 'devos', 'pm', 'backlog', 'workers', 'projects', 'approvals',
-  'activity', 'settings'
+  'app-builder', 'activity', 'settings'
 ])
 
 function toView(target: string | null | undefined): View | null {
@@ -73,9 +77,11 @@ const COMMAND_CHIPS = [
   '유튜브 켜줘',
   '오토파일럿 열어줘',
   'FC OS에 팀별 필터 추가해',
+  '쇼핑몰 시스템 만들어',
+  '학원 관리 프로그램 만들어',
+  '병원 예약 시스템 만들어',
+  'AI 영상 광고 제작 시스템 만들어',
   '오늘 조직 상황 브리핑 해줘',
-  '이번 달 실적에서 문제점 분석해줘',
-  '미활동 FC 관리 전략 짜줘',
   '우리 회사 앱 다음 기능 추천해줘'
 ]
 
@@ -113,6 +119,7 @@ const MODE_META: Record<JarvisMode, { label: string; classes: string }> = {
   answer: { label: 'Answer', classes: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
   briefing: { label: 'Briefing', classes: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' },
   'implementation-request': { label: 'Implementation', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
+  'universal-build': { label: 'App Builder', classes: 'border-violet-500/30 bg-violet-500/10 text-violet-300' },
   navigation: { label: 'Navigation', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
   'external-action': { label: 'External', classes: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
   gpt: { label: 'GPT Brain', classes: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300' },
@@ -185,6 +192,7 @@ export default function JarvisPanel(): JSX.Element | null {
   const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false)
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics>(() => voice.getDiagnostics())
   const [lastCommand, setLastCommand] = useState('')
+  const [promptCopied, setPromptCopied] = useState(false)
   const recognitionSupported = voice.isRecognitionSupported()
   const synthesisSupported = voice.isSynthesisSupported()
 
@@ -280,6 +288,7 @@ export default function JarvisPanel(): JSX.Element | null {
       toolCalls: result.toolCalls,
       answer: result.answer,
       implementation: result.implementation,
+      universalBuild: result.universalBuild,
       external: result.external,
       gpt: result.gpt,
       source: result.source,
@@ -475,12 +484,31 @@ export default function JarvisPanel(): JSX.Element | null {
     setState(service.getState())
   }
 
+  // Copy the generated Claude Code developer prompt to the clipboard. Falls back
+  // to selecting the textarea when the Clipboard API is unavailable.
+  const copyPrompt = (prompt: string): void => {
+    const done = (): void => {
+      setPromptCopied(true)
+      window.setTimeout(() => setPromptCopied(false), 2000)
+    }
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(prompt).then(done).catch(() => {
+        const field = document.getElementById('jarvis-build-prompt') as HTMLTextAreaElement | null
+        field?.select()
+      })
+      return
+    }
+    const field = document.getElementById('jarvis-build-prompt') as HTMLTextAreaElement | null
+    field?.select()
+  }
+
   if (!state.isOpen) {
     return null
   }
 
   const answer = state.answer
   const impl = state.implementation
+  const build = state.universalBuild
   const external = state.external
   const gpt = state.gpt
 
@@ -1154,6 +1182,144 @@ export default function JarvisPanel(): JSX.Element | null {
               </Card>
             ) : null}
 
+            {/* Universal App Builder result */}
+            {build ? (
+              <Card title="Universal App Builder" icon={<Boxes className="h-4 w-4 text-violet-300" />}>
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-sm text-slate-200">
+                    <div className="font-medium text-slate-100">{build.projectName}</div>
+                    <div className="mt-0.5 text-[11px] text-slate-500">프로젝트 ID {build.projectId}</div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <Field label="앱 타입" value={build.appType} />
+                    <Field label="산업" value={build.industry} />
+                    <Field label="대상 사용자" value={build.targetUsers} />
+                    <Field label="상태" value={build.status} />
+                    <Field label="위험도" value={build.riskLevel} tone={RISK_TONE[build.riskLevel]} />
+                    <Field
+                      label="승인 필요"
+                      value={build.approvalRequired ? '필요' : '불필요'}
+                      tone={build.approvalRequired ? 'text-amber-300' : 'text-emerald-300'}
+                    />
+                  </div>
+
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+                    <span className="text-slate-500">해석된 목표: </span>{build.interpretedGoal}
+                  </div>
+
+                  {build.assumptions.length > 0 ? (
+                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
+                      <div className="mb-1 font-medium">가정 (custom/unknown — 확인 필요)</div>
+                      <ul className="space-y-0.5">
+                        {build.assumptions.map((a) => (
+                          <li key={a}>· {a}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <TagList label="필요 모듈" icon={<Layers className="h-3.5 w-3.5 text-violet-300" />} items={build.requiredModules} />
+                    <TagList label="추천 화면" icon={<Compass className="h-3.5 w-3.5 text-sky-300" />} items={build.suggestedScreens} />
+                    <TagList label="데이터 모델" icon={<Boxes className="h-3.5 w-3.5 text-emerald-300" />} items={build.suggestedDataModels} />
+                    <TagList label="추천 연동" icon={<GitBranch className="h-3.5 w-3.5 text-indigo-300" />} items={build.suggestedIntegrations} />
+                  </div>
+
+                  {/* AI tool orchestration plan */}
+                  {build.aiToolPlan.length > 0 ? (
+                    <div className="space-y-1">
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">AI Tool Plan</div>
+                      <ul className="space-y-1">
+                        {build.aiToolPlan.map((t) => (
+                          <li key={t.toolId} className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs">
+                            <span className="mt-0.5 inline-flex shrink-0 items-center rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-medium text-violet-300">
+                              {t.toolName}
+                            </span>
+                            <span className="flex-1 text-slate-400">{t.role}</span>
+                            <span className="shrink-0 text-[10px] text-slate-500">{t.officialApiStatus} API · {t.status}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {/* Sprint plan */}
+                  {build.sprintPlan.length > 0 ? (
+                    <div className="space-y-1">
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Sprint Plan</div>
+                      <ul className="space-y-1">
+                        {build.sprintPlan.map((s) => (
+                          <li key={s.id} className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs text-slate-300">
+                            <span className="font-medium text-slate-200">{s.name}</span>
+                            <span className="text-slate-500"> — {s.goal}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {/* Generated developer prompt */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Claude Code 개발자 프롬프트</div>
+                      <button
+                        type="button"
+                        onClick={() => copyPrompt(build.generatedDeveloperPrompt)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium text-violet-300 transition hover:bg-violet-500/20"
+                      >
+                        {promptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        {promptCopied ? '복사됨' : '프롬프트 복사'}
+                      </button>
+                    </div>
+                    <textarea
+                      id="jarvis-build-prompt"
+                      readOnly
+                      value={build.generatedDeveloperPrompt}
+                      onFocus={(e) => e.currentTarget.select()}
+                      className="h-40 w-full resize-y rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-[11px] leading-5 text-slate-300 outline-none"
+                    />
+                  </div>
+
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200">
+                    다음 액션: {build.nextAction}
+                  </div>
+
+                  {build.routingLog.length > 0 ? (
+                    <div className="space-y-1">
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Routing</div>
+                      <ul className="space-y-1">
+                        {build.routingLog.map((line) => (
+                          <li key={line} className="flex items-start gap-2 text-xs text-slate-400">
+                            <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => goToTarget('app-builder')}
+                      className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition hover:bg-violet-500/20"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                      App Builder에서 확인
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goToTarget('pm')}
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                      PM Planner에서 확인
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            ) : null}
+
             {/* Suggested next commands */}
             {state.suggestedCommands.length > 0 ? (
               <Card title="Suggested commands" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
@@ -1271,6 +1437,29 @@ function Field({ label, value, tone }: { label: string; value: string; tone?: st
     <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
       <div className="text-[11px] text-slate-500">{label}</div>
       <div className={['mt-0.5 truncate text-sm font-medium', tone ?? 'text-slate-200'].join(' ')} title={value}>{value}</div>
+    </div>
+  )
+}
+
+/** A labelled chip list, used for modules/screens/data models/integrations. */
+function TagList({ label, icon, items }: { label: string; icon: JSX.Element; items: string[] }): JSX.Element {
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.15em] text-slate-500">
+        {icon}
+        {label}
+      </div>
+      {items.length === 0 ? (
+        <div className="text-xs text-slate-600">—</div>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          {items.map((item) => (
+            <span key={item} className="rounded-full border border-slate-700 bg-slate-800/50 px-2 py-0.5 text-[10px] text-slate-300">
+              {item}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
