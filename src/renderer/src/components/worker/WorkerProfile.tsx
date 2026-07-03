@@ -20,10 +20,10 @@ export default function WorkerProfile({ worker }: WorkerProfileProps): JSX.Eleme
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <Card title="Current Assignment" className="lg:col-span-2">
+      <Card title="현재 배정 업무" className="lg:col-span-2">
         <div className="text-sm text-slate-300">
           {worker.currentTask ?? (
-            <span className="text-slate-600">No active task</span>
+            <span className="text-slate-600">진행 중인 작업 없음</span>
           )}
         </div>
         {worker.currentTask && (
@@ -36,29 +36,29 @@ export default function WorkerProfile({ worker }: WorkerProfileProps): JSX.Eleme
         )}
 
         <div className="mt-5 grid grid-cols-3 gap-3">
-          <Stat label="Tasks completed" value={stats.completed} />
-          <Stat label="Success rate" value={`${stats.successRate}%`} />
-          <Stat label="Open tasks" value={stats.openTasks} />
+          <Stat label="완료한 작업" value={stats.completed} />
+          <Stat label="성공률" value={`${stats.successRate}%`} />
+          <Stat label="진행 중인 작업" value={stats.openTasks} />
         </div>
       </Card>
 
-      <Card title="Configuration">
+      <Card title="구성">
         <dl className="space-y-3 text-sm">
-          <Row label="Role" value={ROLE_LABEL[worker.role]} />
+          <Row label="역할" value={ROLE_LABEL[worker.role]} />
           <div>
-            <dt className="text-xs text-slate-500">Provider</dt>
+            <dt className="text-xs text-slate-500">제공자</dt>
             <dd className="mt-1">
-              <Chip tone="indigo">{provider?.label ?? 'Unassigned'}</Chip>
+              <Chip tone="indigo">{provider?.label ?? '미할당'}</Chip>
             </dd>
             <p className="mt-1 text-xs text-slate-600">
-              Swappable in Company Settings — no vendor lock-in.
+              회사 설정에서 교체 가능 — 벤더 종속 없음.
             </p>
           </div>
-          <Row label="Last activity" value={`Updated ${worker.lastActivity}`} />
+          <Row label="마지막 활동" value={`업데이트 ${worker.lastActivity}`} />
         </dl>
       </Card>
 
-      <Card title="Capabilities" className="lg:col-span-3">
+      <Card title="역량" className="lg:col-span-3">
         <div className="flex flex-wrap gap-2">
           {capabilities.map((c) => (
             <Chip key={c} tone="slate">

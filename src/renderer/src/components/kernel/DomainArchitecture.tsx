@@ -14,16 +14,16 @@ import Chip from '@renderer/components/ui/Chip'
 const PREFIX = 'src/renderer/src/domains/'
 
 const TITLES: Record<string, string> = {
-  customer: 'Customer',
-  consultation: 'Consultation',
-  'insurance-analysis': 'Insurance Analysis',
-  policy: 'Policy',
-  claim: 'Claim',
-  medical: 'Medical',
-  'hidden-money': 'Hidden Insurance Money',
-  'ai-planner': 'AI Planner',
-  document: 'Document',
-  admin: 'Admin'
+  customer: '고객',
+  consultation: '상담',
+  'insurance-analysis': '보험 분석',
+  policy: '보험증권',
+  claim: '보험금 청구',
+  medical: '의료',
+  'hidden-money': '숨은 보험금',
+  'ai-planner': 'AI 플래너',
+  document: '문서',
+  admin: '관리자'
 }
 
 const AREA_LABEL: Record<string, string> = {
@@ -85,9 +85,9 @@ export default function DomainArchitecture(): JSX.Element | null {
   if (domains.length === 0) return null
   return (
     <Card
-      title="Domain architecture"
+      title="도메인 아키텍처"
       icon={<Layers className="h-4 w-4 text-indigo-300" />}
-      action={<span className="text-xs text-slate-500">{domains.length} domain(s)</span>}
+      action={<span className="text-xs text-slate-500">{domains.length}개 도메인</span>}
     >
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {domains.map((domain) => (
@@ -113,9 +113,9 @@ function DomainCard({
       <div className="flex items-center gap-2">
         <Layers className="h-3.5 w-3.5 text-indigo-300" />
         <span className="text-sm font-semibold text-slate-100">
-          {humanize(domain.slug)} Domain
+          {humanize(domain.slug)} 도메인
         </span>
-        <span className="ml-auto text-xs text-slate-500">{domain.files} file(s)</span>
+        <span className="ml-auto text-xs text-slate-500">{domain.files}개 파일</span>
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {domain.areas.map((area) => (
@@ -124,7 +124,7 @@ function DomainCard({
       </div>
       {asset && (
         <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
-          Module:
+          모듈:
           <span className="text-slate-300">{asset.name}</span>
           <Chip tone={asset.status === 'registered' ? 'emerald' : 'amber'}>
             {asset.status === 'registered' ? 'registered' : 'in dev'}

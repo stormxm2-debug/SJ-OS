@@ -26,14 +26,14 @@ const ORDER = [
 ]
 
 const TITLES: Record<string, string> = {
-  'mock-analysis-data': 'Mock Analysis Data',
-  'customer-link': 'Customer Link',
-  'policy-link': 'Policy Link',
-  'coverage-summary': 'Coverage Summary',
-  'coverage-gap-detection': 'Coverage Gap Detection',
-  'recommendation-engine': 'Recommendation Engine',
-  'analysis-report': 'Analysis Report',
-  'analysis-dashboard': 'Analysis Dashboard'
+  'mock-analysis-data': '모의 분석 데이터',
+  'customer-link': '고객 연동',
+  'policy-link': '보험증권 연동',
+  'coverage-summary': '보장 요약',
+  'coverage-gap-detection': '보장 공백 탐지',
+  'recommendation-engine': '추천 엔진',
+  'analysis-report': '분석 리포트',
+  'analysis-dashboard': '분석 대시보드'
 }
 
 function deriveFeatures(snapshot: KernelStateSnapshot): { slug: string; files: number }[] {
@@ -65,9 +65,9 @@ export default function EpicView(): JSX.Element | null {
 
   return (
     <Card
-      title="Epic 001 — Insurance Analysis"
+      title="Epic 001 — 보험 분석"
       icon={<Target className="h-4 w-4 text-indigo-300" />}
-      action={<span className="text-xs text-slate-500">{features.length} features</span>}
+      action={<span className="text-xs text-slate-500">{features.length}개 기능</span>}
     >
       <div className="flex items-center gap-3">
         <ProgressBar value={progress} />
@@ -85,19 +85,19 @@ export default function EpicView(): JSX.Element | null {
             <div className="truncate text-sm font-medium text-slate-200">
               {TITLES[feature.slug] ?? feature.slug}
             </div>
-            <div className="text-xs text-slate-500">{feature.files} file(s)</div>
+            <div className="text-xs text-slate-500">{feature.files}개 파일</div>
           </div>
         ))}
       </div>
 
       {asset && (
         <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-          Registered asset:
+          등록된 자산:
           <span className="text-slate-300">{asset.name}</span>
           <Chip tone={asset.status === 'registered' ? 'emerald' : 'amber'}>
             {asset.status === 'registered' ? 'registered' : 'in dev'}
           </Chip>
-          <span>· depends on {asset.dependencies.join(', ')}</span>
+          <span>· 의존: {asset.dependencies.join(', ')}</span>
         </div>
       )}
     </Card>

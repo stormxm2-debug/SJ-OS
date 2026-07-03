@@ -22,16 +22,16 @@ const ACTIVITY_META: Record<
   ExecutionStatus,
   { label: string; tone: ChipTone; dot: string }
 > = {
-  idle: { label: 'Idle', tone: 'slate', dot: 'bg-slate-500' },
-  meeting: { label: 'Meeting', tone: 'indigo', dot: 'bg-indigo-400' },
-  planning: { label: 'Planning', tone: 'sky', dot: 'bg-sky-400' },
-  researching: { label: 'Researching', tone: 'sky', dot: 'bg-cyan-400' },
-  coding: { label: 'Coding', tone: 'violet', dot: 'bg-violet-400' },
-  testing: { label: 'Testing', tone: 'amber', dot: 'bg-amber-400' },
-  review: { label: 'Review', tone: 'sky', dot: 'bg-sky-400' },
-  waiting: { label: 'Waiting', tone: 'amber', dot: 'bg-amber-400' },
-  completed: { label: 'Completed', tone: 'emerald', dot: 'bg-emerald-400' },
-  failed: { label: 'Failed', tone: 'rose', dot: 'bg-rose-400' }
+  idle: { label: '유휴', tone: 'slate', dot: 'bg-slate-500' },
+  meeting: { label: '회의', tone: 'indigo', dot: 'bg-indigo-400' },
+  planning: { label: '계획', tone: 'sky', dot: 'bg-sky-400' },
+  researching: { label: '리서치', tone: 'sky', dot: 'bg-cyan-400' },
+  coding: { label: '코딩', tone: 'violet', dot: 'bg-violet-400' },
+  testing: { label: '테스트', tone: 'amber', dot: 'bg-amber-400' },
+  review: { label: '검토', tone: 'sky', dot: 'bg-sky-400' },
+  waiting: { label: '대기 중', tone: 'amber', dot: 'bg-amber-400' },
+  completed: { label: '완료', tone: 'emerald', dot: 'bg-emerald-400' },
+  failed: { label: '실패', tone: 'rose', dot: 'bg-rose-400' }
 }
 
 export default function CompanyFloor(): JSX.Element {
@@ -39,10 +39,10 @@ export default function CompanyFloor(): JSX.Element {
   const activeCount = kernel.workers.filter((w) => w.state === 'busy').length
   return (
     <Card
-      title="Company Floor"
+      title="컴퍼니 플로어"
       action={
         <span className="text-xs text-slate-500">
-          {kernel.departments.length} departments · {activeCount} working
+          {kernel.departments.length}개 부서 · {activeCount}명 근무 중
         </span>
       }
     >
@@ -57,8 +57,8 @@ export default function CompanyFloor(): JSX.Element {
               <div className="mb-1.5 flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
                 {dept.name}
                 <span className="text-slate-600">
-                  · {members.length} worker{members.length === 1 ? '' : 's'}
-                  {active > 0 ? ` · ${active} active` : ''}
+                  · {members.length}명 워커
+                  {active > 0 ? ` · ${active}명 활동 중` : ''}
                 </span>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -132,7 +132,7 @@ function EmployeeCard({
         {task ? (
           <span className="line-clamp-1">{task.title}</span>
         ) : (
-          <span className="text-slate-600">No current task</span>
+          <span className="text-slate-600">현재 작업 없음</span>
         )}
       </div>
 
@@ -146,11 +146,11 @@ function EmployeeCard({
       )}
 
       {waitingReason && (
-        <div className="mt-1.5 text-xs text-amber-300/80">Waiting: {waitingReason}</div>
+        <div className="mt-1.5 text-xs text-amber-300/80">대기 중: {waitingReason}</div>
       )}
 
       <div className="mt-auto pt-2 text-[11px] text-slate-600">
-        {lastEvent ? `Last: ${lastEvent}` : 'No activity yet'}
+        {lastEvent ? `최근: ${lastEvent}` : '활동 없음'}
       </div>
     </div>
   )

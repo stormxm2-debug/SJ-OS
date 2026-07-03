@@ -27,7 +27,7 @@ export default function CompanyActivityLogPage(): JSX.Element {
     <div className="space-y-5">
       <div className="flex flex-wrap gap-2">
         <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
-          All
+          전체
         </FilterChip>
         {actors.map((actor) => (
           <FilterChip
@@ -41,8 +41,8 @@ export default function CompanyActivityLogPage(): JSX.Element {
       </div>
 
       <Card
-        title="Activity"
-        action={<span className="text-xs text-slate-500">{visible.length} events</span>}
+        title="활동"
+        action={<span className="text-xs text-slate-500">이벤트 {visible.length}건</span>}
       >
         <ol className="relative space-y-4 pl-6">
           <span className="absolute left-[7px] top-1 h-[calc(100%-0.5rem)] w-px bg-slate-800" />

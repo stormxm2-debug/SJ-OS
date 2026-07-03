@@ -56,26 +56,26 @@ const SIGNAL_STYLES: Record<CtoSignal, string> = {
 }
 
 const SIGNAL_LABELS: Record<CtoSignal, string> = {
-  green: 'Healthy',
-  yellow: 'Watch',
-  red: 'At risk'
+  green: '양호',
+  yellow: '주의',
+  red: '위험'
 }
 
 const RELEASE_STYLES: Record<ReleaseReadinessLevel, { label: string; className: string }> = {
-  ready: { label: 'Ready', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
-  at_risk: { label: 'At risk', className: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
-  not_ready: { label: 'Not ready', className: 'border-rose-500/30 bg-rose-500/10 text-rose-300' }
+  ready: { label: '준비됨', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
+  at_risk: { label: '위험', className: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
+  not_ready: { label: '준비 안 됨', className: 'border-rose-500/30 bg-rose-500/10 text-rose-300' }
 }
 
 const LOG_STYLES: Record<CtoLogType, { label: string; className: string }> = {
-  'debt-added': { label: 'Debt added', className: 'text-amber-300' },
-  'debt-resolved': { label: 'Debt resolved', className: 'text-emerald-300' },
-  'risk-added': { label: 'Risk added', className: 'text-rose-300' },
-  'risk-mitigated': { label: 'Risk mitigated', className: 'text-emerald-300' },
-  'decision-blocked': { label: 'Decision blocked', className: 'text-rose-300' },
-  'decision-cleared': { label: 'Decision cleared', className: 'text-emerald-300' },
-  'priority-promoted': { label: 'Priority promoted', className: 'text-indigo-300' },
-  reset: { label: 'Reset', className: 'text-amber-300' }
+  'debt-added': { label: '부채 추가', className: 'text-amber-300' },
+  'debt-resolved': { label: '부채 해결', className: 'text-emerald-300' },
+  'risk-added': { label: '위험 추가', className: 'text-rose-300' },
+  'risk-mitigated': { label: '위험 완화', className: 'text-emerald-300' },
+  'decision-blocked': { label: '의사결정 차단', className: 'text-rose-300' },
+  'decision-cleared': { label: '의사결정 해제', className: 'text-emerald-300' },
+  'priority-promoted': { label: '우선순위 승격', className: 'text-indigo-300' },
+  reset: { label: '초기화', className: 'text-amber-300' }
 }
 
 const SEVERITIES: CtoSeverity[] = ['low', 'medium', 'high', 'critical']
@@ -132,7 +132,7 @@ export default function CtoRoomPage(): JSX.Element {
   const openDecisions = cto.blockedDecisions.filter((d) => d.status === 'blocked').length
 
   const handleReset = (): void => {
-    if (typeof window !== 'undefined' && !window.confirm('Reset the CTO Room back to the seed?')) {
+    if (typeof window !== 'undefined' && !window.confirm('CTO 룸을 초기 값으로 되돌릴까요?')) {
       return
     }
     ctoRepository.resetDemoState()
@@ -142,15 +142,15 @@ export default function CtoRoomPage(): JSX.Element {
     <div className="space-y-5">
       {/* Header + executive summary */}
       <Card
-        title="CTO Room"
+        title="CTO 룸"
         icon={<ShieldCheck className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportReport}>
-              Export CTO report
+              CTO 리포트 내보내기
             </ActionButton>
             <ActionButton variant="danger" icon={<RotateCcw className="h-4 w-4" />} onClick={handleReset}>
-              Reset demo state
+              데모 상태 초기화
             </ActionButton>
           </div>
         }
@@ -160,46 +160,46 @@ export default function CtoRoomPage(): JSX.Element {
             <div className="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-3">
               <div className="flex items-center gap-1.5 text-xs text-slate-500">
                 <Gauge className="h-4 w-4 text-slate-400" />
-                Architecture health
+                아키텍처 상태
               </div>
               <div className={['mt-1 text-2xl font-semibold', scoreClass(cto.architectureHealth.score)].join(' ')}>
                 {cto.architectureHealth.score}
                 <span className="text-sm text-slate-500">/100</span>
               </div>
             </div>
-            <StatTile icon={<Wrench className="h-4 w-4" />} label="Open debt" value={openDebt} />
-            <StatTile icon={<ShieldAlert className="h-4 w-4" />} label="Open risks" value={openRisks} />
-            <StatTile icon={<Lock className="h-4 w-4" />} label="Blocked decisions" value={openDecisions} />
+            <StatTile icon={<Wrench className="h-4 w-4" />} label="미해결 부채" value={openDebt} />
+            <StatTile icon={<ShieldAlert className="h-4 w-4" />} label="미해결 위험" value={openRisks} />
+            <StatTile icon={<Lock className="h-4 w-4" />} label="차단된 의사결정" value={openDecisions} />
           </div>
 
           <div>
-            <SectionLabel>Executive technical summary</SectionLabel>
+            <SectionLabel>기술 총평</SectionLabel>
             <p className="mt-1 text-sm leading-relaxed text-slate-300">{cto.architectureHealth.summary}</p>
           </div>
 
-          <div className="text-xs text-slate-500">Last CTO review: {formatTimestamp(cto.lastReviewAt)}</div>
+          <div className="text-xs text-slate-500">최근 CTO 리뷰: {formatTimestamp(cto.lastReviewAt)}</div>
         </div>
       </Card>
 
       {/* Current sprint + active work */}
-      <Card title="Current Sprint" icon={<Activity className="h-4 w-4" />}>
+      <Card title="현재 스프린트" icon={<Activity className="h-4 w-4" />}>
         <div className="grid gap-3 sm:grid-cols-2">
-          <StatTile icon={<Rocket className="h-4 w-4" />} label="Sprint" value={cto.currentSprint} />
-          <StatTile icon={<Layers className="h-4 w-4" />} label="Active epic" value={cto.activeEpic} />
-          <StatTile icon={<GitBranch className="h-4 w-4" />} label="Active feature" value={cto.activeFeature} />
-          <StatTile icon={<ListTree className="h-4 w-4" />} label="Active task" value={cto.activeTask} />
+          <StatTile icon={<Rocket className="h-4 w-4" />} label="스프린트" value={cto.currentSprint} />
+          <StatTile icon={<Layers className="h-4 w-4" />} label="활성 에픽" value={cto.activeEpic} />
+          <StatTile icon={<GitBranch className="h-4 w-4" />} label="활성 기능" value={cto.activeFeature} />
+          <StatTile icon={<ListTree className="h-4 w-4" />} label="활성 작업" value={cto.activeTask} />
         </div>
       </Card>
 
       {/* Architecture health detail */}
-      <Card title="Architecture Health" icon={<Gauge className="h-4 w-4" />}>
+      <Card title="아키텍처 상태" icon={<Gauge className="h-4 w-4" />}>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <SectionLabel>Strengths</SectionLabel>
+            <SectionLabel>강점</SectionLabel>
             <BulletList items={cto.architectureHealth.strengths} tone="good" />
           </div>
           <div>
-            <SectionLabel>Concerns</SectionLabel>
+            <SectionLabel>우려 사항</SectionLabel>
             <BulletList items={cto.architectureHealth.concerns} tone="warn" />
           </div>
         </div>
@@ -207,33 +207,33 @@ export default function CtoRoomPage(): JSX.Element {
 
       {/* QA / DevOps / Release readiness */}
       <div className="grid gap-5 lg:grid-cols-3">
-        <Card title="QA Status" icon={<ClipboardCheck className="h-4 w-4" />}>
+        <Card title="QA 상태" icon={<ClipboardCheck className="h-4 w-4" />}>
           <div className="space-y-3">
             <SignalBadge signal={cto.qaStatus.signal} />
             <p className="text-sm text-slate-300">{cto.qaStatus.summary}</p>
             <div className="flex flex-wrap gap-4 text-xs text-slate-500">
               <span>
-                Checks: {cto.qaStatus.passingChecks}/{cto.qaStatus.totalChecks} passing
+                검사: {cto.qaStatus.passingChecks}/{cto.qaStatus.totalChecks} 통과
               </span>
-              <span>Open issues: {cto.qaStatus.openIssues}</span>
+              <span>미해결 이슈: {cto.qaStatus.openIssues}</span>
             </div>
           </div>
         </Card>
 
-        <Card title="DevOps Status" icon={<Server className="h-4 w-4" />}>
+        <Card title="DevOps 상태" icon={<Server className="h-4 w-4" />}>
           <div className="space-y-3">
             <SignalBadge signal={cto.devOpsStatus.signal} />
             <p className="text-sm text-slate-300">{cto.devOpsStatus.summary}</p>
             <div className="space-y-1 text-xs text-slate-500">
-              <div>Typecheck: {cto.devOpsStatus.typecheckPassing ? 'passing' : 'failing'}</div>
-              <div>Build: {cto.devOpsStatus.buildPassing ? 'passing' : 'failing'}</div>
-              <div>Pipeline: {cto.devOpsStatus.pipeline}</div>
-              <div>Last deploy: {cto.devOpsStatus.lastDeploy}</div>
+              <div>타입체크: {cto.devOpsStatus.typecheckPassing ? '통과' : '실패'}</div>
+              <div>빌드: {cto.devOpsStatus.buildPassing ? '통과' : '실패'}</div>
+              <div>파이프라인: {cto.devOpsStatus.pipeline}</div>
+              <div>최근 배포: {cto.devOpsStatus.lastDeploy}</div>
             </div>
           </div>
         </Card>
 
-        <Card title="Release Readiness" icon={<Rocket className="h-4 w-4" />}>
+        <Card title="릴리즈 준비도" icon={<Rocket className="h-4 w-4" />}>
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <ReleaseBadge level={cto.releaseReadiness.level} />
@@ -263,27 +263,27 @@ export default function CtoRoomPage(): JSX.Element {
 
       {/* PM Planner summary */}
       <Card
-        title="PM Planner Summary"
+        title="PM 플래너 요약"
         icon={<KanbanSquare className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">Live from the PM Planner</span>}
+        action={<span className="text-xs text-slate-500">PM 플래너 실시간</span>}
       >
         <div className="grid gap-3 sm:grid-cols-5">
-          <StatTile icon={<ClipboardCheck className="h-4 w-4" />} label="Backlog items" value={pmSummary.backlogItems} />
-          <StatTile icon={<Layers className="h-4 w-4" />} label="Active epics" value={pmSummary.activeEpics} />
-          <StatTile icon={<ListTree className="h-4 w-4" />} label="Open tasks" value={pmSummary.openTasks} />
-          <StatTile icon={<AlertTriangle className="h-4 w-4" />} label="Blocked tasks" value={pmSummary.blockedTasks} />
-          <StatTile icon={<CheckCheck className="h-4 w-4" />} label="Completed tasks" value={pmSummary.completedTasks} />
+          <StatTile icon={<ClipboardCheck className="h-4 w-4" />} label="백로그 항목" value={pmSummary.backlogItems} />
+          <StatTile icon={<Layers className="h-4 w-4" />} label="활성 에픽" value={pmSummary.activeEpics} />
+          <StatTile icon={<ListTree className="h-4 w-4" />} label="열린 작업" value={pmSummary.openTasks} />
+          <StatTile icon={<AlertTriangle className="h-4 w-4" />} label="차단된 작업" value={pmSummary.blockedTasks} />
+          <StatTile icon={<CheckCheck className="h-4 w-4" />} label="완료된 작업" value={pmSummary.completedTasks} />
         </div>
       </Card>
 
       {/* Next priorities */}
       <Card
-        title="Next CTO Priorities"
+        title="다음 CTO 우선순위"
         icon={<Rocket className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{cto.nextPriorities.length} queued</span>}
+        action={<span className="text-xs text-slate-500">{cto.nextPriorities.length}건 대기</span>}
       >
         {cto.nextPriorities.length === 0 ? (
-          <p className="text-sm text-slate-500">No priorities queued. Promote work from the PM Planner or add one.</p>
+          <p className="text-sm text-slate-500">대기 중인 우선순위가 없습니다. PM 플래너에서 작업을 승격하거나 추가하세요.</p>
         ) : (
           <div className="space-y-3">
             {cto.nextPriorities.map((p) => (
@@ -298,14 +298,14 @@ export default function CtoRoomPage(): JSX.Element {
                     variant="primary"
                     onClick={() => ctoRepository.promoteNextPriority(p.id)}
                   >
-                    Promote to active
+                    활성화로 승격
                   </ActionButton>
                 </div>
                 <p className="mt-2 text-sm text-slate-400">{p.rationale}</p>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                  <span>Epic: {p.epic}</span>
-                  <span>Feature: {p.feature}</span>
-                  <span>Task: {p.task}</span>
+                  <span>에픽: {p.epic}</span>
+                  <span>기능: {p.feature}</span>
+                  <span>작업: {p.task}</span>
                 </div>
               </div>
             ))}
@@ -315,14 +315,14 @@ export default function CtoRoomPage(): JSX.Element {
 
       {/* Technical debt */}
       <Card
-        title="Technical Debt"
+        title="기술 부채"
         icon={<Wrench className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{openDebt} open</span>}
+        action={<span className="text-xs text-slate-500">{openDebt}건 미해결</span>}
       >
         <div className="space-y-3">
           <AddDebtForm />
           {cto.technicalDebtItems.length === 0 ? (
-            <p className="text-sm text-slate-500">No technical debt tracked.</p>
+            <p className="text-sm text-slate-500">추적 중인 기술 부채가 없습니다.</p>
           ) : (
             cto.technicalDebtItems.map((item) => (
               <div
@@ -344,13 +344,13 @@ export default function CtoRoomPage(): JSX.Element {
                   <Chip>{item.area}</Chip>
                   <SeverityBadge severity={item.severity} />
                   {item.status === 'resolved' ? (
-                    <Chip tone="good">Resolved</Chip>
+                    <Chip tone="good">해결됨</Chip>
                   ) : (
                     <MiniButton
                       icon={<CheckCheck className="h-3 w-3" />}
                       onClick={() => ctoRepository.resolveTechnicalDebt(item.id)}
                     >
-                      Resolve
+                      해결
                     </MiniButton>
                   )}
                 </div>
@@ -362,14 +362,14 @@ export default function CtoRoomPage(): JSX.Element {
 
       {/* Risks */}
       <Card
-        title="Technical Risks"
+        title="기술 위험"
         icon={<ShieldAlert className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{openRisks} open</span>}
+        action={<span className="text-xs text-slate-500">{openRisks}건 미해결</span>}
       >
         <div className="space-y-3">
           <AddRiskForm />
           {cto.riskItems.length === 0 ? (
-            <p className="text-sm text-slate-500">No risks tracked.</p>
+            <p className="text-sm text-slate-500">추적 중인 위험이 없습니다.</p>
           ) : (
             cto.riskItems.map((risk) => (
               <div key={risk.id} className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
@@ -388,21 +388,21 @@ export default function CtoRoomPage(): JSX.Element {
                   <div className="flex flex-wrap items-center gap-2">
                     <Chip>{risk.area}</Chip>
                     <SeverityBadge severity={risk.severity} />
-                    <Chip>Likelihood: {risk.likelihood}</Chip>
+                    <Chip>가능성: {risk.likelihood}</Chip>
                     {risk.status === 'mitigated' ? (
-                      <Chip tone="good">Mitigated</Chip>
+                      <Chip tone="good">완화됨</Chip>
                     ) : (
                       <MiniButton
                         icon={<CheckCheck className="h-3 w-3" />}
                         onClick={() => ctoRepository.mitigateRisk(risk.id)}
                       >
-                        Mitigate
+                        완화
                       </MiniButton>
                     )}
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-slate-400">
-                  <span className="text-slate-500">Mitigation: </span>
+                  <span className="text-slate-500">완화 방안: </span>
                   {risk.mitigation}
                 </p>
               </div>
@@ -413,14 +413,14 @@ export default function CtoRoomPage(): JSX.Element {
 
       {/* Blocked decisions */}
       <Card
-        title="Blocked Decisions"
+        title="차단된 의사결정"
         icon={<Lock className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{openDecisions} awaiting</span>}
+        action={<span className="text-xs text-slate-500">{openDecisions}건 대기</span>}
       >
         <div className="space-y-3">
           <AddDecisionForm />
           {cto.blockedDecisions.length === 0 ? (
-            <p className="text-sm text-slate-500">No blocked decisions.</p>
+            <p className="text-sm text-slate-500">차단된 의사결정이 없습니다.</p>
           ) : (
             cto.blockedDecisions.map((decision) => (
               <div key={decision.id} className="rounded-lg border border-slate-800 bg-slate-900/40 p-3">
@@ -437,15 +437,15 @@ export default function CtoRoomPage(): JSX.Element {
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Chip>Owner: {decision.owner}</Chip>
+                    <Chip>담당자: {decision.owner}</Chip>
                     {decision.status === 'cleared' ? (
-                      <Chip tone="good">Cleared</Chip>
+                      <Chip tone="good">해제됨</Chip>
                     ) : (
                       <MiniButton
                         icon={<CheckCheck className="h-3 w-3" />}
                         onClick={() => ctoRepository.clearBlockedDecision(decision.id)}
                       >
-                        Clear
+                        해제
                       </MiniButton>
                     )}
                   </div>
@@ -459,12 +459,12 @@ export default function CtoRoomPage(): JSX.Element {
 
       {/* Event log */}
       <Card
-        title="CTO Room Event Log"
+        title="CTO 룸 이벤트 로그"
         icon={<History className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{cto.eventLog.length} events</span>}
+        action={<span className="text-xs text-slate-500">이벤트 {cto.eventLog.length}건</span>}
       >
         {cto.eventLog.length === 0 ? (
-          <p className="text-sm text-slate-500">No events yet. Use the CTO actions to record activity.</p>
+          <p className="text-sm text-slate-500">아직 이벤트가 없습니다. CTO 작업으로 활동을 기록하세요.</p>
         ) : (
           <ol className="space-y-2">
             {cto.eventLog.map((entry) => {
@@ -511,7 +511,7 @@ function AddDebtForm(): JSX.Element {
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
-        placeholder="Add technical debt…"
+        placeholder="기술 부채 추가…"
         className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
       />
       <input
@@ -519,12 +519,12 @@ function AddDebtForm(): JSX.Element {
         value={area}
         onChange={(e) => setArea(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
-        placeholder="Area"
+        placeholder="영역"
         className="w-28 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
       />
       <SeveritySelect value={severity} onChange={setSeverity} />
       <MiniButton icon={<Plus className="h-3 w-3" />} onClick={submit}>
-        Add
+        추가
       </MiniButton>
     </div>
   )
@@ -554,14 +554,14 @@ function AddRiskForm(): JSX.Element {
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Add risk…"
+          placeholder="위험 추가…"
           className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <input
           type="text"
           value={area}
           onChange={(e) => setArea(e.target.value)}
-          placeholder="Area"
+          placeholder="영역"
           className="w-28 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <SeveritySelect value={severity} onChange={setSeverity} />
@@ -573,11 +573,11 @@ function AddRiskForm(): JSX.Element {
           value={mitigation}
           onChange={(e) => setMitigation(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder="Mitigation (optional)"
+          placeholder="완화 방안 (선택)"
           className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <MiniButton icon={<Plus className="h-3 w-3" />} onClick={submit}>
-          Add risk
+          위험 추가
         </MiniButton>
       </div>
     </div>
@@ -604,14 +604,14 @@ function AddDecisionForm(): JSX.Element {
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Add blocked decision…"
+          placeholder="차단된 의사결정 추가…"
           className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <input
           type="text"
           value={owner}
           onChange={(e) => setOwner(e.target.value)}
-          placeholder="Owner"
+          placeholder="담당자"
           className="w-24 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
       </div>
@@ -621,11 +621,11 @@ function AddDecisionForm(): JSX.Element {
           value={context}
           onChange={(e) => setContext(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder="Context (optional)"
+          placeholder="맥락 (선택)"
           className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <MiniButton icon={<Plus className="h-3 w-3" />} onClick={submit}>
-          Add decision
+          의사결정 추가
         </MiniButton>
       </div>
     </div>
@@ -671,7 +671,7 @@ function LikelihoodSelect({
     >
       {LIKELIHOODS.map((l) => (
         <option key={l} value={l}>
-          likelihood: {l}
+          가능성: {l}
         </option>
       ))}
     </select>

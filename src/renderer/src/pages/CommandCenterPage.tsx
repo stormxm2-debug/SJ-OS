@@ -46,22 +46,22 @@ import ProgressBar from '@renderer/components/ui/ProgressBar'
 import { ROLE_LABEL, ROLE_META } from '@renderer/lib/companyMeta'
 
 const EXAMPLES = [
-  'Start SJ Insurance Platform',
-  'Build SJ Insurance Login',
-  'Create an internal expense tracker'
+  'SJ 보험 플랫폼 시작',
+  'SJ 보험 로그인 개발',
+  '사내 경비 관리 시스템 만들기'
 ]
 
 /** The Chief of Staff's workflow, phase by phase — its nine actions. */
 const STEPS: { phase: CosPhase; label: string; icon: LucideIcon }[] = [
-  { phase: 'receiving', label: 'Receive request', icon: Inbox },
-  { phase: 'classifying', label: 'Classify & size', icon: Tags },
-  { phase: 'meeting', label: 'AI meeting', icon: Users },
-  { phase: 'creating_project', label: 'Create project', icon: FolderPlus },
-  { phase: 'planning', label: 'Break down work', icon: ListTree },
-  { phase: 'queuing', label: 'Build work queue', icon: ListOrdered },
-  { phase: 'assigning', label: 'Assign workers', icon: UsersRound },
-  { phase: 'executing', label: 'Track progress', icon: PlayCircle },
-  { phase: 'reporting', label: 'Report to CEO', icon: FileText }
+  { phase: 'receiving', label: '요청 접수', icon: Inbox },
+  { phase: 'classifying', label: '분류 & 규모 산정', icon: Tags },
+  { phase: 'meeting', label: 'AI 회의', icon: Users },
+  { phase: 'creating_project', label: '프로젝트 생성', icon: FolderPlus },
+  { phase: 'planning', label: '업무 분해', icon: ListTree },
+  { phase: 'queuing', label: '작업 큐 구성', icon: ListOrdered },
+  { phase: 'assigning', label: '워커 배정', icon: UsersRound },
+  { phase: 'executing', label: '진행 추적', icon: PlayCircle },
+  { phase: 'reporting', label: 'CEO 보고', icon: FileText }
 ]
 
 const PHASE_ORDER: CosPhase[] = [
@@ -79,18 +79,18 @@ const PHASE_ORDER: CosPhase[] = [
 ]
 
 const PHASE_TEXT: Record<CosPhase, string> = {
-  idle: 'Idle',
-  receiving: 'Receiving your request…',
-  classifying: 'Classifying and estimating size…',
-  meeting: 'The team is meeting to agree a strategy…',
-  creating_project: 'Creating the project…',
-  planning: 'Breaking work into epics, features and tasks…',
-  queuing: 'Building the work queue…',
-  assigning: 'Assigning work to available workers…',
-  executing: 'Workers are executing; tracking progress…',
-  reporting: 'Compiling your status report…',
-  done: 'Delivered',
-  failed: 'Stopped'
+  idle: '대기 중',
+  receiving: '요청을 접수하는 중…',
+  classifying: '분류하고 규모를 산정하는 중…',
+  meeting: '팀이 전략을 합의하기 위해 회의 중…',
+  creating_project: '프로젝트를 생성하는 중…',
+  planning: '업무를 에픽·기능·작업으로 분해하는 중…',
+  queuing: '작업 큐를 구성하는 중…',
+  assigning: '가용 워커에게 업무를 배정하는 중…',
+  executing: '워커가 실행 중; 진행 상황 추적 중…',
+  reporting: '상태 보고서를 작성하는 중…',
+  done: '완료',
+  failed: '중단됨'
 }
 
 const PRIORITY_TONE: Record<Priority, 'slate' | 'sky' | 'amber' | 'rose'> = {
@@ -104,12 +104,12 @@ const WORK_STATE_META: Record<
   WorkItemState,
   { label: string; text: string }
 > = {
-  queued: { label: 'Queued', text: 'text-slate-400' },
-  assigned: { label: 'Assigned', text: 'text-indigo-300' },
-  in_progress: { label: 'In progress', text: 'text-emerald-300' },
-  blocked: { label: 'Blocked', text: 'text-amber-300' },
-  done: { label: 'Done', text: 'text-sky-300' },
-  failed: { label: 'Failed', text: 'text-rose-300' }
+  queued: { label: '대기', text: 'text-slate-400' },
+  assigned: { label: '배정됨', text: 'text-indigo-300' },
+  in_progress: { label: '진행 중', text: 'text-emerald-300' },
+  blocked: { label: '차단됨', text: 'text-amber-300' },
+  done: { label: '완료', text: 'text-sky-300' },
+  failed: { label: '실패', text: 'text-rose-300' }
 }
 
 export default function CommandCenterPage(): JSX.Element {
@@ -141,7 +141,7 @@ export default function CommandCenterPage(): JSX.Element {
           </div>
           <div className="min-w-0">
             <div className="text-xs text-slate-500">
-              Chief of Staff · your instruction
+              비서실장 · 당신의 지시
             </div>
             <p className="text-sm font-medium text-slate-100">
               “{state.request?.text}”
@@ -157,7 +157,7 @@ export default function CommandCenterPage(): JSX.Element {
           onClick={reset}
           className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800"
         >
-          <RotateCcw className="h-3.5 w-3.5" /> New request
+          <RotateCcw className="h-3.5 w-3.5" /> 새 요청
         </button>
       </div>
 
@@ -175,13 +175,13 @@ export default function CommandCenterPage(): JSX.Element {
 
       {state.classification && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-5 py-3">
-          <span className="text-xs text-slate-500">Classification</span>
+          <span className="text-xs text-slate-500">분류</span>
           <Chip tone="indigo">{state.classification.type.replace('_', ' ')}</Chip>
           <Chip tone={PRIORITY_TONE[state.classification.priority]}>
-            {state.classification.priority} priority
+            {state.classification.priority} 우선순위
           </Chip>
-          <Chip tone="slate">Size {state.classification.size}</Chip>
-          <Chip tone="slate">{state.classification.featureCount} feature area(s)</Chip>
+          <Chip tone="slate">규모 {state.classification.size}</Chip>
+          <Chip tone="slate">기능 영역 {state.classification.featureCount}개</Chip>
         </div>
       )}
 
@@ -192,7 +192,7 @@ export default function CommandCenterPage(): JSX.Element {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {state.project && (
-            <Card title="Project">
+            <Card title="프로젝트">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-semibold text-slate-100">
                   {state.project.name}
@@ -207,24 +207,24 @@ export default function CommandCenterPage(): JSX.Element {
                 {state.project.description}
               </p>
               <div className="mt-2 text-xs text-slate-600">
-                Repository:{' '}
-                {state.project.repository ?? 'not bound yet (GitHub backend pending)'}
+                리포지토리:{' '}
+                {state.project.repository ?? '아직 연결 안 됨 (GitHub 백엔드 대기)'}
               </div>
               {state.progress && (
                 <div className="mt-3">
                   <ProgressBar value={state.progress.overall} />
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                    <span>{state.progress.done} done</span>
-                    <span>{state.progress.inProgress} in progress</span>
-                    <span>{state.progress.queued} queued</span>
+                    <span>완료 {state.progress.done}</span>
+                    <span>진행 중 {state.progress.inProgress}</span>
+                    <span>대기 {state.progress.queued}</span>
                     {state.progress.blocked > 0 && (
                       <span className="text-amber-400">
-                        {state.progress.blocked} blocked
+                        차단됨 {state.progress.blocked}
                       </span>
                     )}
                     {state.progress.failed > 0 && (
                       <span className="text-rose-400">
-                        {state.progress.failed} failed
+                        실패 {state.progress.failed}
                       </span>
                     )}
                   </div>
@@ -235,11 +235,11 @@ export default function CommandCenterPage(): JSX.Element {
 
           {state.breakdown && (
             <Card
-              title="Work breakdown"
+              title="업무 분해"
               action={
                 <span className="text-xs text-slate-500">
-                  {state.breakdown.featureCount} features · {state.breakdown.taskCount}{' '}
-                  tasks · {state.breakdown.subtaskCount} subtasks
+                  기능 {state.breakdown.featureCount} · 작업 {state.breakdown.taskCount}{' '}
+                  · 하위작업 {state.breakdown.subtaskCount}
                 </span>
               }
             >
@@ -249,7 +249,7 @@ export default function CommandCenterPage(): JSX.Element {
                     <span className="font-medium text-slate-200">{f.title}</span>
                     <span className="text-slate-600">
                       {' '}
-                      · {f.tasks.length} task(s)
+                      · 작업 {f.tasks.length}개
                     </span>
                   </li>
                 ))}
@@ -258,16 +258,16 @@ export default function CommandCenterPage(): JSX.Element {
           )}
 
           <Card
-            title="Work queue"
+            title="작업 큐"
             action={
               <span className="text-xs text-slate-500">
                 {state.queue.items.filter((i) => i.state === 'done').length}/
-                {state.queue.items.length} done
+                {state.queue.items.length} 완료
               </span>
             }
           >
             {state.queue.items.length === 0 ? (
-              <p className="text-sm text-slate-600">Building the queue…</p>
+              <p className="text-sm text-slate-600">큐를 구성하는 중…</p>
             ) : (
               <ul className="space-y-4">
                 {state.queue.items.map((item) => (
@@ -278,7 +278,7 @@ export default function CommandCenterPage(): JSX.Element {
           </Card>
         </div>
 
-        <Card title="Action log">
+        <Card title="작업 로그">
           <ol className="relative space-y-3 pl-6">
             <span className="absolute left-[7px] top-1 h-[calc(100%-0.5rem)] w-px bg-slate-800" />
             {state.log.map((entry) => {
@@ -374,9 +374,9 @@ function ReportCard({ state }: { state: ChiefOfStaffState }): JSX.Element {
   if (!report) return <></>
   return (
     <Card
-      title="Status report to the CEO"
+      title="CEO 상태 보고"
       icon={<Sparkles className="h-4 w-4 text-indigo-300" />}
-      action={<span className="text-xs text-slate-500">{report.progress}% complete</span>}
+      action={<span className="text-xs text-slate-500">{report.progress}% 완료</span>}
     >
       <div className="text-base font-semibold text-slate-100">{report.headline}</div>
       <p className="mt-1 text-sm text-slate-400">{report.summary}</p>
@@ -384,28 +384,28 @@ function ReportCard({ state }: { state: ChiefOfStaffState }): JSX.Element {
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {report.completed.length > 0 && (
           <ReportList
-            title="Completed"
+            title="완료"
             items={report.completed}
             icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
           />
         )}
         {report.outstanding.length > 0 && (
           <ReportList
-            title="Outstanding"
+            title="미완료"
             items={report.outstanding}
             icon={<XCircle className="h-3.5 w-3.5 text-rose-400" />}
           />
         )}
         {report.risks.length > 0 && (
           <ReportList
-            title="Risks"
+            title="위험"
             items={report.risks}
             icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-400" />}
           />
         )}
         {report.nextActions.length > 0 && (
           <ReportList
-            title="Next actions"
+            title="다음 작업"
             items={report.nextActions}
             icon={<Circle className="h-3.5 w-3.5 text-slate-400" />}
           />
@@ -454,11 +454,11 @@ function Hero({
         <ClipboardList className="h-6 w-6" />
       </div>
       <h1 className="mt-5 text-2xl font-semibold text-slate-100">
-        Give your Chief of Staff a request
+        비서실장에게 요청을 전달하세요
       </h1>
       <p className="mt-2 text-sm text-slate-500">
-        One instruction. The Chief of Staff classifies it, creates a project,
-        breaks down the work, assigns the team, tracks progress, and reports back.
+        지시 하나면 됩니다. 비서실장이 요청을 분류하고, 프로젝트를 생성하고, 업무를
+        분해하고, 팀에 배정하고, 진행 상황을 추적한 뒤 보고합니다.
       </p>
 
       <div className="mt-6 w-full rounded-xl border border-slate-800 bg-slate-900/50 p-3">
@@ -469,18 +469,18 @@ function Hero({
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) onSubmit()
           }}
           rows={3}
-          placeholder="Describe what you want done…"
+          placeholder="무엇을 하고 싶은지 설명하세요…"
           className="w-full resize-none bg-transparent px-2 py-1 text-sm text-slate-200 outline-none placeholder:text-slate-600"
         />
         <div className="mt-2 flex items-center justify-between">
-          <span className="text-xs text-slate-600">⌘/Ctrl + Enter to send</span>
+          <span className="text-xs text-slate-600">⌘/Ctrl + Enter 로 전송</span>
           <button
             type="button"
             onClick={onSubmit}
             disabled={!draft.trim()}
             className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Send className="h-4 w-4" /> Send to Chief of Staff
+            <Send className="h-4 w-4" /> 비서실장에게 보내기
           </button>
         </div>
       </div>
@@ -500,8 +500,8 @@ function Hero({
 
       <p className="mt-6 flex items-center gap-1.5 text-xs text-slate-600">
         <Info className="h-3.5 w-3.5" />
-        Mock backends — every action is behind a swappable interface, ready for
-        Claude Code, OpenAI, GitHub, Playwright, Computer Use and Python workers.
+        모의(mock) 백엔드 — 모든 동작은 교체 가능한 인터페이스 뒤에 있으며, Claude Code,
+        OpenAI, GitHub, Playwright, Computer Use, Python 워커에 바로 연결할 수 있습니다.
       </p>
     </div>
   )
@@ -509,7 +509,7 @@ function Hero({
 
 function logActorMeta(actor: CosLogActor): { label: string; icon: LucideIcon } {
   if (actor === 'ceo') return { label: 'CEO', icon: Crown }
-  if (actor === 'system') return { label: 'System', icon: Cpu }
-  if (actor === 'chief_of_staff') return { label: 'Chief of Staff', icon: ClipboardList }
+  if (actor === 'system') return { label: '시스템', icon: Cpu }
+  if (actor === 'chief_of_staff') return { label: '비서실장', icon: ClipboardList }
   return { label: ROLE_LABEL[actor], icon: ROLE_META[actor].icon }
 }

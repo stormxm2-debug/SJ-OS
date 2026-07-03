@@ -134,15 +134,15 @@ export default function CustomerWorkspacePage(): JSX.Element {
     <div className="space-y-5">
       {/* Header + org summary */}
       <Card
-        title="Customer Workspace — SJ Invest 영업 파이프라인"
+        title="고객 워크스페이스 — SJ Invest 영업 파이프라인"
         icon={<Users className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportWorkspace}>
-              Export workspace
+              워크스페이스 내보내기
             </ActionButton>
             <ActionButton variant="danger" icon={<RotateCcw className="h-4 w-4" />} onClick={handleReset}>
-              Reset demo state
+              데모 데이터 초기화
             </ActionButton>
           </div>
         }
@@ -491,7 +491,7 @@ function CustomerDetail({ customer }: { customer: CustomerRecord }): JSX.Element
           <FutureButton label="리스크 스코어링" />
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          고객 워크플로우가 준비되었습니다. AI 보험 분석은 다음 단계 · Sales Activity Workspace 이후 연결됩니다.
+          고객 워크플로우가 준비되었습니다. AI 보험 분석은 다음 단계 · 영업활동 워크스페이스 이후 연결됩니다.
         </p>
       </Card>
     </div>

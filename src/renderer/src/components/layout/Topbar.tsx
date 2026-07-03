@@ -7,25 +7,25 @@ import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 function titleFor(route: View): { title: string; subtitle: string } {
   switch (route.name) {
     case 'assistant':
-      return { title: 'Executive Assistant', subtitle: 'Give one instruction. The company does the rest.' }
+      return { title: '경영 비서', subtitle: '한 번의 지시로 회사가 알아서 실행합니다.' }
     case 'dashboard':
-      return { title: 'CEO Dashboard', subtitle: 'One instruction in. A whole company executes.' }
+      return { title: 'CEO 대시보드', subtitle: '지시 하나면, 회사 전체가 실행합니다.' }
     case 'workers':
-      return { title: 'AI Workers', subtitle: 'Your AI engineering team.' }
+      return { title: 'AI 워커', subtitle: 'AI 엔지니어링 팀입니다.' }
     case 'worker': {
       const worker = getWorkerById(route.workerId)
-      return { title: worker?.name ?? 'Worker', subtitle: worker?.title ?? 'Worker detail' }
+      return { title: worker?.name ?? '워커', subtitle: worker?.title ?? '워커 상세' }
     }
     case 'projects':
-      return { title: 'Project Manager', subtitle: 'Projects, tasks, and the team building them.' }
+      return { title: '프로젝트 매니저', subtitle: '프로젝트, 작업, 그리고 이를 만드는 팀.' }
     case 'approvals':
-      return { title: 'Approval Center', subtitle: 'Decisions waiting on the CEO.' }
+      return { title: '승인 센터', subtitle: 'CEO의 결정을 기다리는 항목.' }
     case 'activity':
-      return { title: 'Company Activity Log', subtitle: 'Everything the company has done.' }
+      return { title: '회사 활동 로그', subtitle: '회사가 수행한 모든 활동.' }
     case 'settings':
-      return { title: 'Company Settings', subtitle: 'Providers, policy, and autonomy.' }
+      return { title: '회사 설정', subtitle: '프로바이더, 정책, 자율성 설정.' }
     default:
-      return { title: 'SJ AI Company', subtitle: '' }
+      return { title: 'SJ AI 컴퍼니', subtitle: '' }
   }
 }
 
@@ -48,17 +48,17 @@ export default function Topbar(): JSX.Element {
             jarvisService.open()
           }}
           className="inline-flex items-center gap-2 rounded-lg border border-indigo-500/20 bg-indigo-500/10 px-3 py-1.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
-          aria-label="Open Jarvis"
+          aria-label="자비스 열기"
         >
           <Sparkles className="h-4 w-4" />
-          Jarvis
+          자비스
         </button>
 
         <button
           type="button"
           onClick={() => navigate({ name: 'approvals' })}
           className="relative rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
-          aria-label="Approvals"
+          aria-label="승인 센터"
         >
           <Bell className="h-5 w-5" />
           {pending > 0 && (

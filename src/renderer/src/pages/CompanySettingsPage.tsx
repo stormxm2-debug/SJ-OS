@@ -32,16 +32,16 @@ const ROLES: WorkerRole[] = [
 ]
 
 const AUTONOMY: { value: AutonomyLevel; label: string; desc: string }[] = [
-  { value: 'supervised', label: 'Supervised', desc: 'Every sensitive action needs CEO approval.' },
-  { value: 'balanced', label: 'Balanced', desc: 'Low-risk actions auto-run; the rest are gated.' },
-  { value: 'autonomous', label: 'Autonomous', desc: 'Workers act freely; approvals are opt-in.' }
+  { value: 'supervised', label: '감독 모드', desc: '모든 민감한 작업에 CEO 승인이 필요합니다.' },
+  { value: 'balanced', label: '균형 모드', desc: '저위험 작업은 자동 실행되고 나머지는 승인이 필요합니다.' },
+  { value: 'autonomous', label: '자율 모드', desc: '워커가 자유롭게 작업하며 승인은 선택 사항입니다.' }
 ]
 
 const POLICIES: { key: keyof ApprovalPolicy; label: string }[] = [
-  { key: 'architecture', label: 'Architecture sign-off' },
-  { key: 'merge', label: 'Merge to main' },
-  { key: 'release', label: 'Publish release' },
-  { key: 'command', label: 'Destructive commands' }
+  { key: 'architecture', label: '아키텍처 승인' },
+  { key: 'merge', label: 'main 병합' },
+  { key: 'release', label: '릴리스 배포' },
+  { key: 'command', label: '파괴적 명령' }
 ]
 
 export default function CompanySettingsPage(): JSX.Element {
@@ -91,8 +91,8 @@ export default function CompanySettingsPage(): JSX.Element {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <Card title="Company">
-        <label className="block text-xs text-slate-500">Company name</label>
+      <Card title="회사">
+        <label className="block text-xs text-slate-500">회사 이름</label>
         <input
           value={settings.companyName}
           onChange={(e) => update({ companyName: e.target.value })}
@@ -100,7 +100,7 @@ export default function CompanySettingsPage(): JSX.Element {
         />
       </Card>
 
-      <Card title="Autonomy">
+      <Card title="자율성">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {AUTONOMY.map((opt) => {
             const active = settings.autonomyLevel === opt.value
@@ -125,18 +125,18 @@ export default function CompanySettingsPage(): JSX.Element {
       </Card>
 
       <Card
-        title="AI Providers"
+        title="AI 프로바이더"
         action={
           <button
             type="button"
             className="flex items-center gap-1 text-xs text-slate-400 transition hover:text-slate-200"
           >
-            <Plus className="h-3.5 w-3.5" /> Add provider
+            <Plus className="h-3.5 w-3.5" /> 프로바이더 추가
           </button>
         }
       >
         <p className="mb-3 text-xs text-slate-600">
-          Providers are pluggable — no vendor is wired into the system.
+          프로바이더는 플러그형입니다 — 시스템에 고정된 벤더가 없습니다.
         </p>
         <ul className="space-y-2">
           {settings.providers.map((p) => (
@@ -152,12 +152,12 @@ export default function CompanySettingsPage(): JSX.Element {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500">
-                  {p.configured ? 'Configured' : 'Not configured'}
+                  {p.configured ? '설정됨' : '설정 안 됨'}
                 </span>
                 <Toggle
                   checked={p.configured}
                   onChange={() => toggleProvider(p.id)}
-                  label={`Toggle ${p.label}`}
+                  label={`${p.label} 전환`}
                 />
               </div>
             </li>
@@ -165,7 +165,7 @@ export default function CompanySettingsPage(): JSX.Element {
         </ul>
       </Card>
 
-      <Card title="Role → Provider">
+      <Card title="역할 → 프로바이더">
         <ul className="space-y-2">
           {ROLES.map((role) => (
             <li key={role} className="flex items-center justify-between gap-3">
@@ -186,7 +186,7 @@ export default function CompanySettingsPage(): JSX.Element {
         </ul>
       </Card>
 
-      <Card title="AI · GPT Brain (Jarvis)">
+      <Card title="AI · GPT 브레인 (Jarvis)">
         <div className="space-y-3">
           <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2.5">
             <div className="flex items-center gap-2">
@@ -194,18 +194,18 @@ export default function CompanySettingsPage(): JSX.Element {
               <span className="text-sm text-slate-200">OpenAI 프록시</span>
             </div>
             <Chip tone={gptConfig.enabled ? 'emerald' : 'slate'}>
-              {gptConfig.enabled ? 'Enabled' : 'Disabled'}
+              {gptConfig.enabled ? '활성화됨' : '비활성화됨'}
             </Chip>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
-              <div className="text-[11px] text-slate-500">Proxy URL</div>
+              <div className="text-[11px] text-slate-500">프록시 URL</div>
               <div className="mt-0.5 truncate text-sm text-slate-200" title={gptConfig.proxyUrl}>
                 {gptConfig.proxyUrl}
               </div>
             </div>
             <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
-              <div className="text-[11px] text-slate-500">Model</div>
+              <div className="text-[11px] text-slate-500">모델</div>
               <div className="mt-0.5 truncate text-sm text-slate-200">{gptConfig.modelLabel}</div>
             </div>
           </div>
@@ -214,11 +214,11 @@ export default function CompanySettingsPage(): JSX.Element {
           <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Proxy status</span>
+                <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">프록시 상태</span>
                 {proxyStatus ? (
                   <Chip tone={STATUS_TONE[proxyStatus.label]}>{proxyStatus.label}</Chip>
                 ) : (
-                  <Chip tone="slate">Checking…</Chip>
+                  <Chip tone="slate">확인 중…</Chip>
                 )}
               </div>
               <button
@@ -265,7 +265,7 @@ export default function CompanySettingsPage(): JSX.Element {
         </div>
       </Card>
 
-      <Card title="Approval Policy">
+      <Card title="승인 정책">
         <ul className="space-y-2">
           {POLICIES.map(({ key, label }) => (
             <li
@@ -275,12 +275,12 @@ export default function CompanySettingsPage(): JSX.Element {
               <span className="text-sm text-slate-300">{label}</span>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500">
-                  {settings.policy[key] ? 'Requires approval' : 'Auto-allow'}
+                  {settings.policy[key] ? '승인 필요' : '자동 허용'}
                 </span>
                 <Toggle
                   checked={settings.policy[key]}
                   onChange={() => togglePolicy(key)}
-                  label={`Toggle ${label}`}
+                  label={`${label} 전환`}
                 />
               </div>
             </li>
@@ -289,7 +289,7 @@ export default function CompanySettingsPage(): JSX.Element {
       </Card>
 
       <p className="text-xs text-slate-600">
-        Settings are local to this preview — nothing is persisted yet.
+        설정은 이 미리보기에만 적용됩니다 — 아직 저장되지 않습니다.
       </p>
     </div>
   )

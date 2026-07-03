@@ -101,7 +101,7 @@ export default function UniversalAppBuilderPage(): JSX.Element {
   return (
     <div className="space-y-5">
       {/* Intro / positioning */}
-      <Card title="Universal App Builder" icon={<Boxes className="h-4 w-4 text-violet-300" />}>
+      <Card title="범용 앱 빌더" icon={<Boxes className="h-4 w-4 text-violet-300" />}>
         <div className="space-y-3">
           <p className="text-sm leading-6 text-slate-300">
             SJ OS는 더 이상 보험 전용 시스템이 아닙니다. SJ OS는 보험 시스템뿐 아니라 쇼핑몰(ecommerce),
@@ -127,7 +127,7 @@ export default function UniversalAppBuilderPage(): JSX.Element {
       <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
         {/* Recent build projects */}
         <Card
-          title="Recent build projects"
+          title="최근 빌드 프로젝트"
           icon={<ListChecks className="h-4 w-4 text-violet-300" />}
           action={
             snapshot.projects.length > 0 ? (
@@ -183,7 +183,7 @@ export default function UniversalAppBuilderPage(): JSX.Element {
         </Card>
 
         {/* Selected project detail */}
-        <Card title="Project detail" icon={<Boxes className="h-4 w-4 text-violet-300" />}>
+        <Card title="프로젝트 상세" icon={<Boxes className="h-4 w-4 text-violet-300" />}>
           {!selected ? (
             <div className="rounded-xl border border-dashed border-slate-800 p-4 text-sm text-slate-500">
               프로젝트를 선택하면 상세 계획과 개발자 프롬프트가 표시됩니다.
@@ -232,7 +232,7 @@ export default function UniversalAppBuilderPage(): JSX.Element {
               {/* AI tool plan */}
               {selected.aiToolPlan.length > 0 ? (
                 <div className="space-y-1">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">AI Tool Plan</div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">AI 도구 계획</div>
                   <ul className="space-y-1">
                     {selected.aiToolPlan.map((t) => (
                       <li key={t.toolId} className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs">
@@ -248,7 +248,7 @@ export default function UniversalAppBuilderPage(): JSX.Element {
               {/* Sprint plan */}
               {selected.sprintPlan.length > 0 ? (
                 <div className="space-y-1">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Sprint Plan</div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">스프린트 계획</div>
                   <ul className="space-y-1">
                     {selected.sprintPlan.map((s) => (
                       <li key={s.id} className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs text-slate-300">
@@ -324,7 +324,7 @@ export default function UniversalAppBuilderPage(): JSX.Element {
       </div>
 
       {/* AI Tool Connector Registry */}
-      <Card title="AI Tool Connector Registry" icon={<Cpu className="h-4 w-4 text-violet-300" />}>
+      <Card title="AI 도구 커넥터 레지스트리" icon={<Cpu className="h-4 w-4 text-violet-300" />}>
         <p className="mb-3 text-xs text-slate-500">
           외부 AI 도구는 계획된 어댑터입니다. 아직 실제 API를 호출하지 않습니다. 각 도구의 공식 API/키 상태를
           검증한 뒤 별도 승인으로 활성화합니다. API 키는 렌더러/프론트엔드에 저장하지 않습니다.
@@ -333,12 +333,12 @@ export default function UniversalAppBuilderPage(): JSX.Element {
           <table className="w-full min-w-[720px] border-collapse text-left text-xs">
             <thead>
               <tr className="border-b border-slate-800 text-[11px] uppercase tracking-[0.15em] text-slate-500">
-                <th className="px-2 py-2">Tool</th>
-                <th className="px-2 py-2">Category</th>
-                <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2">Official API</th>
-                <th className="px-2 py-2">Purpose</th>
-                <th className="px-2 py-2">Risk</th>
+                <th className="px-2 py-2">도구</th>
+                <th className="px-2 py-2">분류</th>
+                <th className="px-2 py-2">상태</th>
+                <th className="px-2 py-2">공식 API</th>
+                <th className="px-2 py-2">용도</th>
+                <th className="px-2 py-2">위험도</th>
               </tr>
             </thead>
             <tbody>

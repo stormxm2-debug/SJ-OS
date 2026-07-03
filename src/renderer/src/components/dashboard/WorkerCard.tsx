@@ -29,22 +29,22 @@ export default function WorkerCard({ worker }: WorkerCardProps): JSX.Element {
 
       <div className="mt-4 min-h-[2.5rem]">
         <div className="text-xs uppercase tracking-wide text-slate-600">
-          Current task
+          현재 작업
         </div>
         <div className="mt-1 text-sm text-slate-300">
-          {currentTask ?? <span className="text-slate-600">No active task</span>}
+          {currentTask ?? <span className="text-slate-600">진행 중인 작업 없음</span>}
         </div>
       </div>
 
       <div className="mt-3">
         <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
-          <span>Progress</span>
+          <span>진행률</span>
           <span className="tabular-nums">{progress}%</span>
         </div>
         <ProgressBar value={progress} />
       </div>
 
-      <div className="mt-3 text-xs text-slate-600">Updated {lastActivity}</div>
+      <div className="mt-3 text-xs text-slate-600">업데이트 {lastActivity}</div>
     </div>
   )
 }

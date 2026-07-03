@@ -11,8 +11,8 @@ export default function WorkersPage(): JSX.Element {
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-500">
-        Your AI engineering team — {workers.length} employees. Open an employee to
-        view their profile, memory, and chat.
+        AI 엔지니어링 팀 — 직원 {workers.length}명. 직원을 선택하면 프로필, 메모리,
+        채팅을 볼 수 있습니다.
       </p>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -38,7 +38,7 @@ export default function WorkersPage(): JSX.Element {
 
             <div className="mt-4 flex items-center justify-between">
               <StatusBadge status={w.status} />
-              <span className="text-xs text-slate-600">Updated {w.lastActivity}</span>
+              <span className="text-xs text-slate-600">업데이트 {w.lastActivity}</span>
             </div>
           </button>
         ))}

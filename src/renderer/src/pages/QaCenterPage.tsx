@@ -40,26 +40,26 @@ const STATUS_STYLES: Record<QaStatus, string> = {
 }
 
 const STATUS_LABELS: Record<QaStatus, string> = {
-  pending: 'Pending',
-  running: 'Running',
-  passed: 'Passed',
-  failed: 'Failed',
-  blocked: 'Blocked',
-  warning: 'Warning'
+  pending: '대기',
+  running: '실행 중',
+  passed: '통과',
+  failed: '실패',
+  blocked: '차단됨',
+  warning: '경고'
 }
 
 const LOG_STYLES: Record<QaLogType, { label: string; className: string }> = {
-  'run-created': { label: 'Run created', className: 'text-slate-300' },
-  'run-passed': { label: 'Run passed', className: 'text-emerald-300' },
-  'run-failed': { label: 'Run failed', className: 'text-rose-300' },
-  'check-passed': { label: 'Check passed', className: 'text-emerald-300' },
-  'check-failed': { label: 'Check failed', className: 'text-rose-300' },
-  'warning-added': { label: 'Warning added', className: 'text-amber-300' },
-  'warning-cleared': { label: 'Warning cleared', className: 'text-emerald-300' },
-  'blocker-added': { label: 'Blocker added', className: 'text-rose-300' },
-  'blocker-cleared': { label: 'Blocker cleared', className: 'text-emerald-300' },
-  escalated: { label: 'Escalated', className: 'text-indigo-300' },
-  reset: { label: 'Reset', className: 'text-amber-300' }
+  'run-created': { label: '실행 생성', className: 'text-slate-300' },
+  'run-passed': { label: '실행 통과', className: 'text-emerald-300' },
+  'run-failed': { label: '실행 실패', className: 'text-rose-300' },
+  'check-passed': { label: '검사 통과', className: 'text-emerald-300' },
+  'check-failed': { label: '검사 실패', className: 'text-rose-300' },
+  'warning-added': { label: '경고 추가', className: 'text-amber-300' },
+  'warning-cleared': { label: '경고 삭제', className: 'text-emerald-300' },
+  'blocker-added': { label: '블로커 추가', className: 'text-rose-300' },
+  'blocker-cleared': { label: '블로커 해제', className: 'text-emerald-300' },
+  escalated: { label: '에스컬레이션', className: 'text-indigo-300' },
+  reset: { label: '초기화', className: 'text-amber-300' }
 }
 
 const SCOPES: QaScope[] = [
@@ -104,7 +104,7 @@ export default function QaCenterPage(): JSX.Element {
   const latest = snapshot.runs[0] ?? null
 
   const handleReset = (): void => {
-    if (typeof window !== 'undefined' && !window.confirm('Reset the QA Center back to the seed?')) {
+    if (typeof window !== 'undefined' && !window.confirm('QA 센터를 초기 값으로 되돌릴까요?')) {
       return
     }
     qaRepository.resetDemoState()
@@ -113,15 +113,15 @@ export default function QaCenterPage(): JSX.Element {
   return (
     <div className="space-y-5">
       <Card
-        title="QA Center"
+        title="QA 센터"
         icon={<ClipboardCheck className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportReport}>
-              Export QA report
+              QA 리포트 내보내기
             </ActionButton>
             <ActionButton variant="danger" icon={<RotateCcw className="h-4 w-4" />} onClick={handleReset}>
-              Reset demo state
+              데모 상태 초기화
             </ActionButton>
           </div>
         }
@@ -129,19 +129,19 @@ export default function QaCenterPage(): JSX.Element {
         {latest ? (
           <LatestRunPanel run={latest} />
         ) : (
-          <p className="text-sm text-slate-500">No QA runs yet. Create one below.</p>
+          <p className="text-sm text-slate-500">아직 QA 실행이 없습니다. 아래에서 새로 만드세요.</p>
         )}
       </Card>
 
       <NewRunForm />
 
       <Card
-        title="QA History"
+        title="QA 이력"
         icon={<History className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.runs.length} runs</span>}
+        action={<span className="text-xs text-slate-500">실행 {snapshot.runs.length}건</span>}
       >
         {snapshot.runs.length === 0 ? (
-          <p className="text-sm text-slate-500">No runs recorded.</p>
+          <p className="text-sm text-slate-500">기록된 실행이 없습니다.</p>
         ) : (
           <div className="space-y-2">
             {snapshot.runs.map((run) => (
@@ -152,12 +152,12 @@ export default function QaCenterPage(): JSX.Element {
       </Card>
 
       <Card
-        title="QA Event Log"
+        title="QA 이벤트 로그"
         icon={<Activity className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.eventLog.length} events</span>}
+        action={<span className="text-xs text-slate-500">이벤트 {snapshot.eventLog.length}건</span>}
       >
         {snapshot.eventLog.length === 0 ? (
-          <p className="text-sm text-slate-500">No events yet. Use the QA actions to record activity.</p>
+          <p className="text-sm text-slate-500">아직 이벤트가 없습니다. QA 작업으로 활동을 기록하세요.</p>
         ) : (
           <ol className="space-y-2">
             {snapshot.eventLog.map((entry) => {
@@ -198,7 +198,7 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
   const handleEscalate = (): void => {
     const result = qaRepository.escalateBlockersToApproval(run.qaRunId)
     if (typeof window !== 'undefined') {
-      window.alert(result.data?.created ? 'Created a release review in the Approval Center.' : 'No release blockers to escalate.')
+      window.alert(result.data?.created ? '승인 센터에 릴리즈 검토를 생성했습니다.' : '에스컬레이션할 릴리즈 블로커가 없습니다.')
     }
   }
 
@@ -208,7 +208,7 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-slate-100">Latest run · {run.title}</span>
+            <span className="text-sm font-semibold text-slate-100">최근 실행 · {run.title}</span>
             <StatusBadge status={run.status} />
             <Chip>{run.scope}</Chip>
           </div>
@@ -219,21 +219,21 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
             </span>
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              Started {formatTimestamp(run.startedAt)}
+              시작 {formatTimestamp(run.startedAt)}
             </span>
-            {run.completedAt ? <span>Completed {formatTimestamp(run.completedAt)}</span> : null}
+            {run.completedAt ? <span>완료 {formatTimestamp(run.completedAt)}</span> : null}
           </div>
         </div>
       </div>
 
       {/* dimension statuses */}
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <DimensionTile icon={<CheckCircle2 className="h-4 w-4" />} label="Typecheck" status={run.typecheckStatus} />
-        <DimensionTile icon={<Boxes className="h-4 w-4" />} label="Build" status={run.buildStatus} />
-        <DimensionTile icon={<Activity className="h-4 w-4" />} label="Regression" status={run.regressionStatus} />
-        <DimensionTile icon={<ShieldCheck className="h-4 w-4" />} label="Security" status={run.securityStatus} />
-        <DimensionTile icon={<Gauge className="h-4 w-4" />} label="Performance" status={run.performanceStatus} />
-        <DimensionTile icon={<ShieldAlert className="h-4 w-4" />} label="Coverage" status={run.coverageStatus} />
+        <DimensionTile icon={<CheckCircle2 className="h-4 w-4" />} label="타입체크" status={run.typecheckStatus} />
+        <DimensionTile icon={<Boxes className="h-4 w-4" />} label="빌드" status={run.buildStatus} />
+        <DimensionTile icon={<Activity className="h-4 w-4" />} label="회귀" status={run.regressionStatus} />
+        <DimensionTile icon={<ShieldCheck className="h-4 w-4" />} label="보안" status={run.securityStatus} />
+        <DimensionTile icon={<Gauge className="h-4 w-4" />} label="성능" status={run.performanceStatus} />
+        <DimensionTile icon={<ShieldAlert className="h-4 w-4" />} label="커버리지" status={run.coverageStatus} />
       </div>
 
       {related.length > 0 ? (
@@ -250,15 +250,15 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
       {/* release blockers */}
       <div>
         <div className="flex items-center justify-between">
-          <SectionLabel>Release blockers ({run.releaseBlockers.length})</SectionLabel>
+          <SectionLabel>릴리즈 블로커 ({run.releaseBlockers.length})</SectionLabel>
           {run.releaseBlockers.length > 0 ? (
             <MiniButton icon={<DownloadCloud className="h-3 w-3" />} onClick={handleEscalate}>
-              Request CEO review
+              CEO 검토 요청
             </MiniButton>
           ) : null}
         </div>
         {run.releaseBlockers.length === 0 ? (
-          <p className="mt-1 text-xs text-emerald-300/80">No release blockers.</p>
+          <p className="mt-1 text-xs text-emerald-300/80">릴리즈 블로커가 없습니다.</p>
         ) : (
           <ul className="mt-1 space-y-1">
             {run.releaseBlockers.map((b, i) => (
@@ -274,7 +274,7 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
                   type="button"
                   onClick={() => qaRepository.clearReleaseBlocker(run.qaRunId, b)}
                   className="shrink-0 text-rose-300/70 transition hover:text-rose-200"
-                  aria-label="Clear release blocker"
+                  aria-label="릴리즈 블로커 삭제"
                 >
                   <Eraser className="h-3.5 w-3.5" />
                 </button>
@@ -285,16 +285,16 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
         <InlineAdd
           value={blockerDraft}
           onChange={setBlockerDraft}
-          placeholder="Add a release blocker…"
+          placeholder="릴리즈 블로커 추가…"
           onSubmit={() => qaRepository.addReleaseBlocker(run.qaRunId, blockerDraft).success && setBlockerDraft('')}
         />
       </div>
 
       {/* warnings */}
       <div>
-        <SectionLabel>Warnings ({run.warnings.length})</SectionLabel>
+        <SectionLabel>경고 ({run.warnings.length})</SectionLabel>
         {run.warnings.length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">No warnings.</p>
+          <p className="mt-1 text-xs text-slate-500">경고가 없습니다.</p>
         ) : (
           <ul className="mt-1 space-y-1">
             {run.warnings.map((w, i) => (
@@ -310,7 +310,7 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
                   type="button"
                   onClick={() => qaRepository.clearWarning(run.qaRunId, w)}
                   className="shrink-0 text-amber-300/70 transition hover:text-amber-200"
-                  aria-label="Clear warning"
+                  aria-label="경고 삭제"
                 >
                   <Eraser className="h-3.5 w-3.5" />
                 </button>
@@ -321,7 +321,7 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
         <InlineAdd
           value={warningDraft}
           onChange={setWarningDraft}
-          placeholder="Add a warning…"
+          placeholder="경고 추가…"
           onSubmit={() => qaRepository.addWarning(run.qaRunId, warningDraft).success && setWarningDraft('')}
         />
       </div>
@@ -329,18 +329,18 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
       {/* checks */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <SectionLabel>Passed checks ({run.passedChecks.length})</SectionLabel>
+          <SectionLabel>통과한 검사 ({run.passedChecks.length})</SectionLabel>
           <CheckList items={run.passedChecks} tone="good" />
         </div>
         <div>
-          <SectionLabel>Failed checks ({run.failedChecks.length})</SectionLabel>
+          <SectionLabel>실패한 검사 ({run.failedChecks.length})</SectionLabel>
           <CheckList items={run.failedChecks} tone="bad" />
         </div>
       </div>
       <InlineAdd
         value={checkDraft}
         onChange={setCheckDraft}
-        placeholder="Check name…"
+        placeholder="검사 이름…"
         actions={
           <>
             <MiniButton
@@ -348,14 +348,14 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
               variant="primary"
               onClick={() => qaRepository.markCheckPassed(run.qaRunId, checkDraft).success && setCheckDraft('')}
             >
-              Pass
+              통과
             </MiniButton>
             <MiniButton
               icon={<XCircle className="h-3 w-3" />}
               variant="danger"
               onClick={() => qaRepository.markCheckFailed(run.qaRunId, checkDraft).success && setCheckDraft('')}
             >
-              Fail
+              실패
             </MiniButton>
           </>
         }
@@ -369,7 +369,7 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
           onClick={() => qaRepository.markRunPassed(run.qaRunId)}
           disabled={run.status === 'passed'}
         >
-          Mark run passed
+          실행 통과 처리
         </MiniButton>
         <MiniButton
           icon={<XCircle className="h-3 w-3" />}
@@ -377,7 +377,7 @@ function LatestRunPanel({ run }: { run: QaRun }): JSX.Element {
           onClick={() => qaRepository.markRunFailed(run.qaRunId)}
           disabled={run.status === 'failed'}
         >
-          Mark run failed
+          실행 실패 처리
         </MiniButton>
       </div>
     </div>
@@ -412,8 +412,8 @@ function HistoryRow({ run, highlight }: { run: QaRun; highlight: boolean }): JSX
         <Chip>{run.scope}</Chip>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-        {run.releaseBlockers.length > 0 ? <span className="text-rose-300">{run.releaseBlockers.length} blocker(s)</span> : null}
-        {run.warnings.length > 0 ? <span className="text-amber-300">{run.warnings.length} warning(s)</span> : null}
+        {run.releaseBlockers.length > 0 ? <span className="text-rose-300">블로커 {run.releaseBlockers.length}건</span> : null}
+        {run.warnings.length > 0 ? <span className="text-amber-300">경고 {run.warnings.length}건</span> : null}
         <span>
           {run.passedChecks.length}✓ / {run.failedChecks.length}✗
         </span>
@@ -437,14 +437,14 @@ function NewRunForm(): JSX.Element {
   }
 
   return (
-    <Card title="New QA Run" icon={<Plus className="h-4 w-4" />}>
+    <Card title="새 QA 실행" icon={<Plus className="h-4 w-4" />}>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder="QA run title…"
+          placeholder="QA 실행 제목…"
           className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <select
@@ -459,7 +459,7 @@ function NewRunForm(): JSX.Element {
           ))}
         </select>
         <ActionButton icon={<Plus className="h-4 w-4" />} variant="primary" onClick={submit}>
-          Create run
+          실행 생성
         </ActionButton>
       </div>
     </Card>
@@ -498,7 +498,7 @@ function InlineAdd({
           type="button"
           onClick={onSubmit}
           className="inline-flex items-center rounded-md border border-slate-700 bg-slate-800/60 px-2 py-1 text-slate-300 transition hover:bg-slate-700/60"
-          aria-label="Add"
+          aria-label="추가"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>

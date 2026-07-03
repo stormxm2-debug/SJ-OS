@@ -38,31 +38,31 @@ type NavItem = {
 }
 
 const NAV: NavItem[] = [
-  { key: 'assistant', label: 'Executive Assistant', icon: Sparkles, view: { name: 'assistant' }, match: ['assistant'] },
-  { key: 'company', label: 'Live Company', icon: Radio, view: { name: 'company' }, match: ['company'] },
-  { key: 'dashboard', label: 'CEO Dashboard', icon: LayoutDashboard, view: { name: 'dashboard' }, match: ['dashboard'] },
+  { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, match: ['assistant'] },
+  { key: 'company', label: '라이브 컴퍼니', icon: Radio, view: { name: 'company' }, match: ['company'] },
+  { key: 'dashboard', label: 'CEO 대시보드', icon: LayoutDashboard, view: { name: 'dashboard' }, match: ['dashboard'] },
   { key: 'fcos', label: 'FC OS', icon: Briefcase, view: { name: 'fcos' }, match: ['fcos'] },
-  { key: 'customer', label: 'Customer Workspace', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
-  { key: 'sales-activity', label: 'Sales Activity', icon: ActivityIcon, view: { name: 'sales-activity' }, match: ['sales-activity'] },
-  { key: 'schedule', label: 'Schedule', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
-  { key: 'performance', label: 'Performance', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
-  { key: 'team-leader', label: 'Team Leader', icon: UsersRound, view: { name: 'team-leader' }, match: ['team-leader'] },
-  { key: 'consultation', label: 'Consultation', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
-  { key: 'insurance-analysis', label: 'Insurance Analysis', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
-  { key: 'app-builder', label: 'App Builder', icon: Boxes, view: { name: 'app-builder' }, match: ['app-builder'] },
-  { key: 'cto', label: 'CTO Room', icon: Gauge, view: { name: 'cto' }, match: ['cto'] },
-  { key: 'approvals', label: 'Approval Center', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
-  { key: 'qa', label: 'QA Center', icon: ClipboardCheck, view: { name: 'qa' }, match: ['qa'] },
-  { key: 'release', label: 'Release Center', icon: PackageCheck, view: { name: 'release' }, match: ['release'] },
-  { key: 'devops', label: 'DevOps Center', icon: Server, view: { name: 'devops' }, match: ['devops'] },
-  { key: 'autopilot', label: 'Autopilot', icon: Rocket, view: { name: 'autopilot' }, match: ['autopilot'] },
-  { key: 'devos', label: 'Development OS', icon: Cpu, view: { name: 'devos' }, match: ['devos'] },
-  { key: 'pm', label: 'PM Planner', icon: KanbanSquare, view: { name: 'pm' }, match: ['pm'] },
-  { key: 'backlog', label: 'Product Backlog', icon: ClipboardList, view: { name: 'backlog' }, match: ['backlog'] },
-  { key: 'workers', label: 'AI Workers', icon: Users, view: { name: 'workers' }, match: ['workers', 'worker'] },
-  { key: 'projects', label: 'Projects', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] },
-  { key: 'activity', label: 'Activity Log', icon: Activity, view: { name: 'activity' }, match: ['activity'] },
-  { key: 'settings', label: 'Settings', icon: Settings, view: { name: 'settings' }, match: ['settings'] }
+  { key: 'customer', label: '고객 워크스페이스', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
+  { key: 'sales-activity', label: '영업활동', icon: ActivityIcon, view: { name: 'sales-activity' }, match: ['sales-activity'] },
+  { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
+  { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
+  { key: 'team-leader', label: '팀장', icon: UsersRound, view: { name: 'team-leader' }, match: ['team-leader'] },
+  { key: 'consultation', label: '상담', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
+  { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
+  { key: 'app-builder', label: '앱 빌더', icon: Boxes, view: { name: 'app-builder' }, match: ['app-builder'] },
+  { key: 'cto', label: 'CTO 룸', icon: Gauge, view: { name: 'cto' }, match: ['cto'] },
+  { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
+  { key: 'qa', label: 'QA 센터', icon: ClipboardCheck, view: { name: 'qa' }, match: ['qa'] },
+  { key: 'release', label: '릴리즈 센터', icon: PackageCheck, view: { name: 'release' }, match: ['release'] },
+  { key: 'devops', label: 'DevOps 센터', icon: Server, view: { name: 'devops' }, match: ['devops'] },
+  { key: 'autopilot', label: '오토파일럿', icon: Rocket, view: { name: 'autopilot' }, match: ['autopilot'] },
+  { key: 'devos', label: '개발 OS', icon: Cpu, view: { name: 'devos' }, match: ['devos'] },
+  { key: 'pm', label: 'PM 플래너', icon: KanbanSquare, view: { name: 'pm' }, match: ['pm'] },
+  { key: 'backlog', label: '제품 백로그', icon: ClipboardList, view: { name: 'backlog' }, match: ['backlog'] },
+  { key: 'workers', label: 'AI 워커', icon: Users, view: { name: 'workers' }, match: ['workers', 'worker'] },
+  { key: 'projects', label: '프로젝트', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] },
+  { key: 'activity', label: '활동 로그', icon: Activity, view: { name: 'activity' }, match: ['activity'] },
+  { key: 'settings', label: '설정', icon: Settings, view: { name: 'settings' }, match: ['settings'] }
 ]
 
 export default function Sidebar(): JSX.Element {
@@ -75,8 +75,8 @@ export default function Sidebar(): JSX.Element {
           <Bot className="h-5 w-5 text-white" />
         </div>
         <div>
-          <div className="text-sm font-semibold text-slate-100">SJ AI Company</div>
-          <div className="text-xs text-slate-500">Engineering Org</div>
+          <div className="text-sm font-semibold text-slate-100">SJ AI 컴퍼니</div>
+          <div className="text-xs text-slate-500">엔지니어링 조직</div>
         </div>
       </div>
 

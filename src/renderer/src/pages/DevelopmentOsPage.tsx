@@ -37,14 +37,14 @@ const SESSION_STATUS_STYLES: Record<DevSessionStatus, string> = {
 }
 
 const LOG_STYLES: Record<DevOsLogType, { label: string; className: string }> = {
-  'task-completed': { label: 'Task completed', className: 'text-emerald-300' },
-  'worker-updated': { label: 'Worker updated', className: 'text-slate-300' },
-  'blocker-added': { label: 'Blocker added', className: 'text-rose-300' },
-  'blocker-cleared': { label: 'Blocker cleared', className: 'text-emerald-300' },
-  'progress-changed': { label: 'Progress changed', className: 'text-indigo-300' },
-  'next-action-changed': { label: 'Next action changed', className: 'text-indigo-300' },
-  'external-note': { label: 'Note', className: 'text-slate-300' },
-  reset: { label: 'Reset', className: 'text-amber-300' }
+  'task-completed': { label: '작업 완료', className: 'text-emerald-300' },
+  'worker-updated': { label: '워커 업데이트', className: 'text-slate-300' },
+  'blocker-added': { label: '블로커 추가', className: 'text-rose-300' },
+  'blocker-cleared': { label: '블로커 해제', className: 'text-emerald-300' },
+  'progress-changed': { label: '진행률 변경', className: 'text-indigo-300' },
+  'next-action-changed': { label: '다음 작업 변경', className: 'text-indigo-300' },
+  'external-note': { label: '메모', className: 'text-slate-300' },
+  reset: { label: '초기화', className: 'text-amber-300' }
 }
 
 function formatTimestamp(iso: string): string {
@@ -88,7 +88,7 @@ export default function DevelopmentOsPage(): JSX.Element {
   }
 
   const handleReset = (): void => {
-    if (typeof window !== 'undefined' && !window.confirm('Reset DevOS demo state to the seed?')) {
+    if (typeof window !== 'undefined' && !window.confirm('DevOS 데모 상태를 초기 값으로 되돌릴까요?')) {
       return
     }
     devOsRepository.resetDemoState()
@@ -97,7 +97,7 @@ export default function DevelopmentOsPage(): JSX.Element {
   return (
     <div className="space-y-5">
       <Card
-        title="Current Sprint"
+        title="현재 스프린트"
         icon={<Cpu className="h-4 w-4" />}
         action={
           <span
@@ -115,19 +115,19 @@ export default function DevelopmentOsPage(): JSX.Element {
             <div className="text-base font-semibold text-slate-100">{session.currentSprint}</div>
             <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
               <Clock className="h-3.5 w-3.5" />
-              Updated {formatTimestamp(session.updatedAt)}
+              업데이트 {formatTimestamp(session.updatedAt)}
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <FocusTile icon={<Layers className="h-4 w-4" />} label="Active Epic" value={session.currentEpic} />
-            <FocusTile icon={<GitBranch className="h-4 w-4" />} label="Active Feature" value={session.currentFeature} />
-            <FocusTile icon={<ListChecks className="h-4 w-4" />} label="Active Task" value={session.currentTask} />
+            <FocusTile icon={<Layers className="h-4 w-4" />} label="활성 에픽" value={session.currentEpic} />
+            <FocusTile icon={<GitBranch className="h-4 w-4" />} label="활성 기능" value={session.currentFeature} />
+            <FocusTile icon={<ListChecks className="h-4 w-4" />} label="활성 작업" value={session.currentTask} />
           </div>
 
           <div>
             <div className="mb-1 flex items-center justify-between text-xs text-slate-400">
-              <span>Progress</span>
+              <span>진행률</span>
               <span>{session.progress}%</span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
@@ -148,48 +148,48 @@ export default function DevelopmentOsPage(): JSX.Element {
           <div className="flex items-start gap-2 rounded-lg border border-indigo-500/20 bg-indigo-500/10 px-3 py-2 text-sm text-indigo-200">
             <ArrowRight className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              <span className="font-medium">Next action:</span> {session.nextAction}
+              <span className="font-medium">다음 작업:</span> {session.nextAction}
             </span>
           </div>
         </div>
       </Card>
 
-      <Card title="Quick Actions" icon={<TrendingUp className="h-4 w-4" />}>
+      <Card title="빠른 작업" icon={<TrendingUp className="h-4 w-4" />}>
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <ActionButton
               icon={<CheckCheck className="h-4 w-4" />}
               onClick={() => devOsRepository.completeCurrentTask()}
             >
-              Complete current task
+              현재 작업 완료
             </ActionButton>
             <ActionButton
               icon={<ArrowRight className="h-4 w-4" />}
               onClick={() => devOsRepository.moveToNextAction()}
             >
-              Move to next action
+              다음 작업으로 이동
             </ActionButton>
             <ActionButton
               icon={<TrendingUp className="h-4 w-4" />}
               onClick={() => devOsRepository.increaseProgress(10)}
             >
-              +10% progress
+              진행률 +10%
             </ActionButton>
             <ActionButton
               icon={<Eraser className="h-4 w-4" />}
               onClick={() => devOsRepository.clearBlocker()}
             >
-              Clear blocker
+              블로커 해제
             </ActionButton>
             <ActionButton
               variant="danger"
               icon={<RotateCcw className="h-4 w-4" />}
               onClick={handleReset}
             >
-              Reset DevOS demo state
+              DevOS 데모 상태 초기화
             </ActionButton>
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportSnapshot}>
-              Export snapshot JSON
+              스냅샷 JSON 내보내기
             </ActionButton>
           </div>
 
@@ -198,8 +198,8 @@ export default function DevelopmentOsPage(): JSX.Element {
               value={blockerDraft}
               onChange={setBlockerDraft}
               onSubmit={handleAddBlocker}
-              placeholder="Describe a blocker…"
-              buttonLabel="Add blocker"
+              placeholder="블로커를 설명하세요…"
+              buttonLabel="블로커 추가"
               buttonIcon={<Ban className="h-4 w-4" />}
               variant="danger"
             />
@@ -207,8 +207,8 @@ export default function DevelopmentOsPage(): JSX.Element {
               value={nextActionDraft}
               onChange={setNextActionDraft}
               onSubmit={handleSetNextAction}
-              placeholder="Set next action…"
-              buttonLabel="Update next action"
+              placeholder="다음 작업을 설정하세요…"
+              buttonLabel="다음 작업 업데이트"
               buttonIcon={<ArrowRight className="h-4 w-4" />}
               variant="primary"
             />
@@ -217,12 +217,12 @@ export default function DevelopmentOsPage(): JSX.Element {
       </Card>
 
       <Card
-        title="Sprint Event Log"
+        title="스프린트 이벤트 로그"
         icon={<History className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{eventLog.length} events</span>}
+        action={<span className="text-xs text-slate-500">이벤트 {eventLog.length}건</span>}
       >
         {eventLog.length === 0 ? (
-          <p className="text-sm text-slate-500">No events yet. Use the controls above to record activity.</p>
+          <p className="text-sm text-slate-500">아직 이벤트가 없습니다. 위의 컨트롤로 활동을 기록하세요.</p>
         ) : (
           <ol className="space-y-2">
             {eventLog.map((entry) => {
@@ -245,9 +245,9 @@ export default function DevelopmentOsPage(): JSX.Element {
       </Card>
 
       <Card
-        title="Worker Memory"
+        title="워커 메모리"
         icon={<Cpu className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{workers.length} workers</span>}
+        action={<span className="text-xs text-slate-500">워커 {workers.length}명</span>}
       >
         <div className="grid gap-4 md:grid-cols-2">
           {workers.map((worker) => (
@@ -376,12 +376,12 @@ function WorkerMemoryCard({ worker }: { worker: WorkerMemory }): JSX.Element {
         <div className="flex items-center gap-2">
           <div className="text-right">
             <div className="text-sm font-semibold text-slate-200">{worker.confidence}%</div>
-            <div className="text-[11px] text-slate-500">confidence</div>
+            <div className="text-[11px] text-slate-500">신뢰도</div>
           </div>
           <div className="flex flex-col">
             <button
               type="button"
-              aria-label="Increase confidence"
+              aria-label="신뢰도 증가"
               onClick={() => devOsRepository.setWorkerConfidence(worker.workerId, worker.confidence + 5)}
               className="rounded border border-slate-700 bg-slate-800/60 px-1 text-slate-300 hover:bg-slate-700/60"
             >
@@ -389,7 +389,7 @@ function WorkerMemoryCard({ worker }: { worker: WorkerMemory }): JSX.Element {
             </button>
             <button
               type="button"
-              aria-label="Decrease confidence"
+              aria-label="신뢰도 감소"
               onClick={() => devOsRepository.setWorkerConfidence(worker.workerId, worker.confidence - 5)}
               className="mt-0.5 rounded border border-slate-700 bg-slate-800/60 px-1 text-slate-300 hover:bg-slate-700/60"
             >
@@ -400,26 +400,26 @@ function WorkerMemoryCard({ worker }: { worker: WorkerMemory }): JSX.Element {
       </div>
 
       <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2">
-        <div className="text-[11px] uppercase tracking-wide text-slate-500">Current work</div>
+        <div className="text-[11px] uppercase tracking-wide text-slate-500">현재 작업</div>
         <div className="mt-0.5 text-sm text-slate-200">
-          {worker.currentWork || <span className="text-slate-500">Idle</span>}
+          {worker.currentWork || <span className="text-slate-500">대기 중</span>}
         </div>
       </div>
 
       <div className="mt-3 space-y-2">
         <WorkList
           icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
-          label="Completed"
+          label="완료"
           items={worker.completedWork}
         />
         <WorkList
           icon={<AlertTriangle className="h-3.5 w-3.5 text-rose-400" />}
-          label="Blocked"
+          label="차단됨"
           items={worker.blockedWork}
         />
         <WorkList
           icon={<ArrowRight className="h-3.5 w-3.5 text-indigo-400" />}
-          label="Next"
+          label="다음"
           items={worker.nextWork}
         />
       </div>
@@ -429,19 +429,19 @@ function WorkerMemoryCard({ worker }: { worker: WorkerMemory }): JSX.Element {
           icon={<CheckCheck className="h-3 w-3" />}
           onClick={() => devOsRepository.completeWorkerCurrentWork(worker.workerId)}
         >
-          Complete current
+          현재 작업 완료
         </MiniButton>
         <MiniButton
           icon={<Eraser className="h-3 w-3" />}
           onClick={() => devOsRepository.clearBlockedWork(worker.workerId)}
         >
-          Clear blocked
+          차단 해제
         </MiniButton>
         <MiniButton
           icon={<RefreshCw className="h-3 w-3" />}
           onClick={() => devOsRepository.touchWorker(worker.workerId)}
         >
-          Refresh
+          새로고침
         </MiniButton>
       </div>
 
@@ -450,21 +450,21 @@ function WorkerMemoryCard({ worker }: { worker: WorkerMemory }): JSX.Element {
           value={completedDraft}
           onChange={setCompletedDraft}
           onSubmit={addCompleted}
-          placeholder="Add completed work…"
+          placeholder="완료한 작업 추가…"
           icon={<Plus className="h-3 w-3" />}
         />
         <MiniForm
           value={blockedDraft}
           onChange={setBlockedDraft}
           onSubmit={addBlocked}
-          placeholder="Add blocked work…"
+          placeholder="차단된 작업 추가…"
           icon={<Ban className="h-3 w-3" />}
         />
       </div>
 
       <div className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-600">
         <Clock className="h-3 w-3" />
-        Updated {formatTimestamp(worker.lastUpdated)}
+        업데이트 {formatTimestamp(worker.lastUpdated)}
       </div>
     </div>
   )

@@ -30,21 +30,21 @@ import Chip from '@renderer/components/ui/Chip'
  */
 
 const ROLE_META: Record<MeetingRole, { label: string; icon: LucideIcon }> = {
-  chief_of_staff: { label: 'Chief of Staff', icon: ClipboardList },
+  chief_of_staff: { label: '비서실장', icon: ClipboardList },
   cto: { label: 'CTO', icon: Compass },
-  project_manager: { label: 'Project Manager', icon: ListChecks },
-  research: { label: 'Research', icon: Search },
-  developer: { label: 'Developer', icon: Code2 },
+  project_manager: { label: '프로젝트 매니저', icon: ListChecks },
+  research: { label: '리서치', icon: Search },
+  developer: { label: '개발자', icon: Code2 },
   qa: { label: 'QA', icon: ShieldCheck },
-  git: { label: 'Git Manager', icon: GitBranch },
-  release: { label: 'Release Manager', icon: Rocket }
+  git: { label: 'Git 매니저', icon: GitBranch },
+  release: { label: '릴리스 매니저', icon: Rocket }
 }
 
 const PHASES: { phase: MeetingPhase; label: string }[] = [
-  { phase: 'planning', label: 'Planning' },
-  { phase: 'discussion', label: 'Discussion' },
-  { phase: 'voting', label: 'Voting' },
-  { phase: 'approved', label: 'Approved' }
+  { phase: 'planning', label: '계획' },
+  { phase: 'discussion', label: '논의' },
+  { phase: 'voting', label: '투표' },
+  { phase: 'approved', label: '승인됨' }
 ]
 
 const VOTE_TONE = { approve: 'emerald', revise: 'amber', reject: 'rose' } as const
@@ -55,7 +55,7 @@ export default function MeetingView(): JSX.Element | null {
   if (!meeting) return null
   return (
     <Card
-      title="AI Meeting"
+      title="AI 회의"
       icon={<Users className="h-4 w-4 text-indigo-300" />}
       action={<MeetingStatus phase={meeting.phase} />}
     >
@@ -66,7 +66,7 @@ export default function MeetingView(): JSX.Element | null {
           <OpinionRow key={op.role} opinion={op} />
         ))}
         {meeting.opinions.length === 0 && (
-          <li className="text-sm text-slate-600">Gathering the team…</li>
+          <li className="text-sm text-slate-600">팀을 소집하는 중…</li>
         )}
       </ul>
 
@@ -132,7 +132,7 @@ function OpinionRow({ opinion }: { opinion: ParticipantOpinion }): JSX.Element {
           ))}
         </div>
       )}
-      <p className="mt-1 text-xs text-slate-600">Next: {opinion.nextAction}</p>
+      <p className="mt-1 text-xs text-slate-600">다음: {opinion.nextAction}</p>
     </li>
   )
 }
@@ -144,16 +144,16 @@ function Decision({ meeting }: { meeting: Meeting }): JSX.Element {
     <div className="mt-4 rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3">
       <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
         <CheckCircle2 className="h-4 w-4" />
-        Consensus reached
+        합의 도출
       </div>
       <p className="mt-1 text-sm text-slate-300">{d.consensus}</p>
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Field label="Architecture" value={d.architecture} />
-        <Field label="Strategy" value={d.strategy} />
+        <Field label="아키텍처" value={d.architecture} />
+        <Field label="전략" value={d.strategy} />
       </div>
       {d.risks.length > 0 && (
         <div className="mt-2">
-          <div className="text-xs uppercase tracking-wide text-slate-600">Risks</div>
+          <div className="text-xs uppercase tracking-wide text-slate-600">리스크</div>
           <ul className="mt-1 space-y-0.5">
             {d.risks.map((r) => (
               <li key={r} className="flex items-start gap-1.5 text-xs text-slate-400">
@@ -165,11 +165,11 @@ function Decision({ meeting }: { meeting: Meeting }): JSX.Element {
         </div>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className="text-xs text-slate-600">Engaging:</span>
+        <span className="text-xs text-slate-600">투입:</span>
         {d.requiredCapabilities.map((c) => (
           <Chip key={c} tone="slate">{c}</Chip>
         ))}
-        <Chip tone="indigo">priority: {d.priority}</Chip>
+        <Chip tone="indigo">우선순위: {d.priority}</Chip>
       </div>
     </div>
   )

@@ -88,15 +88,15 @@ const COMMAND_CHIPS = [
 function statusLabel(status: JarvisStatus): string {
   switch (status) {
     case 'thinking':
-      return 'Thinking'
+      return '분석 중'
     case 'running':
-      return 'Running'
+      return '실행 중'
     case 'completed':
-      return 'Completed'
+      return '완료'
     case 'error':
-      return 'Error'
+      return '오류'
     default:
-      return 'Idle'
+      return '대기 중'
   }
 }
 
@@ -116,14 +116,14 @@ function statusClasses(status: JarvisStatus): string {
 }
 
 const MODE_META: Record<JarvisMode, { label: string; classes: string }> = {
-  answer: { label: 'Answer', classes: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
-  briefing: { label: 'Briefing', classes: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' },
-  'implementation-request': { label: 'Implementation', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
-  'universal-build': { label: 'App Builder', classes: 'border-violet-500/30 bg-violet-500/10 text-violet-300' },
-  navigation: { label: 'Navigation', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
-  'external-action': { label: 'External', classes: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
-  gpt: { label: 'GPT Brain', classes: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300' },
-  unknown: { label: 'Unknown', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
+  answer: { label: '응답', classes: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
+  briefing: { label: '브리핑', classes: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' },
+  'implementation-request': { label: '구현', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
+  'universal-build': { label: '앱 빌더', classes: 'border-violet-500/30 bg-violet-500/10 text-violet-300' },
+  navigation: { label: '이동', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
+  'external-action': { label: '외부', classes: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
+  gpt: { label: 'GPT 브레인', classes: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300' },
+  unknown: { label: '미확인', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
 }
 
 const RISK_TONE: Record<string, string> = {
@@ -216,18 +216,18 @@ export default function JarvisPanel(): JSX.Element | null {
   // Persistent GPT status badge: Ready / Disabled / Proxy Error / Local Only.
   const gptStatus = ((): { label: string; classes: string } => {
     if (!gptConfig.enabled) {
-      return { label: 'GPT Disabled', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
+      return { label: 'GPT 비활성화', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
     }
     if (state.gpt?.source === 'backend') {
-      return { label: 'Key Missing', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-300' }
+      return { label: 'API 키 없음', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-300' }
     }
     if (state.gpt?.source === 'error') {
-      return { label: 'Proxy Error', classes: 'border-rose-500/30 bg-rose-500/10 text-rose-300' }
+      return { label: '프록시 오류', classes: 'border-rose-500/30 bg-rose-500/10 text-rose-300' }
     }
     if (state.source === 'local') {
-      return { label: 'Local Only', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
+      return { label: '로컬 전용', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
     }
-    return { label: 'GPT Ready', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' }
+    return { label: 'GPT 준비됨', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' }
   })()
 
   useEffect(() => {
@@ -521,8 +521,8 @@ export default function JarvisPanel(): JSX.Element | null {
               <Bot className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-100">SJ Jarvis Core</p>
-              <p className="text-xs text-slate-500">CEO control layer · Answer & Implementation modes</p>
+              <p className="text-sm font-semibold text-slate-100">SJ 자비스 코어</p>
+              <p className="text-xs text-slate-500">CEO 컨트롤 레이어 · 응답 & 구현 모드</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -554,7 +554,7 @@ export default function JarvisPanel(): JSX.Element | null {
                 ) : (
                   <Bot className="h-3 w-3" />
                 )}
-                {state.source === 'gpt' ? 'GPT' : state.source === 'fallback' ? 'Fallback' : 'Local'}
+                {state.source === 'gpt' ? 'GPT' : state.source === 'fallback' ? '폴백' : '로컬'}
               </span>
             ) : null}
             <span
@@ -586,10 +586,10 @@ export default function JarvisPanel(): JSX.Element | null {
 
         <div className="grid gap-4 overflow-y-auto p-4 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="space-y-4">
-            <Card title="Command input" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
+            <Card title="명령 입력" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
               <form onSubmit={submitCommand} className="space-y-3">
                 <label htmlFor="jarvis-command-input" className="text-sm text-slate-400">
-                  Send a command to SJ Jarvis
+                  SJ 자비스에 명령 보내기
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -604,7 +604,7 @@ export default function JarvisPanel(): JSX.Element | null {
                     className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
                   >
                     <SendHorizontal className="h-4 w-4" />
-                    Run
+                    실행
                   </button>
                   <button
                     type="button"
@@ -628,7 +628,7 @@ export default function JarvisPanel(): JSX.Element | null {
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-slate-500">Shortcut: Ctrl + Space · Local data only · no external AI/API</p>
+                <p className="text-xs text-slate-500">단축키: Ctrl + Space · 로컬 데이터 전용 · 외부 AI/API 없음</p>
               </form>
             </Card>
 
@@ -1002,7 +1002,7 @@ export default function JarvisPanel(): JSX.Element | null {
               </div>
             </Card>
 
-            <Card title="Assistant response" icon={<Bot className="h-4 w-4 text-indigo-300" />}>
+            <Card title="자비스 응답" icon={<Bot className="h-4 w-4 text-indigo-300" />}>
               <div className="min-h-[110px] whitespace-pre-line rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-sm leading-7 text-slate-300">
                 {state.status === 'thinking' || state.status === 'running' ? (
                   <div className="flex items-center gap-2 text-slate-400">
@@ -1017,7 +1017,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
             {/* Answer / Briefing result */}
             {answer ? (
-              <Card title="Answer" icon={<Compass className="h-4 w-4 text-sky-300" />}>
+              <Card title="응답" icon={<Compass className="h-4 w-4 text-sky-300" />}>
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <span className="rounded-full border border-slate-700 bg-slate-800/60 px-2 py-0.5">{answer.commandUnderstood}</span>
@@ -1054,7 +1054,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
             {/* External action result */}
             {external ? (
-              <Card title="External action" icon={<ExternalLink className="h-4 w-4 text-sky-300" />}>
+              <Card title="외부 작업" icon={<ExternalLink className="h-4 w-4 text-sky-300" />}>
                 <div className="space-y-3">
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Field label="명령 이해" value={external.commandUnderstood} />
@@ -1083,7 +1083,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
             {/* GPT brain result */}
             {gpt ? (
-              <Card title="GPT brain" icon={<Brain className="h-4 w-4 text-fuchsia-300" />}>
+              <Card title="GPT 브레인" icon={<Brain className="h-4 w-4 text-fuchsia-300" />}>
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-0.5 text-fuchsia-300">
@@ -1127,7 +1127,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
             {/* Implementation result */}
             {impl ? (
-              <Card title="Implementation request created" icon={<Hammer className="h-4 w-4 text-amber-300" />}>
+              <Card title="구현 요청 생성됨" icon={<Hammer className="h-4 w-4 text-amber-300" />}>
                 <div className="space-y-3">
                   <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-slate-200">
                     <div className="font-medium text-slate-100">{impl.title}</div>
@@ -1159,7 +1159,7 @@ export default function JarvisPanel(): JSX.Element | null {
                   </div>
                   {impl.routingLog.length > 0 ? (
                     <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Routing</div>
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">라우팅</div>
                       <ul className="space-y-1">
                         {impl.routingLog.map((line) => (
                           <li key={line} className="flex items-start gap-2 text-xs text-slate-400">
@@ -1184,7 +1184,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
             {/* Universal App Builder result */}
             {build ? (
-              <Card title="Universal App Builder" icon={<Boxes className="h-4 w-4 text-violet-300" />}>
+              <Card title="범용 앱 빌더" icon={<Boxes className="h-4 w-4 text-violet-300" />}>
                 <div className="space-y-3">
                   <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-sm text-slate-200">
                     <div className="font-medium text-slate-100">{build.projectName}</div>
@@ -1228,7 +1228,7 @@ export default function JarvisPanel(): JSX.Element | null {
                   {/* AI tool orchestration plan */}
                   {build.aiToolPlan.length > 0 ? (
                     <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">AI Tool Plan</div>
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">AI 도구 계획</div>
                       <ul className="space-y-1">
                         {build.aiToolPlan.map((t) => (
                           <li key={t.toolId} className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs">
@@ -1246,7 +1246,7 @@ export default function JarvisPanel(): JSX.Element | null {
                   {/* Sprint plan */}
                   {build.sprintPlan.length > 0 ? (
                     <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Sprint Plan</div>
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">스프린트 계획</div>
                       <ul className="space-y-1">
                         {build.sprintPlan.map((s) => (
                           <li key={s.id} className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs text-slate-300">
@@ -1286,7 +1286,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
                   {build.routingLog.length > 0 ? (
                     <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Routing</div>
+                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">라우팅</div>
                       <ul className="space-y-1">
                         {build.routingLog.map((line) => (
                           <li key={line} className="flex items-start gap-2 text-xs text-slate-400">
@@ -1322,7 +1322,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
             {/* Suggested next commands */}
             {state.suggestedCommands.length > 0 ? (
-              <Card title="Suggested commands" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
+              <Card title="추천 명령" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
                 <div className="flex flex-wrap gap-1.5">
                   {state.suggestedCommands.map((cmd) => (
                     <button
@@ -1340,10 +1340,10 @@ export default function JarvisPanel(): JSX.Element | null {
           </div>
 
           <div className="space-y-4">
-            <Card title="Execution status" icon={<CheckCircle2 className="h-4 w-4 text-indigo-300" />}>
+            <Card title="실행 상태" icon={<CheckCircle2 className="h-4 w-4 text-indigo-300" />}>
               <div className="space-y-3">
                 <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">
-                  <div className="font-medium text-slate-200">Mode · Status</div>
+                  <div className="font-medium text-slate-200">모드 · 상태</div>
                   <div className="mt-1 text-slate-400">{MODE_META[state.mode].label} · {statusLabel(state.status)}</div>
                 </div>
                 {state.lastError ? (
@@ -1356,10 +1356,10 @@ export default function JarvisPanel(): JSX.Element | null {
                   </div>
                 ) : null}
                 <div className="space-y-2">
-                  <div className="text-xs uppercase tracking-[0.25em] text-slate-500">Tool calls</div>
+                  <div className="text-xs uppercase tracking-[0.25em] text-slate-500">도구 호출</div>
                   {state.toolCalls.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-slate-800 p-3 text-sm text-slate-500">
-                      No tool calls yet.
+                      아직 도구 호출이 없습니다.
                     </div>
                   ) : (
                     state.toolCalls.map((tool) => (
@@ -1376,11 +1376,11 @@ export default function JarvisPanel(): JSX.Element | null {
               </div>
             </Card>
 
-            <Card title="Recent commands" icon={<History className="h-4 w-4 text-indigo-300" />}>
+            <Card title="최근 명령" icon={<History className="h-4 w-4 text-indigo-300" />}>
               <div className="space-y-2">
                 {state.recentCommands.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-800 p-3 text-sm text-slate-500">
-                    No recent commands yet.
+                    최근 명령이 없습니다.
                   </div>
                 ) : (
                   state.recentCommands.map((command) => (
@@ -1397,17 +1397,17 @@ export default function JarvisPanel(): JSX.Element | null {
               </div>
             </Card>
 
-            <Card title="Conversation history" icon={<History className="h-4 w-4 text-indigo-300" />}>
+            <Card title="대화 기록" icon={<History className="h-4 w-4 text-indigo-300" />}>
               <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
                 {state.history.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-800 p-3 text-sm text-slate-500">
-                    No conversation yet.
+                    대화 내역이 없습니다.
                   </div>
                 ) : (
                   state.history.map((entry) => (
                     <div key={entry.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
                       <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                        {entry.role === 'user' ? 'User' : 'Jarvis'} · {entry.timestamp}
+                        {entry.role === 'user' ? '사용자' : '자비스'} · {entry.timestamp}
                       </div>
                       <div className="text-slate-300">{entry.content}</div>
                     </div>

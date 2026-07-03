@@ -14,9 +14,9 @@ interface WorkerDetailPageProps {
 }
 
 const TABS: { key: WorkerTab; label: string; icon: typeof User }[] = [
-  { key: 'profile', label: 'Profile', icon: User },
-  { key: 'memory', label: 'Memory', icon: Brain },
-  { key: 'chat', label: 'Chat', icon: MessageSquare }
+  { key: 'profile', label: '프로필', icon: User },
+  { key: 'memory', label: '메모리', icon: Brain },
+  { key: 'chat', label: '채팅', icon: MessageSquare }
 ]
 
 export default function WorkerDetailPage({
@@ -30,13 +30,13 @@ export default function WorkerDetailPage({
   if (!worker) {
     return (
       <div className="text-sm text-slate-400">
-        Worker not found.{' '}
+        워커를 찾을 수 없습니다.{' '}
         <button
           type="button"
           onClick={() => navigate({ name: 'workers' })}
           className="text-indigo-400 hover:underline"
         >
-          Back to workers
+          워커 목록으로
         </button>
       </div>
     )
@@ -49,7 +49,7 @@ export default function WorkerDetailPage({
         onClick={() => navigate({ name: 'workers' })}
         className="flex items-center gap-1 text-xs text-slate-500 transition hover:text-slate-300"
       >
-        <ArrowLeft className="h-3.5 w-3.5" /> All workers
+        <ArrowLeft className="h-3.5 w-3.5" /> 전체 워커
       </button>
 
       <div className="flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-900/40 p-5">

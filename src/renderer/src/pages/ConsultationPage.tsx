@@ -128,7 +128,7 @@ export default function ConsultationPage(): JSX.Element {
     <div className="space-y-5">
       {/* Header + summary */}
       <Card
-        title="Consultation Workspace — 상담 흐름 현황"
+        title="상담 워크스페이스 — 상담 흐름 현황"
         icon={<ClipboardList className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
@@ -136,10 +136,10 @@ export default function ConsultationPage(): JSX.Element {
               새 상담
             </ActionButton>
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportReport}>
-              Export report
+              리포트 내보내기
             </ActionButton>
             <ActionButton icon={<RotateCcw className="h-4 w-4" />} variant="danger" onClick={handleReset}>
-              Reset demo state
+              데모 데이터 초기화
             </ActionButton>
           </div>
         }

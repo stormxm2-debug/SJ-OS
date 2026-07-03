@@ -33,13 +33,13 @@ interface NavInfo {
 const NAV_INFO: Record<string, NavInfo> = {
   autopilot: {
     summary:
-      'Autopilot 화면으로 이동할 수 있습니다. 여기서 Start Company 또는 Run one loop step을 실행해 AI Company 운영 루프를 돌릴 수 있습니다.',
-    nextAction: 'Autopilot에서 Start Company 또는 Run one loop step 실행',
+      '오토파일럿 화면으로 이동할 수 있습니다. 여기서 회사 시작 또는 한 단계 실행으로 AI 회사 운영 루프를 돌릴 수 있습니다.',
+    nextAction: '오토파일럿에서 회사 시작 또는 한 단계 실행',
     suggested: ['오늘 브리핑', '회사 시작', '자비스가 오토파일럿 실행하게 해']
   },
   company: {
-    summary: 'Live Company 화면으로 이동할 수 있습니다. 회사 전체 운영 현황과 최근 이벤트를 확인할 수 있습니다.',
-    nextAction: 'Live Company에서 오늘 운영 현황 확인',
+    summary: '라이브 컴퍼니 화면으로 이동할 수 있습니다. 회사 전체 운영 현황과 최근 이벤트를 확인할 수 있습니다.',
+    nextAction: '라이브 컴퍼니에서 오늘 운영 현황 확인',
     suggested: ['오늘 브리핑', '오늘 FC 출근 현황', '이번 달 실적']
   },
   'fc-os': {
@@ -63,8 +63,8 @@ const NAV_INFO: Record<string, NavInfo> = {
     suggested: ['오늘 브리핑', 'DevOps']
   },
   devops: {
-    summary: 'DevOps Center 화면으로 이동할 수 있습니다. 운영/배포 상태를 확인할 수 있습니다.',
-    nextAction: 'DevOps Center에서 운영 상태 확인',
+    summary: 'DevOps 센터 화면으로 이동할 수 있습니다. 운영/배포 상태를 확인할 수 있습니다.',
+    nextAction: 'DevOps 센터에서 운영 상태 확인',
     suggested: ['오늘 브리핑', 'QA 센터']
   }
 }

@@ -38,13 +38,13 @@ import type {
 // --- styling helpers -------------------------------------------------------
 
 const STATUS_TONE: Record<AutopilotStatus, { dot: string; text: string; label: string }> = {
-  idle: { dot: 'bg-slate-500', text: 'text-slate-300', label: 'Idle' },
-  running: { dot: 'bg-emerald-400', text: 'text-emerald-300', label: 'Running' },
-  paused: { dot: 'bg-amber-400', text: 'text-amber-300', label: 'Paused' },
-  blocked: { dot: 'bg-rose-400', text: 'text-rose-300', label: 'Blocked' },
-  'waiting-for-approval': { dot: 'bg-amber-400', text: 'text-amber-300', label: 'Waiting for approval' },
-  completed: { dot: 'bg-emerald-400', text: 'text-emerald-300', label: 'Completed' },
-  failed: { dot: 'bg-rose-400', text: 'text-rose-300', label: 'Failed' }
+  idle: { dot: 'bg-slate-500', text: 'text-slate-300', label: '대기 중' },
+  running: { dot: 'bg-emerald-400', text: 'text-emerald-300', label: '실행 중' },
+  paused: { dot: 'bg-amber-400', text: 'text-amber-300', label: '일시정지됨' },
+  blocked: { dot: 'bg-rose-400', text: 'text-rose-300', label: '차단됨' },
+  'waiting-for-approval': { dot: 'bg-amber-400', text: 'text-amber-300', label: '승인 대기 중' },
+  completed: { dot: 'bg-emerald-400', text: 'text-emerald-300', label: '완료' },
+  failed: { dot: 'bg-rose-400', text: 'text-rose-300', label: '실패' }
 }
 
 const STEP_ICON: Record<AutopilotStepStatus, ReactNode> = {
@@ -102,7 +102,7 @@ export default function AutopilotPage(): JSX.Element {
   const handleReset = (): void => {
     if (
       typeof window !== 'undefined' &&
-      !window.confirm('Reset the Autopilot run? Other modules are left untouched.')
+      !window.confirm('오토파일럿 실행을 초기화할까요? 다른 모듈은 그대로 유지됩니다.')
     ) {
       return
     }
@@ -113,27 +113,27 @@ export default function AutopilotPage(): JSX.Element {
     <div className="space-y-5">
       {/* Operating-loop header + controls */}
       <Card
-        title="Autopilot — Operating Loop"
+        title="오토파일럿 — 운영 루프"
         icon={<Rocket className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<Play className="h-4 w-4" />} variant="primary" onClick={() => autopilotService.start()}>
-              Start Company
+              회사 시작
             </ActionButton>
             <ActionButton icon={<StepForward className="h-4 w-4" />} onClick={() => autopilotService.runStep()} disabled={!canStep}>
-              Run one step
+              한 단계 실행
             </ActionButton>
             {paused ? (
               <ActionButton icon={<Play className="h-4 w-4" />} onClick={() => autopilotService.resume()}>
-                Resume
+                재개
               </ActionButton>
             ) : (
               <ActionButton icon={<Pause className="h-4 w-4" />} onClick={() => autopilotService.pause()} disabled={!active}>
-                Pause
+                일시정지
               </ActionButton>
             )}
             <ActionButton icon={<Square className="h-4 w-4" />} onClick={() => autopilotService.stop()} disabled={state.status === 'idle'}>
-              Stop
+              중지
             </ActionButton>
           </div>
         }
@@ -143,19 +143,19 @@ export default function AutopilotPage(): JSX.Element {
             <div className="flex items-center gap-3">
               <span className={['h-2.5 w-2.5 rounded-full', tone.dot, active ? 'animate-pulse' : ''].join(' ')} />
               <div>
-                <div className="text-xs text-slate-500">Operating loop status</div>
+                <div className="text-xs text-slate-500">운영 루프 상태</div>
                 <div className={['text-lg font-semibold', tone.text].join(' ')}>{tone.label}</div>
               </div>
             </div>
             <div className="text-xs text-slate-500">
-              {state.autopilotRunId ? `Run ${state.autopilotRunId}` : 'No run yet'} · step {state.currentStep}/9 · updated{' '}
+              {state.autopilotRunId ? `실행 ${state.autopilotRunId}` : '아직 실행 없음'} · 단계 {state.currentStep}/9 · 업데이트{' '}
               {formatTimestamp(state.updatedAt)}
             </div>
           </div>
 
           <div>
             <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>Operating-loop progress</span>
+              <span>운영 루프 진행률</span>
               <span className={progressTone(state.progress)}>{state.progress}%</span>
             </div>
             <div className="mt-1">
@@ -164,47 +164,47 @@ export default function AutopilotPage(): JSX.Element {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Tile icon={<Building2 className="h-4 w-4" />} label="Current department" value={state.currentDepartment} />
-            <Tile icon={<User className="h-4 w-4" />} label="Current worker" value={state.currentWorker} />
-            <Tile icon={<Activity className="h-4 w-4" />} label="Current action" value={state.currentAction} />
-            <Tile icon={<ArrowRight className="h-4 w-4" />} label="Next action" value={state.nextAction} />
+            <Tile icon={<Building2 className="h-4 w-4" />} label="현재 부서" value={state.currentDepartment} />
+            <Tile icon={<User className="h-4 w-4" />} label="현재 워커" value={state.currentWorker} />
+            <Tile icon={<Activity className="h-4 w-4" />} label="현재 작업" value={state.currentAction} />
+            <Tile icon={<ArrowRight className="h-4 w-4" />} label="다음 작업" value={state.nextAction} />
           </div>
         </div>
       </Card>
 
       {/* Quick actions */}
-      <Card title="Quick Actions" icon={<ListChecks className="h-4 w-4" />}>
+      <Card title="빠른 작업" icon={<ListChecks className="h-4 w-4" />}>
         <div className="flex flex-wrap items-center gap-2">
           <ActionButton icon={<Play className="h-4 w-4" />} variant="primary" onClick={() => autopilotService.start()}>
-            Start Company
+            회사 시작
           </ActionButton>
           <ActionButton icon={<StepForward className="h-4 w-4" />} onClick={() => autopilotService.runStep()} disabled={!canStep}>
-            Run one loop step
+            루프 한 단계 실행
           </ActionButton>
           <ActionButton icon={<Pause className="h-4 w-4" />} onClick={() => autopilotService.pause()} disabled={!active}>
-            Pause loop
+            루프 일시정지
           </ActionButton>
           <ActionButton icon={<Play className="h-4 w-4" />} onClick={() => autopilotService.resume()} disabled={!paused}>
-            Resume loop
+            루프 재개
           </ActionButton>
           <ActionButton icon={<Square className="h-4 w-4" />} onClick={() => autopilotService.stop()} disabled={state.status === 'idle'}>
-            Stop loop
+            루프 중지
           </ActionButton>
           <ActionButton icon={<ShieldOff className="h-4 w-4" />} onClick={() => autopilotService.clearBlocker()} disabled={state.blockers.length === 0}>
-            Clear autopilot blocker
+            오토파일럿 블로커 해제
           </ActionButton>
           <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportReport}>
-            Export autopilot report JSON
+            오토파일럿 리포트 JSON 내보내기
           </ActionButton>
           <ActionButton icon={<RotateCcw className="h-4 w-4" />} variant="danger" onClick={handleReset}>
-            Reset autopilot demo state
+            오토파일럿 데모 상태 초기화
           </ActionButton>
         </div>
       </Card>
 
       {/* Universal App Builder queue — read-through count (no code edits here) */}
       <Card
-        title="Universal App Builder Queue"
+        title="범용 앱 빌더 대기열"
         icon={<Boxes className="h-4 w-4" />}
         action={
           <button
@@ -213,15 +213,15 @@ export default function AutopilotPage(): JSX.Element {
             className="inline-flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition hover:bg-violet-500/20"
           >
             <ArrowRight className="h-3.5 w-3.5" />
-            Open App Builder
+            앱 빌더 열기
           </button>
         }
       >
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Tile icon={<Boxes className="h-4 w-4" />} label="Pending build projects" value={String(buildSummary.pending)} />
-          <Tile icon={<AlertCircle className="h-4 w-4" />} label="Needs approval" value={String(buildSummary.needsApproval)} />
-          <Tile icon={<ListChecks className="h-4 w-4" />} label="Prompt generated" value={String(buildSummary.promptGenerated)} />
-          <Tile icon={<CheckCircle2 className="h-4 w-4" />} label="Total projects" value={String(buildSummary.total)} />
+          <Tile icon={<Boxes className="h-4 w-4" />} label="대기 중인 빌드 프로젝트" value={String(buildSummary.pending)} />
+          <Tile icon={<AlertCircle className="h-4 w-4" />} label="승인 필요" value={String(buildSummary.needsApproval)} />
+          <Tile icon={<ListChecks className="h-4 w-4" />} label="프롬프트 생성됨" value={String(buildSummary.promptGenerated)} />
+          <Tile icon={<CheckCircle2 className="h-4 w-4" />} label="전체 프로젝트" value={String(buildSummary.total)} />
         </div>
         <p className="mt-3 text-xs text-slate-500">
           Autopilot는 이번 스프린트에서 앱 빌드 프로젝트의 대기 현황만 표시합니다(읽기 전용). 코드를 직접
@@ -232,12 +232,12 @@ export default function AutopilotPage(): JSX.Element {
       {/* Blockers + warnings */}
       <div className="grid gap-5 lg:grid-cols-2">
         <Card
-          title="Blockers"
+          title="블로커"
           icon={<AlertTriangle className="h-4 w-4" />}
-          action={<span className="text-xs text-slate-500">{state.blockers.length} open</span>}
+          action={<span className="text-xs text-slate-500">{state.blockers.length}개 열림</span>}
         >
           {state.blockers.length === 0 ? (
-            <p className="text-sm text-emerald-300/80">No blockers — the loop is clear to proceed.</p>
+            <p className="text-sm text-emerald-300/80">블로커 없음 — 루프가 진행할 준비가 되었습니다.</p>
           ) : (
             <ul className="space-y-1">
               {state.blockers.map((b, i) => (
@@ -254,12 +254,12 @@ export default function AutopilotPage(): JSX.Element {
         </Card>
 
         <Card
-          title="Warnings"
+          title="경고"
           icon={<AlertCircle className="h-4 w-4" />}
-          action={<span className="text-xs text-slate-500">{state.warnings.length} noted</span>}
+          action={<span className="text-xs text-slate-500">{state.warnings.length}건 기록됨</span>}
         >
           {state.warnings.length === 0 ? (
-            <p className="text-sm text-slate-500">No warnings surfaced this run.</p>
+            <p className="text-sm text-slate-500">이번 실행에서 발생한 경고가 없습니다.</p>
           ) : (
             <ul className="space-y-1">
               {state.warnings.map((w, i) => (
@@ -278,13 +278,13 @@ export default function AutopilotPage(): JSX.Element {
 
       {/* Step-by-step timeline */}
       <Card
-        title="Operating-Loop Timeline"
+        title="운영 루프 타임라인"
         icon={<ListChecks className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{state.currentStep}/9 steps</span>}
+        action={<span className="text-xs text-slate-500">{state.currentStep}/9 단계</span>}
       >
         {activeStep.length === 0 ? (
           <p className="text-sm text-slate-500">
-            No run yet. Press <span className="text-slate-300">Start Company</span> to walk the operating loop.
+            아직 실행이 없습니다. <span className="text-slate-300">회사 시작</span>을 눌러 운영 루프를 진행하세요.
           </p>
         ) : (
           <ol className="space-y-2">
@@ -297,12 +297,12 @@ export default function AutopilotPage(): JSX.Element {
 
       {/* Live activity log */}
       <Card
-        title="Live Activity Log"
+        title="실시간 활동 로그"
         icon={<Activity className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{state.activity.length} events</span>}
+        action={<span className="text-xs text-slate-500">이벤트 {state.activity.length}건</span>}
       >
         {state.activity.length === 0 ? (
-          <p className="text-sm text-slate-500">Quiet. Start the company to see the operating loop move.</p>
+          <p className="text-sm text-slate-500">조용합니다. 회사를 시작하면 운영 루프가 움직이는 것을 볼 수 있습니다.</p>
         ) : (
           <ol className="max-h-[24rem] space-y-2 overflow-y-auto pr-1">
             {state.activity.map((entry) => (

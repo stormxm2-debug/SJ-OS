@@ -69,15 +69,15 @@ export default function PerformancePage(): JSX.Element {
     <div className="space-y-5">
       {/* Header + production summary */}
       <Card
-        title="Performance Workspace — 실적 현황"
+        title="실적 워크스페이스 — 실적 현황"
         icon={<BarChart3 className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportReport}>
-              Export report
+              리포트 내보내기
             </ActionButton>
             <ActionButton icon={<RotateCcw className="h-4 w-4" />} variant="danger" onClick={handleReset}>
-              Reset demo state
+              데모 데이터 초기화
             </ActionButton>
           </div>
         }

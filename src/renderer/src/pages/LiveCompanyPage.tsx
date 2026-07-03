@@ -96,7 +96,7 @@ export default function LiveCompanyPage(): JSX.Element {
   const handleReset = (): void => {
     if (
       typeof window !== 'undefined' &&
-      !window.confirm('Reset every module (DevOS, PM, CTO, Approval, QA, Release, DevOps) back to its seed?')
+      !window.confirm('모든 모듈(DevOS, PM, CTO, Approval, QA, Release, DevOps)을 초기 상태로 되돌릴까요?')
     ) {
       return
     }
@@ -107,18 +107,18 @@ export default function LiveCompanyPage(): JSX.Element {
     <div className="space-y-5">
       {/* Company status header */}
       <Card
-        title="Live Company"
+        title="라이브 컴퍼니"
         icon={<Radio className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<RefreshCw className="h-4 w-4" />} onClick={() => liveCompanyService.refresh()}>
-              Refresh
+              새로고침
             </ActionButton>
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportSnapshot}>
-              Export snapshot
+              스냅샷 내보내기
             </ActionButton>
             <ActionButton variant="danger" icon={<RotateCcw className="h-4 w-4" />} onClick={handleReset}>
-              Reset demo state
+              데모 상태 초기화
             </ActionButton>
           </div>
         }
@@ -128,18 +128,18 @@ export default function LiveCompanyPage(): JSX.Element {
             <div className="flex items-center gap-3">
               <span className={['h-2.5 w-2.5 rounded-full', tone.dot, 'animate-pulse'].join(' ')} />
               <div>
-                <div className="text-xs text-slate-500">Company status</div>
+                <div className="text-xs text-slate-500">회사 상태</div>
                 <div className={['text-lg font-semibold', tone.text].join(' ')}>{snapshot.companyStatus}</div>
               </div>
             </div>
             <div className="text-xs text-slate-500">
-              Active: {snapshot.activeWorker} · {snapshot.activeDepartment} · updated {formatTimestamp(snapshot.lastUpdated)}
+              활성: {snapshot.activeWorker} · {snapshot.activeDepartment} · 업데이트 {formatTimestamp(snapshot.lastUpdated)}
             </div>
           </div>
 
           <div>
             <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>Overall AI Company progress</span>
+              <span>전체 AI 컴퍼니 진행률</span>
               <span className={progressTone(snapshot.overallProgress)}>{snapshot.overallProgress}%</span>
             </div>
             <div className="mt-1">
@@ -148,28 +148,28 @@ export default function LiveCompanyPage(): JSX.Element {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <Metric icon={<Gauge className="h-4 w-4" />} label="Arch health" value={`${snapshot.metrics.architectureHealth}`} />
-            <Metric icon={<AlertTriangle className="h-4 w-4" />} label="Tech debt" value={`${snapshot.metrics.openTechnicalDebt}`} />
-            <Metric icon={<ShieldCheck className="h-4 w-4" />} label="Approvals" value={`${snapshot.pendingApprovals}`} />
-            <Metric icon={<ClipboardCheck className="h-4 w-4" />} label="QA warnings" value={`${snapshot.qaWarnings}`} />
-            <Metric icon={<Rocket className="h-4 w-4" />} label="Release" value={snapshot.releaseStatus} />
-            <Metric icon={<Server className="h-4 w-4" />} label="Deployment" value={snapshot.deploymentStatus} />
+            <Metric icon={<Gauge className="h-4 w-4" />} label="아키텍처 상태" value={`${snapshot.metrics.architectureHealth}`} />
+            <Metric icon={<AlertTriangle className="h-4 w-4" />} label="기술 부채" value={`${snapshot.metrics.openTechnicalDebt}`} />
+            <Metric icon={<ShieldCheck className="h-4 w-4" />} label="승인" value={`${snapshot.pendingApprovals}`} />
+            <Metric icon={<ClipboardCheck className="h-4 w-4" />} label="QA 경고" value={`${snapshot.qaWarnings}`} />
+            <Metric icon={<Rocket className="h-4 w-4" />} label="릴리스" value={snapshot.releaseStatus} />
+            <Metric icon={<Server className="h-4 w-4" />} label="배포" value={snapshot.deploymentStatus} />
           </div>
         </div>
       </Card>
 
       {/* Active work + next recommended action */}
       <div className="grid gap-5 lg:grid-cols-3">
-        <Card title="Active Work" icon={<Activity className="h-4 w-4" />} className="lg:col-span-2">
+        <Card title="진행 중인 작업" icon={<Activity className="h-4 w-4" />} className="lg:col-span-2">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Tile icon={<Rocket className="h-4 w-4" />} label="Sprint" value={snapshot.currentSprint} />
-            <Tile icon={<Layers className="h-4 w-4" />} label="Epic" value={snapshot.currentEpic} />
-            <Tile icon={<GitBranch className="h-4 w-4" />} label="Feature" value={snapshot.currentFeature} />
-            <Tile icon={<ListTree className="h-4 w-4" />} label="Task" value={snapshot.currentTask} />
+            <Tile icon={<Rocket className="h-4 w-4" />} label="스프린트" value={snapshot.currentSprint} />
+            <Tile icon={<Layers className="h-4 w-4" />} label="에픽" value={snapshot.currentEpic} />
+            <Tile icon={<GitBranch className="h-4 w-4" />} label="기능" value={snapshot.currentFeature} />
+            <Tile icon={<ListTree className="h-4 w-4" />} label="작업" value={snapshot.currentTask} />
           </div>
         </Card>
 
-        <Card title="Next Recommended Action" icon={<ArrowRight className="h-4 w-4" />}>
+        <Card title="다음 추천 작업" icon={<ArrowRight className="h-4 w-4" />}>
           <div className="flex h-full flex-col justify-between gap-3">
             <p className="text-sm leading-relaxed text-slate-300">{snapshot.nextRecommendedAction}</p>
             <ActionButton
@@ -177,14 +177,14 @@ export default function LiveCompanyPage(): JSX.Element {
               variant="primary"
               onClick={() => liveCompanyService.promoteNextRecommendedAction()}
             >
-              Promote to DevOS
+              DevOS로 승격
             </ActionButton>
           </div>
         </Card>
       </div>
 
       {/* Department timeline */}
-      <Card title="Department Timeline" icon={<Building2 className="h-4 w-4" />}>
+      <Card title="부서 타임라인" icon={<Building2 className="h-4 w-4" />}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
           {snapshot.departments.map((stage, i) => (
             <div key={stage.key} className="flex items-stretch gap-3 lg:flex-1">
@@ -201,12 +201,12 @@ export default function LiveCompanyPage(): JSX.Element {
 
       {/* Bottlenecks */}
       <Card
-        title="Current Bottlenecks"
+        title="현재 병목 현상"
         icon={<AlertTriangle className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.bottlenecks.length} open</span>}
+        action={<span className="text-xs text-slate-500">{snapshot.bottlenecks.length}개 열림</span>}
       >
         {snapshot.bottlenecks.length === 0 ? (
-          <p className="text-sm text-emerald-300/80">No bottlenecks — the company is clear to proceed.</p>
+          <p className="text-sm text-emerald-300/80">병목 없음 — 회사가 진행할 준비가 되었습니다.</p>
         ) : (
           <ul className="space-y-1">
             {snapshot.bottlenecks.map((b, i) => (
@@ -224,9 +224,9 @@ export default function LiveCompanyPage(): JSX.Element {
 
       {/* Worker activity grid */}
       <Card
-        title="Worker Activity"
+        title="워커 활동"
         icon={<Users className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.workers.length} workers</span>}
+        action={<span className="text-xs text-slate-500">워커 {snapshot.workers.length}명</span>}
       >
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {snapshot.workers.map((w) => (
@@ -237,13 +237,13 @@ export default function LiveCompanyPage(): JSX.Element {
 
       {/* Activity feed */}
       <Card
-        title="Live Activity Feed"
+        title="실시간 활동 피드"
         icon={<Radio className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.activity.length} events</span>}
+        action={<span className="text-xs text-slate-500">이벤트 {snapshot.activity.length}건</span>}
       >
         {snapshot.activity.length === 0 ? (
           <p className="text-sm text-slate-500">
-            Quiet. Act in any module (PM, CTO, Approval, QA, Release, DevOps) to see the company move.
+            조용합니다. 모듈(PM, CTO, Approval, QA, Release, DevOps)에서 작업하면 회사가 움직이는 것을 볼 수 있습니다.
           </p>
         ) : (
           <ol className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
@@ -276,7 +276,7 @@ function StageCard({ stage }: { stage: DepartmentStage }): JSX.Element {
       <div className="mt-1.5 text-[11px] text-slate-500">{stage.status}</div>
       <div className="mt-2">
         <div className="flex items-center justify-between text-[10px] text-slate-500">
-          <span>progress</span>
+          <span>진행률</span>
           <span className={progressTone(stage.progress)}>{stage.progress}%</span>
         </div>
         <div className="mt-1">
@@ -312,18 +312,18 @@ function WorkerCard({ worker }: { worker: WorkerMemory }): JSX.Element {
 
       <div className="mt-2 flex items-start gap-1.5 text-xs text-slate-300">
         <CircleDot className="mt-0.5 h-3 w-3 shrink-0 text-slate-500" />
-        <span className="min-w-0">{busy ? worker.currentWork : 'Idle'}</span>
+        <span className="min-w-0">{busy ? worker.currentWork : '대기 중'}</span>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-        <span className="text-emerald-300/80">{worker.completedWork.length} done</span>
-        {worker.blockedWork.length > 0 ? <span className="text-rose-300/80">{worker.blockedWork.length} blocked</span> : null}
-        <span>conf {worker.confidence}%</span>
+        <span className="text-emerald-300/80">완료 {worker.completedWork.length}건</span>
+        {worker.blockedWork.length > 0 ? <span className="text-rose-300/80">차단 {worker.blockedWork.length}건</span> : null}
+        <span>신뢰도 {worker.confidence}%</span>
       </div>
 
       {worker.nextWork.length > 0 ? (
         <div className="mt-1 truncate text-[11px] text-slate-600" title={worker.nextWork[0]}>
-          Next: {worker.nextWork[0]}
+          다음: {worker.nextWork[0]}
         </div>
       ) : null}
     </div>

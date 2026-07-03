@@ -57,7 +57,7 @@ export default function ProjectPipeline(): JSX.Element {
   const kernel = useKernel()
   const stage = currentStage(kernel)
   return (
-    <Card title="Company pipeline">
+    <Card title="회사 파이프라인">
       <div className="flex flex-wrap items-center gap-1.5">
         {STAGES.map((label, i) => {
           const done = i < stage || stage === 7

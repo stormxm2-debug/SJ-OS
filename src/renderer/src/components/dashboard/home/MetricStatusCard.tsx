@@ -31,12 +31,12 @@ export default function MetricStatusCard({
         : 'bg-emerald-500/10 text-emerald-300'
 
   const statusLabel = status === 'error'
-    ? 'Error'
+    ? '오류'
     : status === 'loading'
-      ? 'Loading'
+      ? '불러오는 중'
       : isFallback
-        ? 'Fallback'
-        : 'Live'
+        ? '폴백'
+        : '실시간'
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">

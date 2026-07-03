@@ -55,13 +55,13 @@ const STATUS_STYLES: Record<DeploymentStatus, string> = {
 }
 
 const STATUS_LABELS: Record<DeploymentStatus, string> = {
-  draft: 'Draft',
-  ready: 'Ready',
-  deploying: 'Deploying',
-  deployed: 'Deployed',
-  failed: 'Failed',
-  'rolled-back': 'Rolled back',
-  blocked: 'Blocked'
+  draft: '초안',
+  ready: '준비됨',
+  deploying: '배포 중',
+  deployed: '배포됨',
+  failed: '실패',
+  'rolled-back': '롤백됨',
+  blocked: '차단됨'
 }
 
 const ENV_STYLES: Record<DeploymentEnvironment, string> = {
@@ -108,18 +108,18 @@ const HEALTH_STYLES: Record<HealthStatus, string> = {
 }
 
 const LOG_STYLES: Record<DevOpsLogType, { label: string; className: string }> = {
-  'deployment-created': { label: 'Created', className: 'text-slate-300' },
-  'artifact-ready': { label: 'Artifact ready', className: 'text-emerald-300' },
-  'environment-ready': { label: 'Environment ready', className: 'text-emerald-300' },
-  'deployment-started': { label: 'Deploy started', className: 'text-indigo-300' },
-  'deployment-succeeded': { label: 'Deploy succeeded', className: 'text-emerald-300' },
-  'deployment-failed': { label: 'Deploy failed', className: 'text-rose-300' },
-  'log-added': { label: 'Log', className: 'text-slate-300' },
-  'blocker-added': { label: 'Blocker added', className: 'text-rose-300' },
-  'blocker-cleared': { label: 'Blocker cleared', className: 'text-emerald-300' },
-  'rollback-updated': { label: 'Rollback updated', className: 'text-amber-300' },
-  'approval-requested': { label: 'Approval requested', className: 'text-amber-300' },
-  reset: { label: 'Reset', className: 'text-amber-300' }
+  'deployment-created': { label: '생성됨', className: 'text-slate-300' },
+  'artifact-ready': { label: '아티팩트 준비됨', className: 'text-emerald-300' },
+  'environment-ready': { label: '환경 준비됨', className: 'text-emerald-300' },
+  'deployment-started': { label: '배포 시작', className: 'text-indigo-300' },
+  'deployment-succeeded': { label: '배포 성공', className: 'text-emerald-300' },
+  'deployment-failed': { label: '배포 실패', className: 'text-rose-300' },
+  'log-added': { label: '로그', className: 'text-slate-300' },
+  'blocker-added': { label: '블로커 추가', className: 'text-rose-300' },
+  'blocker-cleared': { label: '블로커 해제', className: 'text-emerald-300' },
+  'rollback-updated': { label: '롤백 업데이트', className: 'text-amber-300' },
+  'approval-requested': { label: '승인 요청', className: 'text-amber-300' },
+  reset: { label: '초기화', className: 'text-amber-300' }
 }
 
 const ENVIRONMENTS: DeploymentEnvironment[] = ['local', 'development', 'staging', 'production']
@@ -155,7 +155,7 @@ export default function DevOpsCenterPage(): JSX.Element {
   const qa = devOpsRepository.getLatestQaSummary()
 
   const handleReset = (): void => {
-    if (typeof window !== 'undefined' && !window.confirm('Reset the DevOps Center back to the seed?')) {
+    if (typeof window !== 'undefined' && !window.confirm('DevOps 센터를 초기 값으로 되돌릴까요?')) {
       return
     }
     devOpsRepository.resetDemoState()
@@ -164,15 +164,15 @@ export default function DevOpsCenterPage(): JSX.Element {
   return (
     <div className="space-y-5">
       <Card
-        title="DevOps Center"
+        title="DevOps 센터"
         icon={<Server className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportReport}>
-              Export DevOps report
+              DevOps 리포트 내보내기
             </ActionButton>
             <ActionButton variant="danger" icon={<RotateCcw className="h-4 w-4" />} onClick={handleReset}>
-              Reset demo state
+              데모 상태 초기화
             </ActionButton>
           </div>
         }
@@ -180,66 +180,66 @@ export default function DevOpsCenterPage(): JSX.Element {
         {current ? (
           <CurrentDeploymentPanel deployment={current} />
         ) : (
-          <p className="text-sm text-slate-500">No deployment candidate yet. Create one below.</p>
+          <p className="text-sm text-slate-500">아직 배포 후보가 없습니다. 아래에서 새로 만드세요.</p>
         )}
       </Card>
 
       {/* Live summaries */}
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card title="Release Summary" icon={<Rocket className="h-4 w-4" />} action={<span className="text-xs text-slate-500">from Release Center</span>}>
+        <Card title="릴리즈 요약" icon={<Rocket className="h-4 w-4" />} action={<span className="text-xs text-slate-500">릴리즈 센터에서</span>}>
           {release ? (
             <div className="space-y-3">
               <div className="text-sm text-slate-300">
                 {release.title} <span className="text-slate-400">{release.version}</span>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
-                <MiniStat label="Release status" value={release.status} />
+                <MiniStat label="릴리즈 상태" value={release.status} />
                 <MiniStat label="QA" value={release.qaStatus} />
-                <MiniStat label="Approval" value={release.approvalStatus} />
-                <MiniStat label="Deployment" value={release.deploymentStatus} />
+                <MiniStat label="승인" value={release.approvalStatus} />
+                <MiniStat label="배포" value={release.deploymentStatus} />
               </div>
               {release.blockers.length > 0 ? (
                 <div>
-                  <SectionLabel>Release blockers</SectionLabel>
-                  <PlainList items={release.blockers} tone="bad" empty="None" />
+                  <SectionLabel>릴리즈 블로커</SectionLabel>
+                  <PlainList items={release.blockers} tone="bad" empty="없음" />
                 </div>
               ) : null}
               {release.warnings.length > 0 ? (
                 <div>
-                  <SectionLabel>Warnings</SectionLabel>
-                  <PlainList items={release.warnings} tone="warn" empty="None" />
+                  <SectionLabel>경고</SectionLabel>
+                  <PlainList items={release.warnings} tone="warn" empty="없음" />
                 </div>
               ) : null}
             </div>
           ) : (
-            <p className="text-sm text-slate-500">No release to summarise.</p>
+            <p className="text-sm text-slate-500">요약할 릴리즈가 없습니다.</p>
           )}
         </Card>
 
-        <Card title="Latest QA Summary" icon={<ClipboardCheck className="h-4 w-4" />} action={<span className="text-xs text-slate-500">from QA Center</span>}>
+        <Card title="최근 QA 요약" icon={<ClipboardCheck className="h-4 w-4" />} action={<span className="text-xs text-slate-500">QA 센터에서</span>}>
           {qa ? (
             <div className="space-y-3">
               <div className="text-sm text-slate-300">{qa.title}</div>
               <div className="grid gap-2 sm:grid-cols-3">
-                <MiniStat label="Typecheck" value={qa.typecheckStatus} />
-                <MiniStat label="Build" value={qa.buildStatus} />
-                <MiniStat label="Regression" value={qa.regressionStatus} />
+                <MiniStat label="타입체크" value={qa.typecheckStatus} />
+                <MiniStat label="빌드" value={qa.buildStatus} />
+                <MiniStat label="회귀" value={qa.regressionStatus} />
               </div>
               {qa.releaseBlockers.length > 0 ? (
                 <div>
-                  <SectionLabel>Release blockers</SectionLabel>
-                  <PlainList items={qa.releaseBlockers} tone="bad" empty="None" />
+                  <SectionLabel>릴리즈 블로커</SectionLabel>
+                  <PlainList items={qa.releaseBlockers} tone="bad" empty="없음" />
                 </div>
               ) : null}
               {qa.warnings.length > 0 ? (
                 <div>
-                  <SectionLabel>Warnings</SectionLabel>
-                  <PlainList items={qa.warnings} tone="warn" empty="None" />
+                  <SectionLabel>경고</SectionLabel>
+                  <PlainList items={qa.warnings} tone="warn" empty="없음" />
                 </div>
               ) : null}
             </div>
           ) : (
-            <p className="text-sm text-slate-500">No QA run to summarise.</p>
+            <p className="text-sm text-slate-500">요약할 QA 실행이 없습니다.</p>
           )}
         </Card>
       </div>
@@ -247,12 +247,12 @@ export default function DevOpsCenterPage(): JSX.Element {
       <NewDeploymentForm />
 
       <Card
-        title="Deployment History"
+        title="배포 이력"
         icon={<History className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.deployments.length} deployments</span>}
+        action={<span className="text-xs text-slate-500">배포 {snapshot.deployments.length}건</span>}
       >
         {snapshot.deployments.length === 0 ? (
-          <p className="text-sm text-slate-500">No deployments recorded.</p>
+          <p className="text-sm text-slate-500">기록된 배포가 없습니다.</p>
         ) : (
           <div className="space-y-2">
             {snapshot.deployments.map((d) => (
@@ -263,12 +263,12 @@ export default function DevOpsCenterPage(): JSX.Element {
       </Card>
 
       <Card
-        title="DevOps Event Log"
+        title="DevOps 이벤트 로그"
         icon={<Activity className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.eventLog.length} events</span>}
+        action={<span className="text-xs text-slate-500">이벤트 {snapshot.eventLog.length}건</span>}
       >
         {snapshot.eventLog.length === 0 ? (
-          <p className="text-sm text-slate-500">No events yet. Use the DevOps actions to record activity.</p>
+          <p className="text-sm text-slate-500">아직 이벤트가 없습니다. DevOps 작업으로 활동을 기록하세요.</p>
         ) : (
           <ol className="space-y-2">
             {snapshot.eventLog.map((entry) => {
@@ -330,26 +330,26 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
             </span>
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              Started {formatTimestamp(deployment.startedAt)}
+              시작 {formatTimestamp(deployment.startedAt)}
             </span>
-            {deployment.completedAt ? <span>Completed {formatTimestamp(deployment.completedAt)}</span> : null}
+            {deployment.completedAt ? <span>완료 {formatTimestamp(deployment.completedAt)}</span> : null}
           </div>
         </div>
       </div>
 
       {/* gates */}
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <GateTile icon={<Boxes className="h-4 w-4" />} label="Build" status={deployment.buildStatus} styleMap={GATE_STYLES} />
+        <GateTile icon={<Boxes className="h-4 w-4" />} label="빌드" status={deployment.buildStatus} styleMap={GATE_STYLES} />
         <GateTile icon={<ClipboardCheck className="h-4 w-4" />} label="QA" status={deployment.qaStatus} styleMap={GATE_STYLES} />
-        <GateTile icon={<ShieldCheck className="h-4 w-4" />} label="Approval" status={deployment.approvalStatus} styleMap={APPROVAL_STYLES} />
-        <GateTile icon={<Package className="h-4 w-4" />} label="Artifact" status={deployment.artifactStatus} styleMap={ARTIFACT_STYLES} />
-        <GateTile icon={<Truck className="h-4 w-4" />} label="Deployment" status={deployment.deploymentStatus} styleMap={PIPELINE_STYLES} />
-        <GateTile icon={<HeartPulse className="h-4 w-4" />} label="Health" status={deployment.healthStatus} styleMap={HEALTH_STYLES} />
+        <GateTile icon={<ShieldCheck className="h-4 w-4" />} label="승인" status={deployment.approvalStatus} styleMap={APPROVAL_STYLES} />
+        <GateTile icon={<Package className="h-4 w-4" />} label="아티팩트" status={deployment.artifactStatus} styleMap={ARTIFACT_STYLES} />
+        <GateTile icon={<Truck className="h-4 w-4" />} label="배포" status={deployment.deploymentStatus} styleMap={PIPELINE_STYLES} />
+        <GateTile icon={<HeartPulse className="h-4 w-4" />} label="헬스" status={deployment.healthStatus} styleMap={HEALTH_STYLES} />
       </div>
 
       {/* checklist */}
       <div>
-        <SectionLabel>Deployment checklist</SectionLabel>
+        <SectionLabel>배포 체크리스트</SectionLabel>
         <ul className="mt-1 space-y-1">
           {deployment.checklist.map((c, i) => (
             <li key={i} className="flex items-center gap-2 text-xs">
@@ -371,9 +371,9 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
 
       {/* blockers */}
       <div>
-        <SectionLabel>Blockers ({deployment.blockers.length})</SectionLabel>
+        <SectionLabel>블로커 ({deployment.blockers.length})</SectionLabel>
         {deployment.blockers.length === 0 ? (
-          <p className="mt-1 text-xs text-emerald-300/80">No blockers.</p>
+          <p className="mt-1 text-xs text-emerald-300/80">블로커가 없습니다.</p>
         ) : (
           <ul className="mt-1 space-y-1">
             {deployment.blockers.map((b, i) => (
@@ -389,7 +389,7 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
                   type="button"
                   onClick={() => devOpsRepository.clearBlocker(id, b)}
                   className="shrink-0 text-rose-300/70 transition hover:text-rose-200"
-                  aria-label="Clear blocker"
+                  aria-label="블로커 삭제"
                 >
                   <Eraser className="h-3.5 w-3.5" />
                 </button>
@@ -400,7 +400,7 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
         <InlineAdd
           value={blockerDraft}
           onChange={setBlockerDraft}
-          placeholder="Add a blocker…"
+          placeholder="블로커 추가…"
           onSubmit={() => devOpsRepository.addBlocker(id, blockerDraft).success && setBlockerDraft('')}
         />
       </div>
@@ -408,8 +408,8 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
       {/* warnings */}
       {deployment.warnings.length > 0 ? (
         <div>
-          <SectionLabel>Warnings ({deployment.warnings.length})</SectionLabel>
-          <PlainList items={deployment.warnings} tone="warn" empty="None" />
+          <SectionLabel>경고 ({deployment.warnings.length})</SectionLabel>
+          <PlainList items={deployment.warnings} tone="warn" empty="없음" />
         </div>
       ) : null}
 
@@ -417,7 +417,7 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
       <div>
         <SectionLabel>
           <span className="inline-flex items-center gap-1">
-            <Undo2 className="h-3 w-3" /> Rollback plan
+            <Undo2 className="h-3 w-3" /> 롤백 계획
           </span>
         </SectionLabel>
         <p className="mt-1 whitespace-pre-line rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs leading-relaxed text-slate-400">
@@ -426,7 +426,7 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
         <InlineAdd
           value={rollbackDraft}
           onChange={setRollbackDraft}
-          placeholder="Update rollback plan…"
+          placeholder="롤백 계획 업데이트…"
           onSubmit={() => devOpsRepository.updateRollbackPlan(id, rollbackDraft).success && setRollbackDraft('')}
         />
       </div>
@@ -435,11 +435,11 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
       <div>
         <SectionLabel>
           <span className="inline-flex items-center gap-1">
-            <Terminal className="h-3 w-3" /> Deployment logs ({deployment.deploymentLogs.length})
+            <Terminal className="h-3 w-3" /> 배포 로그 ({deployment.deploymentLogs.length})
           </span>
         </SectionLabel>
         {deployment.deploymentLogs.length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">No logs.</p>
+          <p className="mt-1 text-xs text-slate-500">로그가 없습니다.</p>
         ) : (
           <ol className="mt-1 space-y-1">
             {deployment.deploymentLogs.map((log) => (
@@ -453,7 +453,7 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
         <InlineAdd
           value={logDraft}
           onChange={setLogDraft}
-          placeholder="Add a deployment log…"
+          placeholder="배포 로그 추가…"
           onSubmit={() => devOpsRepository.addDeploymentLog(id, logDraft).success && setLogDraft('')}
         />
       </div>
@@ -461,13 +461,13 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
       {/* actions */}
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
         <MiniButton icon={<Package className="h-3 w-3" />} onClick={() => devOpsRepository.markBuildArtifactReady(id)}>
-          Artifact ready
+          아티팩트 준비
         </MiniButton>
         <MiniButton icon={<Server className="h-3 w-3" />} onClick={() => devOpsRepository.markEnvironmentReady(id)}>
-          Environment ready
+          환경 준비
         </MiniButton>
         <MiniButton icon={<Send className="h-3 w-3" />} onClick={() => devOpsRepository.requestDeploymentApproval(id)}>
-          Request approval
+          승인 요청
         </MiniButton>
         <MiniButton
           icon={<PlayCircle className="h-3 w-3" />}
@@ -475,7 +475,7 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
           onClick={() => devOpsRepository.markDeploymentStarted(id)}
           disabled={deployment.status === 'deploying' || deployment.status === 'deployed'}
         >
-          Start deployment
+          배포 시작
         </MiniButton>
         <MiniButton
           icon={<CheckCheck className="h-3 w-3" />}
@@ -483,14 +483,14 @@ function CurrentDeploymentPanel({ deployment }: { deployment: DeploymentItem }):
           onClick={() => devOpsRepository.markDeploymentSuccessful(id)}
           disabled={deployment.status === 'deployed'}
         >
-          Mark successful
+          성공 처리
         </MiniButton>
         <MiniButton
           icon={<XCircle className="h-3 w-3" />}
           variant="danger"
           onClick={() => devOpsRepository.markDeploymentFailed(id)}
         >
-          Mark failed
+          실패 처리
         </MiniButton>
       </div>
     </div>
@@ -515,7 +515,7 @@ function HistoryRow({ deployment, highlight }: { deployment: DeploymentItem; hig
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-        {deployment.blockers.length > 0 ? <span className="text-rose-300">{deployment.blockers.length} blocker(s)</span> : null}
+        {deployment.blockers.length > 0 ? <span className="text-rose-300">블로커 {deployment.blockers.length}건</span> : null}
         <StatusBadge status={deployment.status} />
       </div>
     </div>
@@ -538,13 +538,13 @@ function NewDeploymentForm(): JSX.Element {
   }
 
   return (
-    <Card title="New Deployment Candidate" icon={<Plus className="h-4 w-4" />}>
+    <Card title="새 배포 후보" icon={<Plus className="h-4 w-4" />}>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Deployment title…"
+          placeholder="배포 제목…"
           className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <input
@@ -552,7 +552,7 @@ function NewDeploymentForm(): JSX.Element {
           value={version}
           onChange={(e) => setVersion(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder="Version (e.g. v0.2)"
+          placeholder="버전 (예: v0.2)"
           className="w-36 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <select
@@ -567,7 +567,7 @@ function NewDeploymentForm(): JSX.Element {
           ))}
         </select>
         <ActionButton icon={<Plus className="h-4 w-4" />} variant="primary" onClick={submit}>
-          Create candidate
+          후보 생성
         </ActionButton>
       </div>
     </Card>
@@ -637,7 +637,7 @@ function InlineAdd({
         type="button"
         onClick={onSubmit}
         className="inline-flex items-center rounded-md border border-slate-700 bg-slate-800/60 px-2 py-1 text-slate-300 transition hover:bg-slate-700/60"
-        aria-label="Add"
+        aria-label="추가"
       >
         <Plus className="h-3.5 w-3.5" />
       </button>

@@ -39,10 +39,10 @@ const STATUS_STYLES: Record<ApprovalStatus, string> = {
 }
 
 const STATUS_LABELS: Record<ApprovalStatus, string> = {
-  pending: 'Pending',
-  approved: 'Approved',
-  rejected: 'Rejected',
-  deferred: 'Deferred'
+  pending: '대기',
+  approved: '승인됨',
+  rejected: '반려됨',
+  deferred: '연기됨'
 }
 
 const PRIORITY_STYLES: Record<ApprovalPriority, string> = {
@@ -60,14 +60,14 @@ const RISK_STYLES: Record<ApprovalRiskLevel, string> = {
 }
 
 const LOG_STYLES: Record<ApprovalLogType, { label: string; className: string }> = {
-  created: { label: 'Created', className: 'text-slate-300' },
-  approved: { label: 'Approved', className: 'text-emerald-300' },
-  rejected: { label: 'Rejected', className: 'text-rose-300' },
-  deferred: { label: 'Deferred', className: 'text-sky-300' },
-  'reason-added': { label: 'Reason added', className: 'text-indigo-300' },
-  'reason-cleared': { label: 'Reason cleared', className: 'text-amber-300' },
-  imported: { label: 'Imported', className: 'text-indigo-300' },
-  reset: { label: 'Reset', className: 'text-amber-300' }
+  created: { label: '생성됨', className: 'text-slate-300' },
+  approved: { label: '승인됨', className: 'text-emerald-300' },
+  rejected: { label: '반려됨', className: 'text-rose-300' },
+  deferred: { label: '연기됨', className: 'text-sky-300' },
+  'reason-added': { label: '사유 추가', className: 'text-indigo-300' },
+  'reason-cleared': { label: '사유 삭제', className: 'text-amber-300' },
+  imported: { label: '가져옴', className: 'text-indigo-300' },
+  reset: { label: '초기화', className: 'text-amber-300' }
 }
 
 const CATEGORIES: ApprovalCategory[] = [
@@ -133,7 +133,7 @@ export default function ApprovalCenterPage(): JSX.Element {
   }, [snapshot])
 
   const handleReset = (): void => {
-    if (typeof window !== 'undefined' && !window.confirm('Reset the Approval Center back to the seed?')) {
+    if (typeof window !== 'undefined' && !window.confirm('승인 센터를 초기 값으로 되돌릴까요?')) {
       return
     }
     approvalRepository.resetDemoState()
@@ -143,25 +143,25 @@ export default function ApprovalCenterPage(): JSX.Element {
     const result = approvalRepository.importFromCtoRoom()
     if (typeof window !== 'undefined') {
       const n = result.data?.imported ?? 0
-      window.alert(n === 0 ? 'No new CTO blocked decisions to import.' : `Imported ${n} CTO decision(s).`)
+      window.alert(n === 0 ? '가져올 새 CTO 차단 의사결정이 없습니다.' : `CTO 의사결정 ${n}건을 가져왔습니다.`)
     }
   }
 
   return (
     <div className="space-y-5">
       <Card
-        title="Approval Center"
+        title="승인 센터"
         icon={<ShieldCheck className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<DownloadCloud className="h-4 w-4" />} onClick={handleImport}>
-              Import CTO decisions
+              CTO 의사결정 가져오기
             </ActionButton>
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportReport}>
-              Export report JSON
+              리포트 JSON 내보내기
             </ActionButton>
             <ActionButton variant="danger" icon={<RotateCcw className="h-4 w-4" />} onClick={handleReset}>
-              Reset demo state
+              데모 상태 초기화
             </ActionButton>
           </div>
         }
@@ -183,12 +183,12 @@ export default function ApprovalCenterPage(): JSX.Element {
       {STATUS_ORDER.map((status) => (
         <Card
           key={status}
-          title={`${STATUS_LABELS[status]} approvals`}
+          title={`${STATUS_LABELS[status]} 승인`}
           icon={STATUS_SECTION_ICON[status]}
-          action={<span className="text-xs text-slate-500">{grouped[status].length} items</span>}
+          action={<span className="text-xs text-slate-500">{grouped[status].length}건</span>}
         >
           {grouped[status].length === 0 ? (
-            <p className="text-sm text-slate-500">Nothing {STATUS_LABELS[status].toLowerCase()}.</p>
+            <p className="text-sm text-slate-500">{STATUS_LABELS[status]} 항목이 없습니다.</p>
           ) : (
             <div className="space-y-3">
               {grouped[status].map((item) => (
@@ -200,12 +200,12 @@ export default function ApprovalCenterPage(): JSX.Element {
       ))}
 
       <Card
-        title="Decision History"
+        title="의사결정 이력"
         icon={<History className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.eventLog.length} events</span>}
+        action={<span className="text-xs text-slate-500">이벤트 {snapshot.eventLog.length}건</span>}
       >
         {snapshot.eventLog.length === 0 ? (
-          <p className="text-sm text-slate-500">No decisions yet. Approve, reject or defer an item to record history.</p>
+          <p className="text-sm text-slate-500">아직 의사결정이 없습니다. 항목을 승인, 반려 또는 연기하면 이력이 기록됩니다.</p>
         ) : (
           <ol className="space-y-2">
             {snapshot.eventLog.map((entry) => {
@@ -267,13 +267,13 @@ function ApprovalCard({ item }: { item: ApprovalItem }): JSX.Element {
           <User className="h-3 w-3" />
           {item.requestedByRole} · {item.source}
         </span>
-        <span>Created: {formatTimestamp(item.createdAt)}</span>
-        {item.decidedAt ? <span>Decided: {formatTimestamp(item.decidedAt)}</span> : null}
+        <span>생성: {formatTimestamp(item.createdAt)}</span>
+        {item.decidedAt ? <span>결정: {formatTimestamp(item.decidedAt)}</span> : null}
       </div>
 
       {item.impactSummary ? (
         <p className="mt-2 text-xs text-slate-400">
-          <span className="text-slate-500">Impact: </span>
+          <span className="text-slate-500">영향: </span>
           {item.impactSummary}
         </p>
       ) : null}
@@ -293,14 +293,14 @@ function ApprovalCard({ item }: { item: ApprovalItem }): JSX.Element {
       {item.decisionReason ? (
         <div className="mt-2 flex items-start justify-between gap-2 rounded-md border border-indigo-500/20 bg-indigo-500/10 px-2.5 py-1.5 text-xs text-indigo-200">
           <span>
-            <span className="text-indigo-300/70">Reason: </span>
+            <span className="text-indigo-300/70">사유: </span>
             {item.decisionReason}
           </span>
           <button
             type="button"
             onClick={() => approvalRepository.clearDecisionReason(item.approvalId)}
             className="shrink-0 text-indigo-300/70 transition hover:text-indigo-200"
-            aria-label="Clear decision reason"
+            aria-label="결정 사유 삭제"
           >
             <Eraser className="h-3.5 w-3.5" />
           </button>
@@ -312,14 +312,14 @@ function ApprovalCard({ item }: { item: ApprovalItem }): JSX.Element {
             value={reasonDraft}
             onChange={(e) => setReasonDraft(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submitReason()}
-            placeholder="Add a decision reason…"
+            placeholder="결정 사유 추가…"
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
           />
           <button
             type="button"
             onClick={submitReason}
             className="inline-flex items-center rounded-md border border-slate-700 bg-slate-800/60 px-2 py-1 text-slate-300 transition hover:bg-slate-700/60"
-            aria-label="Add decision reason"
+            aria-label="결정 사유 추가"
           >
             <MessageSquarePlus className="h-3.5 w-3.5" />
           </button>
@@ -334,7 +334,7 @@ function ApprovalCard({ item }: { item: ApprovalItem }): JSX.Element {
           onClick={() => approvalRepository.approve(item.approvalId)}
           disabled={item.status === 'approved'}
         >
-          Approve
+          승인
         </MiniButton>
         <MiniButton
           icon={<X className="h-3 w-3" />}
@@ -342,14 +342,14 @@ function ApprovalCard({ item }: { item: ApprovalItem }): JSX.Element {
           onClick={() => approvalRepository.reject(item.approvalId)}
           disabled={item.status === 'rejected'}
         >
-          Reject
+          반려
         </MiniButton>
         <MiniButton
           icon={<Timer className="h-3 w-3" />}
           onClick={() => approvalRepository.defer(item.approvalId)}
           disabled={item.status === 'deferred'}
         >
-          Defer
+          연기
         </MiniButton>
       </div>
     </div>
@@ -389,14 +389,14 @@ function NewApprovalForm(): JSX.Element {
   }
 
   return (
-    <Card title="New Approval Request" icon={<Plus className="h-4 w-4" />}>
+    <Card title="새 승인 요청" icon={<Plus className="h-4 w-4" />}>
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Approval title…"
+            placeholder="승인 제목…"
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
           />
           <Select value={category} onChange={(v) => setCategory(v as ApprovalCategory)} options={CATEGORIES} />
@@ -405,7 +405,7 @@ function NewApprovalForm(): JSX.Element {
             value={riskLevel}
             onChange={(v) => setRiskLevel(v as ApprovalRiskLevel)}
             options={RISKS}
-            prefix="risk: "
+            prefix="위험: "
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -413,7 +413,7 @@ function NewApprovalForm(): JSX.Element {
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Description (optional)"
+            placeholder="설명 (선택)"
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
           />
           <input
@@ -421,11 +421,11 @@ function NewApprovalForm(): JSX.Element {
             value={impactSummary}
             onChange={(e) => setImpactSummary(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
-            placeholder="Impact summary (optional)"
+            placeholder="영향 요약 (선택)"
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
           />
           <ActionButton icon={<Plus className="h-4 w-4" />} variant="primary" onClick={submit}>
-            Create request
+            요청 생성
           </ActionButton>
         </div>
       </div>
@@ -493,7 +493,7 @@ function PriorityBadge({ priority }: { priority: ApprovalPriority }): JSX.Elemen
 function RiskBadge({ risk }: { risk: ApprovalRiskLevel }): JSX.Element {
   return (
     <span className={['rounded-full border px-2 py-0.5 text-[11px] font-medium', RISK_STYLES[risk]].join(' ')}>
-      {risk} risk
+{risk} 위험
     </span>
   )
 }

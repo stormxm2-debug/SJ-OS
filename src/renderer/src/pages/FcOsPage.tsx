@@ -147,10 +147,10 @@ export default function FcOsPage(): JSX.Element {
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportReport}>
-              Export FC OS report
+              FC OS 리포트 내보내기
             </ActionButton>
             <ActionButton variant="danger" icon={<RotateCcw className="h-4 w-4" />} onClick={handleReset}>
-              Reset demo state
+              데모 데이터 초기화
             </ActionButton>
           </div>
         }
@@ -224,7 +224,7 @@ export default function FcOsPage(): JSX.Element {
       </div>
 
       {/* Team performance summary */}
-      <Card title="팀별 실적" icon={<Building2 className="h-4 w-4" />} action={<span className="text-xs text-slate-500">{teams.length} teams</span>}>
+      <Card title="팀별 실적" icon={<Building2 className="h-4 w-4" />} action={<span className="text-xs text-slate-500">{teams.length}팀</span>}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {teams.map((team) => (
             <TeamCard key={team.team} team={team} />

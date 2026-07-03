@@ -20,10 +20,10 @@ const PRIORITY_TONE: Record<BacklogPriority, ChipTone> = {
 }
 
 const STATUS_META: Record<BacklogStatus, { label: string; tone: ChipTone }> = {
-  completed: { label: 'Completed', tone: 'emerald' },
-  in_progress: { label: 'In progress', tone: 'sky' },
-  planned: { label: 'Planned', tone: 'slate' },
-  blocked: { label: 'Blocked', tone: 'rose' }
+  completed: { label: '완료', tone: 'emerald' },
+  in_progress: { label: '진행 중', tone: 'sky' },
+  planned: { label: '계획됨', tone: 'slate' },
+  blocked: { label: '차단됨', tone: 'rose' }
 }
 
 const PRIORITIES: BacklogPriority[] = ['P0', 'P1', 'P2']
@@ -39,11 +39,11 @@ export default function ProductBacklogPage(): JSX.Element {
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-100">Product Backlog</h1>
+        <h1 className="text-xl font-semibold text-slate-100">제품 백로그</h1>
         <p className="mt-1 text-sm text-slate-400">{PRODUCT_VISION}</p>
       </div>
 
-      <Card title="Product roadmap" icon={<Target className="h-4 w-4 text-indigo-300" />}>
+      <Card title="제품 로드맵" icon={<Target className="h-4 w-4 text-indigo-300" />}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {ROADMAP.map((r, i) => (
             <div
@@ -55,20 +55,20 @@ export default function ProductBacklogPage(): JSX.Element {
             >
               <div className="text-sm font-semibold text-slate-100">{r.name}</div>
               <div className="text-xs text-slate-500">{r.theme}</div>
-              {i === 0 && <div className="mt-1 text-[10px] uppercase tracking-wide text-indigo-300">Current</div>}
+              {i === 0 && <div className="mt-1 text-[10px] uppercase tracking-wide text-indigo-300">현재</div>}
             </div>
           ))}
         </div>
       </Card>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Overview icon={<CheckCircle2 className="h-4 w-4 text-emerald-400" />} label="Completed" value={`${completed.length} / ${release1.length}`} />
-        <Overview icon={<CircleDashed className="h-4 w-4 text-sky-400" />} label="Current sprint (next up)" value={nextUp ? nextUp.title : '—'} />
-        <Overview icon={<Ban className="h-4 w-4 text-rose-400" />} label="Blocked" value={`${blocked.length}`} />
+        <Overview icon={<CheckCircle2 className="h-4 w-4 text-emerald-400" />} label="완료" value={`${completed.length} / ${release1.length}`} />
+        <Overview icon={<CircleDashed className="h-4 w-4 text-sky-400" />} label="현재 스프린트 (다음 작업)" value={nextUp ? nextUp.title : '—'} />
+        <Overview icon={<Ban className="h-4 w-4 text-rose-400" />} label="차단됨" value={`${blocked.length}`} />
       </div>
 
       <Card
-        title="Release 1 — Minimum Usable Product"
+        title="릴리스 1 — 최소 사용 가능 제품"
         icon={<ClipboardList className="h-4 w-4 text-indigo-300" />}
         action={<span className="text-xs text-slate-500">{release1.length} items</span>}
       >
@@ -80,7 +80,7 @@ export default function ProductBacklogPage(): JSX.Element {
               <div key={priority}>
                 <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
                   <Chip tone={PRIORITY_TONE[priority]}>{priority}</Chip>
-                  {priority === 'P0' ? 'Critical' : priority === 'P1' ? 'Important' : 'Later'}
+                  {priority === 'P0' ? '긴급' : priority === 'P1' ? '중요' : '나중에'}
                 </div>
                 <div className="space-y-2">
                   {items.map((item) => (
@@ -147,16 +147,16 @@ function BacklogRow({
       </button>
       {open && (
         <div className="space-y-2 border-t border-slate-800 px-3 py-3 text-xs text-slate-400">
-          <Field label="Business value" value={item.businessValue} />
+          <Field label="비즈니스 가치" value={item.businessValue} />
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Field label="Owner department" value={item.ownerDepartment} />
-            <Field label="Dependencies" value={item.dependencies.length ? item.dependencies.join(', ') : 'none'} />
+            <Field label="담당 부서" value={item.ownerDepartment} />
+            <Field label="종속성" value={item.dependencies.length ? item.dependencies.join(', ') : '없음'} />
           </div>
-          <Field label="Workflow" value={item.workflow} />
-          <List label="Acceptance criteria" items={item.acceptanceCriteria} />
-          <List label="Definition of Done" items={item.definitionOfDone} />
+          <Field label="워크플로우" value={item.workflow} />
+          <List label="인수 기준" items={item.acceptanceCriteria} />
+          <List label="완료 정의" items={item.definitionOfDone} />
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-600">Reprioritize</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-600">우선순위 재조정</div>
             <div className="mt-1 flex gap-1.5">
               {(['P0', 'P1', 'P2'] as BacklogPriority[]).map((p) => (
                 <button

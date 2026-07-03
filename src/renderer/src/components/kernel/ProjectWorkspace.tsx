@@ -41,7 +41,7 @@ export default function ProjectWorkspace(): JSX.Element | null {
 
   return (
     <Card
-      title="Project workspace"
+      title="프로젝트 워크스페이스"
       icon={<FolderTree className="h-4 w-4 text-indigo-300" />}
       action={<Chip tone={BUILD_TONE[project.buildStatus]}>{project.buildStatus}</Chip>}
     >
@@ -53,7 +53,7 @@ export default function ProjectWorkspace(): JSX.Element | null {
           <div className="font-mono text-[11px] text-slate-600">{project.id}</div>
         </div>
         <span className="shrink-0 text-xs tabular-nums text-slate-400">
-          {completion}% · {artifacts.length} file(s)
+          {completion}% · {artifacts.length}개 파일
         </span>
       </div>
       <div className="mt-2">
@@ -63,10 +63,10 @@ export default function ProjectWorkspace(): JSX.Element | null {
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <div className="text-xs uppercase tracking-wide text-slate-600">
-            Generated files
+            생성된 파일
           </div>
           {artifacts.length === 0 ? (
-            <p className="mt-1 text-sm text-slate-600">No files generated yet…</p>
+            <p className="mt-1 text-sm text-slate-600">아직 생성된 파일이 없습니다…</p>
           ) : (
             <div className="mt-1 space-y-2">
               {folders.map(({ dir, files }) => (
@@ -88,10 +88,10 @@ export default function ProjectWorkspace(): JSX.Element | null {
 
         <div>
           <div className="text-xs uppercase tracking-wide text-slate-600">
-            Working now
+            현재 작업 중
           </div>
           {busy.length === 0 ? (
-            <p className="mt-1 text-sm text-slate-600">Idle</p>
+            <p className="mt-1 text-sm text-slate-600">유휴</p>
           ) : (
             <ul className="mt-1 space-y-1">
               {busy.map((w) => {
@@ -142,7 +142,7 @@ function groupByFolder(
 ): { dir: string; files: ProjectArtifact[] }[] {
   const map = new Map<string, ProjectArtifact[]>()
   for (const a of artifacts) {
-    const dir = a.path.includes('/') ? a.path.slice(0, a.path.lastIndexOf('/')) : '(root)'
+    const dir = a.path.includes('/') ? a.path.slice(0, a.path.lastIndexOf('/')) : '(루트)'
     const list = map.get(dir) ?? []
     list.push(a)
     map.set(dir, list)

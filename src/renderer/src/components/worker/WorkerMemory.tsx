@@ -19,11 +19,11 @@ export default function WorkerMemory({ worker }: WorkerMemoryProps): JSX.Element
 
   return (
     <Card
-      title="Memory"
-      action={<span className="text-xs text-slate-500">{entries.length} entries</span>}
+      title="메모리"
+      action={<span className="text-xs text-slate-500">{entries.length}개 항목</span>}
     >
       {entries.length === 0 ? (
-        <p className="text-sm text-slate-600">No memories yet.</p>
+        <p className="text-sm text-slate-600">아직 메모리가 없습니다.</p>
       ) : (
         <ul className="space-y-3">
           {entries.map((entry) => (
@@ -44,7 +44,7 @@ export default function WorkerMemory({ worker }: WorkerMemoryProps): JSX.Element
       )}
 
       <p className="mt-4 text-xs text-slate-600">
-        Memory is read-only in this preview — editing arrives with live state.
+        이 미리보기에서 메모리는 읽기 전용입니다 — 편집 기능은 실시간 상태와 함께 제공됩니다.
       </p>
     </Card>
   )

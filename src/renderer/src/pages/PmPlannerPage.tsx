@@ -47,21 +47,21 @@ const STATUS_STYLES: Record<PmStatus, string> = {
 }
 
 const STATUS_LABELS: Record<PmStatus, string> = {
-  planned: 'Planned',
-  in_progress: 'In progress',
-  blocked: 'Blocked',
-  completed: 'Completed'
+  planned: '계획됨',
+  in_progress: '진행 중',
+  blocked: '차단됨',
+  completed: '완료'
 }
 
 const LOG_STYLES: Record<PmLogType, { label: string; className: string }> = {
-  'backlog-added': { label: 'Backlog added', className: 'text-sky-300' },
-  'plan-generated': { label: 'Plan generated', className: 'text-indigo-300' },
-  'task-completed': { label: 'Task completed', className: 'text-emerald-300' },
-  'task-assigned': { label: 'Task assigned', className: 'text-sky-300' },
-  'blocker-added': { label: 'Blocker added', className: 'text-rose-300' },
-  'blocker-cleared': { label: 'Blocker cleared', className: 'text-emerald-300' },
-  'feature-promoted': { label: 'Feature promoted', className: 'text-indigo-300' },
-  reset: { label: 'Reset', className: 'text-amber-300' }
+  'backlog-added': { label: '백로그 추가', className: 'text-sky-300' },
+  'plan-generated': { label: '계획 생성', className: 'text-indigo-300' },
+  'task-completed': { label: '작업 완료', className: 'text-emerald-300' },
+  'task-assigned': { label: '작업 배정', className: 'text-sky-300' },
+  'blocker-added': { label: '블로커 추가', className: 'text-rose-300' },
+  'blocker-cleared': { label: '블로커 해제', className: 'text-emerald-300' },
+  'feature-promoted': { label: '기능 승격', className: 'text-indigo-300' },
+  reset: { label: '초기화', className: 'text-amber-300' }
 }
 
 function formatTimestamp(iso: string): string {
@@ -118,7 +118,7 @@ export default function PmPlannerPage(): JSX.Element {
   }
 
   const handleReset = (): void => {
-    if (typeof window !== 'undefined' && !window.confirm('Reset the PM plan back to the seed?')) {
+    if (typeof window !== 'undefined' && !window.confirm('PM 계획을 초기 값으로 되돌릴까요?')) {
       return
     }
     pmRepository.resetPlan()
@@ -127,34 +127,34 @@ export default function PmPlannerPage(): JSX.Element {
   return (
     <div className="space-y-5">
       <Card
-        title="PM Planner"
+        title="PM 플래너"
         icon={<FolderKanban className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportPlan}>
-              Export plan JSON
+              계획 JSON 내보내기
             </ActionButton>
             <ActionButton variant="danger" icon={<RotateCcw className="h-4 w-4" />} onClick={handleReset}>
-              Reset plan
+              계획 초기화
             </ActionButton>
           </div>
         }
       >
         <div className="grid gap-3 sm:grid-cols-4">
-          <StatTile icon={<ClipboardList className="h-4 w-4" />} label="Backlog items" value={counts.backlogItems} />
-          <StatTile icon={<Layers className="h-4 w-4" />} label="Epics" value={counts.epics} />
-          <StatTile icon={<GitBranch className="h-4 w-4" />} label="Features" value={counts.features} />
+          <StatTile icon={<ClipboardList className="h-4 w-4" />} label="백로그 항목" value={counts.backlogItems} />
+          <StatTile icon={<Layers className="h-4 w-4" />} label="에픽" value={counts.epics} />
+          <StatTile icon={<GitBranch className="h-4 w-4" />} label="기능" value={counts.features} />
           <StatTile
             icon={<ListChecks className="h-4 w-4" />}
-            label="Tasks"
-            value={`${counts.completedTasks}/${counts.tasks} done`}
+            label="작업"
+            value={`${counts.completedTasks}/${counts.tasks} 완료`}
           />
         </div>
       </Card>
 
       {snapshot.backlogItems.length === 0 ? (
         <Card>
-          <p className="text-sm text-slate-500">No backlog items yet.</p>
+          <p className="text-sm text-slate-500">아직 백로그 항목이 없습니다.</p>
         </Card>
       ) : (
         snapshot.backlogItems.map((item) => (
@@ -170,12 +170,12 @@ export default function PmPlannerPage(): JSX.Element {
       )}
 
       <Card
-        title="Planner Event Log"
+        title="플래너 이벤트 로그"
         icon={<History className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.eventLog.length} events</span>}
+        action={<span className="text-xs text-slate-500">이벤트 {snapshot.eventLog.length}건</span>}
       >
         {snapshot.eventLog.length === 0 ? (
-          <p className="text-sm text-slate-500">No events yet. Use the planner actions to record activity.</p>
+          <p className="text-sm text-slate-500">아직 이벤트가 없습니다. 플래너 작업으로 활동을 기록하세요.</p>
         ) : (
           <ol className="space-y-2">
             {snapshot.eventLog.map((entry) => {
@@ -228,7 +228,7 @@ function BacklogItemSection({
             variant="primary"
             onClick={() => pmRepository.generatePlanFromBacklogItem(item.id)}
           >
-            Generate plan
+            계획 생성
           </ActionButton>
         </div>
       }
@@ -240,7 +240,7 @@ function BacklogItemSection({
 
         {epics.length === 0 ? (
           <p className="text-sm text-slate-500">
-            No epics yet — use “Generate plan” to break this item down.
+            아직 에픽이 없습니다 — “계획 생성”으로 이 항목을 세분화하세요.
           </p>
         ) : (
           <div className="space-y-4">
@@ -286,7 +286,7 @@ function EpicBlock({
         <div className="flex items-center gap-2">
           <PriorityBadge priority={epic.priority} />
           <StatusBadge status={epic.status} />
-          <span className="text-xs text-slate-500">Owner: {workerName(epic.ownerWorkerId)}</span>
+          <span className="text-xs text-slate-500">담당자: {workerName(epic.ownerWorkerId)}</span>
         </div>
       </div>
       <div className="mt-2">
@@ -334,13 +334,13 @@ function FeatureCard({
         <div className="flex flex-wrap items-center gap-2">
           <PriorityBadge priority={feature.priority} />
           <StatusBadge status={feature.status} />
-          <span className="text-xs text-slate-500">Owner: {workerName(feature.ownerWorkerId)}</span>
+          <span className="text-xs text-slate-500">담당자: {workerName(feature.ownerWorkerId)}</span>
           <ActionButton
             icon={<Rocket className="h-4 w-4" />}
             variant="primary"
             onClick={() => pmRepository.promoteFeatureToActive(feature.id)}
           >
-            Promote to active
+            활성화로 승격
           </ActionButton>
         </div>
       </div>
@@ -352,7 +352,7 @@ function FeatureCard({
 
       <div className="mt-3 space-y-2">
         {tasks.length === 0 ? (
-          <div className="text-xs text-slate-600">No tasks.</div>
+          <div className="text-xs text-slate-600">작업이 없습니다.</div>
         ) : (
           tasks.map((task) => (
             <TaskRow key={task.id} task={task} workers={workers} workerName={workerName} />
@@ -395,7 +395,7 @@ function TaskRow({
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1.5 text-xs text-slate-500">
-          Owner:
+          담당자:
           <select
             value={task.ownerWorkerId}
             onChange={(e) => pmRepository.assignTaskToWorker(task.id, e.target.value)}
@@ -416,14 +416,14 @@ function TaskRow({
           icon={<CheckCheck className="h-3 w-3" />}
           onClick={() => pmRepository.markTaskComplete(task.id)}
         >
-          Complete
+          완료
         </MiniButton>
         {task.status === 'blocked' ? (
           <MiniButton
             icon={<Eraser className="h-3 w-3" />}
             onClick={() => pmRepository.clearBlocker(task.id)}
           >
-            Clear blocker
+            블로커 해제
           </MiniButton>
         ) : null}
       </div>
@@ -442,14 +442,14 @@ function TaskRow({
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleAddBlocker()
             }}
-            placeholder="Add a blocker…"
+            placeholder="블로커 추가…"
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
           />
           <button
             type="button"
             onClick={handleAddBlocker}
             className="inline-flex items-center rounded-md border border-slate-700 bg-slate-800/60 px-2 py-1 text-slate-300 transition hover:bg-slate-700/60"
-            aria-label="Add blocker"
+            aria-label="블로커 추가"
           >
             <Ban className="h-3 w-3" />
           </button>
@@ -500,8 +500,8 @@ function StatusBadge({ status }: { status: PmStatus }): JSX.Element {
 function MetaRow({ owner, complexity }: { owner: string; complexity: string }): JSX.Element {
   return (
     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
-      <span>Owner: {owner}</span>
-      <span>Complexity: {complexity}</span>
+      <span>담당자: {owner}</span>
+      <span>복잡도: {complexity}</span>
     </div>
   )
 }
@@ -510,7 +510,7 @@ function AcceptanceCriteria({ items }: { items: string[] }): JSX.Element {
   return (
     <div>
       <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-        Acceptance criteria
+        인수 조건
       </div>
       {items.length === 0 ? (
         <div className="ml-4 text-xs text-slate-600">—</div>
@@ -536,10 +536,10 @@ function Dependencies({
     <div>
       <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
         <Link2 className="h-3 w-3" />
-        Dependencies
+        의존성
       </div>
       {ids.length === 0 ? (
-        <div className="ml-4 text-xs text-slate-600">None</div>
+        <div className="ml-4 text-xs text-slate-600">없음</div>
       ) : (
         <ul className="ml-4 mt-0.5 list-disc space-y-0.5 text-xs text-slate-400 marker:text-slate-700">
           {ids.map((id) => (

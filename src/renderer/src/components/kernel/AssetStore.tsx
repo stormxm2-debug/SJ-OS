@@ -25,9 +25,9 @@ export default function AssetStore(): JSX.Element | null {
 
   return (
     <Card
-      title="Company Asset Store"
+      title="회사 자산 저장소"
       icon={<Boxes className="h-4 w-4 text-indigo-300" />}
-      action={<span className="text-xs text-slate-500">{kernel.assets.length} asset(s)</span>}
+      action={<span className="text-xs text-slate-500">{kernel.assets.length}개 자산</span>}
     >
       <div className="space-y-4">
         {[...byType.entries()].map(([type, assets]) => (
@@ -57,7 +57,7 @@ function AssetRow({
   const registered = asset.status === 'registered'
   const owner =
     snapshot.departments.find((d) => d.capability === asset.ownerDepartment)?.name ??
-    `${asset.ownerDepartment} Department`
+    `${asset.ownerDepartment} 부서`
   const completedOn =
     asset.completedAt !== null ? new Date(asset.completedAt).toLocaleDateString() : null
 
@@ -69,32 +69,32 @@ function AssetRow({
         <span className="ml-auto flex items-center gap-1 text-xs">
           {registered ? (
             <span className="flex items-center gap-1 text-emerald-300">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Registered
+              <CheckCircle2 className="h-3.5 w-3.5" /> 등록됨
             </span>
           ) : (
             <span className="flex items-center gap-1 text-amber-300">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> In development
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> 개발 중
             </span>
           )}
         </span>
       </div>
 
       <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-        <span>Owner: {owner}</span>
-        <span>{asset.files.length} file(s)</span>
-        <span>Deps: {asset.dependencies.length === 0 ? 'none' : asset.dependencies.join(', ')}</span>
-        {completedOn && <span>Completed {completedOn}</span>}
+        <span>담당: {owner}</span>
+        <span>{asset.files.length}개 파일</span>
+        <span>의존성: {asset.dependencies.length === 0 ? '없음' : asset.dependencies.join(', ')}</span>
+        {completedOn && <span>완료 {completedOn}</span>}
       </div>
 
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-slate-600">Projects using:</span>
+        <span className="text-xs text-slate-600">사용 중인 프로젝트:</span>
         {asset.projectsUsing.map((p) => (
           <Chip key={p} tone="emerald">{p}</Chip>
         ))}
       </div>
 
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-slate-600">Reusable in:</span>
+        <span className="text-xs text-slate-600">재사용 가능:</span>
         {asset.supportedProjects.map((p) => (
           <Chip key={p} tone="indigo">{p}</Chip>
         ))}

@@ -25,13 +25,13 @@ export default function ProjectManagerPage(): JSX.Element {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div className="lg:col-span-1">
         <Card
-          title="Projects"
+          title="프로젝트"
           action={
             <button
               type="button"
               className="flex items-center gap-1 text-xs text-slate-400 transition hover:text-slate-200"
             >
-              <Plus className="h-3.5 w-3.5" /> New
+              <Plus className="h-3.5 w-3.5" /> 새로 만들기
             </button>
           }
         >
@@ -109,18 +109,18 @@ export default function ProjectManagerPage(): JSX.Element {
             </Card>
 
             <Card
-              title="Tasks"
+              title="작업"
               action={
                 <button
                   type="button"
                   className="flex items-center gap-1 text-xs text-slate-400 transition hover:text-slate-200"
                 >
-                  <Plus className="h-3.5 w-3.5" /> New task
+                  <Plus className="h-3.5 w-3.5" /> 새 작업
                 </button>
               }
             >
               {projectTasks.length === 0 ? (
-                <p className="text-sm text-slate-600">No tasks yet.</p>
+                <p className="text-sm text-slate-600">아직 작업이 없습니다.</p>
               ) : (
                 <ul className="space-y-4">
                   {projectTasks.map((task) => {
@@ -150,9 +150,9 @@ export default function ProjectManagerPage(): JSX.Element {
               )}
             </Card>
 
-            <Card title="Team">
+            <Card title="팀">
               {teamRoles.length === 0 ? (
-                <p className="text-sm text-slate-600">No workers assigned.</p>
+                <p className="text-sm text-slate-600">배정된 워커가 없습니다.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {teamRoles.map((role) => {
@@ -173,7 +173,7 @@ export default function ProjectManagerPage(): JSX.Element {
           </>
         ) : (
           <Card>
-            <p className="text-sm text-slate-600">Select a project to view details.</p>
+            <p className="text-sm text-slate-600">프로젝트를 선택하면 상세 정보를 볼 수 있습니다.</p>
           </Card>
         )}
       </div>

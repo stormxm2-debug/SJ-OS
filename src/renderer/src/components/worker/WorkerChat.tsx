@@ -9,10 +9,10 @@ interface WorkerChatProps {
 }
 
 const CANNED_REPLIES = [
-  'Understood — I’ll factor that into the current task.',
-  'Noted. I’ll update my plan and report back at the next checkpoint.',
-  'Got it. I’ll raise an approval request if anything sensitive comes up.',
-  'Thanks — queuing that now. It won’t block the active work.'
+  '알겠습니다 — 현재 작업에 반영하겠습니다.',
+  '확인했습니다. 계획을 업데이트하고 다음 체크포인트에서 보고드리겠습니다.',
+  '알겠습니다. 민감한 사항이 생기면 승인 요청을 올리겠습니다.',
+  '감사합니다 — 지금 대기열에 추가하겠습니다. 진행 중인 작업을 막지 않습니다.'
 ]
 
 export default function WorkerChat({ worker }: WorkerChatProps): JSX.Element {
@@ -46,13 +46,13 @@ export default function WorkerChat({ worker }: WorkerChatProps): JSX.Element {
     <div className="flex flex-col rounded-xl border border-slate-800 bg-slate-900/40">
       <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-2.5 text-xs text-slate-500">
         <Info className="h-3.5 w-3.5" />
-        Mock conversation — no AI is connected.
+        모의 대화 — AI가 연결되어 있지 않습니다.
       </div>
 
       <div className="flex min-h-[22rem] flex-col gap-4 overflow-y-auto p-4">
         {messages.length === 0 && (
           <p className="text-sm text-slate-600">
-            No messages yet. Say something to {worker.name}.
+            아직 메시지가 없습니다. {worker.name}에게 말을 걸어보세요.
           </p>
         )}
         {messages.map((m) => {
@@ -95,7 +95,7 @@ export default function WorkerChat({ worker }: WorkerChatProps): JSX.Element {
           onKeyDown={(e) => {
             if (e.key === 'Enter') send()
           }}
-          placeholder={`Message ${worker.name}…`}
+          placeholder={`${worker.name}에게 메시지…`}
           className="flex-1 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-600 focus:border-indigo-500"
         />
         <button
@@ -104,7 +104,7 @@ export default function WorkerChat({ worker }: WorkerChatProps): JSX.Element {
           className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-indigo-500"
         >
           <Send className="h-4 w-4" />
-          Send
+          보내기
         </button>
       </div>
     </div>

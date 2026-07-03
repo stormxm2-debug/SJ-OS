@@ -49,13 +49,13 @@ const STATUS_STYLES: Record<ReleaseStatus, string> = {
 }
 
 const STATUS_LABELS: Record<ReleaseStatus, string> = {
-  draft: 'Draft',
-  'qa-review': 'QA review',
-  'approval-required': 'Approval required',
-  ready: 'Ready',
-  released: 'Released',
-  blocked: 'Blocked',
-  cancelled: 'Cancelled'
+  draft: '초안',
+  'qa-review': 'QA 검토',
+  'approval-required': '승인 필요',
+  ready: '준비됨',
+  released: '릴리즈됨',
+  blocked: '차단됨',
+  cancelled: '취소됨'
 }
 
 const GATE_STYLES: Record<ReleaseGateStatus, string> = {
@@ -80,16 +80,16 @@ const DEPLOYMENT_STYLES: Record<ReleaseDeploymentStatus, string> = {
 }
 
 const LOG_STYLES: Record<ReleaseLogType, { label: string; className: string }> = {
-  'release-created': { label: 'Created', className: 'text-slate-300' },
-  'qa-reviewed': { label: 'QA reviewed', className: 'text-indigo-300' },
-  'approval-requested': { label: 'Approval requested', className: 'text-amber-300' },
-  'approval-received': { label: 'Approval received', className: 'text-emerald-300' },
-  'blocker-added': { label: 'Blocker added', className: 'text-rose-300' },
-  'blocker-cleared': { label: 'Blocker cleared', className: 'text-emerald-300' },
-  'marked-ready': { label: 'Marked ready', className: 'text-emerald-300' },
-  released: { label: 'Released', className: 'text-emerald-300' },
-  cancelled: { label: 'Cancelled', className: 'text-slate-400' },
-  reset: { label: 'Reset', className: 'text-amber-300' }
+  'release-created': { label: '생성됨', className: 'text-slate-300' },
+  'qa-reviewed': { label: 'QA 검토 완료', className: 'text-indigo-300' },
+  'approval-requested': { label: '승인 요청', className: 'text-amber-300' },
+  'approval-received': { label: '승인 받음', className: 'text-emerald-300' },
+  'blocker-added': { label: '블로커 추가', className: 'text-rose-300' },
+  'blocker-cleared': { label: '블로커 해제', className: 'text-emerald-300' },
+  'marked-ready': { label: '준비 완료 처리', className: 'text-emerald-300' },
+  released: { label: '릴리즈됨', className: 'text-emerald-300' },
+  cancelled: { label: '취소됨', className: 'text-slate-400' },
+  reset: { label: '초기화', className: 'text-amber-300' }
 }
 
 const RELEASE_TYPES: ReleaseType[] = ['internal', 'demo', 'beta', 'production', 'hotfix']
@@ -124,7 +124,7 @@ export default function ReleaseCenterPage(): JSX.Element {
   const qa = releaseRepository.getLatestQaSummary()
 
   const handleReset = (): void => {
-    if (typeof window !== 'undefined' && !window.confirm('Reset the Release Center back to the seed?')) {
+    if (typeof window !== 'undefined' && !window.confirm('릴리즈 센터를 초기 값으로 되돌릴까요?')) {
       return
     }
     releaseRepository.resetDemoState()
@@ -133,57 +133,57 @@ export default function ReleaseCenterPage(): JSX.Element {
   return (
     <div className="space-y-5">
       <Card
-        title="Release Center"
+        title="릴리즈 센터"
         icon={<Rocket className="h-4 w-4" />}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton icon={<Download className="h-4 w-4" />} onClick={exportReport}>
-              Export release report
+              릴리즈 리포트 내보내기
             </ActionButton>
             <ActionButton variant="danger" icon={<RotateCcw className="h-4 w-4" />} onClick={handleReset}>
-              Reset demo state
+              데모 상태 초기화
             </ActionButton>
           </div>
         }
       >
-        {current ? <CurrentReleasePanel release={current} /> : <p className="text-sm text-slate-500">No release candidate yet. Create one below.</p>}
+        {current ? <CurrentReleasePanel release={current} /> : <p className="text-sm text-slate-500">아직 릴리즈 후보가 없습니다. 아래에서 새로 만드세요.</p>}
       </Card>
 
       {/* Live QA summary from the QA Center */}
-      <Card title="Latest QA Summary" icon={<ClipboardCheck className="h-4 w-4" />} action={<span className="text-xs text-slate-500">from QA Center</span>}>
+      <Card title="최근 QA 요약" icon={<ClipboardCheck className="h-4 w-4" />} action={<span className="text-xs text-slate-500">QA 센터에서</span>}>
         {qa ? (
           <div className="space-y-3">
             <div className="text-sm text-slate-300">{qa.title}</div>
             <div className="grid gap-3 sm:grid-cols-3">
-              <GateTile label="Typecheck" status={qa.typecheckStatus} />
-              <GateTile label="Build" status={qa.buildStatus} />
-              <GateTile label="Regression" status={qa.regressionStatus} />
+              <GateTile label="타입체크" status={qa.typecheckStatus} />
+              <GateTile label="빌드" status={qa.buildStatus} />
+              <GateTile label="회귀" status={qa.regressionStatus} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <SectionLabel>Release blockers ({qa.releaseBlockers.length})</SectionLabel>
-                <PlainList items={qa.releaseBlockers} tone="bad" empty="None" />
+                <SectionLabel>릴리즈 블로커 ({qa.releaseBlockers.length})</SectionLabel>
+                <PlainList items={qa.releaseBlockers} tone="bad" empty="없음" />
               </div>
               <div>
-                <SectionLabel>Warnings ({qa.warnings.length})</SectionLabel>
-                <PlainList items={qa.warnings} tone="warn" empty="None" />
+                <SectionLabel>경고 ({qa.warnings.length})</SectionLabel>
+                <PlainList items={qa.warnings} tone="warn" empty="없음" />
               </div>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-slate-500">No QA run available to summarise.</p>
+          <p className="text-sm text-slate-500">요약할 QA 실행이 없습니다.</p>
         )}
       </Card>
 
       <NewReleaseForm />
 
       <Card
-        title="Release History"
+        title="릴리즈 이력"
         icon={<History className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.releases.length} releases</span>}
+        action={<span className="text-xs text-slate-500">릴리즈 {snapshot.releases.length}건</span>}
       >
         {snapshot.releases.length === 0 ? (
-          <p className="text-sm text-slate-500">No releases recorded.</p>
+          <p className="text-sm text-slate-500">기록된 릴리즈가 없습니다.</p>
         ) : (
           <div className="space-y-2">
             {snapshot.releases.map((r) => (
@@ -194,12 +194,12 @@ export default function ReleaseCenterPage(): JSX.Element {
       </Card>
 
       <Card
-        title="Release Event Log"
+        title="릴리즈 이벤트 로그"
         icon={<Activity className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{snapshot.eventLog.length} events</span>}
+        action={<span className="text-xs text-slate-500">이벤트 {snapshot.eventLog.length}건</span>}
       >
         {snapshot.eventLog.length === 0 ? (
-          <p className="text-sm text-slate-500">No events yet. Use the release actions to record activity.</p>
+          <p className="text-sm text-slate-500">아직 이벤트가 없습니다. 릴리즈 작업으로 활동을 기록하세요.</p>
         ) : (
           <ol className="space-y-2">
             {snapshot.eventLog.map((entry) => {
@@ -247,7 +247,7 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
               <User className="h-3 w-3" />
               {release.ownerWorkerId}
             </span>
-            {release.relatedSprint ? <span>Sprint: {release.relatedSprint}</span> : null}
+            {release.relatedSprint ? <span>스프린트: {release.relatedSprint}</span> : null}
             {release.relatedEpic ? (
               <span className="flex items-center gap-1">
                 <Layers className="h-3 w-3" />
@@ -256,26 +256,26 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
             ) : null}
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              Created {formatTimestamp(release.createdAt)}
+              생성 {formatTimestamp(release.createdAt)}
             </span>
-            {release.releasedAt ? <span>Released {formatTimestamp(release.releasedAt)}</span> : null}
+            {release.releasedAt ? <span>릴리즈 {formatTimestamp(release.releasedAt)}</span> : null}
           </div>
         </div>
       </div>
 
       {/* gates */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <GateTile icon={<Boxes className="h-4 w-4" />} label="Build" status={release.buildStatus} />
+        <GateTile icon={<Boxes className="h-4 w-4" />} label="빌드" status={release.buildStatus} />
         <GateTile icon={<ClipboardCheck className="h-4 w-4" />} label="QA" status={release.qaStatus} />
-        <GateTile icon={<ShieldCheck className="h-4 w-4" />} label="Approval" status={release.approvalStatus} styleMap={APPROVAL_STYLES} />
-        <GateTile icon={<Truck className="h-4 w-4" />} label="Deployment" status={release.deploymentStatus} styleMap={DEPLOYMENT_STYLES} />
+        <GateTile icon={<ShieldCheck className="h-4 w-4" />} label="승인" status={release.approvalStatus} styleMap={APPROVAL_STYLES} />
+        <GateTile icon={<Truck className="h-4 w-4" />} label="배포" status={release.deploymentStatus} styleMap={DEPLOYMENT_STYLES} />
       </div>
 
       {/* included features */}
       <div>
-        <SectionLabel>Included features ({release.relatedFeatures.length})</SectionLabel>
+        <SectionLabel>포함된 기능 ({release.relatedFeatures.length})</SectionLabel>
         {release.relatedFeatures.length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">None listed.</p>
+          <p className="mt-1 text-xs text-slate-500">나열된 항목이 없습니다.</p>
         ) : (
           <div className="mt-1 flex flex-wrap gap-1.5">
             {release.relatedFeatures.map((f, i) => (
@@ -290,7 +290,7 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
 
       {/* checklist */}
       <div>
-        <SectionLabel>Release checklist</SectionLabel>
+        <SectionLabel>릴리즈 체크리스트</SectionLabel>
         <ul className="mt-1 space-y-1">
           {release.checklist.map((c, i) => (
             <li key={i} className="flex items-center gap-2 text-xs">
@@ -312,9 +312,9 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
 
       {/* blockers */}
       <div>
-        <SectionLabel>Blockers ({release.blockers.length})</SectionLabel>
+        <SectionLabel>블로커 ({release.blockers.length})</SectionLabel>
         {release.blockers.length === 0 ? (
-          <p className="mt-1 text-xs text-emerald-300/80">No blockers.</p>
+          <p className="mt-1 text-xs text-emerald-300/80">블로커가 없습니다.</p>
         ) : (
           <ul className="mt-1 space-y-1">
             {release.blockers.map((b, i) => (
@@ -330,7 +330,7 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
                   type="button"
                   onClick={() => releaseRepository.clearBlocker(id, b)}
                   className="shrink-0 text-rose-300/70 transition hover:text-rose-200"
-                  aria-label="Clear blocker"
+                  aria-label="블로커 삭제"
                 >
                   <Eraser className="h-3.5 w-3.5" />
                 </button>
@@ -346,14 +346,14 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
             onKeyDown={(e) => {
               if (e.key === 'Enter' && releaseRepository.addBlocker(id, blockerDraft).success) setBlockerDraft('')
             }}
-            placeholder="Add a blocker…"
+            placeholder="블로커 추가…"
             className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1 text-xs text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
           />
           <button
             type="button"
             onClick={() => releaseRepository.addBlocker(id, blockerDraft).success && setBlockerDraft('')}
             className="inline-flex items-center rounded-md border border-slate-700 bg-slate-800/60 px-2 py-1 text-slate-300 transition hover:bg-slate-700/60"
-            aria-label="Add blocker"
+            aria-label="블로커 추가"
           >
             <Ban className="h-3.5 w-3.5" />
           </button>
@@ -363,8 +363,8 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
       {/* warnings */}
       {release.warnings.length > 0 ? (
         <div>
-          <SectionLabel>Warnings ({release.warnings.length})</SectionLabel>
-          <PlainList items={release.warnings} tone="warn" empty="None" />
+          <SectionLabel>경고 ({release.warnings.length})</SectionLabel>
+          <PlainList items={release.warnings} tone="warn" empty="없음" />
         </div>
       ) : null}
 
@@ -373,7 +373,7 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
         <div>
           <SectionLabel>
             <span className="inline-flex items-center gap-1">
-              <FileText className="h-3 w-3" /> Release notes
+              <FileText className="h-3 w-3" /> 릴리즈 노트
             </span>
           </SectionLabel>
           <p className="mt-1 whitespace-pre-line rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-xs leading-relaxed text-slate-400">
@@ -385,13 +385,13 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
       {/* actions */}
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
         <MiniButton icon={<ClipboardCheck className="h-3 w-3" />} onClick={() => releaseRepository.markQaReviewed(id)}>
-          Mark QA reviewed
+          QA 검토 완료 처리
         </MiniButton>
         <MiniButton icon={<Send className="h-3 w-3" />} onClick={() => releaseRepository.requestApproval(id)}>
-          Request approval
+          승인 요청
         </MiniButton>
         <MiniButton icon={<ShieldCheck className="h-3 w-3" />} onClick={() => releaseRepository.markApprovalReceived(id)}>
-          Approval received
+          승인 받음
         </MiniButton>
         <MiniButton
           icon={<CheckCheck className="h-3 w-3" />}
@@ -399,7 +399,7 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
           onClick={() => releaseRepository.markReadyForRelease(id)}
           disabled={release.status === 'ready' || release.status === 'released'}
         >
-          Mark ready
+          준비 완료 처리
         </MiniButton>
         <MiniButton
           icon={<Rocket className="h-3 w-3" />}
@@ -407,7 +407,7 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
           onClick={() => releaseRepository.markReleased(id)}
           disabled={release.status === 'released'}
         >
-          Mark released
+          릴리즈 처리
         </MiniButton>
         <MiniButton
           icon={<XCircle className="h-3 w-3" />}
@@ -415,7 +415,7 @@ function CurrentReleasePanel({ release }: { release: ReleaseItem }): JSX.Element
           onClick={() => releaseRepository.cancelRelease(id)}
           disabled={release.status === 'released' || release.status === 'cancelled'}
         >
-          Cancel
+          취소
         </MiniButton>
       </div>
     </div>
@@ -438,7 +438,7 @@ function HistoryRow({ release, highlight }: { release: ReleaseItem; highlight: b
         <Chip>{release.releaseType}</Chip>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-        {release.blockers.length > 0 ? <span className="text-rose-300">{release.blockers.length} blocker(s)</span> : null}
+        {release.blockers.length > 0 ? <span className="text-rose-300">블로커 {release.blockers.length}건</span> : null}
         <StatusBadge status={release.status} />
       </div>
     </div>
@@ -461,13 +461,13 @@ function NewReleaseForm(): JSX.Element {
   }
 
   return (
-    <Card title="New Release Candidate" icon={<Plus className="h-4 w-4" />}>
+    <Card title="새 릴리즈 후보" icon={<Plus className="h-4 w-4" />}>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Release title…"
+          placeholder="릴리즈 제목…"
           className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <input
@@ -475,7 +475,7 @@ function NewReleaseForm(): JSX.Element {
           value={version}
           onChange={(e) => setVersion(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder="Version (e.g. v0.2)"
+          placeholder="버전 (예: v0.2)"
           className="w-36 rounded-md border border-slate-700 bg-slate-900/60 px-2 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none"
         />
         <select
@@ -490,7 +490,7 @@ function NewReleaseForm(): JSX.Element {
           ))}
         </select>
         <ActionButton icon={<Plus className="h-4 w-4" />} variant="primary" onClick={submit}>
-          Create candidate
+          후보 생성
         </ActionButton>
       </div>
     </Card>

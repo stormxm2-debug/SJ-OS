@@ -34,12 +34,12 @@ export default function EventStream(): JSX.Element {
 
   return (
     <Card
-      title="Activity feed"
+      title="활동 피드"
       icon={<Radio className="h-4 w-4 text-indigo-300" />}
-      action={<span className="text-xs text-slate-500">{events.length} events</span>}
+      action={<span className="text-xs text-slate-500">{events.length}개 이벤트</span>}
     >
       {events.length === 0 ? (
-        <p className="text-sm text-slate-600">Waiting for the company to start…</p>
+        <p className="text-sm text-slate-600">회사가 시작되기를 기다리는 중…</p>
       ) : (
         <ol className="max-h-[22rem] space-y-2 overflow-y-auto pr-1">
           {events.map((event: KernelEvent) => (
