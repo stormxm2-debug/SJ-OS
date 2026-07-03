@@ -21,6 +21,18 @@ import type { AiTranscribeRequest } from '@shared/aiGateway'
  * the renderer for now.
  */
 
+/**
+ * Disable GPU hardware acceleration.
+ *
+ * On some Windows machines the GPU process fails to create its disk cache
+ * ("Gpu Cache Creation failed" / "Unable to create cache"), and Chromium's
+ * compositor can then intermittently stop delivering mouse input to the whole
+ * window — the app renders but nothing is clickable. Forcing software
+ * compositing eliminates that GPU-driven input lock. Must be called before the
+ * app is ready.
+ */
+app.disableHardwareAcceleration()
+
 const startupService = new CompanyStartupService()
 
 /**
