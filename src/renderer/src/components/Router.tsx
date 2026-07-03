@@ -13,6 +13,7 @@ import TeamLeaderPage from '@renderer/pages/TeamLeaderPage'
 import ConsultationPage from '@renderer/pages/ConsultationPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
+import DeveloperPromptCenterPage from '@renderer/pages/DeveloperPromptCenterPage'
 import AutopilotPage from '@renderer/pages/AutopilotPage'
 import CtoRoomPage from '@renderer/pages/CtoRoomPage'
 import QaCenterPage from '@renderer/pages/QaCenterPage'
@@ -55,6 +56,8 @@ export default function Router(): JSX.Element {
       return <InsuranceAnalysisPage />
     case 'app-builder':
       return <UniversalAppBuilderPage />
+    case 'devprompt':
+      return <DeveloperPromptCenterPage />
     case 'cto':
       return <CtoRoomPage />
     case 'qa':

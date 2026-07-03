@@ -85,6 +85,10 @@ export interface JarvisImplementationResult {
   routeTarget: string
   pmPlanId: string | null
   routingLog: string[]
+  /** Claude Code-ready developer prompt generated for this request. */
+  generatedDeveloperPrompt: string
+  /** Developer Prompt Center packet id tracking this prompt (null if none). */
+  promptPacketId: string | null
   suggestedCommands: string[]
 }
 
@@ -111,6 +115,8 @@ export interface JarvisUniversalBuildResult {
   nextAction: string
   /** Claude Code-ready developer prompt (paste to start development). */
   generatedDeveloperPrompt: string
+  /** Developer Prompt Center packet id tracking this prompt (null if none). */
+  promptPacketId: string | null
   suggestedCommands: string[]
 }
 

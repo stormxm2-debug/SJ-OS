@@ -50,6 +50,7 @@ import { electronAiGateway } from '@renderer/services/jarvis/ElectronAiGateway'
 import type { GatewayStatusResult } from '@renderer/services/jarvis/ElectronAiGateway'
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 import { normalizeCommand } from '@renderer/services/jarvis/normalize'
+import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import type { JarvisMode, JarvisState, JarvisStatus } from '@renderer/services/jarvis/types'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View } from '@renderer/navigation/types'
@@ -59,7 +60,7 @@ const NAV_VIEWS = new Set([
   'assistant', 'company', 'dashboard', 'fcos', 'customer', 'sales-activity', 'schedule',
   'performance', 'team-leader', 'consultation', 'insurance-analysis', 'cto', 'qa', 'release',
   'devops', 'autopilot', 'devos', 'pm', 'backlog', 'workers', 'projects', 'approvals',
-  'app-builder', 'activity', 'settings'
+  'app-builder', 'devprompt', 'activity', 'settings'
 ])
 
 function toView(target: string | null | undefined): View | null {
@@ -508,21 +509,29 @@ export default function JarvisPanel(): JSX.Element | null {
   }
 
   // Copy the generated Claude Code developer prompt to the clipboard. Falls back
-  // to selecting the textarea when the Clipboard API is unavailable.
-  const copyPrompt = (prompt: string): void => {
+  // to selecting the textarea when the Clipboard API is unavailable. When a
+  // Developer Prompt Center packet id is given, the packet is marked "복사됨" so
+  // its status can be tracked (생성됨 → 복사됨 → Claude 전달됨 → 개발 중 → 완료).
+  const copyPrompt = (
+    prompt: string,
+    opts?: { packetId?: string | null; fallbackId?: string }
+  ): void => {
+    if (opts?.packetId) developerPromptRepository.markCopied(opts.packetId)
     const done = (): void => {
       setPromptCopied(true)
       window.setTimeout(() => setPromptCopied(false), 2000)
     }
+    const selectFallback = (): void => {
+      const field = document.getElementById(
+        opts?.fallbackId ?? 'jarvis-build-prompt'
+      ) as HTMLTextAreaElement | null
+      field?.select()
+    }
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(prompt).then(done).catch(() => {
-        const field = document.getElementById('jarvis-build-prompt') as HTMLTextAreaElement | null
-        field?.select()
-      })
+      void navigator.clipboard.writeText(prompt).then(done).catch(selectFallback)
       return
     }
-    const field = document.getElementById('jarvis-build-prompt') as HTMLTextAreaElement | null
-    field?.select()
+    selectFallback()
   }
 
   if (!state.isOpen) {
@@ -1209,14 +1218,52 @@ export default function JarvisPanel(): JSX.Element | null {
                       </ul>
                     </div>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => goToTarget('pm')}
-                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20"
-                  >
-                    <ArrowRight className="h-3.5 w-3.5" />
-                    PM Planner에서 확인
-                  </button>
+                  {/* Generated developer prompt */}
+                  {impl.generatedDeveloperPrompt ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Claude Code 개발자 프롬프트</div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            copyPrompt(impl.generatedDeveloperPrompt, {
+                              packetId: impl.promptPacketId,
+                              fallbackId: 'jarvis-impl-prompt'
+                            })
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/20"
+                        >
+                          {promptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                          {promptCopied ? '복사됨' : '프롬프트 복사'}
+                        </button>
+                      </div>
+                      <textarea
+                        id="jarvis-impl-prompt"
+                        readOnly
+                        value={impl.generatedDeveloperPrompt}
+                        onFocus={(e) => e.currentTarget.select()}
+                        className="h-40 w-full resize-y rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-[11px] leading-5 text-slate-300 outline-none"
+                      />
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => goToTarget('pm')}
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                      PM Planner에서 확인
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goToTarget('devprompt')}
+                      className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                      개발 프롬프트 센터에서 관리
+                    </button>
+                  </div>
                 </div>
               </Card>
             ) : null}
@@ -1303,7 +1350,12 @@ export default function JarvisPanel(): JSX.Element | null {
                       <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Claude Code 개발자 프롬프트</div>
                       <button
                         type="button"
-                        onClick={() => copyPrompt(build.generatedDeveloperPrompt)}
+                        onClick={() =>
+                          copyPrompt(build.generatedDeveloperPrompt, {
+                            packetId: build.promptPacketId,
+                            fallbackId: 'jarvis-build-prompt'
+                          })
+                        }
                         className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium text-violet-300 transition hover:bg-violet-500/20"
                       >
                         {promptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -1353,6 +1405,14 @@ export default function JarvisPanel(): JSX.Element | null {
                     >
                       <ArrowRight className="h-3.5 w-3.5" />
                       PM Planner에서 확인
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goToTarget('devprompt')}
+                      className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                      개발 프롬프트 센터에서 관리
                     </button>
                   </div>
                 </div>

@@ -20,6 +20,8 @@ import Card from '@renderer/components/ui/Card'
 import { usePm } from '@renderer/services/pm/usePm'
 import { pmRepository } from '@renderer/services/pm/PmRepository'
 import { useDevOs } from '@renderer/services/devos/useDevOs'
+import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
+import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import type {
   PmBacklogItem,
   PmEpic,
@@ -117,6 +119,11 @@ export default function PmPlannerPage(): JSX.Element {
     completedTasks: snapshot.tasks.filter((t) => t.status === 'completed').length
   }
 
+  // Developer Prompt Center read-through (subscribe keeps counts live).
+  useDeveloperPrompt()
+  const promptReady = developerPromptRepository.getPromptReadyPackets().length
+  const promptSummary = developerPromptRepository.getSummary()
+
   const handleReset = (): void => {
     if (typeof window !== 'undefined' && !window.confirm('PM 계획을 초기 값으로 되돌릴까요?')) {
       return
@@ -149,6 +156,11 @@ export default function PmPlannerPage(): JSX.Element {
             label="작업"
             value={`${counts.completedTasks}/${counts.tasks} 완료`}
           />
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <StatTile icon={<Sparkles className="h-4 w-4" />} label="개발 준비된 프롬프트" value={promptReady} />
+          <StatTile icon={<Rocket className="h-4 w-4" />} label="Claude 전달 대기" value={promptSummary.waitingForClaude} />
+          <StatTile icon={<CheckCheck className="h-4 w-4" />} label="완료된 프롬프트" value={promptSummary.completed} />
         </div>
       </Card>
 

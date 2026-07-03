@@ -9,6 +9,12 @@ import UniversalBuildIntake from './UniversalBuildIntake'
 import ExternalActionService from './ExternalActionService'
 import { jarvisGptBrainService } from './JarvisGptBrainService'
 import type { GptMode } from './JarvisGptBrainService'
+import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
+import { generateImplementationPrompt } from '@renderer/services/developer-prompt/implementationPromptGenerator'
+import type {
+  DeveloperPromptPriority,
+  DeveloperPromptRiskLevel
+} from '@renderer/services/developer-prompt/types'
 import type {
   JarvisAnswerResult,
   JarvisClassification,
@@ -255,6 +261,25 @@ export class JarvisService {
         status: 'error'
       }
     }
+    // Generate a Claude Code-ready developer prompt and register it in the
+    // Developer Prompt Center so the CEO can copy it and track its status. No
+    // files are edited, no git runs, no external API is called.
+    const generatedDeveloperPrompt = generateImplementationPrompt(request)
+    const label = WORKSPACE_LABEL[request.targetWorkspace] ?? request.targetWorkspace
+    const packet = developerPromptRepository.registerPacket({
+      sourceType: 'developer-command',
+      sourceId: request.requestId,
+      title: request.title,
+      targetWorkspace: label,
+      interpretedGoal: request.interpretedGoal,
+      promptText: generatedDeveloperPrompt,
+      priority: request.priority as DeveloperPromptPriority,
+      riskLevel: request.riskLevel as DeveloperPromptRiskLevel,
+      approvalRequired: request.approvalRequired,
+      commitMessage: `feat: ${request.title.slice(0, 60)}`
+    })
+    const promptPacketId = packet.success && packet.data ? packet.data.id : null
+
     const impl: JarvisImplementationResult = {
       requestId: request.requestId,
       title: request.title,
@@ -268,11 +293,13 @@ export class JarvisService {
       routeTarget: request.routeTarget,
       pmPlanId: request.pmPlanId,
       routingLog: request.routingLog,
+      generatedDeveloperPrompt,
+      promptPacketId,
       suggestedCommands: ['보험분석 기능 다음 스프린트로 올려', '오늘 브리핑', 'FC OS에 팀별 필터 추가해']
     }
-    const label = WORKSPACE_LABEL[request.targetWorkspace] ?? request.targetWorkspace
     const toolCalls: ToolCall[] = [
       this.tool('createImplementationRequest', `요청 생성: ${request.title}`),
+      this.tool('generateDeveloperPrompt', `Claude Code 프롬프트 생성 · ${generatedDeveloperPrompt.length}자`),
       this.tool('routeToPmPlanner', `PM 백로그: ${request.pmPlanId ?? '—'}`),
       this.tool(
         request.approvalRequired ? 'routeToApprovalCenter' : 'routeToAutopilot',
@@ -311,6 +338,22 @@ export class JarvisService {
     }
     const nextAction =
       '생성된 개발자 프롬프트를 복사해 Claude Code에 붙여넣어 개발을 진행하세요.'
+    // Track the generated prompt in the Developer Prompt Center (same queue that
+    // shows developer-command prompts), so every CEO build command is copyable
+    // and status-trackable in one place.
+    const buildPacket = developerPromptRepository.registerPacket({
+      sourceType: 'universal-build-project',
+      sourceId: project.id,
+      title: project.projectName,
+      targetWorkspace: `앱 빌더 · ${project.appType}`,
+      interpretedGoal: project.interpretedGoal,
+      promptText: project.generatedDeveloperPrompt,
+      priority: project.approvalRequired ? 'P1' : 'P2',
+      riskLevel: project.riskLevel as DeveloperPromptRiskLevel,
+      approvalRequired: project.approvalRequired,
+      commitMessage: `feat: scaffold ${project.appType} app modules (${project.projectName})`
+    })
+    const buildPacketId = buildPacket.success && buildPacket.data ? buildPacket.data.id : null
     const universalBuild: JarvisUniversalBuildResult = {
       projectId: project.id,
       projectName: project.projectName,
@@ -332,6 +375,7 @@ export class JarvisService {
       routingLog: project.routingLog,
       nextAction,
       generatedDeveloperPrompt: project.generatedDeveloperPrompt,
+      promptPacketId: buildPacketId,
       suggestedCommands: [
         '쇼핑몰 시스템 만들어',
         '학원 관리 프로그램 만들어',

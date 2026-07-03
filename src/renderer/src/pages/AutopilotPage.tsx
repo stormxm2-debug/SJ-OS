@@ -27,6 +27,8 @@ import { useAutopilot } from '@renderer/services/autopilot/useAutopilot'
 import { autopilotService } from '@renderer/services/autopilot/AutopilotService'
 import { useUniversalBuilder } from '@renderer/services/universal-builder/useUniversalBuilder'
 import { universalBuilderRepository } from '@renderer/services/universal-builder/UniversalBuilderRepository'
+import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
+import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type {
   AutopilotState,
@@ -90,6 +92,10 @@ export default function AutopilotPage(): JSX.Element {
   // Subscribe to the Universal Builder queue so the pending count stays live.
   useUniversalBuilder()
   const buildSummary = universalBuilderRepository.getSummary()
+  // Subscribe to the Developer Prompt Center so its counts stay live.
+  useDeveloperPrompt()
+  const promptSummary = developerPromptRepository.getSummary()
+  const nextForClaude = developerPromptRepository.getNextForClaude()
   const { navigate } = useNavigation()
   const tone = STATUS_TONE[state.status]
 
@@ -226,6 +232,33 @@ export default function AutopilotPage(): JSX.Element {
         <p className="mt-3 text-xs text-slate-500">
           Autopilot는 이번 스프린트에서 앱 빌드 프로젝트의 대기 현황만 표시합니다(읽기 전용). 코드를 직접
           수정하거나 프로젝트를 자동 승격하지 않습니다.
+        </p>
+      </Card>
+
+      {/* Developer Prompt Center — read-through count (no file edits here) */}
+      <Card
+        title="개발 프롬프트 대기열"
+        icon={<ListChecks className="h-4 w-4" />}
+        action={
+          <button
+            type="button"
+            onClick={() => navigate({ name: 'devprompt' })}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20"
+          >
+            <ArrowRight className="h-3.5 w-3.5" />
+            프롬프트 센터 열기
+          </button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Tile icon={<ListChecks className="h-4 w-4" />} label="대기 중인 개발 프롬프트" value={String(promptSummary.pending)} />
+          <Tile icon={<AlertCircle className="h-4 w-4" />} label="차단된 프롬프트" value={String(promptSummary.blocked)} />
+          <Tile icon={<CheckCircle2 className="h-4 w-4" />} label="완료된 프롬프트" value={String(promptSummary.completed)} />
+          <Tile icon={<ArrowRight className="h-4 w-4" />} label="Claude 전달 대기" value={String(promptSummary.waitingForClaude)} />
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Claude 전달 대기 중인 다음 프롬프트:{' '}
+          <span className="text-slate-300">{nextForClaude ? nextForClaude.title : '없음'}</span>
         </p>
       </Card>
 

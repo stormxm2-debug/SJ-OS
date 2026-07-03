@@ -23,6 +23,9 @@ import {
 import Card from '@renderer/components/ui/Card'
 import { useDevOs } from '@renderer/services/devos/useDevOs'
 import { devOsRepository } from '@renderer/services/devos/DevOsRepository'
+import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
+import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type {
   DevOsLogType,
   DevSessionStatus,
@@ -72,6 +75,11 @@ function exportSnapshot(): void {
  */
 export default function DevelopmentOsPage(): JSX.Element {
   const { session, workers, eventLog } = useDevOs()
+  const { navigate } = useNavigation()
+  // Developer Prompt Center read-through (subscribe keeps counts live).
+  useDeveloperPrompt()
+  const promptPackets = developerPromptRepository.getPromptReadyPackets()
+  const promptSummary = developerPromptRepository.getSummary()
   const [nextActionDraft, setNextActionDraft] = useState('')
   const [blockerDraft, setBlockerDraft] = useState('')
 
@@ -96,6 +104,32 @@ export default function DevelopmentOsPage(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      {/* Developer Prompt Center reference — generated Claude Code prompts */}
+      <Card
+        title="개발 프롬프트 패킷"
+        icon={<ListChecks className="h-4 w-4" />}
+        action={
+          <button
+            type="button"
+            onClick={() => navigate({ name: 'devprompt' })}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20"
+          >
+            <ArrowRight className="h-3.5 w-3.5" />
+            프롬프트 센터 열기
+          </button>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <FocusTile icon={<ListChecks className="h-4 w-4" />} label="생성된 프롬프트 패킷" value={String(promptPackets.length)} />
+          <FocusTile icon={<Clock className="h-4 w-4" />} label="개발 중" value={String(promptSummary.inDevelopment)} />
+          <FocusTile icon={<CheckCheck className="h-4 w-4" />} label="완료" value={String(promptSummary.completed)} />
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Jarvis가 생성한 Claude Code 프롬프트 패킷을 참조합니다(읽기 전용). 개발은 CEO가 프롬프트를 Claude
+          Code에 붙여넣어 진행합니다.
+        </p>
+      </Card>
+
       <Card
         title="현재 스프린트"
         icon={<Cpu className="h-4 w-4" />}

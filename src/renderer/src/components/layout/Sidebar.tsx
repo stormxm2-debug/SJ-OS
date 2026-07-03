@@ -24,6 +24,7 @@ import {
   Activity,
   Settings,
   Boxes,
+  Terminal,
   Bot
 } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -51,6 +52,7 @@ const NAV: NavItem[] = [
   { key: 'consultation', label: '상담', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
   { key: 'app-builder', label: '앱 빌더', icon: Boxes, view: { name: 'app-builder' }, match: ['app-builder'] },
+  { key: 'devprompt', label: '개발 프롬프트 센터', icon: Terminal, view: { name: 'devprompt' }, match: ['devprompt'] },
   { key: 'cto', label: 'CTO 룸', icon: Gauge, view: { name: 'cto' }, match: ['cto'] },
   { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
   { key: 'qa', label: 'QA 센터', icon: ClipboardCheck, view: { name: 'qa' }, match: ['qa'] },

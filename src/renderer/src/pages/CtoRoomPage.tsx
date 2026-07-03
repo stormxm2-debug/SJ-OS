@@ -24,6 +24,8 @@ import Card from '@renderer/components/ui/Card'
 import { useCto } from '@renderer/services/cto/useCto'
 import { ctoRepository } from '@renderer/services/cto/CtoRepository'
 import { usePm } from '@renderer/services/pm/usePm'
+import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
+import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import type {
   CtoLikelihood,
   CtoLogType,
@@ -130,6 +132,10 @@ export default function CtoRoomPage(): JSX.Element {
   const openDebt = cto.technicalDebtItems.filter((d) => d.status === 'open').length
   const openRisks = cto.riskItems.filter((r) => r.status === 'open').length
   const openDecisions = cto.blockedDecisions.filter((d) => d.status === 'blocked').length
+
+  // Developer Prompt Center risk read-through (subscribe keeps counts live).
+  useDeveloperPrompt()
+  const promptSummary = developerPromptRepository.getSummary()
 
   const handleReset = (): void => {
     if (typeof window !== 'undefined' && !window.confirm('CTO 룸을 초기 값으로 되돌릴까요?')) {
@@ -273,6 +279,20 @@ export default function CtoRoomPage(): JSX.Element {
           <StatTile icon={<ListTree className="h-4 w-4" />} label="열린 작업" value={pmSummary.openTasks} />
           <StatTile icon={<AlertTriangle className="h-4 w-4" />} label="차단된 작업" value={pmSummary.blockedTasks} />
           <StatTile icon={<CheckCheck className="h-4 w-4" />} label="완료된 작업" value={pmSummary.completedTasks} />
+        </div>
+      </Card>
+
+      {/* Developer Prompt Center risk summary */}
+      <Card
+        title="개발 프롬프트 위험 요약"
+        icon={<ShieldAlert className="h-4 w-4" />}
+        action={<span className="text-xs text-slate-500">프롬프트 센터 실시간</span>}
+      >
+        <div className="grid gap-3 sm:grid-cols-4">
+          <StatTile icon={<ShieldAlert className="h-4 w-4" />} label="고위험 프롬프트" value={promptSummary.highRisk} />
+          <StatTile icon={<ListTree className="h-4 w-4" />} label="개발 중" value={promptSummary.inDevelopment} />
+          <StatTile icon={<AlertTriangle className="h-4 w-4" />} label="차단됨" value={promptSummary.blocked} />
+          <StatTile icon={<CheckCheck className="h-4 w-4" />} label="완료" value={promptSummary.completed} />
         </div>
       </Card>
 
