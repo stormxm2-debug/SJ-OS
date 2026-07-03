@@ -19,6 +19,8 @@ export interface RecorderCallbacks {
   onStop?: (blob: Blob, mimeType: string, durationMs: number) => void
   /** Fired on capture/permission errors with a Korean, UI-ready message. */
   onError?: (message: string) => void
+  /** Fired when the command-mode max duration is reached and we auto-send. */
+  onMaxReached?: () => void
 }
 
 /** MIME types we prefer, most-compatible first. Empty string = let the browser pick. */
@@ -33,13 +35,24 @@ export class AudioRecorder {
   private mediaRecorder: MediaRecorder | null = null
   private stream: MediaStream | null = null
   private chunks: Blob[] = []
-  private autoStopTimer: number | null = null
+  private commandTimer: number | null = null
+  private hardTimer: number | null = null
   private startedAt = 0
   private recording = false
-  private readonly maxMs: number
+  /** Command-mode auto-send cap — short so voice commands feel fast. */
+  private readonly commandMaxMs: number
+  /** Hard safety cap — the mic is never left open beyond this. */
+  private readonly hardMaxMs: number
 
-  constructor(maxSeconds = 10) {
-    this.maxMs = Math.max(1, maxSeconds) * 1000
+  /**
+   * @param commandMaxSeconds command-mode auto-send cap (default 5s) — recording
+   *   auto-stops and sends after this, so short commands transcribe quickly.
+   * @param hardMaxSeconds absolute safety cap (default 10s) — a backstop in case
+   *   the command timer is missed; the mic is never held open beyond this.
+   */
+  constructor(commandMaxSeconds = 5, hardMaxSeconds = 10) {
+    this.commandMaxMs = Math.max(1, commandMaxSeconds) * 1000
+    this.hardMaxMs = Math.max(commandMaxSeconds, hardMaxSeconds) * 1000
   }
 
   /** True when this environment can record audio (MediaRecorder + getUserMedia). */
@@ -56,9 +69,14 @@ export class AudioRecorder {
     return this.recording
   }
 
-  /** Max recording length in seconds (for UI display). */
+  /** Command-mode max recording length in seconds (for UI display). */
   getMaxSeconds(): number {
-    return Math.round(this.maxMs / 1000)
+    return Math.round(this.commandMaxMs / 1000)
+  }
+
+  /** Hard safety cap in seconds. */
+  getHardMaxSeconds(): number {
+    return Math.round(this.hardMaxMs / 1000)
   }
 
   private pickMimeType(): string {
@@ -146,8 +164,15 @@ export class AudioRecorder {
       return
     }
 
-    // Auto-stop so the mic is never left open beyond the max duration.
-    this.autoStopTimer = window.setTimeout(() => this.stop(), this.maxMs)
+    // Command-mode auto-send: stop + send after the short command cap so voice
+    // commands feel fast even if the user keeps holding the button.
+    this.commandTimer = window.setTimeout(() => {
+      callbacks.onMaxReached?.()
+      this.stop()
+    }, this.commandMaxMs)
+    // Hard backstop: force-stop so the mic is never left open, even if the
+    // command timer is somehow missed.
+    this.hardTimer = window.setTimeout(() => this.stop(), this.hardMaxMs)
   }
 
   /** Stop recording (finalizes the Blob via onstop). Safe to call when idle. */
@@ -167,9 +192,13 @@ export class AudioRecorder {
   }
 
   private clearAutoStop(): void {
-    if (this.autoStopTimer !== null) {
-      window.clearTimeout(this.autoStopTimer)
-      this.autoStopTimer = null
+    if (this.commandTimer !== null) {
+      window.clearTimeout(this.commandTimer)
+      this.commandTimer = null
+    }
+    if (this.hardTimer !== null) {
+      window.clearTimeout(this.hardTimer)
+      this.hardTimer = null
     }
   }
 
@@ -179,5 +208,5 @@ export class AudioRecorder {
   }
 }
 
-export const audioRecorder = new AudioRecorder(10)
+export const audioRecorder = new AudioRecorder(5, 10)
 export default AudioRecorder

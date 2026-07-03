@@ -49,10 +49,39 @@ function bridge(): Window['sj']['ai'] | undefined {
   return window.sj?.ai
 }
 
+/** How long a fetched gateway status stays fresh before a re-check (ms). */
+const STATUS_CACHE_MS = 30_000
+
 export class ElectronAiGatewayClient {
+  /** Last fetched status + when it was fetched, for the short-lived cache. */
+  private cache: { status: GatewayStatusResult; at: number } | null = null
+
   /** True when running inside the Electron desktop app with the AI bridge. */
   isAvailable(): boolean {
     return !!bridge()
+  }
+
+  /** The cached status if still fresh (< 30s old), else null. */
+  getCachedStatus(): GatewayStatusResult | null {
+    if (!this.cache) return null
+    if (Date.now() - this.cache.at > STATUS_CACHE_MS) return null
+    return this.cache.status
+  }
+
+  /** True when a cached, fresh status reports the gateway ready to transcribe. */
+  isReadyCached(): boolean {
+    return this.getCachedStatus()?.ready === true
+  }
+
+  /** Drop the cached status so the next check re-probes the main process. */
+  invalidateCache(): void {
+    this.cache = null
+  }
+
+  /** Force a fresh status probe, bypassing (and refreshing) the cache. */
+  async forceCheckStatus(): Promise<GatewayStatusResult> {
+    this.cache = null
+    return this.checkStatus()
   }
 
   private toStatusResult(s: AiGatewayStatus): GatewayStatusResult {
@@ -80,10 +109,15 @@ export class ElectronAiGatewayClient {
    * absent (e.g. non-Electron), returns an 'unavailable' status.
    */
   async checkStatus(): Promise<GatewayStatusResult> {
+    // Serve a fresh cached status to avoid an IPC round-trip before every voice
+    // command (the cache lives 30s; forceCheckStatus / invalidateCache bypass it).
+    const cached = this.getCachedStatus()
+    if (cached) return cached
+
     const ai = bridge()
     const checkedAt = new Date().toISOString()
     if (!ai) {
-      return {
+      const status: GatewayStatusResult = {
         available: false,
         enabled: false,
         apiKeyConfigured: false,
@@ -96,10 +130,15 @@ export class ElectronAiGatewayClient {
           'Electron AI Gateway를 사용할 수 없습니다. 데스크톱 앱(npm run dev)에서 실행해 주세요.',
         checkedAt
       }
+      this.cache = { status, at: Date.now() }
+      return status
     }
     try {
-      return this.toStatusResult(await ai.getStatus())
+      const status = this.toStatusResult(await ai.getStatus())
+      this.cache = { status, at: Date.now() }
+      return status
     } catch {
+      // Transient IPC error — do NOT cache, so the next check retries.
       return {
         available: false,
         enabled: false,
@@ -140,6 +179,9 @@ export class ElectronAiGatewayClient {
         language: 'ko'
       })
       if (!result.success) {
+        // A failure may mean the gateway became disabled / lost its key — drop
+        // the cached status so the next check reflects reality.
+        this.invalidateCache()
         return {
           success: false,
           transcript: '',

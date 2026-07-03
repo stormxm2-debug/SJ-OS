@@ -34,7 +34,11 @@ import {
   Layers
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type {
+  FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent
+} from 'react'
 import Card from '@renderer/components/ui/Card'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import { voiceService } from '@renderer/services/jarvis/VoiceService'
@@ -210,7 +214,8 @@ export default function JarvisPanel(): JSX.Element | null {
   const synthesisSupported = voice.isSynthesisSupported()
 
   // Voice engines: recorder (gateway + proxy) + per-engine status + record state.
-  const [recorder] = useState(() => new AudioRecorder(10))
+  // Command mode: short 5s auto-send cap, 10s hard safety cap.
+  const [recorder] = useState(() => new AudioRecorder(5, 10))
   const recorderSupported = recorder.isSupported()
   const gatewayAvailable = electronAiGateway.isAvailable()
   // Default to the Electron Main AI Gateway on desktop; fall back to Web Speech
@@ -223,6 +228,15 @@ export default function JarvisPanel(): JSX.Element | null {
   const [sttStatus, setSttStatus] = useState<SttStatusResult | null>(null)
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatusResult | null>(null)
   const [lastTranscript, setLastTranscript] = useState('')
+  // Non-error voice notice (e.g. "최대 녹음 시간 도달, 전사합니다").
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
+  // Compact voice pipeline timing diagnostics (ms), shown after a voice command.
+  const [voiceTiming, setVoiceTiming] = useState<{
+    recordingMs: number
+    transcriptionMs: number
+    routingMs: number
+    totalMs: number
+  } | null>(null)
   const gptConfig = jarvisGptBrainService.getConfig()
   const { navigate } = useNavigation()
 
@@ -331,9 +345,15 @@ export default function JarvisPanel(): JSX.Element | null {
       navigationTarget: result.navigationTarget ?? null,
       suggestedCommands: result.suggestedCommands ?? []
     })
-    // Read the Jarvis answer aloud when voice output is on.
+    // Read the Jarvis answer aloud when voice output is on. TTS is fire-and-forget
+    // (the browser speaks asynchronously) and guarded so a speech error can never
+    // block the UI or future commands.
     if (voiceOutputEnabled) {
-      voice.speak(result.response)
+      try {
+        voice.speak(result.response)
+      } catch {
+        /* TTS is best-effort; never let it break the command flow */
+      }
     }
   }
 
@@ -401,9 +421,10 @@ export default function JarvisPanel(): JSX.Element | null {
     void sttProxyClient.forceCheckStatus().then(setSttStatus)
   }
 
-  // Refresh the Electron Main AI Gateway status (main-process readiness).
+  // Manual refresh of the Electron Main AI Gateway status — forces a fresh probe
+  // (bypasses the 30s cache). Automatic on-open checks use the cached path.
   const refreshGatewayStatus = (): void => {
-    void electronAiGateway.checkStatus().then(setGatewayStatus)
+    void electronAiGateway.forceCheckStatus().then(setGatewayStatus)
   }
 
   // --- Web Speech engine (browser-local recognition) ---
@@ -440,22 +461,30 @@ export default function JarvisPanel(): JSX.Element | null {
   // differs (main process vs. legacy proxy), chosen in transcribeAndRoute.
   const startRecording = (): void => {
     setVoiceError(null)
+    setVoiceNotice(null)
     setInterimTranscript('')
+    setVoiceTiming(null)
     voice.stopSpeaking()
+    // Immediate feedback: show "듣는 중" within the same event, before the async
+    // getUserMedia resolves. onStart re-confirms; onError rolls it back.
+    setRecording(true)
+    setVoiceStatus('listening')
     void recorder.start({
       onStart: () => {
         setRecording(true)
         setVoiceStatus('listening')
+      },
+      onMaxReached: () => {
+        setVoiceNotice('최대 녹음 시간 도달, 전사합니다')
       },
       onError: (message) => {
         setRecording(false)
         setVoiceStatus('error')
         setVoiceError(message)
       },
-      onStop: (blob) => {
+      onStop: (blob, _mime, durationMs) => {
         setRecording(false)
-        setVoiceStatus('idle')
-        void transcribeAndRoute(blob)
+        void transcribeAndRoute(blob, durationMs)
       }
     })
   }
@@ -468,24 +497,45 @@ export default function JarvisPanel(): JSX.Element | null {
   // transcript through the SAME local Jarvis router as typed input. Never crashes.
   //  - 'electron-gateway' → Electron Main process (default desktop path).
   //  - 'stt-proxy'        → legacy sj-ai-proxy (optional/advanced fallback).
-  const transcribeAndRoute = async (blob: Blob): Promise<void> => {
-    setTranscribing(true)
+  // Records compact timing diagnostics (recording / transcription / routing) and
+  // always clears the transcribing state in a finally so the UI never locks.
+  const transcribeAndRoute = async (blob: Blob, recordingMs: number): Promise<void> => {
     const usingGateway = voiceEngine === 'electron-gateway'
-    const result = usingGateway
-      ? await electronAiGateway.transcribeAudio(blob)
-      : await sttProxyClient.transcribeAudio(blob)
-    setTranscribing(false)
-    if (usingGateway) refreshGatewayStatus()
-    else refreshSttStatus()
-    if (!result.success) {
-      setVoiceError(result.errorMessage ?? 'STT 전사에 실패했습니다. 텍스트 입력을 사용해 주세요.')
-      return
+    setTranscribing(true)
+    setVoiceStatus('idle')
+    const transcribeStart = performance.now()
+    try {
+      const result = usingGateway
+        ? await electronAiGateway.transcribeAudio(blob)
+        : await sttProxyClient.transcribeAudio(blob)
+      const transcriptionMs = performance.now() - transcribeStart
+      if (!result.success) {
+        // A failure may mean the gateway lost its key / became disabled — force a
+        // fresh status probe (bypassing the cache) so the badge reflects reality.
+        if (usingGateway) void electronAiGateway.forceCheckStatus().then(setGatewayStatus)
+        else refreshSttStatus()
+        setVoiceError(result.errorMessage ?? 'STT 전사에 실패했습니다. 텍스트 입력을 사용해 주세요.')
+        return
+      }
+      if (!result.transcript) {
+        setVoiceError('음성에서 명령을 인식하지 못했습니다. 다시 시도해 주세요.')
+        return
+      }
+      // Show the transcript immediately, then route it through the same router.
+      setLastTranscript(result.transcript)
+      const routeStart = performance.now()
+      await handleVoiceTranscript(result.transcript)
+      const routingMs = performance.now() - routeStart
+      setVoiceTiming({
+        recordingMs: Math.round(recordingMs),
+        transcriptionMs: Math.round(transcriptionMs),
+        routingMs: Math.round(routingMs),
+        totalMs: Math.round(recordingMs + transcriptionMs + routingMs)
+      })
+    } finally {
+      // Always clear the transcribing state so the mic + UI stay usable.
+      setTranscribing(false)
     }
-    if (!result.transcript) {
-      setVoiceError('음성에서 명령을 인식하지 못했습니다. 다시 시도해 주세요.')
-      return
-    }
-    await handleVoiceTranscript(result.transcript)
   }
 
   // The mic button dispatches to the selected engine.
@@ -500,6 +550,42 @@ export default function JarvisPanel(): JSX.Element | null {
   }
   const voiceActive = voiceStatus === 'listening' || recording
   const canStartVoice = usesRecorder ? recorderSupported : recognitionSupported
+
+  // True push-to-talk for the recorder engines: hold to record, release to send.
+  //  - pointerdown         → start recording immediately
+  //  - pointerup           → stop + send immediately
+  //  - pointerleave/cancel → stop safely so the mic is never left open
+  //  - Space/Enter hold    → same, for keyboard accessibility
+  // No onClick is attached to the recorder button, so the trailing click after a
+  // pointer gesture can never double-trigger. Web Speech keeps a click toggle.
+  const handleMicPointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
+    if (!usesRecorder) return
+    event.preventDefault()
+    if (transcribing || voiceActive) return
+    startVoice()
+  }
+  const handleMicPointerUp = (): void => {
+    if (!usesRecorder) return
+    if (recording) stopVoice()
+  }
+  const handleMicPointerLeave = (): void => {
+    if (!usesRecorder) return
+    if (recording) stopVoice()
+  }
+  const handleMicKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (!usesRecorder) return
+    if (event.key !== ' ' && event.key !== 'Enter') return
+    if (event.repeat) return
+    event.preventDefault()
+    if (transcribing || voiceActive) return
+    startVoice()
+  }
+  const handleMicKeyUp = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
+    if (!usesRecorder) return
+    if (event.key !== ' ' && event.key !== 'Enter') return
+    event.preventDefault()
+    if (recording) stopVoice()
+  }
 
   const toggleVoiceOutput = (): void => {
     const next = voice.setVoiceOutput(!voiceOutputEnabled)
@@ -582,8 +668,11 @@ export default function JarvisPanel(): JSX.Element | null {
     return { ...session, steps }
   }, [session, revealed])
 
-  // Drive the AI Core visual from the current session phase.
+  // Drive the AI Core visual from the current phase. Voice phases (듣는 중 / 전사 중)
+  // take precedence so the orb reacts the instant the mic is held/released.
   const coreStatus = useMemo<AiCoreStatus>(() => {
+    if (recording || voiceStatus === 'listening') return 'listening'
+    if (transcribing) return 'transcribing'
     if (!displayedSession) {
       return state.status === 'thinking' || state.status === 'running' ? 'analyzing' : 'idle'
     }
@@ -596,7 +685,7 @@ export default function JarvisPanel(): JSX.Element | null {
       return 'planning'
     }
     return 'analyzing'
-  }, [displayedSession, revealed, state.status])
+  }, [displayedSession, revealed, state.status, recording, voiceStatus, transcribing])
 
   if (!state.isOpen) {
     return null
@@ -879,28 +968,45 @@ export default function JarvisPanel(): JSX.Element | null {
                 {/* Controls: engine-aware mic/stop button + voice output toggle. */}
                 <div className="flex flex-wrap items-center gap-2">
                   {canStartVoice ? (
-                    voiceActive ? (
+                    usesRecorder ? (
+                      // True push-to-talk: hold to record, release to send.
+                      <button
+                        type="button"
+                        onPointerDown={handleMicPointerDown}
+                        onPointerUp={handleMicPointerUp}
+                        onPointerLeave={handleMicPointerLeave}
+                        onPointerCancel={handleMicPointerUp}
+                        onKeyDown={handleMicKeyDown}
+                        onKeyUp={handleMicKeyUp}
+                        disabled={transcribing}
+                        className={[
+                          'inline-flex touch-none select-none items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
+                          transcribing
+                            ? 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
+                            : voiceActive
+                              ? 'border-rose-500/40 bg-rose-500/15 text-rose-200'
+                              : 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20'
+                        ].join(' ')}
+                      >
+                        {voiceActive ? <MicOff className="h-4 w-4" /> : <AudioLines className="h-4 w-4" />}
+                        {voiceActive ? '듣는 중 · 손을 떼면 전사' : '마이크 (누르고 있는 동안 듣습니다)'}
+                      </button>
+                    ) : voiceActive ? (
                       <button
                         type="button"
                         onClick={stopVoice}
                         className="inline-flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/15 px-3 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/25"
                       >
                         <MicOff className="h-4 w-4" />
-                        {usesRecorder ? '녹음 중지' : '듣기 중지'}
+                        듣기 중지
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={startVoice}
-                        disabled={transcribing}
-                        className={[
-                          'inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
-                          transcribing
-                            ? 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
-                            : 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20'
-                        ].join(' ')}
+                        className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
                       >
-                        {usesRecorder ? <AudioLines className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                        <Mic className="h-4 w-4" />
                         마이크 (눌러서 말하기)
                       </button>
                     )
@@ -936,16 +1042,32 @@ export default function JarvisPanel(): JSX.Element | null {
                       <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-400" />
                     </span>
                     {usesRecorder
-                      ? `녹음 중입니다… (최대 ${recorder.getMaxSeconds()}초 · 눌러서 중지)`
+                      ? `듣는 중… 손을 떼면 전사합니다 (최대 ${recorder.getMaxSeconds()}초)`
                       : '자비스가 듣고 있습니다…'}
+                  </div>
+                ) : null}
+
+                {voiceNotice ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    {voiceNotice}
                   </div>
                 ) : null}
 
                 {transcribing ? (
                   <div className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-sm text-sky-200">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    음성을 텍스트로 변환하는 중입니다…
+                    전사 중… 잠시만 기다려 주세요.
                   </div>
+                ) : null}
+
+                {voiceTiming ? (
+                  <p className="font-mono text-[10px] text-slate-500">
+                    음성 처리 {(voiceTiming.totalMs / 1000).toFixed(1)}초 · 녹음{' '}
+                    {(voiceTiming.recordingMs / 1000).toFixed(1)}초 · 전사{' '}
+                    {(voiceTiming.transcriptionMs / 1000).toFixed(1)}초 · 실행{' '}
+                    {(voiceTiming.routingMs / 1000).toFixed(1)}초
+                  </p>
                 ) : null}
 
                 {interimTranscript ? (

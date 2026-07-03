@@ -5,10 +5,20 @@
  * animate-ping / animate-pulse utilities, so it stays cheap and always smooth.
  */
 
-export type AiCoreStatus = 'idle' | 'analyzing' | 'planning' | 'prompting' | 'completed' | 'failed'
+export type AiCoreStatus =
+  | 'idle'
+  | 'listening'
+  | 'transcribing'
+  | 'analyzing'
+  | 'planning'
+  | 'prompting'
+  | 'completed'
+  | 'failed'
 
 const STATUS_TEXT: Record<AiCoreStatus, string> = {
   idle: '자비스 대기 중',
+  listening: '듣는 중',
+  transcribing: '전사 중',
   analyzing: '명령 분석 중',
   planning: '업무 자동화 설계 중',
   prompting: '개발 프롬프트 생성 중',
@@ -29,6 +39,18 @@ const TONES: Record<AiCoreStatus, Tone> = {
     glow: 'shadow-[0_0_30px_-4px_rgba(100,116,139,0.6)]',
     ring: 'border-slate-600/40',
     text: 'text-slate-400'
+  },
+  listening: {
+    core: 'from-rose-400 to-rose-600',
+    glow: 'shadow-[0_0_44px_-2px_rgba(244,63,94,0.7)]',
+    ring: 'border-rose-400/50',
+    text: 'text-rose-300'
+  },
+  transcribing: {
+    core: 'from-sky-400 to-cyan-600',
+    glow: 'shadow-[0_0_44px_-2px_rgba(56,189,248,0.7)]',
+    ring: 'border-sky-400/50',
+    text: 'text-sky-300'
   },
   analyzing: {
     core: 'from-sky-400 to-indigo-600',
@@ -64,7 +86,12 @@ const TONES: Record<AiCoreStatus, Tone> = {
 
 export default function JarvisAiCore({ status }: { status: AiCoreStatus }): JSX.Element {
   const tone = TONES[status]
-  const active = status === 'analyzing' || status === 'planning' || status === 'prompting'
+  const active =
+    status === 'listening' ||
+    status === 'transcribing' ||
+    status === 'analyzing' ||
+    status === 'planning' ||
+    status === 'prompting'
 
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-2">
