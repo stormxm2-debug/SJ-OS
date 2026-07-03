@@ -36,11 +36,7 @@ import {
   RotateCcw
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type {
-  FormEvent,
-  KeyboardEvent as ReactKeyboardEvent,
-  PointerEvent as ReactPointerEvent
-} from 'react'
+import type { FormEvent } from 'react'
 import Card from '@renderer/components/ui/Card'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import { voiceService } from '@renderer/services/jarvis/VoiceService'
@@ -266,11 +262,8 @@ export default function JarvisPanel(): JSX.Element | null {
   const wakeEnabledRef = useRef(false)
   // Live elapsed recording time (seconds) shown while holding the mic.
   const [recordingElapsed, setRecordingElapsed] = useState(0)
-  // Why the last recording stopped (손을 뗌 / 최대 시간 도달 / 취소됨 / 오류 / 너무 짧음).
+  // Why the last recording stopped (클릭 종료 / 최대 시간 도달 / 오류 / 너무 짧음).
   const [stopReason, setStopReason] = useState<string | null>(null)
-  // Cleanup for the temporary window pointerup/cancel listener armed while holding
-  // the mic (so release is detected even if the cursor leaves the button).
-  const micReleaseRef = useRef<null | (() => void)>(null)
   // True when the current recording ended by hitting the max duration.
   const maxReachedRef = useRef(false)
   // Last time the interaction state was reset (for the stability diagnostics).
@@ -585,24 +578,22 @@ export default function JarvisPanel(): JSX.Element | null {
         setVoiceNotice('최대 녹음 시간 도달, 전사합니다')
       },
       onError: (message) => {
-        disarmMicRelease()
         setRecording(false)
         setVoiceStatus('error')
         setStopReason('오류')
         setVoiceError(message)
       },
       onStop: (blob, _mime, durationMs) => {
-        disarmMicRelease()
         setRecording(false)
         setVoiceStatus('idle')
-        // Guard against a too-short clip (accidental tap) — MediaRecorder may not
-        // have collected any audio yet, which would fail transcription.
+        // Guard against a too-short clip (accidental double-click) — MediaRecorder
+        // may not have collected any audio yet, which would fail transcription.
         if (!maxReachedRef.current && durationMs < MIN_RECORDING_MS) {
           setStopReason('너무 짧음')
           setVoiceNotice('너무 짧게 녹음되었습니다. 다시 말해주세요.')
           return
         }
-        setStopReason(maxReachedRef.current ? '최대 시간 도달' : '손을 뗌')
+        setStopReason((prev) => (maxReachedRef.current ? '최대 시간 도달' : prev ?? '종료'))
         void transcribeAndRoute(blob, durationMs)
       }
     })
@@ -672,57 +663,21 @@ export default function JarvisPanel(): JSX.Element | null {
   const voiceActive = voiceStatus === 'listening' || recording
   const canStartVoice = usesRecorder ? recorderSupported : recognitionSupported
 
-  // Remove the temporary window release listener armed while holding the mic.
-  const disarmMicRelease = (): void => {
-    micReleaseRef.current?.()
-    micReleaseRef.current = null
-  }
-
-  // Arm a ONE-TIME window pointerup/cancel listener so releasing the mouse/pen
-  // ANYWHERE stops recording — even if the cursor drifted off the button while
-  // held. This replaces the old onPointerLeave stop, which killed recording on
-  // the slightest jitter ("금방 꺼짐"). The listener removes itself on release
-  // (and via disarmMicRelease); it is never a permanent global listener.
-  const armMicRelease = (): void => {
-    disarmMicRelease()
-    const onRelease = (): void => {
-      disarmMicRelease()
-      stopVoice() // idempotent — recorder.stop() is safe even if already stopped
+  // Click-to-toggle recording: click once to start, click again to stop. This is
+  // immune to every pointer subtlety (pointerleave/cancel/capture/drift, permission
+  // dialogs) that made press-and-hold cut off early ("금방 꺼짐") on some setups.
+  // Recording can ONLY stop on an explicit second click or the safe max duration,
+  // so it never turns off unexpectedly. A plain onClick also works with the
+  // keyboard (Space/Enter) natively, so no extra key handlers are needed.
+  const handleMicClick = (): void => {
+    if (!usesRecorder) return
+    if (recording) {
+      setStopReason('클릭 종료')
+      stopVoice()
+      return
     }
-    window.addEventListener('pointerup', onRelease)
-    window.addEventListener('pointercancel', onRelease)
-    micReleaseRef.current = () => {
-      window.removeEventListener('pointerup', onRelease)
-      window.removeEventListener('pointercancel', onRelease)
-    }
-  }
-
-  // True push-to-talk for the recorder engines: hold to record, release to send.
-  //  - pointerdown → start recording immediately + arm the window release listener
-  //  - release (pointerup/cancel anywhere) → stop + send
-  //  - Space/Enter hold → same, for keyboard accessibility
-  // No onClick / onPointerLeave is attached, so a slight cursor drift never stops
-  // recording and a trailing click can never double-trigger.
-  const handleMicPointerDown = (event: ReactPointerEvent<HTMLButtonElement>): void => {
-    if (!usesRecorder) return
-    event.preventDefault()
-    if (transcribing || voiceActive) return
+    if (transcribing) return
     startVoice()
-    armMicRelease()
-  }
-  const handleMicKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
-    if (!usesRecorder) return
-    if (event.key !== ' ' && event.key !== 'Enter') return
-    if (event.repeat) return
-    event.preventDefault()
-    if (transcribing || voiceActive) return
-    startVoice()
-  }
-  const handleMicKeyUp = (event: ReactKeyboardEvent<HTMLButtonElement>): void => {
-    if (!usesRecorder) return
-    if (event.key !== ' ' && event.key !== 'Enter') return
-    event.preventDefault()
-    if (recording) stopVoice()
   }
 
   const toggleVoiceOutput = (): void => {
@@ -820,9 +775,6 @@ export default function JarvisPanel(): JSX.Element | null {
       // keeps listening in the background.
       wakeEnabledRef.current = false
       setWakeEnabled(false)
-      // Remove any armed push-to-talk window release listener.
-      micReleaseRef.current?.()
-      micReleaseRef.current = null
       voice.stopListening()
       voice.stopSpeaking()
       recorder.stop()
@@ -1227,15 +1179,14 @@ export default function JarvisPanel(): JSX.Element | null {
                 <div className="flex flex-wrap items-center gap-2">
                   {canStartVoice ? (
                     usesRecorder ? (
-                      // True push-to-talk: hold to record, release to send.
+                      // Click-to-toggle: click to start recording, click again to
+                      // stop + send. Never cuts off from pointer jitter.
                       <button
                         type="button"
-                        onPointerDown={handleMicPointerDown}
-                        onKeyDown={handleMicKeyDown}
-                        onKeyUp={handleMicKeyUp}
+                        onClick={handleMicClick}
                         disabled={transcribing}
                         className={[
-                          'inline-flex touch-none select-none items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
+                          'inline-flex select-none items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
                           transcribing
                             ? 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
                             : voiceActive
@@ -1244,7 +1195,9 @@ export default function JarvisPanel(): JSX.Element | null {
                         ].join(' ')}
                       >
                         {voiceActive ? <MicOff className="h-4 w-4" /> : <AudioLines className="h-4 w-4" />}
-                        {voiceActive ? '듣는 중 · 손을 떼면 전사' : '마이크 (누르고 있는 동안 듣습니다)'}
+                        {voiceActive
+                          ? `녹음 중 ${recordingElapsed.toFixed(1)}초 · 클릭하면 종료`
+                          : '마이크 · 클릭하여 녹음'}
                       </button>
                     ) : voiceActive ? (
                       <button
@@ -1328,7 +1281,7 @@ export default function JarvisPanel(): JSX.Element | null {
                       <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-400" />
                     </span>
                     {usesRecorder
-                      ? `듣는 중… ${recordingElapsed.toFixed(1)}초 · 손을 떼면 전사 (최대 ${recorder.getMaxSeconds()}초)`
+                      ? `녹음 중… ${recordingElapsed.toFixed(1)}초 · 다시 클릭하면 종료 (최대 ${recorder.getMaxSeconds()}초)`
                       : '자비스가 듣고 있습니다…'}
                   </div>
                 ) : null}
@@ -1361,7 +1314,7 @@ export default function JarvisPanel(): JSX.Element | null {
                     마이크 안정화 빌드 · 정지 사유: {stopReason} · 녹음 {recordingElapsed.toFixed(1)}초
                   </p>
                 ) : (
-                  <p className="font-mono text-[10px] text-slate-600">마이크 안정화 빌드 · 누르고 있는 동안 녹음됩니다</p>
+                  <p className="font-mono text-[10px] text-slate-600">마이크 안정화 빌드 · 클릭하면 녹음 시작 / 다시 클릭하면 종료 · 최대 8초</p>
                 )}
 
                 {interimTranscript ? (
