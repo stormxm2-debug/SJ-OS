@@ -134,6 +134,25 @@ export class JarvisService {
     this.emit()
   }
 
+  /**
+   * Open Jarvis and queue a command to prefill the input (e.g. from a dashboard
+   * suggestion). Does NOT execute the command — the user reviews/edits it and
+   * presses Enter / Send. The panel consumes the draft via consumePendingDraft().
+   */
+  openWithDraft(text: string): void {
+    this.state.isOpen = true
+    this.state.pendingDraft = text
+    this.emit()
+  }
+
+  /** Clear the queued prefill draft once the panel has applied it. */
+  consumePendingDraft(): void {
+    if (this.state.pendingDraft != null) {
+      this.state.pendingDraft = null
+      this.emit()
+    }
+  }
+
   close(): void {
     this.state.isOpen = false
     this.emit()

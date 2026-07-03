@@ -14,7 +14,6 @@ import {
   Megaphone,
   Clock,
   CheckCircle2,
-  Copy,
   Check,
   Sparkles,
   ArrowRight
@@ -80,19 +79,12 @@ export default function StaffHomePage(): JSX.Element {
   const { navigate } = useNavigation()
   const [copied, setCopied] = useState<string | null>(null)
 
-  // Copy an example command to the clipboard and open Jarvis. Uses only the
-  // guarded Clipboard API + the existing jarvisService.open(); no engine change.
+  // Open Jarvis and prefill its input with the command (NOT auto-executed).
+  // Uses only the existing jarvisService.openWithDraft(); no engine change.
   const useCommand = (command: string): void => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      void navigator.clipboard
-        .writeText(command)
-        .then(() => {
-          setCopied(command)
-          window.setTimeout(() => setCopied((c) => (c === command ? null : c)), 1500)
-        })
-        .catch(() => undefined)
-    }
-    jarvisService.open()
+    jarvisService.openWithDraft(command)
+    setCopied(command)
+    window.setTimeout(() => setCopied((c) => (c === command ? null : c)), 2500)
   }
 
   const remaining = Math.max(0, 100 - 72)
@@ -206,7 +198,7 @@ export default function StaffHomePage(): JSX.Element {
       </div>
 
       {/* E. Jarvis Quick Commands */}
-      <Card title="자비스 추천 명령" icon={<Bot className="h-4 w-4 text-indigo-300" />} action={<span className="text-xs text-slate-500">클릭하면 복사 + 자비스 열기</span>}>
+      <Card title="자비스 추천 명령" icon={<Bot className="h-4 w-4 text-indigo-300" />} action={<span className="text-xs text-slate-500">클릭하면 자비스 입력창에 넣기</span>}>
         <p className="mb-1 text-xs text-slate-500">자비스에게 자연어로 요청할 수 있습니다.</p>
         <p className="mb-3 text-[11px] text-slate-500">예: 오늘 일정 알려줘 / 이번 달 실적 보여줘</p>
         <div className="flex flex-wrap gap-2">
@@ -215,13 +207,20 @@ export default function StaffHomePage(): JSX.Element {
               key={cmd}
               type="button"
               onClick={() => useCommand(cmd)}
+              title="자비스 입력창에 넣기"
               className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
             >
-              {copied === cmd ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied === cmd ? <Check className="h-3.5 w-3.5" /> : <ArrowRight className="h-3.5 w-3.5" />}
               {cmd}
             </button>
           ))}
         </div>
+        {copied ? (
+          <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-600">
+            <Check className="h-3.5 w-3.5" />
+            명령이 자비스에 준비되었습니다. Enter로 실행하세요.
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={() => jarvisService.open()}
@@ -232,7 +231,7 @@ export default function StaffHomePage(): JSX.Element {
         </button>
       </Card>
 
-      <p className="pb-2 text-center text-[10px] text-slate-500">빠른 실행 안전 빌드 · 미리보기 데이터</p>
+      <p className="pb-2 text-center text-[10px] text-slate-500">자비스 추천 입력 안전 빌드 · 미리보기 데이터</p>
     </div>
   )
 }

@@ -224,4 +224,10 @@ export interface JarvisState {
   suggestedCommands: string[]
   /** The current optimistic command session + execution timeline (fast UX). */
   session?: JarvisCommandSession
+  /**
+   * A command text queued to prefill the Jarvis input (e.g. from a dashboard
+   * suggestion). The panel copies it into its input, focuses, then clears it via
+   * consumePendingDraft(). It is NOT auto-executed.
+   */
+  pendingDraft?: string | null
 }

@@ -326,6 +326,17 @@ export default function JarvisPanel(): JSX.Element | null {
     field?.focus()
   }, [state.isOpen])
 
+  // Apply a queued prefill (e.g. from a dashboard 추천 명령): copy it into the
+  // input, focus, then clear it. The command is NOT auto-executed — the user
+  // reviews/edits and presses Enter / Send.
+  useEffect(() => {
+    if (!state.pendingDraft) return
+    setDraft(state.pendingDraft)
+    service.consumePendingDraft()
+    const field = document.getElementById('jarvis-command-input') as HTMLInputElement | null
+    field?.focus()
+  }, [state.pendingDraft, service])
+
   useEffect(() => {
     if (state.status === 'thinking' || state.status === 'running') {
       setStreamedResponse('')
