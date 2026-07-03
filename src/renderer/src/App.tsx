@@ -1,10 +1,13 @@
 import { NavigationProvider } from './navigation/NavigationContext'
+import { AppModeProvider } from './navigation/AppModeContext'
 import AppShell from './components/layout/AppShell'
 
 export default function App(): JSX.Element {
   return (
-    <NavigationProvider>
-      <AppShell />
-    </NavigationProvider>
+    <AppModeProvider>
+      <NavigationProvider>
+        <AppShell />
+      </NavigationProvider>
+    </AppModeProvider>
   )
 }

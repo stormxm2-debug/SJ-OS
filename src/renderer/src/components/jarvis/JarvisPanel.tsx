@@ -31,9 +31,11 @@ import {
   Boxes,
   Copy,
   Check,
-  Layers
+  Layers,
+  Radar,
+  RotateCcw
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
@@ -66,6 +68,7 @@ import type {
 import JarvisAiCore, { type AiCoreStatus } from './JarvisAiCore'
 import JarvisCommandTimeline from './JarvisCommandTimeline'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
+import { useAppMode } from '@renderer/navigation/AppModeContext'
 import type { View } from '@renderer/navigation/types'
 
 /** Simple, arg-free views a Jarvis navigation target can jump to. */
@@ -81,22 +84,28 @@ function toView(target: string | null | undefined): View | null {
   return { name: target } as View
 }
 
-const COMMAND_CHIPS = [
-  '오늘 브리핑',
-  '오늘 FC 출근 현황',
-  '오늘 일정',
-  '이번 달 실적',
-  '미완료 활동',
-  '클로징 예정 고객',
-  '유튜브 켜줘',
-  '오토파일럿 열어줘',
-  'FC OS에 팀별 필터 추가해',
-  '쇼핑몰 시스템 만들어',
-  '학원 관리 프로그램 만들어',
-  '병원 예약 시스템 만들어',
-  'AI 영상 광고 제작 시스템 만들어',
+// CEO-mode quick commands — company/dev/build focus.
+const CEO_COMMAND_CHIPS = [
   '오늘 조직 상황 브리핑 해줘',
+  '쇼핑몰 시스템 만들어',
+  '쇼핑몰 업무 자동화해',
+  'AI 영상 광고 제작 시스템 만들어',
+  'FC OS에 팀별 필터 만들어',
+  '오토파일럿 열어줘',
+  '이번 달 실적',
   '우리 회사 앱 다음 기능 추천해줘'
+]
+
+// Staff-mode quick commands — daily insurance work focus.
+const STAFF_COMMAND_CHIPS = [
+  '오늘 일정',
+  '오늘 FC 출근 현황',
+  '클로징 예정 고객',
+  '미완료 활동',
+  '이번 달 실적',
+  '상담 열어줘',
+  '보험분석 열어줘',
+  '고객 워크스페이스 열어줘'
 ]
 
 function statusLabel(status: JarvisStatus): string {
@@ -237,8 +246,16 @@ export default function JarvisPanel(): JSX.Element | null {
     routingMs: number
     totalMs: number
   } | null>(null)
+  // Optional wake mode ("자비스 호출 대기") — OFF by default, opt-in only.
+  const [wakeEnabled, setWakeEnabled] = useState(false)
+  const [wakeStatus, setWakeStatus] = useState<'standby' | 'detected' | 'awaiting'>('standby')
+  const wakeEnabledRef = useRef(false)
+  // Live elapsed recording time (seconds) shown while holding the mic.
+  const [recordingElapsed, setRecordingElapsed] = useState(0)
   const gptConfig = jarvisGptBrainService.getConfig()
   const { navigate } = useNavigation()
+  const { mode } = useAppMode()
+  const commandChips = mode === 'staff' ? STAFF_COMMAND_CHIPS : CEO_COMMAND_CHIPS
 
   // Persistent GPT status badge: Ready / Disabled / Proxy Error / Local Only.
   const gptStatus = ((): { label: string; classes: string } => {
@@ -328,6 +345,16 @@ export default function JarvisPanel(): JSX.Element | null {
     }, 200)
     return () => window.clearTimeout(timer)
   }, [session, revealed])
+
+  // Live elapsed recording time while the mic is held.
+  useEffect(() => {
+    if (!recording) return undefined
+    const start = performance.now()
+    const timer = window.setInterval(() => {
+      setRecordingElapsed((performance.now() - start) / 1000)
+    }, 100)
+    return () => window.clearInterval(timer)
+  }, [recording])
 
   const applyResult = (result: Awaited<ReturnType<typeof service.executeCommand>>): void => {
     setState({
@@ -464,7 +491,10 @@ export default function JarvisPanel(): JSX.Element | null {
     setVoiceNotice(null)
     setInterimTranscript('')
     setVoiceTiming(null)
+    setRecordingElapsed(0)
     voice.stopSpeaking()
+    // Release the mic from wake-mode Web Speech while push-to-talk records.
+    if (wakeEnabledRef.current) voice.stopListening()
     // Immediate feedback: show "듣는 중" within the same event, before the async
     // getUserMedia resolves. onStart re-confirms; onError rolls it back.
     setRecording(true)
@@ -535,6 +565,8 @@ export default function JarvisPanel(): JSX.Element | null {
     } finally {
       // Always clear the transcribing state so the mic + UI stay usable.
       setTranscribing(false)
+      // Resume wake-mode listening if it was enabled before this recording.
+      if (wakeEnabledRef.current) window.setTimeout(() => startWakeLoop(), 250)
     }
   }
 
@@ -593,10 +625,99 @@ export default function JarvisPanel(): JSX.Element | null {
     if (!next) voice.stopSpeaking()
   }
 
+  // --- Optional wake mode ("자비스 호출 대기") -----------------------------------
+  // Opt-in only, using local Web Speech recognition. NO always-on OpenAI STT, NO
+  // hidden background recording, NO audio saved. A visible indicator is always
+  // shown while enabled. When Web Speech is unavailable, the mode is refused with
+  // a clear message so the user falls back to push-to-talk.
+  const startWakeLoop = (): void => {
+    if (!wakeEnabledRef.current) return
+    voice.startListening({
+      onInterim: (text) => {
+        if (text.includes('자비스')) setWakeStatus('detected')
+      },
+      onStatusChange: (s) => {
+        // Web Speech is single-utterance; restart the loop while wake stays on
+        // and no push-to-talk / transcription is in progress.
+        if (s === 'idle' && wakeEnabledRef.current && !recording && !transcribing) {
+          window.setTimeout(() => startWakeLoop(), 250)
+        }
+      },
+      onError: () => {
+        // Web Speech unreliable here → disable wake and fall back to push-to-talk.
+        wakeEnabledRef.current = false
+        setWakeEnabled(false)
+        setWakeStatus('standby')
+        setVoiceNotice('이 환경에서는 호출 대기 모드가 제한됩니다. 누르고 말하기를 사용하세요.')
+      },
+      onFinal: (text) => {
+        const idx = text.lastIndexOf('자비스')
+        if (idx === -1) return // ignore utterances without the wake word
+        const command = text.slice(idx + '자비스'.length).trim()
+        if (command) {
+          setWakeStatus('standby')
+          void handleVoiceTranscript(command)
+        } else {
+          setWakeStatus('awaiting')
+        }
+      }
+    })
+  }
+
+  const toggleWake = (): void => {
+    if (wakeEnabled) {
+      wakeEnabledRef.current = false
+      setWakeEnabled(false)
+      setWakeStatus('standby')
+      voice.stopListening()
+      return
+    }
+    if (!recognitionSupported) {
+      setVoiceNotice('이 환경에서는 호출 대기 모드가 제한됩니다. 누르고 말하기를 사용하세요.')
+      return
+    }
+    setVoiceNotice(null)
+    voice.stopSpeaking()
+    wakeEnabledRef.current = true
+    setWakeEnabled(true)
+    setWakeStatus('standby')
+    startWakeLoop()
+  }
+
+  // --- Reset / refresh controls (Part I) ---------------------------------------
+  // Clears the current command session, timeline, voice transient state, errors
+  // and loading — WITHOUT wiping any business data.
+  const resetJarvis = (): void => {
+    recorder.stop()
+    voice.stopSpeaking()
+    service.resetCommandState()
+    setSession(null)
+    setRevealed(0)
+    setVoiceTiming(null)
+    setVoiceError(null)
+    setVoiceNotice(null)
+    setLastTranscript('')
+    setInterimTranscript('')
+    setTranscribing(false)
+    setRecording(false)
+    setStreamedResponse('')
+    setWakeStatus('standby')
+    setState(service.getState())
+  }
+
+  // Full app refresh (reloads the renderer). Business data persists in storage.
+  const refreshApp = (): void => {
+    if (typeof window !== 'undefined') window.location.reload()
+  }
+
   // Stop mic + speech + recording when the panel closes so nothing keeps running.
   const isOpen = state.isOpen
   useEffect(() => {
     if (!isOpen) {
+      // Disable wake mode + release the mic whenever the panel closes, so nothing
+      // keeps listening in the background.
+      wakeEnabledRef.current = false
+      setWakeEnabled(false)
       voice.stopListening()
       voice.stopSpeaking()
       recorder.stop()
@@ -673,19 +794,22 @@ export default function JarvisPanel(): JSX.Element | null {
   const coreStatus = useMemo<AiCoreStatus>(() => {
     if (recording || voiceStatus === 'listening') return 'listening'
     if (transcribing) return 'transcribing'
-    if (!displayedSession) {
-      return state.status === 'thinking' || state.status === 'running' ? 'analyzing' : 'idle'
+    if (displayedSession) {
+      const total = displayedSession.steps.length
+      if (revealed >= total) return displayedSession.status === 'failed' ? 'failed' : 'completed'
+      const running = displayedSession.steps.find((s) => s.status === 'running')
+      if (running) {
+        if (running.label.includes('프롬프트') || running.label.includes('실행')) return 'executing'
+        if (running.label.includes('계획') || running.label.includes('분류') || running.label.includes('설계')) {
+          return 'planning'
+        }
+      }
+      return 'analyzing'
     }
-    const total = displayedSession.steps.length
-    if (revealed >= total) return displayedSession.status === 'failed' ? 'failed' : 'completed'
-    const running = displayedSession.steps.find((s) => s.status === 'running')
-    if (!running) return 'analyzing'
-    if (running.label.includes('프롬프트')) return 'prompting'
-    if (running.label.includes('계획') || running.label.includes('분류') || running.label.includes('설계')) {
-      return 'planning'
-    }
-    return 'analyzing'
-  }, [displayedSession, revealed, state.status, recording, voiceStatus, transcribing])
+    if (state.status === 'thinking' || state.status === 'running') return 'analyzing'
+    if (wakeEnabled) return 'wake'
+    return 'idle'
+  }, [displayedSession, revealed, state.status, recording, voiceStatus, transcribing, wakeEnabled])
 
   if (!state.isOpen) {
     return null
@@ -725,8 +849,15 @@ export default function JarvisPanel(): JSX.Element | null {
                 <span className="rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
                   AI Core
                 </span>
+                <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[9px] font-bold text-indigo-300">
+                  {mode === 'staff' ? '직원 모드' : '대표 모드'}
+                </span>
               </p>
-              <p className="text-xs text-slate-500">AI 업무 어시스턴트 · 명령 · 분석 · 실행</p>
+              <p className="text-xs text-slate-500">
+                {mode === 'staff'
+                  ? '직원 업무 어시스턴트 · 일정 · 고객 · 실적 · 상담'
+                  : 'AI 업무 어시스턴트 · 명령 · 분석 · 실행'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -776,6 +907,24 @@ export default function JarvisPanel(): JSX.Element | null {
             </span>
             <button
               type="button"
+              onClick={resetJarvis}
+              title="자비스 리셋 · 현재 명령/타임라인/오류 초기화"
+              aria-label="자비스 리셋"
+              className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:border-indigo-500/40 hover:text-indigo-300"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={refreshApp}
+              title="앱 새로고침"
+              aria-label="앱 새로고침"
+              className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:border-indigo-500/40 hover:text-indigo-300"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 service.close()
                 setState(service.getState())
@@ -821,7 +970,7 @@ export default function JarvisPanel(): JSX.Element | null {
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {COMMAND_CHIPS.map((chip) => (
+                  {commandChips.map((chip) => (
                     <button
                       key={chip}
                       type="button"
@@ -1041,7 +1190,38 @@ export default function JarvisPanel(): JSX.Element | null {
                     {voiceOutputEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
                     음성 출력 {voiceOutputEnabled ? 'ON' : 'OFF'}
                   </button>
+
+                  {/* Optional wake mode — OFF by default, opt-in only. */}
+                  <button
+                    type="button"
+                    onClick={toggleWake}
+                    title="켜져 있을 때 '자비스'라고 부르면 짧은 명령을 들을 준비를 합니다."
+                    className={[
+                      'inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
+                      wakeEnabled
+                        ? 'border-sky-500/40 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
+                        : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-500'
+                    ].join(' ')}
+                  >
+                    <Radar className="h-4 w-4" />
+                    자비스 호출 대기 {wakeEnabled ? 'ON' : 'OFF'}
+                  </button>
                 </div>
+
+                {/* Wake-mode indicator — always visible while wake mode is enabled. */}
+                {wakeEnabled ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2 text-sm text-sky-200">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-sky-400" />
+                    </span>
+                    {wakeStatus === 'detected'
+                      ? '자비스 호출 감지'
+                      : wakeStatus === 'awaiting'
+                        ? '명령을 말씀하세요'
+                        : "호출 대기 중 · '자비스'라고 불러주세요"}
+                  </div>
+                ) : null}
 
                 {voiceActive ? (
                   <div className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
@@ -1050,7 +1230,7 @@ export default function JarvisPanel(): JSX.Element | null {
                       <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-400" />
                     </span>
                     {usesRecorder
-                      ? `듣는 중… 손을 떼면 전사합니다 (최대 ${recorder.getMaxSeconds()}초)`
+                      ? `듣는 중… ${recordingElapsed.toFixed(1)}초 · 손을 떼면 전사 (최대 ${recorder.getMaxSeconds()}초)`
                       : '자비스가 듣고 있습니다…'}
                   </div>
                 ) : null}

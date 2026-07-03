@@ -7,23 +7,27 @@
 
 export type AiCoreStatus =
   | 'idle'
+  | 'wake'
   | 'listening'
   | 'transcribing'
   | 'analyzing'
   | 'planning'
   | 'prompting'
+  | 'executing'
   | 'completed'
   | 'failed'
 
 const STATUS_TEXT: Record<AiCoreStatus, string> = {
   idle: '자비스 대기 중',
+  wake: '호출 대기 중',
   listening: '듣는 중',
   transcribing: '전사 중',
   analyzing: '명령 분석 중',
   planning: '업무 자동화 설계 중',
   prompting: '개발 프롬프트 생성 중',
+  executing: '실행 중',
   completed: '완료',
-  failed: '실패'
+  failed: '오류 발생'
 }
 
 interface Tone {
@@ -39,6 +43,12 @@ const TONES: Record<AiCoreStatus, Tone> = {
     glow: 'shadow-[0_0_30px_-4px_rgba(100,116,139,0.6)]',
     ring: 'border-slate-600/40',
     text: 'text-slate-400'
+  },
+  wake: {
+    core: 'from-sky-500 to-blue-600',
+    glow: 'shadow-[0_0_38px_-4px_rgba(56,189,248,0.6)]',
+    ring: 'border-sky-400/40',
+    text: 'text-sky-300'
   },
   listening: {
     core: 'from-rose-400 to-rose-600',
@@ -70,6 +80,12 @@ const TONES: Record<AiCoreStatus, Tone> = {
     ring: 'border-amber-400/50',
     text: 'text-amber-300'
   },
+  executing: {
+    core: 'from-amber-400 to-yellow-500',
+    glow: 'shadow-[0_0_46px_-2px_rgba(212,167,44,0.8)]',
+    ring: 'border-amber-400/50',
+    text: 'text-amber-300'
+  },
   completed: {
     core: 'from-emerald-300 to-emerald-600',
     glow: 'shadow-[0_0_40px_-2px_rgba(16,185,129,0.7)]',
@@ -87,11 +103,13 @@ const TONES: Record<AiCoreStatus, Tone> = {
 export default function JarvisAiCore({ status }: { status: AiCoreStatus }): JSX.Element {
   const tone = TONES[status]
   const active =
+    status === 'wake' ||
     status === 'listening' ||
     status === 'transcribing' ||
     status === 'analyzing' ||
     status === 'planning' ||
-    status === 'prompting'
+    status === 'prompting' ||
+    status === 'executing'
 
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-3">

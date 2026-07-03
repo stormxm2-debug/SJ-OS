@@ -144,6 +144,29 @@ export class JarvisService {
     this.emit()
   }
 
+  /**
+   * Reset the current command/session state back to idle without touching the
+   * open flag, conversation history, or any business data. Used by the Jarvis
+   * "리셋" control to clear a stuck/finished command, its timeline and errors.
+   */
+  resetCommandState(): void {
+    this.state.status = 'idle'
+    this.state.mode = 'unknown'
+    this.state.response = '자비스가 대기 중입니다.'
+    this.state.toolCalls = []
+    this.state.lastError = undefined
+    this.state.answer = undefined
+    this.state.implementation = undefined
+    this.state.universalBuild = undefined
+    this.state.external = undefined
+    this.state.gpt = undefined
+    this.state.source = undefined
+    this.state.navigationTarget = null
+    this.state.suggestedCommands = []
+    this.state.session = undefined
+    this.emit()
+  }
+
   getState(): JarvisState {
     return {
       ...this.state,

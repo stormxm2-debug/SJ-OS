@@ -25,10 +25,12 @@ import {
   Settings,
   Boxes,
   Terminal,
+  Home,
   Bot
 } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
+import { useAppMode, type AppMode } from '@renderer/navigation/AppModeContext'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 
 type NavItem = {
@@ -68,8 +70,37 @@ const NAV: NavItem[] = [
   { key: 'settings', label: '설정', icon: Settings, view: { name: 'settings' }, match: ['settings'] }
 ]
 
+/**
+ * Simplified, staff-facing menu (직원 모드). Maps to the same existing routes as
+ * CEO mode with friendlier labels — no new pages, no permission blocking. The
+ * 자비스 button below the nav is available in both modes.
+ */
+const STAFF_NAV: NavItem[] = [
+  { key: 'home', label: '홈', icon: Home, view: { name: 'dashboard' }, match: ['dashboard'] },
+  { key: 'schedule', label: '오늘 일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
+  { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
+  { key: 'sales-activity', label: '영업활동', icon: ActivityIcon, view: { name: 'sales-activity' }, match: ['sales-activity'] },
+  { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
+  { key: 'consultation', label: '상담', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
+  { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
+  { key: 'fcos', label: '내 업무', icon: Briefcase, view: { name: 'fcos' }, match: ['fcos'] }
+]
+
+const MODE_LABEL: Record<AppMode, string> = { ceo: '대표 모드', staff: '직원 모드' }
+
 export default function Sidebar(): JSX.Element {
   const { route, navigate } = useNavigation()
+  const { mode, setMode } = useAppMode()
+  const navItems = mode === 'staff' ? STAFF_NAV : NAV
+
+  // Switching mode never blocks a route; but if the current view is not in the
+  // staff menu, land the user on the staff home so the sidebar stays coherent.
+  const switchMode = (next: AppMode): void => {
+    setMode(next)
+    if (next === 'staff' && !STAFF_NAV.some((item) => item.match.includes(route.name))) {
+      navigate({ name: 'dashboard' })
+    }
+  }
 
   return (
     <aside className="flex w-64 flex-col border-r border-slate-800 bg-white shadow-sm">
@@ -83,8 +114,30 @@ export default function Sidebar(): JSX.Element {
         </div>
       </div>
 
+      {/* CEO / Staff mode switch */}
+      <div className="px-3 pt-3">
+        <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-800 bg-slate-950 p-1">
+          {(['ceo', 'staff'] as AppMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => switchMode(m)}
+              aria-pressed={mode === m}
+              className={[
+                'rounded-lg px-2 py-1.5 text-xs font-semibold transition',
+                mode === m
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm shadow-indigo-500/30'
+                  : 'text-slate-500 hover:text-slate-200'
+              ].join(' ')}
+            >
+              {MODE_LABEL[m]}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {NAV.map(({ key, label, icon: Icon, view, match }) => {
+        {navItems.map(({ key, label, icon: Icon, view, match }) => {
           const active = match.includes(route.name)
           return (
             <button
