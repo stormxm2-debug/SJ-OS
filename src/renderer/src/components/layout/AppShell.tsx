@@ -21,10 +21,10 @@ export default function AppShell(): JSX.Element {
       <JarvisPanel />
       <JarvisLauncher />
       {/* Interaction-health indicator. pointer-events-none so it can never block
-          clicks; confirms the click-fix build is running. */}
+          clicks; confirms the stabilization build is running. */}
       <div className="pointer-events-none fixed bottom-2 left-2 z-30 inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-white/90 px-2 py-0.5 text-[10px] font-medium text-emerald-600 shadow-sm">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-        UI 클릭 가능 상태
+        안정화 모드 · UI 클릭 가능
       </div>
     </div>
   )

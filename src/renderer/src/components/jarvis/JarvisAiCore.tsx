@@ -113,35 +113,21 @@ export default function JarvisAiCore({ status }: { status: AiCoreStatus }): JSX.
 
   return (
     // Purely decorative — never captures clicks (interaction-lock safety).
+    // STABILIZATION: simplified to a lightweight core + ring (no GPU-heavy blur
+    // layers), so it stays smooth on machines with limited/failing GPUs.
     <div className="pointer-events-none flex flex-col items-center justify-center gap-3 py-3">
-      <div className="relative flex h-28 w-28 items-center justify-center">
-        {/* Soft radial aura */}
-        <span
-          className={[
-            'absolute inset-0 rounded-full bg-gradient-to-br opacity-25 blur-2xl',
-            tone.core,
-            active ? 'animate-pulse' : ''
-          ].join(' ')}
-        />
-        {/* Outer pulse ring — only animates while actively processing */}
+      <div className="relative flex h-24 w-24 items-center justify-center">
+        {/* Outer ring — animates only while actively processing */}
         <span
           className={[
             'absolute inset-1 rounded-full border-2',
             tone.ring,
-            active ? 'animate-ping opacity-60' : 'opacity-25'
+            active ? 'animate-pulse opacity-70' : 'opacity-30'
           ].join(' ')}
         />
         {/* Static mid ring for depth */}
-        <span className={['absolute inset-4 rounded-full border', tone.ring, 'opacity-50'].join(' ')} />
-        {/* Breathing halo */}
-        <span
-          className={[
-            'absolute inset-6 rounded-full bg-gradient-to-br opacity-50 blur-md',
-            tone.core,
-            active ? 'animate-pulse' : ''
-          ].join(' ')}
-        />
-        {/* Glossy core orb with a specular highlight */}
+        <span className={['absolute inset-5 rounded-full border', tone.ring, 'opacity-50'].join(' ')} />
+        {/* Core orb */}
         <span
           className={[
             'relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br',
@@ -150,7 +136,7 @@ export default function JarvisAiCore({ status }: { status: AiCoreStatus }): JSX.
             active ? 'animate-pulse' : ''
           ].join(' ')}
         >
-          <span className="absolute left-3 top-2.5 h-3.5 w-3.5 rounded-full bg-white/60 blur-[2px]" />
+          <span className="absolute left-3 top-2.5 h-3 w-3 rounded-full bg-white/50" />
         </span>
       </div>
       <div className={['text-sm font-semibold tracking-wide', tone.text].join(' ')}>

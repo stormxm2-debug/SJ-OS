@@ -84,6 +84,17 @@ function toView(target: string | null | undefined): View | null {
   return { name: target } as View
 }
 
+/**
+ * Interaction-lock safety: ensure nothing has left global pointer-events disabled
+ * on <body>/<html>. Nothing in the app sets these, but clearing them defensively
+ * guarantees the app can never be left unclickable by a stray global lock.
+ */
+function clearGlobalPointerLocks(): void {
+  if (typeof document === 'undefined') return
+  document.body.style.pointerEvents = ''
+  document.documentElement.style.pointerEvents = ''
+}
+
 // CEO-mode quick commands — company/dev/build focus.
 const CEO_COMMAND_CHIPS = [
   '오늘 조직 상황 브리핑 해줘',
@@ -355,6 +366,12 @@ export default function JarvisPanel(): JSX.Element | null {
     }, 100)
     return () => window.clearInterval(timer)
   }, [recording])
+
+  // Stabilization safety: clear any stray global pointer-events lock on mount so
+  // the app can never load in an unclickable state.
+  useEffect(() => {
+    clearGlobalPointerLocks()
+  }, [])
 
   const applyResult = (result: Awaited<ReturnType<typeof service.executeCommand>>): void => {
     setState({
@@ -665,23 +682,14 @@ export default function JarvisPanel(): JSX.Element | null {
   }
 
   const toggleWake = (): void => {
-    if (wakeEnabled) {
-      wakeEnabledRef.current = false
-      setWakeEnabled(false)
-      setWakeStatus('standby')
-      voice.stopListening()
-      return
-    }
-    if (!recognitionSupported) {
-      setVoiceNotice('이 환경에서는 호출 대기 모드가 제한됩니다. 누르고 말하기를 사용하세요.')
-      return
-    }
-    setVoiceNotice(null)
-    voice.stopSpeaking()
-    wakeEnabledRef.current = true
-    setWakeEnabled(true)
+    // STABILIZATION: the wake engine is disabled. It never starts background
+    // listening, keeps no global listeners, and shows a safe message. Push-to-talk
+    // remains the supported voice path.
+    wakeEnabledRef.current = false
+    setWakeEnabled(false)
     setWakeStatus('standby')
-    startWakeLoop()
+    voice.stopListening()
+    setVoiceNotice('호출 대기 모드는 안정화 후 다시 활성화됩니다. 현재는 누르고 말하기를 사용하세요.')
   }
 
   // --- Reset / refresh controls (Part I) ---------------------------------------
@@ -690,6 +698,9 @@ export default function JarvisPanel(): JSX.Element | null {
   const resetJarvis = (): void => {
     recorder.stop()
     voice.stopSpeaking()
+    voice.stopListening()
+    wakeEnabledRef.current = false
+    setWakeEnabled(false)
     service.resetCommandState()
     setSession(null)
     setRevealed(0)
@@ -702,6 +713,7 @@ export default function JarvisPanel(): JSX.Element | null {
     setRecording(false)
     setStreamedResponse('')
     setWakeStatus('standby')
+    clearGlobalPointerLocks()
     setState(service.getState())
   }
 
@@ -822,22 +834,12 @@ export default function JarvisPanel(): JSX.Element | null {
   const gpt = state.gpt
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-[#0a1030]/85 via-[#151038]/85 to-[#0a1030]/85 p-4"
-      onClick={(event) => {
-        // Defensive recovery: clicking the backdrop (never bubbled clicks from
-        // the panel itself) closes Jarvis, so the full-screen overlay can always
-        // be dismissed and never leaves the app feeling locked.
-        if (event.target === event.currentTarget) {
-          service.close()
-          setState(service.getState())
-        }
-      }}
-    >
-      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 shadow-2xl shadow-indigo-900/25 ring-1 ring-indigo-500/10">
+    // STABILIZATION: Jarvis is a docked side panel, NOT a full-screen modal.
+    // There is no full-screen backdrop/overlay, so the sidebar and main content
+    // are always clickable while Jarvis is open. Closing unmounts this entirely.
+    <div className="fixed bottom-3 right-3 top-3 z-50 flex w-[min(94vw,640px)]">
+      <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 shadow-2xl shadow-indigo-900/25 ring-1 ring-indigo-500/10">
         <header className="relative flex items-center justify-between overflow-hidden border-b border-slate-800 bg-gradient-to-r from-indigo-50 via-white to-violet-50 px-5 py-4">
-          {/* Soft radial glow behind the AI badge for a premium control-center feel. */}
-          <span className="pointer-events-none absolute -left-10 -top-16 h-40 w-40 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 blur-3xl" />
           <div className="relative flex items-center gap-3">
             <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/40">
               <span className="pointer-events-none absolute inset-0 animate-pulse rounded-2xl bg-white/10" />
