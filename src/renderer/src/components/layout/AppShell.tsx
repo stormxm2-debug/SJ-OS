@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import Router from '../Router'
@@ -9,6 +10,21 @@ import JarvisLauncher from '@renderer/components/jarvis/JarvisLauncher'
  * active view, which is chosen by the in-renderer Router.
  */
 export default function AppShell(): JSX.Element {
+  // Interaction watchdog (long-session stability). A single 5s interval that
+  // guarantees the app can never be left unclickable: if anything ever leaves
+  // global pointer-events disabled on <body>/<html>, it is cleared. Registered
+  // once, cleaned up on unmount — no accumulation, negligible overhead.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (typeof document === 'undefined') return
+      if (document.body.style.pointerEvents === 'none') document.body.style.pointerEvents = ''
+      if (document.documentElement.style.pointerEvents === 'none') {
+        document.documentElement.style.pointerEvents = ''
+      }
+    }, 5000)
+    return () => window.clearInterval(id)
+  }, [])
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gradient-to-br from-[#eef3fb] via-[#f5f8fd] to-[#e9eff9] text-slate-100">
       <Sidebar />

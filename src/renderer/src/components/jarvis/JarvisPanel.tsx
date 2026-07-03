@@ -263,6 +263,8 @@ export default function JarvisPanel(): JSX.Element | null {
   const wakeEnabledRef = useRef(false)
   // Live elapsed recording time (seconds) shown while holding the mic.
   const [recordingElapsed, setRecordingElapsed] = useState(0)
+  // Last time the interaction state was reset (for the stability diagnostics).
+  const [lastReset, setLastReset] = useState<string>('—')
   const gptConfig = jarvisGptBrainService.getConfig()
   const { navigate } = useNavigation()
   const { mode } = useAppMode()
@@ -372,6 +374,40 @@ export default function JarvisPanel(): JSX.Element | null {
   useEffect(() => {
     clearGlobalPointerLocks()
   }, [])
+
+  // Long-session safety timeout guards — auto-reset transient voice/command
+  // states if they ever get stuck, so the UI can never be left permanently in a
+  // loading/recording state. Each is a single per-transition timeout, cleared on
+  // change or unmount (no accumulation).
+  useEffect(() => {
+    if (!recording) return undefined
+    const t = window.setTimeout(() => {
+      recorder.stop()
+      setRecording(false)
+      setVoiceStatus('idle')
+      setVoiceNotice('녹음이 자동으로 종료되었습니다.')
+    }, 13000)
+    return () => window.clearTimeout(t)
+  }, [recording, recorder])
+
+  useEffect(() => {
+    if (!transcribing) return undefined
+    const t = window.setTimeout(() => {
+      setTranscribing(false)
+      setVoiceError('전사 시간이 초과되었습니다. 다시 시도해 주세요.')
+    }, 16000)
+    return () => window.clearTimeout(t)
+  }, [transcribing])
+
+  useEffect(() => {
+    if (state.status !== 'thinking' && state.status !== 'running') return undefined
+    const t = window.setTimeout(() => {
+      // Stuck-execution guard: never leave Jarvis in a permanent loading state.
+      service.resetCommandState()
+      setState(service.getState())
+    }, 20000)
+    return () => window.clearTimeout(t)
+  }, [state.status, service])
 
   const applyResult = (result: Awaited<ReturnType<typeof service.executeCommand>>): void => {
     setState({
@@ -689,7 +725,7 @@ export default function JarvisPanel(): JSX.Element | null {
     setWakeEnabled(false)
     setWakeStatus('standby')
     voice.stopListening()
-    setVoiceNotice('호출 대기 모드는 안정화 후 다시 활성화됩니다. 현재는 누르고 말하기를 사용하세요.')
+    setVoiceNotice('호출 대기 모드는 장시간 안정화 후 다시 활성화됩니다. 현재는 누르고 말하기를 사용하세요.')
   }
 
   // --- Reset / refresh controls (Part I) ---------------------------------------
@@ -714,6 +750,7 @@ export default function JarvisPanel(): JSX.Element | null {
     setStreamedResponse('')
     setWakeStatus('standby')
     clearGlobalPointerLocks()
+    setLastReset(new Date().toLocaleTimeString())
     setState(service.getState())
   }
 
@@ -842,7 +879,6 @@ export default function JarvisPanel(): JSX.Element | null {
         <header className="relative flex items-center justify-between overflow-hidden border-b border-slate-800 bg-gradient-to-r from-indigo-50 via-white to-violet-50 px-5 py-4">
           <div className="relative flex items-center gap-3">
             <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/40">
-              <span className="pointer-events-none absolute inset-0 animate-pulse rounded-2xl bg-white/10" />
               <Bot className="relative h-5 w-5" />
             </div>
             <div>
@@ -910,11 +946,12 @@ export default function JarvisPanel(): JSX.Element | null {
             <button
               type="button"
               onClick={resetJarvis}
-              title="자비스 리셋 · 현재 명령/타임라인/오류 초기화"
-              aria-label="자비스 리셋"
-              className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:border-indigo-500/40 hover:text-indigo-300"
+              title="상태 초기화 · 명령/타임라인/음성/오류/로딩 상태 초기화"
+              aria-label="상태 초기화"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-2 text-[11px] font-medium text-slate-400 transition hover:border-indigo-500/40 hover:text-indigo-300"
             >
               <RotateCcw className="h-4 w-4" />
+              상태 초기화
             </button>
             <button
               type="button"
@@ -987,7 +1024,9 @@ export default function JarvisPanel(): JSX.Element | null {
                 {/* Subtle interaction diagnostic — confirms no command leaves the
                     UI stuck: '실행 중' returns to 아니오 after every command. */}
                 <p className="font-mono text-[10px] text-slate-600">
-                  진단 · 실행 중: {state.status === 'thinking' || state.status === 'running' ? '예' : '아니오'} · 활성 명령: {lastCommand || '—'} · 마지막 오류: {state.lastError ?? '—'}
+                  UI 안정 상태 · 실행 중: {state.status === 'thinking' || state.status === 'running' ? 'true' : 'false'} · 녹음:{' '}
+                  {recording ? 'true' : 'false'} · 전사: {transcribing ? 'true' : 'false'} · 호출대기:{' '}
+                  {wakeEnabled ? 'true' : 'false'} · 마지막 상태 초기화: {lastReset}
                 </p>
               </form>
             </Card>
