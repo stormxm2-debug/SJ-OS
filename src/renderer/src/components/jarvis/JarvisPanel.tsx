@@ -317,8 +317,15 @@ export default function JarvisPanel(): JSX.Element | null {
     if (!trimmed) return
     setDraft('')
     setLastCommand(trimmed)
-    const result = await service.executeCommand(trimmed)
-    applyResult(result)
+    try {
+      const result = await service.executeCommand(trimmed)
+      applyResult(result)
+    } finally {
+      // Defensive recovery: always resync from the authoritative service state so
+      // the panel can never be left stuck showing 'running' after an unexpected
+      // throw. The UI stays clickable and the modal stays dismissible.
+      setState(service.getState())
+    }
   }
 
   // Explicitly route a command to the GPT brain (bypasses the local router).
@@ -327,8 +334,13 @@ export default function JarvisPanel(): JSX.Element | null {
     if (!trimmed) return
     setLastCommand(trimmed)
     setState({ ...service.getState(), status: 'running', mode: 'gpt', response: 'GPT 브레인에 질의하는 중입니다…' })
-    const result = await service.askGpt(trimmed)
-    applyResult(result)
+    try {
+      const result = await service.askGpt(trimmed)
+      applyResult(result)
+    } finally {
+      // Never leave the optimistic 'running' state stuck if askGpt ever throws.
+      setState(service.getState())
+    }
   }
 
   const submitCommand = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -651,6 +663,11 @@ export default function JarvisPanel(): JSX.Element | null {
                   ))}
                 </div>
                 <p className="text-xs text-slate-500">단축키: Ctrl + Space · 로컬 데이터 전용 · 외부 AI/API 없음</p>
+                {/* Subtle interaction diagnostic — confirms no command leaves the
+                    UI stuck: '실행 중' returns to 아니오 after every command. */}
+                <p className="font-mono text-[10px] text-slate-600">
+                  진단 · 실행 중: {state.status === 'thinking' || state.status === 'running' ? '예' : '아니오'} · 활성 명령: {lastCommand || '—'} · 마지막 오류: {state.lastError ?? '—'}
+                </p>
               </form>
             </Card>
 
