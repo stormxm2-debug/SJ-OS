@@ -13,6 +13,31 @@ body,
   margin: 0;
 }
 
+/* ---------------------------------------------------------------------------
+ * Emergency interaction safety (stabilization).
+ * The app root chain must ALWAYS receive pointer events, so nothing (a stray
+ * inline style, a library, or a browser quirk) can leave the app unclickable.
+ * Decorative-only layers explicitly opt out via `pointer-events-none`.
+ * ------------------------------------------------------------------------- */
+html,
+body,
+#root {
+  pointer-events: auto !important;
+}
+
+/* Known decorative Jarvis/AI-core visual layers never capture clicks. */
+.jarvis-orb,
+.jarvis-aura,
+.jarvis-rings,
+.jarvis-particles,
+.jarvis-halo,
+.jarvis-scan,
+.premium-jarvis-bg,
+.ai-core-decoration,
+.wake-indicator-decoration {
+  pointer-events: none !important;
+}
+
 body {
   /* slate-950 / slate-100 now resolve to the bright theme (soft blue-white
      background + dark navy text) via the Tailwind token remap. */

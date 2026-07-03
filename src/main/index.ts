@@ -22,16 +22,28 @@ import type { AiTranscribeRequest } from '@shared/aiGateway'
  */
 
 /**
- * Disable GPU hardware acceleration.
+ * GPU / disk-cache stabilization.
  *
- * On some Windows machines the GPU process fails to create its disk cache
- * ("Gpu Cache Creation failed" / "Unable to create cache"), and Chromium's
- * compositor can then intermittently stop delivering mouse input to the whole
- * window — the app renders but nothing is clickable. Forcing software
- * compositing eliminates that GPU-driven input lock. Must be called before the
- * app is ready.
+ * On this machine Chromium repeatedly fails on its disk cache
+ * ("Unable to move the cache: Access denied (0x5)" / "Gpu Cache Creation
+ * failed"), and its compositor can then intermittently stop delivering mouse
+ * input to the whole window — the app renders but nothing is clickable.
+ *
+ *  - disableHardwareAcceleration(): force software compositing (no GPU input lock).
+ *  - disk-cache-dir → a fresh, writable temp folder so the "Access denied" cache
+ *    migration error stops. This is the DISPOSABLE HTTP/code cache only — it is
+ *    NOT userData, so no business data (localStorage) is touched or lost.
+ *  - disable the GPU shader/program disk caches, which were the failing writes.
+ * All must be set before the app is ready.
  */
 app.disableHardwareAcceleration()
+try {
+  app.commandLine.appendSwitch('disk-cache-dir', join(app.getPath('temp'), 'sj-os-cache'))
+} catch {
+  /* getPath('temp') unavailable this early on some platforms — safe to skip */
+}
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
+app.commandLine.appendSwitch('disable-gpu-program-cache')
 
 const startupService = new CompanyStartupService()
 
