@@ -5,6 +5,11 @@ import type {
   CodingExecResult
 } from '@shared/providers'
 import type { CompanyStartupSnapshot } from '@shared/startup'
+import type {
+  AiGatewayStatus,
+  AiTranscribeRequest,
+  AiTranscribeResult
+} from '@shared/aiGateway'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -38,6 +43,21 @@ const api = {
      */
     open: (key: string): Promise<{ ok: boolean; key?: string; url?: string; error?: string }> =>
       ipcRenderer.invoke('external:open', key)
+  },
+  ai: {
+    /**
+     * Electron Main AI Gateway status (Jarvis desktop mode). Returns only
+     * sanitized readiness flags — never the OpenAI API key. This is the default
+     * local AI transport: no separate proxy server, no localhost:8787.
+     */
+    getStatus: (): Promise<AiGatewayStatus> => ipcRenderer.invoke('sj-ai:status'),
+    /**
+     * Transcribe recorded audio via the main process (OpenAI). Audio bytes are
+     * sent over IPC, transcribed in main, and only the transcript text comes
+     * back. The API key never crosses this bridge in either direction.
+     */
+    transcribeAudio: (request: AiTranscribeRequest): Promise<AiTranscribeResult> =>
+      ipcRenderer.invoke('sj-ai:transcribe', request)
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>

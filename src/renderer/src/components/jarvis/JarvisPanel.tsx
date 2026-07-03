@@ -42,6 +42,8 @@ import type {
 import { AudioRecorder } from '@renderer/services/jarvis/AudioRecorder'
 import { sttProxyClient } from '@renderer/services/jarvis/SttProxyClient'
 import type { SttStatusResult } from '@renderer/services/jarvis/SttProxyClient'
+import { electronAiGateway } from '@renderer/services/jarvis/ElectronAiGateway'
+import type { GatewayStatusResult } from '@renderer/services/jarvis/ElectronAiGateway'
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 import { normalizeCommand } from '@renderer/services/jarvis/normalize'
 import type { JarvisMode, JarvisState, JarvisStatus } from '@renderer/services/jarvis/types'
@@ -139,8 +141,21 @@ const MIC_PERMISSION_LABEL: Record<string, string> = {
   unknown: '알 수 없음'
 }
 
-/** The selectable Jarvis voice engine. */
-type VoiceEngineChoice = 'web-speech' | 'stt-proxy'
+/**
+ * The selectable Jarvis voice engine, in preference order:
+ *  A. 'electron-gateway' — Electron Main AI Gateway (DEFAULT desktop mode).
+ *  B. 'stt-proxy'        — Legacy sj-ai-proxy (optional/advanced fallback).
+ *  C. 'web-speech'       — Browser-local Web Speech (offline fallback).
+ */
+type VoiceEngineChoice = 'electron-gateway' | 'stt-proxy' | 'web-speech'
+
+/** Korean label + tone for the Electron AI Gateway readiness status. */
+const GATEWAY_STATUS_META: Record<string, { label: string; classes: string }> = {
+  'Gateway Ready': { label: 'OpenAI 준비됨', classes: 'text-emerald-300' },
+  'Gateway Disabled': { label: 'OPENAI_ENABLED=false', classes: 'text-amber-300' },
+  'Key Missing': { label: 'API 키 없음 (루트 .env)', classes: 'text-amber-300' },
+  'Gateway Unavailable': { label: '게이트웨이 사용 불가', classes: 'text-rose-300' }
+}
 
 /** Segmented-control tab classes for the voice engine selector. */
 function engineTabClasses(active: boolean): string {
@@ -173,15 +188,19 @@ export default function JarvisPanel(): JSX.Element | null {
   const recognitionSupported = voice.isRecognitionSupported()
   const synthesisSupported = voice.isSynthesisSupported()
 
-  // STT Proxy engine: recorder + backend status + record/transcribe state.
+  // Voice engines: recorder (gateway + proxy) + per-engine status + record state.
   const [recorder] = useState(() => new AudioRecorder(10))
   const recorderSupported = recorder.isSupported()
+  const gatewayAvailable = electronAiGateway.isAvailable()
+  // Default to the Electron Main AI Gateway on desktop; fall back to Web Speech
+  // (or the legacy proxy) only when the gateway bridge is not present.
   const [voiceEngine, setVoiceEngine] = useState<VoiceEngineChoice>(() =>
-    voice.isRecognitionSupported() ? 'web-speech' : 'stt-proxy'
+    gatewayAvailable ? 'electron-gateway' : voice.isRecognitionSupported() ? 'web-speech' : 'stt-proxy'
   )
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const [sttStatus, setSttStatus] = useState<SttStatusResult | null>(null)
+  const [gatewayStatus, setGatewayStatus] = useState<GatewayStatusResult | null>(null)
   const [lastTranscript, setLastTranscript] = useState('')
   const gptConfig = jarvisGptBrainService.getConfig()
   const { navigate } = useNavigation()
@@ -316,6 +335,11 @@ export default function JarvisPanel(): JSX.Element | null {
     void sttProxyClient.forceCheckStatus().then(setSttStatus)
   }
 
+  // Refresh the Electron Main AI Gateway status (main-process readiness).
+  const refreshGatewayStatus = (): void => {
+    void electronAiGateway.checkStatus().then(setGatewayStatus)
+  }
+
   // --- Web Speech engine (browser-local recognition) ---
   const startListening = (): void => {
     setVoiceError(null)
@@ -345,8 +369,10 @@ export default function JarvisPanel(): JSX.Element | null {
     voice.stopListening()
   }
 
-  // --- STT Proxy engine (record → backend transcription) ---
-  const startSttRecording = (): void => {
+  // --- Recording engines (Electron gateway + legacy STT proxy) ---
+  // Both record audio with the same recorder; only the transcription backend
+  // differs (main process vs. legacy proxy), chosen in transcribeAndRoute.
+  const startRecording = (): void => {
     setVoiceError(null)
     setInterimTranscript('')
     voice.stopSpeaking()
@@ -368,17 +394,23 @@ export default function JarvisPanel(): JSX.Element | null {
     })
   }
 
-  const stopSttRecording = (): void => {
+  const stopRecording = (): void => {
     recorder.stop()
   }
 
-  // Send the recorded clip to the backend STT proxy, then route the transcript
-  // through the same local Jarvis router. Never crashes on failure.
+  // Transcribe the recorded clip via the selected backend, then route the
+  // transcript through the SAME local Jarvis router as typed input. Never crashes.
+  //  - 'electron-gateway' → Electron Main process (default desktop path).
+  //  - 'stt-proxy'        → legacy sj-ai-proxy (optional/advanced fallback).
   const transcribeAndRoute = async (blob: Blob): Promise<void> => {
     setTranscribing(true)
-    const result = await sttProxyClient.transcribeAudio(blob)
+    const usingGateway = voiceEngine === 'electron-gateway'
+    const result = usingGateway
+      ? await electronAiGateway.transcribeAudio(blob)
+      : await sttProxyClient.transcribeAudio(blob)
     setTranscribing(false)
-    refreshSttStatus()
+    if (usingGateway) refreshGatewayStatus()
+    else refreshSttStatus()
     if (!result.success) {
       setVoiceError(result.errorMessage ?? 'STT 전사에 실패했습니다. 텍스트 입력을 사용해 주세요.')
       return
@@ -391,16 +423,17 @@ export default function JarvisPanel(): JSX.Element | null {
   }
 
   // The mic button dispatches to the selected engine.
+  const usesRecorder = voiceEngine === 'electron-gateway' || voiceEngine === 'stt-proxy'
   const startVoice = (): void => {
-    if (voiceEngine === 'stt-proxy') startSttRecording()
+    if (usesRecorder) startRecording()
     else startListening()
   }
   const stopVoice = (): void => {
-    if (voiceEngine === 'stt-proxy') stopSttRecording()
+    if (usesRecorder) stopRecording()
     else stopListening()
   }
   const voiceActive = voiceStatus === 'listening' || recording
-  const canStartVoice = voiceEngine === 'stt-proxy' ? recorderSupported : recognitionSupported
+  const canStartVoice = usesRecorder ? recorderSupported : recognitionSupported
 
   const toggleVoiceOutput = (): void => {
     const next = voice.setVoiceOutput(!voiceOutputEnabled)
@@ -424,14 +457,15 @@ export default function JarvisPanel(): JSX.Element | null {
     void voice.refreshMicPermission().then(() => setDiagnostics(voice.getDiagnostics()))
   }, [isOpen, voice, recorder])
 
-  // Probe backend proxy readiness whenever the panel is open (any engine) and
-  // again when the engine changes, so the proxy connection status reflects
-  // reality even in Web Speech mode and refreshes if the proxy started later.
+  // Probe AI readiness whenever the panel is open and when the engine changes.
+  //  - Electron Main AI Gateway is the default desktop path → always checked.
+  //  - Legacy sj-ai-proxy is probed only when its engine is selected, so the app
+  //    no longer depends on a running proxy just to open Voice Mode.
   useEffect(() => {
-    if (isOpen) {
-      void sttProxyClient.checkStatus().then(setSttStatus)
-    }
-  }, [isOpen, voiceEngine])
+    if (!isOpen) return
+    if (gatewayAvailable) void electronAiGateway.checkStatus().then(setGatewayStatus)
+    if (voiceEngine === 'stt-proxy') void sttProxyClient.checkStatus().then(setSttStatus)
+  }, [isOpen, voiceEngine, gatewayAvailable])
 
   const goToTarget = (target: string | null | undefined): void => {
     const view = toView(target)
@@ -572,9 +606,23 @@ export default function JarvisPanel(): JSX.Element | null {
 
             <Card title="Voice mode" icon={<Mic className="h-4 w-4 text-indigo-300" />}>
               <div className="space-y-3">
-                {/* Voice engine selection: Web Speech (local) vs STT Proxy (backend). */}
+                {/* Voice engine selection, in preference order:
+                    Electron AI Gateway (default) → STT Proxy (legacy) → Web Speech. */}
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="inline-flex overflow-hidden rounded-xl border border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!voiceActive) {
+                          setVoiceEngine('electron-gateway')
+                          refreshGatewayStatus()
+                        }
+                      }}
+                      className={engineTabClasses(voiceEngine === 'electron-gateway')}
+                    >
+                      <Cpu className="h-3.5 w-3.5" />
+                      Electron AI Gateway
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -593,15 +641,26 @@ export default function JarvisPanel(): JSX.Element | null {
                           refreshSttStatus()
                         }
                       }}
+                      title="Legacy Proxy / optional deployment path"
                       className={engineTabClasses(voiceEngine === 'stt-proxy')}
                     >
                       <Server className="h-3.5 w-3.5" />
-                      STT Proxy
+                      Legacy Proxy
                     </button>
                   </div>
 
                   {/* Engine status label */}
-                  {voiceEngine === 'web-speech' ? (
+                  {voiceEngine === 'electron-gateway' ? (
+                    gatewayStatus ? (
+                      <span
+                        className={`text-[11px] ${GATEWAY_STATUS_META[gatewayStatus.label]?.classes ?? 'text-slate-400'}`}
+                      >
+                        {GATEWAY_STATUS_META[gatewayStatus.label]?.label ?? gatewayStatus.label}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-500">상태 확인 중…</span>
+                    )
+                  ) : voiceEngine === 'web-speech' ? (
                     <span className={recognitionSupported ? 'text-[11px] text-emerald-300' : 'text-[11px] text-rose-300'}>
                       {recognitionSupported ? 'Web Speech 사용 가능' : 'Web Speech 미지원'}
                     </span>
@@ -624,7 +683,7 @@ export default function JarvisPanel(): JSX.Element | null {
                         className="inline-flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/15 px-3 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/25"
                       >
                         <MicOff className="h-4 w-4" />
-                        {voiceEngine === 'stt-proxy' ? '녹음 중지' : '듣기 중지'}
+                        {usesRecorder ? '녹음 중지' : '듣기 중지'}
                       </button>
                     ) : (
                       <button
@@ -638,14 +697,14 @@ export default function JarvisPanel(): JSX.Element | null {
                             : 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20'
                         ].join(' ')}
                       >
-                        {voiceEngine === 'stt-proxy' ? <AudioLines className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                        {usesRecorder ? <AudioLines className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                         마이크 (눌러서 말하기)
                       </button>
                     )
                   ) : (
                     <span className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2.5 text-sm text-slate-400">
                       <MicOff className="h-4 w-4" />
-                      {voiceEngine === 'stt-proxy' ? '오디오 녹음 미지원' : '음성 인식 미지원'}
+                      {usesRecorder ? '오디오 녹음 미지원' : '음성 인식 미지원'}
                     </span>
                   )}
 
@@ -673,7 +732,7 @@ export default function JarvisPanel(): JSX.Element | null {
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
                       <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-400" />
                     </span>
-                    {voiceEngine === 'stt-proxy'
+                    {usesRecorder
                       ? `녹음 중입니다… (최대 ${recorder.getMaxSeconds()}초 · 눌러서 중지)`
                       : '자비스가 듣고 있습니다…'}
                   </div>
@@ -707,21 +766,83 @@ export default function JarvisPanel(): JSX.Element | null {
                   </div>
                 ) : null}
 
-                {voiceEngine === 'stt-proxy' ? (
+                {voiceEngine === 'electron-gateway' ? (
                   <p className="text-xs text-slate-500">
-                    STT 프록시: 녹음을 백엔드로 전송해 전사합니다. API 키는 백엔드에만 있습니다 · 오디오는 저장되지 않습니다.
+                    Electron AI Gateway: 녹음을 Main Process로 전송해 OpenAI로 전사합니다. API 키는 Main
+                    Process에만 존재 · 별도 프록시 서버 필요 없음 · npm run dev만 필요 · 오디오는 저장되지 않습니다.
+                  </p>
+                ) : voiceEngine === 'stt-proxy' ? (
+                  <p className="text-xs text-slate-500">
+                    Legacy Proxy(선택): 녹음을 sj-ai-proxy로 전송해 전사합니다. API 키는 백엔드에만 있습니다 ·
+                    오디오는 저장되지 않습니다.
                   </p>
                 ) : !recognitionSupported ? (
                   <p className="text-xs text-slate-500">이 환경에서는 음성 인식을 사용할 수 없습니다.</p>
                 ) : null}
 
-                {/* Proxy diagnostics — surfaces exactly why STT/GPT can't connect. */}
+                {/* Electron AI Gateway diagnostics — the default desktop path. */}
+                {voiceEngine === 'electron-gateway' ? (
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
+                        <Cpu className="h-3.5 w-3.5 text-indigo-400" />
+                        Electron AI Gateway
+                      </div>
+                      <button
+                        type="button"
+                        onClick={refreshGatewayStatus}
+                        className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        상태 새로고침
+                      </button>
+                    </div>
+                    {gatewayStatus ? (
+                      <>
+                        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                          <DiagBool label="게이트웨이 사용 가능" value={gatewayStatus.available} />
+                          <DiagBool label="OpenAI 활성화" value={gatewayStatus.enabled} />
+                          <DiagBool label="API 키 설정" value={gatewayStatus.apiKeyConfigured} />
+                          <DiagBool label="준비됨(ready)" value={gatewayStatus.ready} />
+                        </div>
+                        <div className="mt-1.5 grid grid-cols-1 gap-y-1 text-[11px]">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-slate-500">STT 모델</span>
+                            <span className="font-mono text-slate-300">{gatewayStatus.sttModel ?? '—'}</span>
+                          </div>
+                        </div>
+                        {!gatewayStatus.available ? (
+                          <p className="mt-1.5 text-[11px] text-rose-300">
+                            Electron AI Gateway를 사용할 수 없습니다. 데스크톱 앱(npm run dev)에서 실행해 주세요.
+                          </p>
+                        ) : !gatewayStatus.enabled ? (
+                          <p className="mt-1.5 text-[11px] text-amber-300">
+                            OPENAI_ENABLED=false 상태입니다. SJ OS 루트 .env 에서 OPENAI_ENABLED=true 로 설정하세요.
+                          </p>
+                        ) : !gatewayStatus.apiKeyConfigured ? (
+                          <p className="mt-1.5 text-[11px] text-amber-300">
+                            OpenAI API 키가 설정되지 않았습니다. SJ OS 루트 .env 에만 직접 입력하세요.
+                          </p>
+                        ) : (
+                          <p className="mt-1.5 text-[11px] text-emerald-300">
+                            OpenAI 준비됨 — API 키는 Main Process에만 존재 · 별도 프록시 서버 필요 없음 · npm run dev만
+                            필요.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="mt-1.5 text-[11px] text-slate-500">게이트웨이 상태 확인 중…</p>
+                    )}
+                  </div>
+                ) : null}
+
+                {/* Legacy proxy diagnostics — optional/advanced deployment path only. */}
                 {voiceEngine === 'stt-proxy' ? (
                   <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
                         <Server className="h-3.5 w-3.5 text-sky-400" />
-                        Proxy diagnostics
+                        Legacy Proxy diagnostics
                       </div>
                       <button
                         type="button"
@@ -832,9 +953,14 @@ export default function JarvisPanel(): JSX.Element | null {
                   <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-500">
                     <li>· 눌러서 말하기(push-to-talk) 전용 · 상시 청취 없음 · 웨이크워드 없음</li>
                     <li>· 오디오 파일 저장 없음 (메모리에서만 처리)</li>
-                    {voiceEngine === 'stt-proxy' ? (
+                    {voiceEngine === 'electron-gateway' ? (
                       <>
-                        <li>· STT 프록시: 녹음을 백엔드 프록시로만 전송해 전사</li>
+                        <li>· Electron AI Gateway: 녹음을 Main Process로만 전송해 OpenAI로 전사</li>
+                        <li>· OpenAI API 키는 Main Process에만 존재 · 렌더러/프리로드에는 없음</li>
+                      </>
+                    ) : voiceEngine === 'stt-proxy' ? (
+                      <>
+                        <li>· Legacy Proxy: 녹음을 백엔드 프록시로만 전송해 전사</li>
                         <li>· OpenAI API 키는 백엔드에만 존재 · 프론트엔드에는 없음</li>
                       </>
                     ) : (

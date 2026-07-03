@@ -3,7 +3,14 @@ import { join } from 'node:path'
 import { runCoding } from './coding/engine'
 import { CompanyStartupService } from './companyStartupService'
 import { openApprovedExternal } from './externalLinks'
+import { getAiProxyStatus } from './aiProxyStatus'
+import {
+  configureAiGatewayRoots,
+  getAiGatewayStatus,
+  transcribeAudio
+} from './services/ai-gateway'
 import type { CodingExecRequest } from '@shared/providers'
+import type { AiTranscribeRequest } from '@shared/aiGateway'
 
 /**
  * SJ AI Company — Electron main process (Node backend).
@@ -125,6 +132,21 @@ app.whenReady().then(() => {
   // whitelist in externalLinks.ts maps it to a vetted URL. No raw URL, shell
   // execution, or filesystem access is exposed.
   ipcMain.handle('external:open', (_event, key: unknown) => openApprovedExternal(key))
+
+  // AI proxy readiness: probe ONLY the local sj-ai-proxy status endpoint from
+  // the main process (no CORS/origin issues, no API key ever read or returned).
+  // Legacy/optional deployment path — Jarvis desktop mode no longer depends on it.
+  ipcMain.handle('ai-proxy:status', () => getAiProxyStatus())
+
+  // Electron Main AI Gateway (Jarvis desktop mode): the main process IS the local
+  // AI gateway. The OpenAI key lives here only (SJ OS root .env / process.env),
+  // is never returned or logged, and the renderer only ever gets sanitized status
+  // and transcript text. No separate proxy server, no localhost:8787, no CORS.
+  configureAiGatewayRoots([app.getAppPath()])
+  ipcMain.handle('sj-ai:status', () => getAiGatewayStatus())
+  ipcMain.handle('sj-ai:transcribe', (_event, request: AiTranscribeRequest) =>
+    transcribeAudio(request)
+  )
 
   createWindow()
 
