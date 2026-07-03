@@ -91,8 +91,8 @@ function clearGlobalPointerLocks(): void {
   document.documentElement.style.pointerEvents = ''
 }
 
-/** Minimum push-to-talk duration; shorter clips are treated as "too short". */
-const MIN_RECORDING_MS = 800
+/** Minimum recording duration; shorter clips are treated as "too short". */
+const MIN_RECORDING_MS = 1000
 
 // CEO-mode quick commands — company/dev/build focus.
 const CEO_COMMAND_CHIPS = [
@@ -234,7 +234,7 @@ export default function JarvisPanel(): JSX.Element | null {
 
   // Voice engines: recorder (gateway + proxy) + per-engine status + record state.
   // Command mode: short 5s auto-send cap, 10s hard safety cap.
-  const [recorder] = useState(() => new AudioRecorder(8, 12))
+  const [recorder] = useState(() => new AudioRecorder(10, 12))
   const recorderSupported = recorder.isSupported()
   const gatewayAvailable = electronAiGateway.isAvailable()
   // Default to the Electron Main AI Gateway on desktop; fall back to Web Speech
@@ -262,8 +262,12 @@ export default function JarvisPanel(): JSX.Element | null {
   const wakeEnabledRef = useRef(false)
   // Live elapsed recording time (seconds) shown while holding the mic.
   const [recordingElapsed, setRecordingElapsed] = useState(0)
-  // Why the last recording stopped (클릭 종료 / 최대 시간 도달 / 오류 / 너무 짧음).
+  // Why the last recording stopped (사용자가 종료 / 최대 시간 도달 / 오류 / 너무 짧음 / 빈 녹음).
   const [stopReason, setStopReason] = useState<string | null>(null)
+  // Voice pipeline diagnostics so failures can be reported precisely.
+  const [voiceState, setVoiceState] = useState<string>('대기')
+  const [audioChunks, setAudioChunks] = useState(0)
+  const [audioBytes, setAudioBytes] = useState(0)
   // True when the current recording ended by hitting the max duration.
   const maxReachedRef = useRef(false)
   // Last time the interaction state was reset (for the stability diagnostics).
@@ -560,6 +564,9 @@ export default function JarvisPanel(): JSX.Element | null {
     setVoiceTiming(null)
     setRecordingElapsed(0)
     setStopReason(null)
+    setAudioChunks(0)
+    setAudioBytes(0)
+    setVoiceState('마이크 요청 중')
     maxReachedRef.current = false
     voice.stopSpeaking()
     // Release the mic from wake-mode Web Speech while push-to-talk records.
@@ -572,6 +579,7 @@ export default function JarvisPanel(): JSX.Element | null {
       onStart: () => {
         setRecording(true)
         setVoiceStatus('listening')
+        setVoiceState('녹음 중')
       },
       onMaxReached: () => {
         maxReachedRef.current = true
@@ -581,20 +589,30 @@ export default function JarvisPanel(): JSX.Element | null {
         setRecording(false)
         setVoiceStatus('error')
         setStopReason('오류')
+        setVoiceState('오류')
         setVoiceError(message)
       },
-      onStop: (blob, _mime, durationMs) => {
+      onStop: (result) => {
         setRecording(false)
         setVoiceStatus('idle')
-        // Guard against a too-short clip (accidental double-click) — MediaRecorder
-        // may not have collected any audio yet, which would fail transcription.
-        if (!maxReachedRef.current && durationMs < MIN_RECORDING_MS) {
+        setAudioChunks(result.chunkCount)
+        setAudioBytes(result.blobSize)
+        // Too short (accidental double-click) — recording never captured usable audio.
+        if (!maxReachedRef.current && result.durationMs < MIN_RECORDING_MS) {
           setStopReason('너무 짧음')
-          setVoiceNotice('너무 짧게 녹음되었습니다. 다시 말해주세요.')
+          setVoiceState('너무 짧음')
+          setVoiceNotice('녹음 시간이 너무 짧습니다. 다시 시도해주세요.')
           return
         }
-        setStopReason((prev) => (maxReachedRef.current ? '최대 시간 도달' : prev ?? '종료'))
-        void transcribeAndRoute(blob, durationMs)
+        // No/empty audio captured — this is a RECORDING failure (not transcription).
+        if (result.chunkCount === 0 || result.blobSize < 1200) {
+          setStopReason('빈 녹음')
+          setVoiceState('녹음 실패')
+          setVoiceError('음성이 제대로 녹음되지 않았습니다. 다시 시도해주세요.')
+          return
+        }
+        setStopReason(maxReachedRef.current ? '최대 시간 도달' : '사용자가 종료')
+        void transcribeAndRoute(result.blob, result.durationMs)
       }
     })
   }
@@ -613,26 +631,39 @@ export default function JarvisPanel(): JSX.Element | null {
     const usingGateway = voiceEngine === 'electron-gateway'
     setTranscribing(true)
     setVoiceStatus('idle')
+    setVoiceState('전사 중')
     const transcribeStart = performance.now()
     try {
       const result = usingGateway
         ? await electronAiGateway.transcribeAudio(blob)
         : await sttProxyClient.transcribeAudio(blob)
       const transcriptionMs = performance.now() - transcribeStart
+      setVoiceTiming({
+        recordingMs: Math.round(recordingMs),
+        transcriptionMs: Math.round(transcriptionMs),
+        routingMs: 0,
+        totalMs: Math.round(recordingMs + transcriptionMs)
+      })
       if (!result.success) {
-        // A failure may mean the gateway lost its key / became disabled — force a
-        // fresh status probe (bypassing the cache) so the badge reflects reality.
+        // The RECORDING succeeded (we had valid audio) — this is a TRANSCRIPTION
+        // failure (e.g. missing/disabled OpenAI key, quota). Say so explicitly so
+        // it is not mistaken for a broken mic.
         if (usingGateway) void electronAiGateway.forceCheckStatus().then(setGatewayStatus)
         else refreshSttStatus()
-        setVoiceError(result.errorMessage ?? 'STT 전사에 실패했습니다. 텍스트 입력을 사용해 주세요.')
+        setVoiceState('전사 실패')
+        setVoiceError(
+          `녹음은 성공했지만 전사(STT)에 실패했습니다: ${result.errorMessage ?? result.errorCode ?? '알 수 없는 오류'}`
+        )
         return
       }
       if (!result.transcript) {
-        setVoiceError('음성에서 명령을 인식하지 못했습니다. 다시 시도해 주세요.')
+        setVoiceState('전사 실패')
+        setVoiceError('녹음은 성공했지만 음성에서 명령을 인식하지 못했습니다. 다시 시도해 주세요.')
         return
       }
       // Show the transcript immediately, then route it through the same router.
       setLastTranscript(result.transcript)
+      setVoiceState('완료')
       const routeStart = performance.now()
       await handleVoiceTranscript(result.transcript)
       const routingMs = performance.now() - routeStart
@@ -642,6 +673,9 @@ export default function JarvisPanel(): JSX.Element | null {
         routingMs: Math.round(routingMs),
         totalMs: Math.round(recordingMs + transcriptionMs + routingMs)
       })
+    } catch {
+      setVoiceState('전사 실패')
+      setVoiceError('전사 중 오류가 발생했습니다. 다시 시도해 주세요.')
     } finally {
       // Always clear the transcribing state so the mic + UI stay usable.
       setTranscribing(false)
@@ -672,7 +706,7 @@ export default function JarvisPanel(): JSX.Element | null {
   const handleMicClick = (): void => {
     if (!usesRecorder) return
     if (recording) {
-      setStopReason('클릭 종료')
+      setVoiceState('녹음 정리 중')
       stopVoice()
       return
     }
@@ -757,6 +791,10 @@ export default function JarvisPanel(): JSX.Element | null {
     setRecording(false)
     setStreamedResponse('')
     setWakeStatus('standby')
+    setStopReason(null)
+    setVoiceState('대기')
+    setAudioChunks(0)
+    setAudioBytes(0)
     clearGlobalPointerLocks()
     setLastReset(new Date().toLocaleTimeString())
     setState(service.getState())
@@ -1309,13 +1347,22 @@ export default function JarvisPanel(): JSX.Element | null {
                   </p>
                 ) : null}
 
-                {stopReason ? (
-                  <p className="font-mono text-[10px] text-slate-500">
-                    마이크 안정화 빌드 · 정지 사유: {stopReason} · 녹음 {recordingElapsed.toFixed(1)}초
-                  </p>
-                ) : (
-                  <p className="font-mono text-[10px] text-slate-600">마이크 안정화 빌드 · 클릭하면 녹음 시작 / 다시 클릭하면 종료 · 최대 8초</p>
-                )}
+                {/* Voice pipeline diagnostics — report these if voice still fails. */}
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 font-mono text-[10px] leading-5 text-slate-500">
+                  <div className="mb-0.5 font-sans text-[10px] font-semibold text-slate-400">
+                    음성 파이프라인 진단 빌드
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3">
+                    <span>상태: {voiceState}</span>
+                    <span>정지 사유: {stopReason ?? '—'}</span>
+                    <span>녹음 시간: {recordingElapsed.toFixed(1)}초</span>
+                    <span>전사 시간: {voiceTiming ? (voiceTiming.transcriptionMs / 1000).toFixed(1) + '초' : '—'}</span>
+                    <span>오디오 청크: {audioChunks}개</span>
+                    <span>오디오 크기: {(audioBytes / 1024).toFixed(1)}KB</span>
+                  </div>
+                  <div className="mt-0.5 truncate text-slate-600">마지막 오류: {voiceError ?? '—'}</div>
+                  <div className="mt-0.5 text-slate-600">클릭하면 녹음 시작 / 다시 클릭하면 종료 · 최대 {recorder.getMaxSeconds()}초</div>
+                </div>
 
                 {interimTranscript ? (
                   <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">
