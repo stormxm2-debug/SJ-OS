@@ -11,8 +11,15 @@ export type ClaudeCodeJobStatus =
   | 'ready'
   | 'copied'
   | 'exported'
+  | 'approval-required'
+  | 'approved'
+  | 'command-generated'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
   | 'queued'
   | 'blocked'
+  | 'cancelled'
   | 'completed'
 
 /** Safety assessment of a prompt before copy/export. */
@@ -39,6 +46,16 @@ export interface ClaudeCodeJob {
   updatedAt: string
   lastCopiedAt?: string
   lastExportedAt?: string
+  approvedAt?: string
+  approvedBy?: string
+  runnerCommand?: string
+  runStartedAt?: string
+  runFinishedAt?: string
+  exitCode?: number
+  stdoutPreview?: string
+  stderrPreview?: string
+  logLines: string[]
+  safetyBlockReasons: string[]
   safetyChecks: ClaudeCodeSafetyChecks
   notes?: string
 }

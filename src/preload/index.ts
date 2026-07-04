@@ -10,7 +10,12 @@ import type {
   AiTranscribeRequest,
   AiTranscribeResult
 } from '@shared/aiGateway'
-import type { ClaudeExportRequest, ClaudeExportResult } from '@shared/claudeCode'
+import type {
+  ClaudeExportRequest,
+  ClaudeExportResult,
+  ClaudeRunRequest,
+  ClaudeRunResult
+} from '@shared/claudeCode'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -68,7 +73,17 @@ const api = {
      * any shell command. Returns the written file path only.
      */
     exportPrompt: (request: ClaudeExportRequest): Promise<ClaudeExportResult> =>
-      ipcRenderer.invoke('sj-claude:export-prompt', request)
+      ipcRenderer.invoke('sj-claude:export-prompt', request),
+    /**
+     * Run an APPROVED Claude Code job. The main process validates approval,
+     * workspace, prompt-file location, and dangerous commands. Actual execution
+     * is currently disabled (returns a disabled result) — no shell command runs.
+     */
+    runApprovedJob: (request: ClaudeRunRequest): Promise<ClaudeRunResult> =>
+      ipcRenderer.invoke('sj-claude:run-approved', request),
+    /** Open the exported-prompts folder in the OS file explorer. */
+    openPromptsFolder: (): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke('sj-claude:open-prompts-folder')
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>

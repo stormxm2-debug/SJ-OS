@@ -5,6 +5,7 @@ import { CompanyStartupService } from './companyStartupService'
 import { openApprovedExternal } from './externalLinks'
 import { getAiProxyStatus } from './aiProxyStatus'
 import { exportClaudePrompt } from './claudeExport'
+import { openPromptsFolder, runApprovedJob } from './claudeRunner'
 import {
   configureAiGatewayRoots,
   getAiGatewayStatus,
@@ -12,7 +13,7 @@ import {
 } from './services/ai-gateway'
 import type { CodingExecRequest } from '@shared/providers'
 import type { AiTranscribeRequest } from '@shared/aiGateway'
-import type { ClaudeExportRequest } from '@shared/claudeCode'
+import type { ClaudeExportRequest, ClaudeRunRequest } from '@shared/claudeCode'
 
 /**
  * SJ AI Company — Electron main process (Node backend).
@@ -178,6 +179,12 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude:export-prompt', (_event, request: ClaudeExportRequest) =>
     exportClaudePrompt(request)
   )
+  // Claude Code Runner: approval-gated + validated. Currently refuses to execute
+  // (returns disabled) — no shell command is run.
+  ipcMain.handle('sj-claude:run-approved', (_event, request: ClaudeRunRequest) =>
+    runApprovedJob(request)
+  )
+  ipcMain.handle('sj-claude:open-prompts-folder', () => openPromptsFolder())
 
   createWindow()
 

@@ -69,3 +69,31 @@ export function scanPromptText(text: string): PromptSafetyScan {
     matchedEnv
   }
 }
+
+// --- Runner (approval → command → optional controlled launch) ---------------
+
+/** Renderer → main: request to run an APPROVED Claude Code job. */
+export interface ClaudeRunRequest {
+  /** Workspace the job targets (validated: must be the allowed root). */
+  workspacePath: string
+  /** Absolute path of the exported prompt file (validated: inside prompts dir). */
+  promptFilePath: string
+  /** The prompt text (re-scanned in main as defense-in-depth). */
+  promptText: string
+  /** Must be true — the main process refuses unapproved jobs. */
+  approved: boolean
+}
+
+/** Main → renderer: result of a run request. Never throws across IPC. */
+export interface ClaudeRunResult {
+  /** True when a Claude Code process was actually started. */
+  started: boolean
+  /** True when the request was blocked by a safety check. */
+  blocked: boolean
+  /** True when the runner is validated-but-not-yet-enabled (safe default). */
+  disabled: boolean
+  /** Reasons the run was blocked (empty when allowed). */
+  blockReasons: string[]
+  /** Korean, UI-ready status message. */
+  message: string
+}

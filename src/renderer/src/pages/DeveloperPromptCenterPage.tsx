@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import ClaudeCodeBridgePanel from '@renderer/components/claude-code/ClaudeCodeBridgePanel'
+import ClaudeCodeRunnerPanel from '@renderer/components/claude-code/ClaudeCodeRunnerPanel'
 import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import type {
@@ -171,6 +172,9 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
 
       {/* Claude Code Bridge — prepare prompts for delivery to Claude Code */}
       <ClaudeCodeBridgePanel />
+
+      {/* Claude Code Runner — approval → command → (disabled) launch + logs */}
+      <ClaudeCodeRunnerPanel />
     </div>
   )
 }
