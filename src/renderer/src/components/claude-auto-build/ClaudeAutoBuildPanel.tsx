@@ -110,9 +110,11 @@ function JobCard({ job, onRun, onCancel }: { job: ClaudeAutoBuildJob; onRun: () 
           <Chip tone="rose" icon={<ShieldAlert className="h-3 w-3" />}>작업 폴더 불가</Chip>
         )}
         {job.safetyResult.promptSafe ? (
-          <Chip tone="emerald" icon={<ShieldCheck className="h-3 w-3" />}>안전 검사 통과</Chip>
+          <Chip tone="emerald" icon={<ShieldCheck className="h-3 w-3" />}>
+            {job.safetyResult.allowedSafetyMentions.length > 0 ? '금지 명령 안전 규칙 확인됨' : '안전 검사 통과'}
+          </Chip>
         ) : (
-          <Chip tone="rose" icon={<ShieldAlert className="h-3 w-3" />}>차단됨</Chip>
+          <Chip tone="rose" icon={<ShieldAlert className="h-3 w-3" />}>위험 명령 실행 지시 감지</Chip>
         )}
       </div>
       {blocked && job.safetyResult.blockedReason ? (

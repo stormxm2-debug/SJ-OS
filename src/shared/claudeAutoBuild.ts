@@ -29,9 +29,19 @@ export type VerificationStatus = 'pending' | 'running' | 'passed' | 'failed' | '
 
 export interface SafetyResult {
   workspaceAllowed: boolean
+  /** True when the prompt is safe to run (no execution-intent danger, no secrets). */
   promptSafe: boolean
+  /** True when execution is blocked (unsafe prompt or disallowed workspace). */
+  blocked: boolean
+  /** Dangerous commands that appear as EXECUTION instructions → block. */
   dangerousPatterns: string[]
+  /** Dangerous commands that appear ONLY inside forbidden/safety lists → allowed. */
+  allowedSafetyMentions: string[]
+  /** Real secret-value matches → block. */
   secretPatterns: string[]
+  /** All blocking reasons (empty when allowed). */
+  blockedReasons: string[]
+  /** Convenience: blockedReasons joined for one-line display. */
   blockedReason?: string
 }
 
@@ -77,26 +87,116 @@ export interface AutoBuildJobUpdate {
 }
 
 /**
- * Actual secret-VALUE patterns (e.g. `sk-abc123…`). We deliberately do NOT block
- * on the bare words `.env` / `OPENAI_API_KEY`, because our own prompts mention
- * them in "do not touch" safety rules. Only real-looking secret values block.
+ * Actual secret-VALUE patterns. We deliberately do NOT block on the bare words
+ * `.env` / `OPENAI_API_KEY`, because prompts mention them in "do not touch" rules.
+ * Only real key values or `API_KEY = <token>` assignments block.
  */
-const SECRET_VALUE_PATTERNS = [/sk-[A-Za-z0-9-]{16,}/, /sk-ant-[A-Za-z0-9-]{16,}/]
+const SECRET_VALUE_PATTERNS = [
+  /sk-ant-[A-Za-z0-9_-]{16,}/,
+  /sk-[A-Za-z0-9_-]{16,}/,
+  /(?:OPENAI|ANTHROPIC)_API_KEY\s*[=:]\s*['"]?[A-Za-z0-9_-]{12,}/i
+]
 
-/** Scan a generated prompt for destructive commands and real secret values. */
+/**
+ * Markers that put a line (and the list under it) into "forbidden / safety" context.
+ * A dangerous command in such context is a RULE, not an execution instruction.
+ */
+const FORBIDDEN_CONTEXT_MARKERS = [
+  'never use',
+  'do not use',
+  "don't use",
+  'do not run',
+  'must not',
+  'forbidden',
+  'hard rules',
+  'safety rules',
+  'safety constraints',
+  '금지',
+  '사용 금지',
+  '절대',
+  '말 것',
+  '하지 마',
+  '하지 말',
+  '사용하지',
+  '안전 규칙',
+  '안전 제약',
+  '금지사항',
+  '금지 명령'
+]
+
+function hasForbiddenMarker(line: string): boolean {
+  const l = line.toLowerCase()
+  return FORBIDDEN_CONTEXT_MARKERS.some((m) => l.includes(m.toLowerCase()))
+}
+
+/** A list item or an indented continuation line (keeps the current section context). */
+function isListOrIndented(rawLine: string): boolean {
+  if (/^\s/.test(rawLine)) return true
+  const t = rawLine.trim()
+  return /^[-*•]/.test(t) || /^\d+[.)]/.test(t)
+}
+
+/**
+ * Context-aware safety scan.
+ *
+ * A dangerous command is treated as a real execution instruction (BLOCK) unless
+ * it appears inside a forbidden/safety section such as:
+ *   "Never use:", "Do not use …", "Hard rules:", "금지 명령:", "절대 사용 금지" …
+ * In that case it is only a rule (ALLOW), recorded in `allowedSafetyMentions`.
+ *
+ * Examples:
+ *   ALLOW  "Never use:\n- git reset --hard\n- rm -rf"
+ *   ALLOW  "Hard rules:\nDo not use git reset --hard."
+ *   ALLOW  "파괴적 명령을 절대 사용하지 말 것: git reset --hard, rm -rf"
+ *   BLOCK  "Run git reset --hard."
+ *   BLOCK  "Execute rm -rf."
+ *   BLOCK  "Use git push --force to fix the branch."
+ *   ALLOW  "Do not expose OPENAI_API_KEY."
+ *   BLOCK  "OPENAI_API_KEY=sk-liveKeyValue0123456789"
+ */
 export function scanAutoBuildPrompt(promptText: string, workspaceAllowed: boolean): SafetyResult {
-  const dangerousPatterns = DANGEROUS_COMMAND_PATTERNS.filter((p) => promptText.includes(p))
-  const secretPatterns = SECRET_VALUE_PATTERNS.filter((re) => re.test(promptText)).map((re) => re.source)
+  const lines = (promptText ?? '').split(/\r?\n/)
+  const dangerousExec = new Set<string>()
+  const safetyMentions = new Set<string>()
+  let inForbidden = false
+
+  for (const raw of lines) {
+    const marker = hasForbiddenMarker(raw)
+    const trimmed = raw.trim()
+    // Update section context BEFORE classifying this line's commands.
+    if (marker) inForbidden = true
+    else if (trimmed === '') inForbidden = false
+    else if (!isListOrIndented(raw)) inForbidden = false
+    // (list items / indented lines inherit the current context)
+
+    for (const pat of DANGEROUS_COMMAND_PATTERNS) {
+      if (raw.includes(pat)) {
+        if (inForbidden || marker) safetyMentions.add(pat)
+        else dangerousExec.add(pat)
+      }
+    }
+  }
+
+  const dangerousPatterns = [...dangerousExec]
+  // A command that is executed somewhere is never merely an "allowed mention".
+  const allowedSafetyMentions = [...safetyMentions].filter((p) => !dangerousExec.has(p))
+  const secretPatterns = SECRET_VALUE_PATTERNS.filter((re) => re.test(promptText ?? '')).map((re) => re.source)
+
   const promptSafe = dangerousPatterns.length === 0 && secretPatterns.length === 0
-  const reasons: string[] = []
-  if (!workspaceAllowed) reasons.push('허용된 작업 폴더가 아닙니다.')
-  if (dangerousPatterns.length > 0) reasons.push(`위험 명령 감지: ${dangerousPatterns.join(', ')}`)
-  if (secretPatterns.length > 0) reasons.push('민감 정보(비밀 키 값)로 보이는 문자열이 포함되어 있습니다.')
+  const blockedReasons: string[] = []
+  if (!workspaceAllowed) blockedReasons.push('허용된 작업 폴더가 아닙니다.')
+  if (dangerousPatterns.length > 0)
+    blockedReasons.push(`위험 명령 실행 지시 감지: ${dangerousPatterns.join(', ')}`)
+  if (secretPatterns.length > 0) blockedReasons.push('민감 정보(비밀 키 값)로 보이는 문자열이 포함되어 있습니다.')
+
   return {
     workspaceAllowed,
     promptSafe,
+    blocked: !promptSafe || !workspaceAllowed,
     dangerousPatterns,
+    allowedSafetyMentions,
     secretPatterns,
-    blockedReason: reasons.length > 0 ? reasons.join(' / ') : undefined
+    blockedReasons,
+    blockedReason: blockedReasons.length > 0 ? blockedReasons.join(' / ') : undefined
   }
 }

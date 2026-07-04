@@ -1187,11 +1187,12 @@ export default function JarvisPanel(): JSX.Element | null {
                     </span>
                     {devSafety?.promptSafe ? (
                       <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                        <ShieldCheck className="h-3 w-3" /> 안전 검사 통과
+                        <ShieldCheck className="h-3 w-3" />{' '}
+                        {devSafety.allowedSafetyMentions.length > 0 ? '금지 명령 안전 규칙 확인됨' : '안전 검사 통과 · 실행 차단 없음'}
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
-                        <ShieldAlert className="h-3 w-3" /> 위험 감지 · 차단됨
+                        <ShieldAlert className="h-3 w-3" /> 위험 명령 실행 지시 감지
                       </span>
                     )}
                   </div>
