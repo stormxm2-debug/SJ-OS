@@ -22,13 +22,16 @@ import { scanAutoBuildPrompt } from '@shared/claudeAutoBuild'
  *  - Verification runs only the fixed commands: npm run typecheck / npm run build
  *    / git status --short. No commit / push is ever run by the runner.
  *
- * PERMISSION MODE: by default no `--permission-mode` flag is passed, so Claude
- * Code runs in its safe default (it will not autonomously edit without
- * permission). To enable autonomous edits, set PERMISSION_MODE_ARGS — see
- * docs/JARVIS_CLAUDE_AUTO_BUILDER.md.
+ * PERMISSION MODE: Claude Code is launched with `--permission-mode` so it can
+ * implement the task autonomously inside the (whitelisted) workspace. The value
+ * is a single constant below. If the installed Claude Code rejects the value the
+ * process exits non-zero and the job is marked failed with the error shown.
+ *   Valid Claude Code values: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'.
+ *   This sprint activates execution with 'acceptEdits' (auto-accepts file edits so
+ *   the project is actually modified) — change here to adjust.
  */
 
-const PERMISSION_MODE_ARGS: string[] = [] // e.g. ['--permission-mode', 'acceptEdits']
+const CLAUDE_PERMISSION_MODE = 'acceptEdits'
 
 const AUTO_BUILD_SUBDIR = join('.sj-os', 'claude-auto-build')
 const MAX_LOG_LINES = 300
@@ -177,11 +180,10 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
   const job = jobs.get(jobId)
   if (!job) return
 
-  const promptArgs = ['-p', 'Read the development task from stdin and implement it safely.']
-  const args =
-    command === 'claude'
-      ? [...promptArgs, ...PERMISSION_MODE_ARGS]
-      : ['@anthropic-ai/claude-code', ...promptArgs, ...PERMISSION_MODE_ARGS]
+  // Headless (`-p`) mode; the prompt is delivered via stdin (never as an arg).
+  // Fixed args only — nothing here comes from the renderer.
+  const runArgs = ['-p', '--permission-mode', CLAUDE_PERMISSION_MODE]
+  const args = command === 'claude' ? runArgs : ['@anthropic-ai/claude-code', ...runArgs]
 
   log(jobId, `$ ${command} ${args.join(' ')}`)
 
@@ -218,7 +220,22 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
     procs.delete(jobId)
     const cur = jobs.get(jobId)
     if (!cur || cur.status === 'cancelled') return
-    touch(cur, { exitCode: code ?? -1, logLines: [...cur.logLines, `Claude Code 종료 · exit ${code}`] })
+    const exit = code ?? -1
+    // Non-zero exit ⇒ Claude Code failed; skip verification and surface stderr.
+    if (exit !== 0) {
+      touch(cur, {
+        status: 'failed',
+        exitCode: exit,
+        finishedAt: nowIso(),
+        logLines: [
+          ...cur.logLines,
+          `Claude Code 실패 · exit ${exit}`,
+          cur.stderrPreview ? `stderr:\n${cur.stderrPreview.slice(-1200)}` : ''
+        ].filter((l) => l.length > 0)
+      })
+      return
+    }
+    touch(cur, { exitCode: exit, logLines: [...cur.logLines, `Claude Code 완료 · exit ${exit}`] })
     void runVerification(jobId)
   })
 }

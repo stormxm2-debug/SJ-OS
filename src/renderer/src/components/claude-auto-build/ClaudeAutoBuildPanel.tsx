@@ -30,7 +30,7 @@ export default function ClaudeAutoBuildPanel(): JSX.Element {
       icon={<Bot className="h-4 w-4 text-indigo-300" />}
       action={
         <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
-          자비스 → Claude 자동개발 MVP
+          Claude Code 실제 실행 안전 빌드
         </span>
       }
     >

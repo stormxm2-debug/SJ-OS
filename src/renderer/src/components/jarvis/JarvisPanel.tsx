@@ -1249,6 +1249,17 @@ export default function JarvisPanel(): JSX.Element | null {
                         ? '다시 시도'
                         : 'Claude Code 실행'}
                     </button>
+                    {lastAutoBuildJob &&
+                    (lastAutoBuildJob.status === 'running' || lastAutoBuildJob.status === 'verifying') ? (
+                      <button
+                        type="button"
+                        onClick={() => void autoBuild.cancelJob(lastAutoBuildJob.id)}
+                        className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-300 transition hover:bg-rose-500/20"
+                      >
+                        <XCircle className="h-3 w-3" />
+                        작업 중지
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => navigate({ name: 'devprompt' })}
