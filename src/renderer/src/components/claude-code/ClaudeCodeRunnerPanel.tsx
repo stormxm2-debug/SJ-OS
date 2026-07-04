@@ -21,9 +21,10 @@ import {
   copyPromptToClipboard,
   exportClaudePrompt,
   isClaudeBridgeAvailable,
-  openPromptsFolder,
-  runApprovedJob
+  openPromptsFolder
 } from '@renderer/services/claude-code/claudeCodeBridge'
+import { useClaudeAutoBuild } from '@renderer/services/claude-auto-build/useClaudeAutoBuild'
+import type { ClaudeAutoBuildStatus, VerificationStatus } from '@shared/claudeAutoBuild'
 
 /**
  * Claude Code Runner — approval → command generation → optional (currently
@@ -35,16 +36,20 @@ import {
 export default function ClaudeCodeRunnerPanel(): JSX.Element {
   const snapshot = useDeveloperPrompt()
   const bridgeAvailable = isClaudeBridgeAvailable()
+  const autoBuild = useClaudeAutoBuild()
   const packets = snapshot.packets.filter((p) => p.promptText.trim().length > 0)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [approved, setApproved] = useState(false)
   const [promptFilePath, setPromptFilePath] = useState<string | null>(null)
   const [command, setCommand] = useState<string | null>(null)
-  const [runStatus, setRunStatus] = useState<'대기 중' | '실행 중' | '완료' | '실패' | '차단됨' | '비활성'>('대기 중')
+  const [runJobId, setRunJobId] = useState<string | null>(null)
   const [logs, setLogs] = useState<string[]>([])
   const [copied, setCopied] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // The real auto-build job this approval launched (live status/logs/verification).
+  const runJob = runJobId ? autoBuild.jobs.find((j) => j.id === runJobId) ?? null : null
 
   const selected = packets.find((p) => p.id === selectedId) ?? null
   const safety = useMemo(
@@ -59,7 +64,7 @@ export default function ClaudeCodeRunnerPanel(): JSX.Element {
     setApproved(false)
     setPromptFilePath(null)
     setCommand(null)
-    setRunStatus('대기 중')
+    setRunJobId(null)
     setLogs([])
   }
 
@@ -76,7 +81,6 @@ export default function ClaudeCodeRunnerPanel(): JSX.Element {
   const approve = async (): Promise<void> => {
     if (!selected || !safety) return
     if (safety.containsDangerousCommand) {
-      setRunStatus('차단됨')
       appendLog('차단됨: 위험 명령 또는 민감 정보가 포함되어 실행이 차단되었습니다.')
       return
     }
@@ -103,27 +107,34 @@ export default function ClaudeCodeRunnerPanel(): JSX.Element {
   }
 
   const run = async (): Promise<void> => {
-    if (!selected || !approved || !promptFilePath) return
-    setBusy(true)
-    setRunStatus('실행 중')
-    appendLog('Claude Code 실행 요청…')
-    const result = await runApprovedJob({
-      workspacePath: ALLOWED_WORKSPACE,
-      promptFilePath,
-      promptText: selected.promptText,
-      approved: true
-    })
-    if (result.blocked) {
-      setRunStatus('차단됨')
-      appendLog(`차단됨: ${result.message}`)
-      result.blockReasons.forEach((r) => appendLog(` · ${r}`))
-    } else if (result.disabled) {
-      setRunStatus('비활성')
-      appendLog(result.message)
-    } else if (result.started) {
-      setRunStatus('실행 중')
-      appendLog('실행이 시작되었습니다.')
+    if (!selected || !approved) return
+    if (!autoBuild.envReady) {
+      appendLog('Claude Code 실행 환경을 먼저 확인해주세요. (Claude Code 실행 환경 패널)')
+      return
     }
+    setBusy(true)
+    appendLog('Claude Code 실행 시작…')
+    // Create + run a REAL auto-build job on the approved prompt. Electron Main
+    // spawns Claude Code, streams logs, and runs verification. The renderer only
+    // sends the prompt + job id — never a shell command.
+    const job = await autoBuild.createJobFromPrompt({
+      title: selected.title,
+      prompt: selected.promptText,
+      command: selected.title
+    })
+    if (!job) {
+      appendLog('작업 생성에 실패했습니다.')
+      setBusy(false)
+      return
+    }
+    setRunJobId(job.id)
+    if (job.status === 'blocked') {
+      appendLog(`차단됨: ${job.safetyResult.blockedReason ?? '안전 검사 실패'}`)
+      setBusy(false)
+      return
+    }
+    await autoBuild.runJob(job.id)
+    appendLog('Electron Main에서 Claude Code 실행을 시작했습니다. 아래 실행 로그를 확인하세요.')
     setBusy(false)
   }
 
@@ -139,8 +150,9 @@ export default function ClaudeCodeRunnerPanel(): JSX.Element {
         }
       >
         <p className="mb-3 text-xs text-slate-500">
-          작업을 선택하고 안전 검사를 확인한 뒤 승인하면 실행 명령이 생성됩니다. 렌더러는 셸을 실행하지
-          않으며, 실제 실행은 Electron Main에서 검증 후에만 수행됩니다(현재는 비활성).
+          작업을 선택하고 안전 검사를 확인한 뒤 승인하면 실행 명령이 생성됩니다. “Claude Code 실행”을 누르면
+          Electron Main에서 실제로 Claude Code가 실행되고, 실행 후 typecheck / build / git status 검증이 수행됩니다.
+          렌더러는 셸 명령을 실행하지 않습니다.
         </p>
 
         {/* Job selection */}
@@ -235,25 +247,58 @@ export default function ClaudeCodeRunnerPanel(): JSX.Element {
             <MiniBtn tone="slate" icon={<FolderOpen className="h-3 w-3" />} label="폴더 열기"
               disabled={!bridgeAvailable}
               onClick={() => void openPromptsFolder()} />
-            <MiniBtn tone="emerald" icon={<Play className="h-3 w-3" />} label={busy ? '요청 중…' : 'Claude Code 실행'}
-              disabled={!bridgeAvailable || busy || !approved}
+            <MiniBtn tone="emerald" icon={<Play className="h-3 w-3" />} label={busy ? '실행 중…' : 'Claude Code 실행'}
+              disabled={!bridgeAvailable || busy || !approved || !autoBuild.envReady}
               onClick={() => void run()} />
           </div>
-          <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-slate-800 bg-slate-950/40 px-2.5 py-1.5 text-[11px] text-slate-500">
-            <Lock className="mt-0.5 h-3 w-3 shrink-0" />
-            자동 실행은 다음 안정화 단계에서 활성화됩니다. 지금 “Claude Code 실행”은 검증만 수행하고 비활성 상태를 반환합니다.
-          </div>
+          {!autoBuild.envReady ? (
+            <div className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-200">
+              <Lock className="mt-0.5 h-3 w-3 shrink-0" />
+              {autoBuild.diagnostics?.selectedRunner === 'unavailable'
+                ? 'Claude Code CLI를 찾을 수 없습니다. Claude Code 설치 또는 npx 실행 환경을 확인해주세요.'
+                : 'Claude Code 실행 환경을 먼저 확인해주세요. (위 “Claude Code 실행 환경” 패널)'}
+            </div>
+          ) : null}
         </Card>
       ) : null}
 
-      {/* Run logs */}
+      {/* Run logs (live from the real auto-build job) */}
       <Card
         title="실행 로그"
         icon={<ScrollText className="h-4 w-4 text-indigo-300" />}
-        action={<span className={['rounded-full border px-2 py-0.5 text-[10px] font-semibold', RUN_TONE[runStatus]].join(' ')}>{runStatus}</span>}
+        action={
+          <span className={['rounded-full border px-2 py-0.5 text-[10px] font-semibold', RUN_TONE[runJob ? AUTO_STATUS_LABEL[runJob.status] : '대기 중'] ?? RUN_TONE['대기 중']].join(' ')}>
+            {runJob ? AUTO_STATUS_LABEL[runJob.status] : '대기 중'}
+          </span>
+        }
       >
-        {logs.length === 0 ? (
-          <p className="py-3 text-center text-xs text-slate-500">아직 로그가 없습니다. 작업을 승인하면 여기에 표시됩니다.</p>
+        {runJob ? (
+          <>
+            <pre className="max-h-56 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-[10px] leading-5 text-slate-400">
+              {runJob.logLines.slice(-200).join('\n') || '(로그 없음)'}
+            </pre>
+            {runJob.status !== 'ready' && runJob.status !== 'blocked' ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Chip tone={verifyTone(runJob.verification.typecheckStatus)} icon={null}>
+                  typecheck: {runJob.verification.typecheckStatus}
+                </Chip>
+                <Chip tone={verifyTone(runJob.verification.buildStatus)} icon={null}>
+                  build: {runJob.verification.buildStatus}
+                </Chip>
+                {typeof runJob.exitCode === 'number' ? <Chip tone="slate" icon={null}>exit {runJob.exitCode}</Chip> : null}
+              </div>
+            ) : null}
+            {runJob.verification.gitStatusShort ? (
+              <div className="mt-2">
+                <div className="mb-1 text-[11px] font-semibold text-slate-500">git status --short</div>
+                <pre className="max-h-28 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70 p-2 font-mono text-[10px] text-slate-400">
+                  {runJob.verification.gitStatusShort}
+                </pre>
+              </div>
+            ) : null}
+          </>
+        ) : logs.length === 0 ? (
+          <p className="py-3 text-center text-xs text-slate-500">아직 로그가 없습니다. 작업을 승인하고 실행하면 여기에 표시됩니다.</p>
         ) : (
           <pre className="max-h-52 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-[10px] leading-5 text-slate-400">
             {logs.join('\n')}
@@ -268,11 +313,36 @@ export default function ClaudeCodeRunnerPanel(): JSX.Element {
 
 const RUN_TONE: Record<string, string> = {
   '대기 중': 'border-slate-700 bg-slate-800/60 text-slate-400',
+  '실행 준비': 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300',
   '실행 중': 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300',
+  '검증 중': 'border-amber-500/30 bg-amber-500/10 text-amber-300',
   완료: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
   실패: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
   차단됨: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
-  비활성: 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+  '검토 필요': 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+  취소됨: 'border-slate-700 bg-slate-800/60 text-slate-400'
+}
+
+/** Auto-build job status → Korean label used in the log card. */
+const AUTO_STATUS_LABEL: Record<ClaudeAutoBuildStatus, string> = {
+  draft: '대기 중',
+  'prompt-generated': '대기 중',
+  'safety-checking': '검증 중',
+  blocked: '차단됨',
+  ready: '실행 준비',
+  running: '실행 중',
+  verifying: '검증 중',
+  succeeded: '완료',
+  failed: '실패',
+  cancelled: '취소됨',
+  'needs-review': '검토 필요'
+}
+
+function verifyTone(status: VerificationStatus): Tone {
+  if (status === 'passed') return 'emerald'
+  if (status === 'failed') return 'rose'
+  if (status === 'running') return 'amber'
+  return 'slate'
 }
 
 type Tone = 'indigo' | 'emerald' | 'slate' | 'amber' | 'rose'

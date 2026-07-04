@@ -37,6 +37,12 @@ export interface UseClaudeAutoBuild {
   checking: boolean
   envReady: boolean
   createFromCommand: (command: string, source?: ClaudeAutoBuildSource) => Promise<ClaudeAutoBuildJob | null>
+  createJobFromPrompt: (args: {
+    title: string
+    prompt: string
+    command?: string
+    source?: ClaudeAutoBuildSource
+  }) => Promise<ClaudeAutoBuildJob | null>
   runJob: (id: string) => Promise<void>
   cancelJob: (id: string) => Promise<void>
   checkEnvironment: () => Promise<void>
@@ -89,6 +95,26 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
     []
   )
 
+  const createJobFromPrompt = useCallback(
+    async (args: {
+      title: string
+      prompt: string
+      command?: string
+      source?: ClaudeAutoBuildSource
+    }): Promise<ClaudeAutoBuildJob | null> => {
+      const bridge = api()
+      if (!bridge) return null
+      return bridge.createJob({
+        title: args.title,
+        source: args.source ?? 'developer-prompt-center',
+        originalUserCommand: args.command ?? args.title,
+        generatedPrompt: args.prompt,
+        workspacePath: ALLOWED_WORKSPACE
+      })
+    },
+    []
+  )
+
   const runJob = useCallback(async (id: string): Promise<void> => {
     await api()?.runJob(id)
   }, [])
@@ -115,6 +141,7 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
     checking,
     envReady: diagnostics?.canRun === true,
     createFromCommand,
+    createJobFromPrompt,
     runJob,
     cancelJob,
     checkEnvironment,

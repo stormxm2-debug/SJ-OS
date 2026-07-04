@@ -391,7 +391,7 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
     child.stdin?.write(job.generatedPrompt)
     child.stdin?.end()
   } catch {
-    /* stdin may already be closed on immediate failure */
+    log(jobId, '프롬프트 전달 중 오류가 발생했습니다.')
   }
 
   child.stdout?.on('data', (data: Buffer) => appendStream(jobId, data.toString(), 'stdout'))
@@ -424,7 +424,7 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
 function handleSpawnError(jobId: string, command: 'claude' | 'npx'): void {
   if (command === 'claude') {
     // Fall back to npx once.
-    log(jobId, 'claude 명령을 찾지 못해 npx @anthropic-ai/claude-code 로 재시도합니다…')
+    log(jobId, 'claude 명령을 찾을 수 없습니다. npx @anthropic-ai/claude-code 로 재시도합니다…')
     spawnClaude(jobId, 'npx')
     return
   }
@@ -435,7 +435,8 @@ function handleSpawnError(jobId: string, command: 'claude' | 'npx'): void {
     finishedAt: nowIso(),
     logLines: [
       ...job.logLines,
-      'Claude Code CLI를 찾을 수 없습니다. claude 명령 또는 npx @anthropic-ai/claude-code 실행 환경을 확인해주세요.'
+      'npx로 Claude Code를 실행하지 못했습니다.',
+      'Claude Code 실행 환경을 찾지 못했습니다. Claude Code 설치 또는 npx 실행 환경을 확인해주세요.'
     ]
   })
 }
