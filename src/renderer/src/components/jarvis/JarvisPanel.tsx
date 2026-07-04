@@ -64,7 +64,11 @@ import type {
 import JarvisAiCore, { type AiCoreStatus } from './JarvisAiCore'
 import JarvisCommandTimeline from './JarvisCommandTimeline'
 import { useClaudeAutoBuild } from '@renderer/services/claude-auto-build/useClaudeAutoBuild'
-import { isDevelopmentCommand } from '@renderer/services/claude-auto-build/promptGenerator'
+import {
+  isDevelopmentCommand,
+  generateAutoBuildPrompt
+} from '@renderer/services/claude-auto-build/promptGenerator'
+import { scanAutoBuildPrompt } from '@shared/claudeAutoBuild'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { useAppMode } from '@renderer/navigation/AppModeContext'
 import type { View } from '@renderer/navigation/types'
@@ -284,9 +288,29 @@ export default function JarvisPanel(): JSX.Element | null {
   const autoBuild = useClaudeAutoBuild()
   const [autoRunDev, setAutoRunDev] = useState(false)
   const [lastAutoBuildJobId, setLastAutoBuildJobId] = useState<string | null>(null)
+  // Optimistic preview shown the instant a dev command is entered — the card never
+  // silently fails to appear even before the async job is created.
+  const [devPreview, setDevPreview] = useState<{ command: string; prompt: string } | null>(null)
+  const [showDevPrompt, setShowDevPrompt] = useState(false)
   const lastAutoBuildJob = lastAutoBuildJobId
     ? autoBuild.jobs.find((j) => j.id === lastAutoBuildJobId) ?? null
     : null
+  // Renderer-side safety preview (workspace is always the SJ-OS project here).
+  const devSafety = devPreview ? scanAutoBuildPrompt(devPreview.prompt, true) : null
+  const autoBuildStatusLabel = (status: string): string =>
+    ({
+      draft: '초안',
+      'prompt-generated': '프롬프트 생성',
+      'safety-checking': '안전 검사 중',
+      blocked: '차단됨',
+      ready: '실행 대기',
+      running: '실행 중',
+      verifying: '검증 중',
+      succeeded: '완료',
+      failed: '실패',
+      cancelled: '취소됨',
+      'needs-review': '검토 필요'
+    })[status] ?? status
 
   // Persistent GPT status badge: Ready / Disabled / Proxy Error / Local Only.
   const gptStatus = ((): { label: string; classes: string } => {
@@ -474,13 +498,18 @@ export default function JarvisPanel(): JSX.Element | null {
 
     // Development commands additionally create a Claude Code auto-build job (the
     // existing router still runs, so navigation/utility commands are unaffected).
-    if (autoBuild.available && isDevelopmentCommand(trimmed)) {
-      void autoBuild.createFromCommand(trimmed, 'jarvis').then((job) => {
-        if (!job) return
-        setLastAutoBuildJobId(job.id)
-        // Auto Mode: run immediately only when ON and the job passed safety.
-        if (autoRunDev && job.status === 'ready') void autoBuild.runJob(job.id)
-      })
+    // The preview is set synchronously so the job card appears immediately.
+    if (isDevelopmentCommand(trimmed)) {
+      setDevPreview({ command: trimmed, prompt: generateAutoBuildPrompt(trimmed) })
+      setLastAutoBuildJobId(null)
+      if (autoBuild.available) {
+        void autoBuild.createFromCommand(trimmed, 'jarvis').then((job) => {
+          if (!job) return
+          setLastAutoBuildJobId(job.id)
+          // Auto Mode: run immediately only when ON and the job passed safety.
+          if (autoRunDev && job.status === 'ready') void autoBuild.runJob(job.id)
+        })
+      }
     }
 
     // Optimistic UI: show "명령 수신 완료" + timeline instantly, before any
@@ -818,6 +847,9 @@ export default function JarvisPanel(): JSX.Element | null {
     setVoiceState('대기')
     setAudioChunks(0)
     setAudioBytes(0)
+    setDevPreview(null)
+    setShowDevPrompt(false)
+    setLastAutoBuildJobId(null)
     clearGlobalPointerLocks()
     setLastReset(new Date().toLocaleTimeString())
     setState(service.getState())
@@ -1123,47 +1155,115 @@ export default function JarvisPanel(): JSX.Element | null {
                   개발 명령 자동 실행: {autoRunDev ? 'ON' : 'OFF'}
                 </button>
               </div>
-              {!autoBuild.available ? (
-                <p className="mt-2 text-[11px] text-amber-300">자동 개발 실행은 데스크톱 앱에서만 가능합니다.</p>
-              ) : null}
-              {lastAutoBuildJob ? (
+
+              {devPreview ? (
                 <div className="mt-3 rounded-xl border border-slate-800 bg-white p-3 shadow-sm">
+                  {/* Title + status */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-100">Claude 자동 개발 작업을 생성했습니다.</div>
-                      <div className="mt-0.5 truncate text-[11px] text-slate-500">{lastAutoBuildJob.title}</div>
+                      <div className="text-sm font-semibold text-slate-100">Claude 자동 개발 작업을 생성했습니다.</div>
+                      <div className="mt-0.5 truncate text-[11px] text-slate-500">
+                        {(lastAutoBuildJob?.title ?? devPreview.command)}
+                      </div>
                     </div>
                     <span className="shrink-0 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-300">
-                      {lastAutoBuildJob.status}
+                      {lastAutoBuildJob
+                        ? autoBuildStatusLabel(lastAutoBuildJob.status)
+                        : autoBuild.available
+                          ? '작업 생성 중'
+                          : '실행 대기'}
                     </span>
                   </div>
-                  {lastAutoBuildJob.status === 'blocked' && lastAutoBuildJob.safetyResult.blockedReason ? (
+
+                  {/* 3. Original command */}
+                  <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/40 px-2.5 py-1.5 text-[11px] text-slate-400">
+                    <span className="text-slate-500">명령:</span> {devPreview.command}
+                  </div>
+
+                  {/* 5. Safety scan result */}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                      <ShieldCheck className="h-3 w-3" /> 작업 폴더 허용
+                    </span>
+                    {devSafety?.promptSafe ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                        <ShieldCheck className="h-3 w-3" /> 안전 검사 통과
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
+                        <ShieldAlert className="h-3 w-3" /> 위험 감지 · 차단됨
+                      </span>
+                    )}
+                  </div>
+                  {devSafety && !devSafety.promptSafe && devSafety.blockedReason ? (
                     <div className="mt-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-200">
-                      {lastAutoBuildJob.safetyResult.blockedReason}
+                      {devSafety.blockedReason}
                     </div>
                   ) : null}
-                  <div className="mt-2 flex flex-wrap gap-2">
+
+                  {/* 4. Generated prompt preview (expandable) */}
+                  <div className="mt-2">
                     <button
                       type="button"
-                      onClick={() => void autoBuild.runJob(lastAutoBuildJob.id)}
-                      disabled={!(lastAutoBuildJob.status === 'ready' || lastAutoBuildJob.status === 'failed' || lastAutoBuildJob.status === 'needs-review')}
+                      onClick={() => setShowDevPrompt((s) => !s)}
+                      className="text-[11px] font-medium text-indigo-300 hover:text-indigo-200"
+                    >
+                      {showDevPrompt ? '프롬프트 미리보기 숨기기' : '생성된 Claude Code 프롬프트 미리보기'}
+                    </button>
+                    {showDevPrompt ? (
+                      <pre className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70 p-2 font-mono text-[10px] leading-5 text-slate-400">
+                        {devPreview.prompt}
+                      </pre>
+                    ) : (
+                      <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">
+                        {devPreview.prompt.slice(0, 160)}…
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 7 + 8. Actions */}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => lastAutoBuildJob && void autoBuild.runJob(lastAutoBuildJob.id)}
+                      disabled={
+                        !lastAutoBuildJob ||
+                        !(
+                          lastAutoBuildJob.status === 'ready' ||
+                          lastAutoBuildJob.status === 'failed' ||
+                          lastAutoBuildJob.status === 'needs-review'
+                        )
+                      }
                       className={[
                         'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition',
-                        lastAutoBuildJob.status === 'ready' || lastAutoBuildJob.status === 'failed' || lastAutoBuildJob.status === 'needs-review'
+                        lastAutoBuildJob &&
+                        (lastAutoBuildJob.status === 'ready' ||
+                          lastAutoBuildJob.status === 'failed' ||
+                          lastAutoBuildJob.status === 'needs-review')
                           ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
                           : 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
                       ].join(' ')}
                     >
-                      Claude Code 실행
+                      <Hammer className="h-3 w-3" />
+                      {lastAutoBuildJob && (lastAutoBuildJob.status === 'failed' || lastAutoBuildJob.status === 'needs-review')
+                        ? '다시 시도'
+                        : 'Claude Code 실행'}
                     </button>
                     <button
                       type="button"
                       onClick={() => navigate({ name: 'devprompt' })}
                       className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-slate-700/60"
                     >
+                      <History className="h-3 w-3" />
                       로그 보기
                     </button>
                   </div>
+
+                  {!autoBuild.available ? (
+                    <p className="mt-2 text-[11px] text-amber-300">
+                      실행은 데스크톱 앱(npm run dev)에서만 가능합니다. 프롬프트는 위에서 미리 볼 수 있습니다.
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
             </Card>
