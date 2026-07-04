@@ -16,6 +16,11 @@ import type {
   ClaudeRunRequest,
   ClaudeRunResult
 } from '@shared/claudeCode'
+import type {
+  AutoBuildJobUpdate,
+  ClaudeAutoBuildJob,
+  CreateAutoBuildJobRequest
+} from '@shared/claudeAutoBuild'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -84,6 +89,27 @@ const api = {
     /** Open the exported-prompts folder in the OS file explorer. */
     openPromptsFolder: (): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('sj-claude:open-prompts-folder')
+  },
+  claudeBuild: {
+    /**
+     * Jarvis → Claude Code Auto Builder. The renderer sends a validated prompt +
+     * job id only — never a shell command. The main process spawns Claude Code,
+     * streams logs, and runs fixed verification commands.
+     */
+    createJob: (request: CreateAutoBuildJobRequest): Promise<ClaudeAutoBuildJob> =>
+      ipcRenderer.invoke('sj-claude-build:create', request),
+    runJob: (id: string): Promise<ClaudeAutoBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-build:run', id),
+    cancelJob: (id: string): Promise<ClaudeAutoBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-build:cancel', id),
+    getJob: (id: string): Promise<ClaudeAutoBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-build:get', id),
+    listJobs: (): Promise<ClaudeAutoBuildJob[]> => ipcRenderer.invoke('sj-claude-build:list'),
+    onJobUpdate: (callback: (update: AutoBuildJobUpdate) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, payload: AutoBuildJobUpdate): void => callback(payload)
+      ipcRenderer.on('sj-claude-build:job-update', handler)
+      return () => ipcRenderer.removeListener('sj-claude-build:job-update', handler)
+    }
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>

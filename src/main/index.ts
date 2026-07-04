@@ -7,6 +7,14 @@ import { getAiProxyStatus } from './aiProxyStatus'
 import { exportClaudePrompt } from './claudeExport'
 import { openPromptsFolder, runApprovedJob } from './claudeRunner'
 import {
+  cancelAutoBuildJob,
+  createAutoBuildJob,
+  getAutoBuildJob,
+  listAutoBuildJobs,
+  runAutoBuildJob,
+  setAutoBuildEmitter
+} from './claudeAutoBuild'
+import {
   configureAiGatewayRoots,
   getAiGatewayStatus,
   transcribeAudio
@@ -14,6 +22,7 @@ import {
 import type { CodingExecRequest } from '@shared/providers'
 import type { AiTranscribeRequest } from '@shared/aiGateway'
 import type { ClaudeExportRequest, ClaudeRunRequest } from '@shared/claudeCode'
+import type { CreateAutoBuildJobRequest } from '@shared/claudeAutoBuild'
 
 /**
  * SJ AI Company — Electron main process (Node backend).
@@ -185,6 +194,20 @@ app.whenReady().then(() => {
     runApprovedJob(request)
   )
   ipcMain.handle('sj-claude:open-prompts-folder', () => openPromptsFolder())
+
+  // Jarvis → Claude Code Auto Builder. Main-only execution; the renderer only
+  // sends a validated prompt + job id, never a shell command. Job updates are
+  // broadcast to all windows.
+  setAutoBuildEmitter((job) => {
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('sj-claude-build:job-update', { job }))
+  })
+  ipcMain.handle('sj-claude-build:create', (_e, request: CreateAutoBuildJobRequest) =>
+    createAutoBuildJob(request)
+  )
+  ipcMain.handle('sj-claude-build:run', (_e, id: string) => runAutoBuildJob(id))
+  ipcMain.handle('sj-claude-build:cancel', (_e, id: string) => cancelAutoBuildJob(id))
+  ipcMain.handle('sj-claude-build:get', (_e, id: string) => getAutoBuildJob(id))
+  ipcMain.handle('sj-claude-build:list', () => listAutoBuildJobs())
 
   createWindow()
 

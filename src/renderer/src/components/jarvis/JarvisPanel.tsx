@@ -63,6 +63,8 @@ import type {
 } from '@renderer/services/jarvis/types'
 import JarvisAiCore, { type AiCoreStatus } from './JarvisAiCore'
 import JarvisCommandTimeline from './JarvisCommandTimeline'
+import { useClaudeAutoBuild } from '@renderer/services/claude-auto-build/useClaudeAutoBuild'
+import { isDevelopmentCommand } from '@renderer/services/claude-auto-build/promptGenerator'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { useAppMode } from '@renderer/navigation/AppModeContext'
 import type { View } from '@renderer/navigation/types'
@@ -277,6 +279,15 @@ export default function JarvisPanel(): JSX.Element | null {
   const { mode } = useAppMode()
   const commandChips = mode === 'staff' ? STAFF_COMMAND_CHIPS : CEO_COMMAND_CHIPS
 
+  // Jarvis → Claude Code Auto Builder. Dev commands create an auto-build job.
+  // Auto mode (default OFF) auto-runs a safe job right after creation.
+  const autoBuild = useClaudeAutoBuild()
+  const [autoRunDev, setAutoRunDev] = useState(false)
+  const [lastAutoBuildJobId, setLastAutoBuildJobId] = useState<string | null>(null)
+  const lastAutoBuildJob = lastAutoBuildJobId
+    ? autoBuild.jobs.find((j) => j.id === lastAutoBuildJobId) ?? null
+    : null
+
   // Persistent GPT status badge: Ready / Disabled / Proxy Error / Local Only.
   const gptStatus = ((): { label: string; classes: string } => {
     if (!gptConfig.enabled) {
@@ -460,6 +471,18 @@ export default function JarvisPanel(): JSX.Element | null {
     if (!trimmed) return
     setDraft('')
     setLastCommand(trimmed)
+
+    // Development commands additionally create a Claude Code auto-build job (the
+    // existing router still runs, so navigation/utility commands are unaffected).
+    if (autoBuild.available && isDevelopmentCommand(trimmed)) {
+      void autoBuild.createFromCommand(trimmed, 'jarvis').then((job) => {
+        if (!job) return
+        setLastAutoBuildJobId(job.id)
+        // Auto Mode: run immediately only when ON and the job passed safety.
+        if (autoRunDev && job.status === 'ready') void autoBuild.runJob(job.id)
+      })
+    }
+
     // Optimistic UI: show "명령 수신 완료" + timeline instantly, before any
     // processing runs, so Jarvis feels immediate even if later steps take time.
     setSession(startSession(trimmed, new Date().toISOString()))
@@ -1078,6 +1101,71 @@ export default function JarvisPanel(): JSX.Element | null {
                   {wakeEnabled ? 'true' : 'false'} · 마지막 상태 초기화: {lastReset}
                 </p>
               </form>
+            </Card>
+
+            {/* Jarvis → Claude 자동개발: dev commands create a Claude Code job. */}
+            <Card title="Claude 자동 개발" icon={<Bot className="h-4 w-4 text-indigo-300" />}
+              action={<span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">자비스 → Claude 자동개발 MVP</span>}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-slate-500">
+                  개발 명령(예: “직원 출퇴근 기능 만들어줘”)을 입력하면 Claude Code 작업을 자동 생성합니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAutoRunDev((v) => !v)}
+                  className={[
+                    'shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition',
+                    autoRunDev
+                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                      : 'border-slate-700 bg-slate-800/50 text-slate-400'
+                  ].join(' ')}
+                >
+                  개발 명령 자동 실행: {autoRunDev ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              {!autoBuild.available ? (
+                <p className="mt-2 text-[11px] text-amber-300">자동 개발 실행은 데스크톱 앱에서만 가능합니다.</p>
+              ) : null}
+              {lastAutoBuildJob ? (
+                <div className="mt-3 rounded-xl border border-slate-800 bg-white p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-100">Claude 자동 개발 작업을 생성했습니다.</div>
+                      <div className="mt-0.5 truncate text-[11px] text-slate-500">{lastAutoBuildJob.title}</div>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-300">
+                      {lastAutoBuildJob.status}
+                    </span>
+                  </div>
+                  {lastAutoBuildJob.status === 'blocked' && lastAutoBuildJob.safetyResult.blockedReason ? (
+                    <div className="mt-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-200">
+                      {lastAutoBuildJob.safetyResult.blockedReason}
+                    </div>
+                  ) : null}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void autoBuild.runJob(lastAutoBuildJob.id)}
+                      disabled={!(lastAutoBuildJob.status === 'ready' || lastAutoBuildJob.status === 'failed' || lastAutoBuildJob.status === 'needs-review')}
+                      className={[
+                        'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition',
+                        lastAutoBuildJob.status === 'ready' || lastAutoBuildJob.status === 'failed' || lastAutoBuildJob.status === 'needs-review'
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                          : 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
+                      ].join(' ')}
+                    >
+                      Claude Code 실행
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate({ name: 'devprompt' })}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-slate-700/60"
+                    >
+                      로그 보기
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </Card>
 
             {/* AI Core + command execution timeline (fast UX). Placed directly
