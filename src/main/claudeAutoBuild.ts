@@ -45,8 +45,22 @@ function isWin(): boolean {
 }
 /** npm-installed CLIs are `.cmd` shims on Windows; native exes (node/git) are not. */
 const WIN_CMD_SHIMS = new Set(['npm', 'npx', 'claude', 'yarn', 'pnpm'])
-function bin(base: string): string {
-  return isWin() && WIN_CMD_SHIMS.has(base) ? `${base}.cmd` : base
+
+/**
+ * Spawn a CLI safely across platforms.
+ *
+ * On Windows, npm/npx/claude are `.cmd` shims. Node 20.12+/24 refuse to spawn a
+ * `.cmd` directly without `shell:true` (throws EINVAL), so we launch them via
+ * `cmd.exe /d /s /c <tool> <args…>` — an ARGS ARRAY, never a shell string, and no
+ * `shell:true` (avoids the arg-escaping deprecation). cmd.exe resolves the `.cmd`
+ * via PATHEXT. Native exes (node/git) and non-Windows spawn directly. Nothing here
+ * comes from the renderer — the tool and args are always fixed by the caller.
+ */
+function spawnTool(tool: string, args: string[], opts: Parameters<typeof spawn>[2]): ChildProcess {
+  if (isWin() && WIN_CMD_SHIMS.has(tool)) {
+    return spawn('cmd.exe', ['/d', '/s', '/c', tool, ...args], opts)
+  }
+  return spawn(tool, args, opts)
 }
 
 let emitJobUpdate: (job: ClaudeAutoBuildJob) => void = () => {}
@@ -101,7 +115,7 @@ function runCheck(command: string, args: string[], timeoutMs = 10000): Promise<C
     let timedOut = false
     let child: ChildProcess
     try {
-      child = spawn(command, args, { cwd: allowedRoot(), windowsHide: true })
+      child = spawnTool(command, args, { cwd: allowedRoot(), windowsHide: true })
     } catch {
       resolveP({ ok: false, code: -1, out: '', err: 'spawn 실패', timedOut: false })
       return
@@ -129,21 +143,38 @@ function runCheck(command: string, args: string[], timeoutMs = 10000): Promise<C
   })
 }
 
+/** Resolve a command's full path via `where.exe` (Windows) — first match only. */
+async function resolveWhere(name: string): Promise<string | undefined> {
+  if (!isWin()) return undefined
+  const res = await runCheck('where.exe', [name], 8000)
+  if (!res.ok) return undefined
+  const first = res.out
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)[0]
+  return first
+}
+
 /** Run the fixed environment checks and decide whether Claude Code can launch. */
 export async function checkRunnerEnvironment(): Promise<ClaudeRunnerDiagnostics> {
   const workspacePath = allowedRoot()
   const workspaceAllowed = sameWorkspace(workspacePath, ALLOWED_WORKSPACE_MAIN)
 
-  const [node, npm, npx, claude] = await Promise.all([
+  // Version checks (via cmd.exe for .cmd shims — see spawnTool) + path resolution.
+  const [node, npm, npx, claude, nodePath, npmPath, npxPath, claudePath] = await Promise.all([
     runCheck('node', ['--version']),
-    runCheck(bin('npm'), ['--version']),
-    runCheck(bin('npx'), ['--version']),
-    runCheck(bin('claude'), ['--version'])
+    runCheck('npm', ['--version']),
+    runCheck('npx', ['--version']),
+    runCheck('claude', ['--version']),
+    resolveWhere('node'),
+    resolveWhere('npm'),
+    resolveWhere('npx'),
+    resolveWhere('claude')
   ])
   // `--no-install` so npx only reports an already-available package (no download).
   const npxClaude = claude.ok
     ? { ok: false, code: -1, out: '', err: '', timedOut: false }
-    : await runCheck(bin('npx'), ['--no-install', '@anthropic-ai/claude-code', '--version'], 20000)
+    : await runCheck('npx', ['--no-install', '@anthropic-ai/claude-code', '--version'], 20000)
 
   const claudeCommandAvailable = claude.ok
   const npxClaudeCodeAvailable = npxClaude.ok
@@ -157,8 +188,12 @@ export async function checkRunnerEnvironment(): Promise<ClaudeRunnerDiagnostics>
   const warnings: string[] = []
   if (!workspaceAllowed) errorMessages.push('작업 폴더 불일치 · 허용된 SJ-OS 폴더가 아닙니다.')
   if (!node.ok) warnings.push('Node를 확인하지 못했습니다.')
-  if (!npm.ok) warnings.push('npm을 확인하지 못했습니다.')
-  if (!npx.ok) warnings.push('npx를 확인하지 못했습니다.')
+  if (!npm.ok || !npx.ok)
+    warnings.push('Windows 명령 확인 실패: npm.cmd / npx.cmd 경로를 찾지 못했습니다.')
+  if (!claudeCommandAvailable && npx.ok && !npxClaudeCodeAvailable)
+    errorMessages.push('npx는 확인됐지만 @anthropic-ai/claude-code 실행에 실패했습니다.')
+  if (!claudeCommandAvailable && npxClaudeCodeAvailable)
+    warnings.push('claude 전역 명령은 없지만 npx Claude Code 실행이 가능합니다.')
   if (selectedRunner === 'unavailable')
     errorMessages.push('Claude Code CLI를 찾을 수 없습니다. Claude Code 설치 또는 npx 실행 환경을 확인해주세요.')
 
@@ -176,6 +211,12 @@ export async function checkRunnerEnvironment(): Promise<ClaudeRunnerDiagnostics>
     selectedRunner,
     claudeVersion: claude.ok ? claude.out.trim().slice(0, 60) : undefined,
     npxVersion: npx.ok ? npx.out.trim().slice(0, 60) : undefined,
+    nodeVersion: node.ok ? node.out.trim().slice(0, 60) : undefined,
+    npmVersion: npm.ok ? npm.out.trim().slice(0, 60) : undefined,
+    nodePath,
+    npmPath,
+    npxPath,
+    claudePath,
     errorMessages,
     warnings,
     canRun
@@ -189,7 +230,7 @@ export async function checkRunnerEnvironment(): Promise<ClaudeRunnerDiagnostics>
 export function smokeTestRunner(): Promise<ClaudeSmokeTestResult> {
   return new Promise((resolveP) => {
     void (async () => {
-      const claude = await runCheck(bin('claude'), ['--version'])
+      const claude = await runCheck('claude', ['--version'])
       const runner: SelectedRunner = claude.ok ? 'claude' : 'npx'
       const prompt = 'Reply with exactly: SJ_OS_CLAUDE_RUNNER_OK. Do not modify files.'
       const args = runner === 'claude' ? ['-p'] : ['@anthropic-ai/claude-code', '-p']
@@ -200,7 +241,7 @@ export function smokeTestRunner(): Promise<ClaudeSmokeTestResult> {
       let timedOut = false
       let child: ChildProcess
       try {
-        child = spawn(bin(runner === 'claude' ? 'claude' : 'npx'), args, {
+        child = spawnTool(runner === 'claude' ? 'claude' : 'npx', args, {
           cwd: allowedRoot(),
           windowsHide: true
         })
@@ -370,7 +411,7 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
 
   let child: ChildProcess
   try {
-    child = spawn(bin(command), args, { cwd: allowedRoot(), windowsHide: true })
+    child = spawnTool(command, args, { cwd: allowedRoot(), windowsHide: true })
   } catch {
     handleSpawnError(jobId, command)
     return
@@ -459,7 +500,7 @@ function runFixed(cwd: string, command: string, args: string[]): Promise<{ code:
     let out = ''
     let child: ChildProcess
     try {
-      child = spawn(bin(command), args, { cwd, windowsHide: true })
+      child = spawnTool(command, args, { cwd, windowsHide: true })
     } catch {
       resolveP({ code: -1, out: `${command} 실행 실패` })
       return

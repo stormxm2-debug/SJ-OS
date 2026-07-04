@@ -82,10 +82,10 @@ export default function ClaudeRunnerDiagnosticsPanel(): JSX.Element {
                 <span className="font-mono text-[11px]">{diagnostics.workspacePath}</span>
                 <Flag ok={diagnostics.workspaceAllowed} okText="허용됨" badText="불일치" />
               </Row>
-              <Row label="Node"><Flag ok={diagnostics.nodeAvailable} /></Row>
-              <Row label="npm"><Flag ok={diagnostics.npmAvailable} /></Row>
-              <Row label="npx"><Flag ok={diagnostics.npxAvailable} /></Row>
-              <Row label="claude CLI"><Flag ok={diagnostics.claudeCommandAvailable} /></Row>
+              <ToolRow label="Node" ok={diagnostics.nodeAvailable} version={diagnostics.nodeVersion} path={diagnostics.nodePath} />
+              <ToolRow label="npm" ok={diagnostics.npmAvailable} version={diagnostics.npmVersion} path={diagnostics.npmPath} />
+              <ToolRow label="npx" ok={diagnostics.npxAvailable} version={diagnostics.npxVersion} path={diagnostics.npxPath} />
+              <ToolRow label="claude CLI" ok={diagnostics.claudeCommandAvailable} version={diagnostics.claudeVersion} path={diagnostics.claudePath} />
               <Row label="npx Claude Code"><Flag ok={diagnostics.npxClaudeCodeAvailable} /></Row>
               <Row label="선택된 실행 방식"><span className="font-medium text-slate-200">{runnerLabel}</span></Row>
               <Row label="실행 가능 여부">
@@ -128,6 +128,22 @@ function Row({ label, children }: { label: string; children: ReactNode }): JSX.E
     <div className="flex items-center justify-between gap-3">
       <span className="shrink-0 text-slate-500">{label}</span>
       <span className="flex min-w-0 items-center gap-2 text-right">{children}</span>
+    </div>
+  )
+}
+
+/** A tool row showing 확인됨/실패 + 버전 + resolved 경로. */
+function ToolRow({ label, ok, version, path }: { label: string; ok: boolean; version?: string; path?: string }): JSX.Element {
+  return (
+    <div className="border-b border-slate-100 pb-1 last:border-0">
+      <div className="flex items-center justify-between gap-3">
+        <span className="shrink-0 text-slate-500">{label}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {version ? <span className="font-mono text-[10px] text-slate-400">버전 {version}</span> : null}
+          <Flag ok={ok} okText="확인됨" badText="실패" />
+        </span>
+      </div>
+      {path ? <div className="truncate text-right font-mono text-[10px] text-slate-500">경로: {path}</div> : null}
     </div>
   )
 }

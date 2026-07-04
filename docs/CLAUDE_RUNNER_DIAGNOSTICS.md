@@ -14,9 +14,20 @@ The renderer calls two safe IPC methods and nothing else:
 All process spawning is in `src/main/claudeAutoBuild.ts`. The commands and args are
 **fixed in main** — the renderer never passes a command, args, or cwd.
 
+## Windows command resolution
+
+npm/npx/claude are `.cmd` shims on Windows. Node 20.12+/24 **refuse to `spawn` a
+`.cmd` directly** without `shell:true` (throws `EINVAL`) — that is why they showed
+as "not found". The runner now launches shims via **`cmd.exe /d /s /c <tool>
+<args…>`** (an args array — never a shell string, and no `shell:true`); cmd.exe
+resolves the `.cmd` via PATHEXT. Native exes (`node`, `git`) and non-Windows spawn
+directly. Full paths are additionally resolved with `where.exe` for display
+(`nodePath` / `npmPath` / `npxPath` / `claudePath`). Nothing spawned comes from the
+renderer — tool and args are always fixed in main.
+
 ## Checked commands (fixed)
 
-Each runs via `child_process.spawn` (args array, no shell string), with captured
+Each runs via the resolver above (args array, no shell string), with captured
 output and a timeout (10s; 20s for the npx package check):
 
 - `node --version`

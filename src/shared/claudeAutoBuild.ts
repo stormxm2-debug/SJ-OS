@@ -102,6 +102,13 @@ export interface ClaudeRunnerDiagnostics {
   selectedRunner: SelectedRunner
   claudeVersion?: string
   npxVersion?: string
+  nodeVersion?: string
+  npmVersion?: string
+  /** Resolved full paths (Windows `where.exe`), for display/diagnostics. */
+  nodePath?: string
+  npmPath?: string
+  npxPath?: string
+  claudePath?: string
   errorMessages: string[]
   warnings: string[]
   canRun: boolean
