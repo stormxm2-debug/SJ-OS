@@ -4,6 +4,7 @@ import { runCoding } from './coding/engine'
 import { CompanyStartupService } from './companyStartupService'
 import { openApprovedExternal } from './externalLinks'
 import { getAiProxyStatus } from './aiProxyStatus'
+import { exportClaudePrompt } from './claudeExport'
 import {
   configureAiGatewayRoots,
   getAiGatewayStatus,
@@ -11,6 +12,7 @@ import {
 } from './services/ai-gateway'
 import type { CodingExecRequest } from '@shared/providers'
 import type { AiTranscribeRequest } from '@shared/aiGateway'
+import type { ClaudeExportRequest } from '@shared/claudeCode'
 
 /**
  * SJ AI Company — Electron main process (Node backend).
@@ -170,6 +172,11 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-ai:status', () => getAiGatewayStatus())
   ipcMain.handle('sj-ai:transcribe', (_event, request: AiTranscribeRequest) =>
     transcribeAudio(request)
+  )
+
+  // Claude Code Bridge: safe .md prompt export (no shell execution).
+  ipcMain.handle('sj-claude:export-prompt', (_event, request: ClaudeExportRequest) =>
+    exportClaudePrompt(request)
   )
 
   createWindow()

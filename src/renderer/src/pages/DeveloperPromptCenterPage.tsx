@@ -15,6 +15,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
+import ClaudeCodeBridgePanel from '@renderer/components/claude-code/ClaudeCodeBridgePanel'
 import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import type {
@@ -167,6 +168,9 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
           </Card>
         )
       })}
+
+      {/* Claude Code Bridge — prepare prompts for delivery to Claude Code */}
+      <ClaudeCodeBridgePanel />
     </div>
   )
 }

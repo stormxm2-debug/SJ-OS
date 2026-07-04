@@ -10,6 +10,7 @@ import type {
   AiTranscribeRequest,
   AiTranscribeResult
 } from '@shared/aiGateway'
+import type { ClaudeExportRequest, ClaudeExportResult } from '@shared/claudeCode'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -58,6 +59,16 @@ const api = {
      */
     transcribeAudio: (request: AiTranscribeRequest): Promise<AiTranscribeResult> =>
       ipcRenderer.invoke('sj-ai:transcribe', request)
+  },
+  claude: {
+    /**
+     * Export a Claude Code prompt to a safe .md file inside the project's
+     * `.sj-os/claude-prompts/` folder. The main process controls the write path
+     * (never renderer-supplied), refuses to write .env/secrets, and never runs
+     * any shell command. Returns the written file path only.
+     */
+    exportPrompt: (request: ClaudeExportRequest): Promise<ClaudeExportResult> =>
+      ipcRenderer.invoke('sj-claude:export-prompt', request)
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>

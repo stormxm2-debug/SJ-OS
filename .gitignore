@@ -11,3 +11,6 @@ dist-electron/
 
 # Editor settings (do not commit local IDE config)
 .vscode/
+
+# Claude Code Bridge exported prompts (local, not committed)
+.sj-os/
