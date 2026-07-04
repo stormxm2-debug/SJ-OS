@@ -8,11 +8,13 @@ import { exportClaudePrompt } from './claudeExport'
 import { openPromptsFolder, runApprovedJob } from './claudeRunner'
 import {
   cancelAutoBuildJob,
+  checkRunnerEnvironment,
   createAutoBuildJob,
   getAutoBuildJob,
   listAutoBuildJobs,
   runAutoBuildJob,
-  setAutoBuildEmitter
+  setAutoBuildEmitter,
+  smokeTestRunner
 } from './claudeAutoBuild'
 import {
   configureAiGatewayRoots,
@@ -208,6 +210,9 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude-build:cancel', (_e, id: string) => cancelAutoBuildJob(id))
   ipcMain.handle('sj-claude-build:get', (_e, id: string) => getAutoBuildJob(id))
   ipcMain.handle('sj-claude-build:list', () => listAutoBuildJobs())
+  // Runner environment diagnostics (fixed checks only; no renderer commands).
+  ipcMain.handle('sj-claude-build:check-env', () => checkRunnerEnvironment())
+  ipcMain.handle('sj-claude-build:smoke-test', () => smokeTestRunner())
 
   createWindow()
 

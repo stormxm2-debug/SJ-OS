@@ -19,6 +19,8 @@ import type {
 import type {
   AutoBuildJobUpdate,
   ClaudeAutoBuildJob,
+  ClaudeRunnerDiagnostics,
+  ClaudeSmokeTestResult,
   CreateAutoBuildJobRequest
 } from '@shared/claudeAutoBuild'
 
@@ -105,6 +107,11 @@ const api = {
     getJob: (id: string): Promise<ClaudeAutoBuildJob | null> =>
       ipcRenderer.invoke('sj-claude-build:get', id),
     listJobs: (): Promise<ClaudeAutoBuildJob[]> => ipcRenderer.invoke('sj-claude-build:list'),
+    /** Run fixed environment checks (node/npm/npx/claude) — main process only. */
+    checkRunnerEnvironment: (): Promise<ClaudeRunnerDiagnostics> =>
+      ipcRenderer.invoke('sj-claude-build:check-env'),
+    /** Harmless smoke test (fixed prompt, no file changes). */
+    smokeTest: (): Promise<ClaudeSmokeTestResult> => ipcRenderer.invoke('sj-claude-build:smoke-test'),
     onJobUpdate: (callback: (update: AutoBuildJobUpdate) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, payload: AutoBuildJobUpdate): void => callback(payload)
       ipcRenderer.on('sj-claude-build:job-update', handler)

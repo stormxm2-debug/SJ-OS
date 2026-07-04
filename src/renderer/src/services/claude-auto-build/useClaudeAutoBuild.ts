@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ClaudeAutoBuildJob, ClaudeAutoBuildSource } from '@shared/claudeAutoBuild'
+import type {
+  ClaudeAutoBuildJob,
+  ClaudeAutoBuildSource,
+  ClaudeRunnerDiagnostics,
+  ClaudeSmokeTestResult
+} from '@shared/claudeAutoBuild'
 import { ALLOWED_WORKSPACE } from '@renderer/services/claude-code/claudeCodeBridge'
 import { deriveTitle, generateAutoBuildPrompt } from './promptGenerator'
+import {
+  getRunnerDiagnostics,
+  refreshRunnerDiagnostics,
+  runSmokeTest,
+  subscribeDiagnostics
+} from './runnerDiagnostics'
 
 /**
  * Renderer hook for the Jarvis → Claude Code Auto Builder. It subscribes to job
@@ -22,14 +33,24 @@ export function isAutoBuildAvailable(): boolean {
 export interface UseClaudeAutoBuild {
   jobs: ClaudeAutoBuildJob[]
   available: boolean
+  diagnostics: ClaudeRunnerDiagnostics | null
+  checking: boolean
+  envReady: boolean
   createFromCommand: (command: string, source?: ClaudeAutoBuildSource) => Promise<ClaudeAutoBuildJob | null>
   runJob: (id: string) => Promise<void>
   cancelJob: (id: string) => Promise<void>
+  checkEnvironment: () => Promise<void>
+  smokeTest: () => Promise<ClaudeSmokeTestResult | null>
 }
 
 export function useClaudeAutoBuild(): UseClaudeAutoBuild {
   const [jobs, setJobs] = useState<ClaudeAutoBuildJob[]>([])
+  const [diagnostics, setDiagnostics] = useState<ClaudeRunnerDiagnostics | null>(getRunnerDiagnostics())
+  const [checking, setChecking] = useState(false)
   const available = isAutoBuildAvailable()
+
+  // Mirror the shared diagnostics store.
+  useEffect(() => subscribeDiagnostics(() => setDiagnostics(getRunnerDiagnostics())), [])
 
   useEffect(() => {
     const bridge = api()
@@ -76,5 +97,27 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
     await api()?.cancelJob(id)
   }, [])
 
-  return { jobs, available, createFromCommand, runJob, cancelJob }
+  const checkEnvironment = useCallback(async (): Promise<void> => {
+    setChecking(true)
+    try {
+      await refreshRunnerDiagnostics()
+    } finally {
+      setChecking(false)
+    }
+  }, [])
+
+  const smokeTest = useCallback((): Promise<ClaudeSmokeTestResult | null> => runSmokeTest(), [])
+
+  return {
+    jobs,
+    available,
+    diagnostics,
+    checking,
+    envReady: diagnostics?.canRun === true,
+    createFromCommand,
+    runJob,
+    cancelJob,
+    checkEnvironment,
+    smokeTest
+  }
 }

@@ -1229,6 +1229,7 @@ export default function JarvisPanel(): JSX.Element | null {
                       onClick={() => lastAutoBuildJob && void autoBuild.runJob(lastAutoBuildJob.id)}
                       disabled={
                         !lastAutoBuildJob ||
+                        !autoBuild.envReady ||
                         !(
                           lastAutoBuildJob.status === 'ready' ||
                           lastAutoBuildJob.status === 'failed' ||
@@ -1238,6 +1239,7 @@ export default function JarvisPanel(): JSX.Element | null {
                       className={[
                         'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition',
                         lastAutoBuildJob &&
+                        autoBuild.envReady &&
                         (lastAutoBuildJob.status === 'ready' ||
                           lastAutoBuildJob.status === 'failed' ||
                           lastAutoBuildJob.status === 'needs-review')
@@ -1274,6 +1276,10 @@ export default function JarvisPanel(): JSX.Element | null {
                   {!autoBuild.available ? (
                     <p className="mt-2 text-[11px] text-amber-300">
                       실행은 데스크톱 앱(npm run dev)에서만 가능합니다. 프롬프트는 위에서 미리 볼 수 있습니다.
+                    </p>
+                  ) : !autoBuild.envReady ? (
+                    <p className="mt-2 text-[11px] text-amber-300">
+                      Claude Code 실행 환경을 먼저 확인해주세요. “로그 보기 → Claude Code 실행 환경”에서 점검할 수 있습니다.
                     </p>
                   ) : null}
                 </div>

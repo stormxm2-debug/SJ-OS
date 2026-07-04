@@ -86,6 +86,36 @@ export interface AutoBuildJobUpdate {
   job: ClaudeAutoBuildJob
 }
 
+/** Which runner the environment can use. */
+export type SelectedRunner = 'claude' | 'npx' | 'unavailable'
+
+/** Result of the fixed environment checks (main process). */
+export interface ClaudeRunnerDiagnostics {
+  checkedAt: string
+  workspacePath: string
+  workspaceAllowed: boolean
+  nodeAvailable: boolean
+  npmAvailable: boolean
+  npxAvailable: boolean
+  claudeCommandAvailable: boolean
+  npxClaudeCodeAvailable: boolean
+  selectedRunner: SelectedRunner
+  claudeVersion?: string
+  npxVersion?: string
+  errorMessages: string[]
+  warnings: string[]
+  canRun: boolean
+}
+
+/** Result of the harmless smoke test. */
+export interface ClaudeSmokeTestResult {
+  ok: boolean
+  runner: SelectedRunner
+  output: string
+  error?: string
+  timedOut: boolean
+}
+
 /**
  * Actual secret-VALUE patterns. We deliberately do NOT block on the bare words
  * `.env` / `OPENAI_API_KEY`, because prompts mention them in "do not touch" rules.

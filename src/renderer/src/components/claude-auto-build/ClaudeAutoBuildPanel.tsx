@@ -3,6 +3,7 @@ import { Bot, Play, Square, ShieldAlert, ShieldCheck, ScrollText, CheckCircle2, 
 import Card from '@renderer/components/ui/Card'
 import type { ClaudeAutoBuildJob, ClaudeAutoBuildStatus, VerificationStatus } from '@shared/claudeAutoBuild'
 import { useClaudeAutoBuild } from '@renderer/services/claude-auto-build/useClaudeAutoBuild'
+import ClaudeRunnerDiagnosticsPanel from './ClaudeRunnerDiagnosticsPanel'
 
 /**
  * Claude 자동 개발 (Jarvis → Claude Code Auto Builder) panel. Create a job from a
@@ -11,7 +12,7 @@ import { useClaudeAutoBuild } from '@renderer/services/claude-auto-build/useClau
  * only — no overlays, no modals.
  */
 export default function ClaudeAutoBuildPanel(): JSX.Element {
-  const { jobs, available, createFromCommand, runJob, cancelJob } = useClaudeAutoBuild()
+  const { jobs, available, envReady, diagnostics, createFromCommand, runJob, cancelJob } = useClaudeAutoBuild()
   const [command, setCommand] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -25,6 +26,8 @@ export default function ClaudeAutoBuildPanel(): JSX.Element {
   }
 
   return (
+    <div className="space-y-5">
+    <ClaudeRunnerDiagnosticsPanel />
     <Card
       title="Claude 자동 개발"
       icon={<Bot className="h-4 w-4 text-indigo-300" />}
@@ -76,20 +79,45 @@ export default function ClaudeAutoBuildPanel(): JSX.Element {
       ) : (
         <div className="space-y-3">
           {jobs.map((job) => (
-            <JobCard key={job.id} job={job} onRun={() => void runJob(job.id)} onCancel={() => void cancelJob(job.id)} />
+            <JobCard
+              key={job.id}
+              job={job}
+              envReady={envReady}
+              envChecked={!!diagnostics}
+              runnerUnavailable={diagnostics?.selectedRunner === 'unavailable'}
+              onRun={() => void runJob(job.id)}
+              onCancel={() => void cancelJob(job.id)}
+            />
           ))}
         </div>
       )}
     </Card>
+    </div>
   )
 }
 
 // --- job card --------------------------------------------------------------
 
-function JobCard({ job, onRun, onCancel }: { job: ClaudeAutoBuildJob; onRun: () => void; onCancel: () => void }): JSX.Element {
+function JobCard({
+  job,
+  envReady,
+  envChecked,
+  runnerUnavailable,
+  onRun,
+  onCancel
+}: {
+  job: ClaudeAutoBuildJob
+  envReady: boolean
+  envChecked: boolean
+  runnerUnavailable: boolean
+  onRun: () => void
+  onCancel: () => void
+}): JSX.Element {
   const [showLogs, setShowLogs] = useState(false)
   const active = job.status === 'running' || job.status === 'verifying'
-  const canRun = job.status === 'ready' || job.status === 'needs-review' || job.status === 'failed'
+  const statusRunnable = job.status === 'ready' || job.status === 'needs-review' || job.status === 'failed'
+  // Only allow a run when the job is runnable AND the environment is confirmed ready.
+  const canRun = statusRunnable && envReady
   const blocked = job.status === 'blocked'
 
   return (
@@ -139,6 +167,15 @@ function JobCard({ job, onRun, onCancel }: { job: ClaudeAutoBuildJob; onRun: () 
           <Play className="h-3 w-3" />
           {job.status === 'failed' || job.status === 'needs-review' ? '다시 시도' : 'Claude Code 실행'}
         </button>
+        {statusRunnable && !canRun ? (
+          <span className="inline-flex items-center text-[11px] text-amber-300">
+            {runnerUnavailable
+              ? 'Claude Code CLI를 찾을 수 없습니다. Claude Code 설치 또는 npx 실행 환경을 확인해주세요.'
+              : envChecked
+                ? 'Claude Code 실행 환경이 준비되지 않았습니다.'
+                : 'Claude Code 실행 환경을 먼저 확인해주세요.'}
+          </span>
+        ) : null}
         {active ? (
           <button
             type="button"
