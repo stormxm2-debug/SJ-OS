@@ -1,15 +1,17 @@
 import { app } from 'electron'
 import { type ChildProcess } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type {
   ElectronPackageRun,
+  ElectronPackagingConfig,
   PackagePreflight,
   PackageReadiness,
-  PackageScriptName
+  PackageScriptName,
+  PackagingTool
 } from '@shared/electronPackage'
 import { PACKAGE_OUTPUT_DIRS, PACKAGE_SCRIPT_PRIORITY } from '@shared/electronPackage'
-import { maskSecrets } from '@shared/deployment'
+import { maskSecrets, validateDeployScript } from '@shared/deployment'
 import { spawnTool } from './claudeAutoBuild'
 
 /**
@@ -224,6 +226,158 @@ export async function runApprovedPackageBuild(id: string): Promise<ElectronPacka
     })
   })
   return runs.get(id)!
+}
+
+// --- packaging configuration center ----------------------------------------
+
+const CONFIG_ID = 'sj-packaging-config'
+
+function detectPackagingTool(pkg: {
+  scripts?: Record<string, string>
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+}): PackagingTool {
+  const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }
+  const scriptText = Object.values(pkg.scripts ?? {}).join(' ').toLowerCase()
+  const hasBuilder = !!deps['electron-builder'] || scriptText.includes('electron-builder')
+  const hasForge =
+    !!deps['@electron-forge/cli'] ||
+    !!deps['@electron-forge/maker-squirrel'] ||
+    !!deps['@electron-forge/maker-zip'] ||
+    scriptText.includes('electron-forge')
+  if (hasBuilder) return 'electron-builder'
+  if (hasForge) return 'electron-forge'
+  return 'none'
+}
+
+/**
+ * Read-only inspection that builds a packaging-config proposal from package.json.
+ * Proposes packaging scripts ONLY for a tool that is already installed; never
+ * proposes a dependency install and never modifies package.json here.
+ */
+export function inspectPackagingConfig(): ElectronPackagingConfig {
+  const pkg = (readPkg() ?? {}) as {
+    name?: string
+    version?: string
+    productName?: string
+    scripts?: Record<string, string>
+    build?: unknown
+    dependencies?: Record<string, string>
+    devDependencies?: Record<string, string>
+  }
+  const scripts = pkg.scripts ?? {}
+  const tool = detectPackagingTool(pkg)
+  const hasPackageScript = typeof scripts.package === 'string'
+  const hasDistScript = typeof scripts.dist === 'string'
+  const hasMakeScript = typeof scripts.make === 'string'
+  const hasElectronBuildScript = typeof scripts['electron:build'] === 'string'
+
+  const proposedScripts: ElectronPackagingConfig['proposedScripts'] = {}
+  const proposedMetadata: ElectronPackagingConfig['proposedMetadata'] = {}
+  const manualSetupInstructions: string[] = []
+  const riskNotes: string[] = []
+  let status: ElectronPackagingConfig['status']
+
+  if (tool === 'electron-builder') {
+    if (!hasDistScript) proposedScripts.dist = 'electron-builder'
+    // Only propose metadata when a build config is absent (never overwrite).
+    if (!pkg.build) {
+      proposedMetadata.productName = 'SJ OS'
+      proposedMetadata.appId = 'com.sjinvest.sjos'
+      proposedMetadata.directories = { output: 'release' }
+      riskNotes.push('기존 build 설정이 없어 기본 메타데이터를 제안합니다. 적용 전 확인하세요.')
+    } else {
+      riskNotes.push('기존 build 설정이 있어 메타데이터는 덮어쓰지 않습니다.')
+    }
+    status = Object.keys(proposedScripts).length > 0 || Object.keys(proposedMetadata).length > 0 ? 'proposal-ready' : 'ready'
+  } else if (tool === 'electron-forge') {
+    if (!hasMakeScript) proposedScripts.make = 'electron-forge make'
+    if (!hasPackageScript) proposedScripts.package = 'electron-forge package'
+    status = Object.keys(proposedScripts).length > 0 ? 'proposal-ready' : 'ready'
+  } else {
+    status = 'missing-tool'
+    manualSetupInstructions.push(
+      'electron-builder 설치 (권장, 간단한 Windows 설치파일): npm install -D electron-builder',
+      '설치 후 이 화면에서 다시 “패키징 설정 확인”을 눌러 제안을 받으세요.'
+    )
+    riskNotes.push('패키징 도구가 없어 package.json을 수정하지 않습니다. 설치는 대표님이 직접 진행하세요.')
+  }
+
+  return {
+    id: CONFIG_ID,
+    status,
+    appName: pkg.name ?? 'unknown',
+    version: pkg.version ?? '0.0.0',
+    detectedTool: tool,
+    hasPackageScript,
+    hasDistScript,
+    hasMakeScript,
+    hasElectronBuildScript,
+    proposedScripts,
+    proposedMetadata,
+    manualSetupInstructions,
+    riskNotes,
+    updatedAt: nowIso()
+  }
+}
+
+/**
+ * Apply the approved packaging config to package.json. Writes ONLY the proposed
+ * scripts/metadata that are missing (never overwrites existing keys or build
+ * config), and only when the detected tool still exists. Validated + safe.
+ */
+export function applyApprovedPackagingConfig(): ElectronPackagingConfig {
+  const config = inspectPackagingConfig()
+  if (!sameWorkspace(mainWorkspace(), ALLOWED_WORKSPACE_MAIN)) {
+    return { ...config, status: 'blocked', errorMessage: '허용된 작업 폴더가 아닙니다.' }
+  }
+  if (config.detectedTool === 'none' || config.detectedTool === 'unknown') {
+    return {
+      ...config,
+      status: 'missing-tool',
+      errorMessage: '패키징 도구가 없습니다. electron-builder 또는 electron-forge 설치가 필요합니다.'
+    }
+  }
+  // Validate every proposed script string.
+  for (const s of Object.values(config.proposedScripts)) {
+    if (typeof s === 'string') {
+      const v = validateDeployScript(s)
+      if (!v.safe) return { ...config, status: 'blocked', errorMessage: `안전하지 않은 스크립트: ${v.reasons.join(', ')}` }
+    }
+  }
+  const read = readPkg()
+  if (!read) return { ...config, status: 'failed', errorMessage: 'package.json을 읽지 못했습니다.' }
+
+  try {
+    const pkg = read as {
+      scripts?: Record<string, string>
+      productName?: string
+      build?: { appId?: string; productName?: string; directories?: { output?: string } }
+    }
+    const scripts = { ...(pkg.scripts ?? {}) }
+    // Add only MISSING scripts (never overwrite existing).
+    if (config.proposedScripts.dist && !scripts.dist) scripts.dist = config.proposedScripts.dist
+    if (config.proposedScripts.package && !scripts.package) scripts.package = config.proposedScripts.package
+    if (config.proposedScripts.make && !scripts.make) scripts.make = config.proposedScripts.make
+    if (config.proposedScripts.electronBuild && !scripts['electron:build']) scripts['electron:build'] = config.proposedScripts.electronBuild
+    pkg.scripts = scripts
+
+    // Add metadata only if absent (never overwrite existing build config).
+    if (config.proposedMetadata.productName && !pkg.productName) pkg.productName = config.proposedMetadata.productName
+    if (Object.keys(config.proposedMetadata).length > 0 && !pkg.build) {
+      pkg.build = {
+        appId: config.proposedMetadata.appId,
+        productName: config.proposedMetadata.productName,
+        directories: config.proposedMetadata.directories
+      }
+    }
+
+    writeFileSync(join(mainWorkspace(), 'package.json'), JSON.stringify(pkg, null, 2) + '\n', 'utf8')
+    const applied = inspectPackagingConfig()
+    return { ...applied, status: 'applied', appliedAt: nowIso() }
+  } catch (e) {
+    return { ...config, status: 'failed', errorMessage: e instanceof Error ? e.message : 'package.json 저장 실패' }
+  }
 }
 
 /** Cancel a running package build (only this app's process). */

@@ -79,3 +79,50 @@ export const PACKAGE_SCRIPT_PRIORITY: Exclude<PackageScriptName, 'none'>[] = [
 
 /** Workspace-relative folders that may hold installer output. */
 export const PACKAGE_OUTPUT_DIRS = ['dist', 'release', 'out', 'build', 'dist-electron']
+
+// --- packaging configuration center ----------------------------------------
+
+export type PackagingTool = 'electron-builder' | 'electron-forge' | 'none' | 'unknown'
+
+export type PackagingConfigStatus =
+  | 'not-inspected'
+  | 'inspected'
+  | 'ready'
+  | 'missing-tool'
+  | 'proposal-ready'
+  | 'approval-required'
+  | 'applied'
+  | 'blocked'
+  | 'failed'
+
+export interface ProposedScripts {
+  package?: string
+  dist?: string
+  make?: string
+  electronBuild?: string
+}
+
+export interface ProposedMetadata {
+  productName?: string
+  appId?: string
+  directories?: { output: string }
+}
+
+export interface ElectronPackagingConfig {
+  id: string
+  status: PackagingConfigStatus
+  appName: string
+  version: string
+  detectedTool: PackagingTool
+  hasPackageScript: boolean
+  hasDistScript: boolean
+  hasMakeScript: boolean
+  hasElectronBuildScript: boolean
+  proposedScripts: ProposedScripts
+  proposedMetadata: ProposedMetadata
+  manualSetupInstructions: string[]
+  riskNotes: string[]
+  updatedAt: string
+  appliedAt?: string
+  errorMessage?: string
+}

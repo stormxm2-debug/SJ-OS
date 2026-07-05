@@ -51,9 +51,11 @@ import {
   setDeploymentEmitter
 } from './deploymentRunner'
 import {
+  applyApprovedPackagingConfig,
   cancelPackageBuild,
   getPackageRun,
   inspectPackageReadiness,
+  inspectPackagingConfig,
   runApprovedPackageBuild,
   runPackagePreflight,
   setPackageEmitter
@@ -306,6 +308,9 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-package:run', (_e, id: string) => runApprovedPackageBuild(id))
   ipcMain.handle('sj-package:cancel', (_e, id: string) => cancelPackageBuild(id))
   ipcMain.handle('sj-package:get', (_e, id: string) => getPackageRun(id))
+  // Packaging configuration center (read + approved package.json script/metadata write).
+  ipcMain.handle('sj-package-config:inspect', () => inspectPackagingConfig())
+  ipcMain.handle('sj-package-config:apply', () => applyApprovedPackagingConfig())
   // Review (read-only git inspection; NO merge).
   ipcMain.handle('sj-claude-parallel:review', (_e, sourceJobId: string) => loadWorktreeReview(sourceJobId))
   ipcMain.handle(

@@ -42,6 +42,7 @@ import type {
 } from '@shared/deployment'
 import type {
   ElectronPackageRun,
+  ElectronPackagingConfig,
   PackageReadiness,
   PackageRunUpdate
 } from '@shared/electronPackage'
@@ -247,7 +248,11 @@ const api = {
       const handler = (_event: IpcRendererEvent, payload: PackageRunUpdate): void => callback(payload)
       ipcRenderer.on('sj-package:run-update', handler)
       return () => ipcRenderer.removeListener('sj-package:run-update', handler)
-    }
+    },
+    /** Read-only packaging-config inspection (tool detection + proposals). */
+    inspectConfig: (): Promise<ElectronPackagingConfig> => ipcRenderer.invoke('sj-package-config:inspect'),
+    /** Apply the approved packaging config to package.json (validated; missing keys only). */
+    applyConfig: (): Promise<ElectronPackagingConfig> => ipcRenderer.invoke('sj-package-config:apply')
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>
