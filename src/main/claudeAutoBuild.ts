@@ -5,17 +5,23 @@ import { join, resolve } from 'node:path'
 import type {
   ClaudeAutoBuildJob,
   ClaudeAutoBuildStatus,
+  ClaudeBuildCompletionReport,
   ClaudeJobCommitState,
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
   CreateAutoBuildJobRequest,
   QueueState,
   RepairStage,
+  ReportPushStatus,
   SelectedRunner
 } from '@shared/claudeAutoBuild'
 import {
   classifyConflictGroup,
+  generateManualTestChecklist,
+  generateNextActions,
+  generateReleaseNote,
   generateRepairPrompt,
+  generateRiskNotes,
   MAX_REPAIR_ATTEMPTS,
   scanAutoBuildPrompt
 } from '@shared/claudeAutoBuild'
@@ -960,6 +966,61 @@ export async function commitApprovedJob(jobId: string): Promise<ClaudeJobCommitS
     commitHash,
     committedAt: nowIso(),
     logLines: [...logLines, '커밋 완료 · push는 별도 승인이 필요합니다.']
+  }
+}
+
+// --- completion report (read-only inspection; no deployment) ---------------
+
+/** Generate a human-readable completion report for a finished job. */
+export async function generateCompletionReport(jobId: string): Promise<ClaudeBuildCompletionReport | null> {
+  const job = jobs.get(jobId)
+  if (!job) return null
+  const cwd = allowedRoot()
+
+  // Changed files: from the last commit if committed, else the working tree.
+  let changedFiles: string[] = []
+  let diffStat = ''
+  if (job.committed) {
+    const nameStatus = await runFixed(cwd, 'git', ['diff', '--name-status', 'HEAD~1..HEAD'])
+    changedFiles = nameStatus.out
+      .split(/\r?\n/)
+      .filter((l) => l.trim().length > 0)
+      .map((l) => l.replace(/\s+/g, ' ').trim())
+      .slice(0, 500)
+    const stat = await runFixed(cwd, 'git', ['diff', '--stat', 'HEAD~1..HEAD'])
+    diffStat = stat.out.trim().slice(0, 6000)
+  } else {
+    const statusR = await runFixed(cwd, 'git', ['status', '--short'])
+    changedFiles = statusR.out
+      .split(/\r?\n/)
+      .filter((l) => l.trim().length > 0)
+      .map((l) => l.trim())
+      .slice(0, 500)
+    diffStat = statusR.out.trim().slice(0, 4000)
+  }
+
+  const pushStatus: ReportPushStatus = job.pushed ? 'pushed' : 'not-pushed'
+  return {
+    id: `report-${jobId}`,
+    jobId,
+    title: job.title,
+    originalUserCommand: job.originalUserCommand,
+    summary: `${job.title} · 상태 ${job.status}${job.commitHash ? ` · 커밋 ${job.commitHash}` : ''}`,
+    changedFiles,
+    diffStat,
+    verification: job.verification,
+    commitHash: job.commitHash,
+    pushedAt: job.pushed ? nowIso() : undefined,
+    pushStatus,
+    releaseNote: generateReleaseNote({
+      title: job.title,
+      command: job.originalUserCommand,
+      verification: job.verification
+    }),
+    manualTestChecklist: generateManualTestChecklist(job.originalUserCommand),
+    riskNotes: generateRiskNotes(job.verification),
+    nextRecommendedActions: generateNextActions(pushStatus),
+    createdAt: nowIso()
   }
 }
 

@@ -144,6 +144,101 @@ export interface ClaudeJobCommitState {
   logLines: string[]
 }
 
+export type ReportPushStatus = 'not-pushed' | 'pushed' | 'failed'
+
+/** A human-readable completion report for a finished auto-build job. */
+export interface ClaudeBuildCompletionReport {
+  id: string
+  jobId: string
+  title: string
+  originalUserCommand: string
+  summary: string
+  changedFiles: string[]
+  diffStat: string
+  verification: ClaudeAutoBuildVerification
+  commitHash?: string
+  pushedAt?: string
+  pushStatus: ReportPushStatus
+  releaseNote: string
+  manualTestChecklist: string[]
+  riskNotes: string[]
+  nextRecommendedActions: string[]
+  createdAt: string
+}
+
+/** Build a manual-test checklist from the original command (keyword heuristic). */
+export function generateManualTestChecklist(command: string): string[] {
+  const t = (command ?? '').toLowerCase()
+  const has = (w: string[]): boolean => w.some((x) => t.includes(x.toLowerCase()))
+  if (has(['출퇴근', '출근', '퇴근', 'attendance', '체크인'])) {
+    return [
+      '출퇴근 관리 화면이 열리는지 확인',
+      '출근 인증 버튼 클릭',
+      '사진 촬영/워터마크 표시 확인',
+      '퇴근 인증 기록 확인',
+      '사이드바/자비스 클릭 정상 확인'
+    ]
+  }
+  if (has(['고객', 'customer', '상담'])) {
+    return [
+      '고객 관리 화면 열기',
+      '고객 목록/검색 동작 확인',
+      '새 기능 버튼 클릭 및 저장 확인',
+      '기존 고객 데이터 영향 없는지 확인',
+      '사이드바/자비스 클릭 정상 확인'
+    ]
+  }
+  if (has(['실적', '성과', 'performance', '순위'])) {
+    return [
+      '실적 화면 열기',
+      '새 순위/집계가 표시되는지 확인',
+      '필터/정렬 동작 확인',
+      '기존 실적 데이터 영향 확인',
+      '사이드바/자비스 클릭 정상 확인'
+    ]
+  }
+  return [
+    '관련 화면 열기',
+    '새 기능 버튼 클릭',
+    '입력/저장 동작 확인',
+    '기존 기능 영향 확인',
+    '자비스 열기/닫기 확인',
+    '앱 새로고침 후 확인'
+  ]
+}
+
+/** Build a short Korean release note. */
+export function generateReleaseNote(args: {
+  title: string
+  command: string
+  verification: ClaudeAutoBuildVerification
+}): string {
+  const verified =
+    args.verification.typecheckStatus === 'passed' && args.verification.buildStatus === 'passed'
+  const verifyText = verified
+    ? '타입체크와 빌드가 통과되었습니다.'
+    : '검증에서 확인이 필요한 항목이 있습니다.'
+  return `${args.title} 관련 변경을 반영했습니다. 요청: "${args.command.slice(0, 120)}". ${verifyText} 배포 전 아래 수동 테스트를 진행해 주세요.`
+}
+
+/** Risk notes for the report. */
+export function generateRiskNotes(verification: ClaudeAutoBuildVerification): string[] {
+  const notes: string[] = []
+  if (verification.typecheckStatus !== 'passed') notes.push('typecheck가 통과되지 않았습니다. 병합/배포 전 확인 필요.')
+  if (verification.buildStatus !== 'passed') notes.push('build가 통과되지 않았습니다. 병합/배포 전 확인 필요.')
+  notes.push('런타임 클릭 상호작용(사이드바/자비스/버튼)이 정상인지 확인 권장.')
+  return notes
+}
+
+/** Next recommended actions. */
+export function generateNextActions(pushStatus: ReportPushStatus): string[] {
+  const actions = ['수동 테스트 체크리스트를 실행하세요.']
+  if (pushStatus === 'not-pushed') actions.push('이상이 없으면 커밋/푸시 승인 단계를 진행하세요.')
+  if (pushStatus === 'pushed') actions.push('원격(origin)에 반영되었습니다. 필요한 경우 배포 담당자에게 공유하세요.')
+  actions.push('문제가 있으면 자동 복구(승인 필요) 또는 수동 검토를 진행하세요.')
+  return actions
+}
+
 /** Which stage of an auto-build job failed. */
 export type RepairStage = 'typecheck' | 'build' | 'claude-run' | 'unknown'
 

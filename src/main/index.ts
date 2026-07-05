@@ -13,6 +13,7 @@ import {
   checkRunnerEnvironment,
   commitApprovedJob,
   createAutoBuildJob,
+  generateCompletionReport,
   getAutoBuildJob,
   loadJobCommitState,
   pushApprovedCommit,
@@ -252,6 +253,8 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude-build:commit-state', (_e, id: string) => loadJobCommitState(id))
   ipcMain.handle('sj-claude-build:commit', (_e, id: string) => commitApprovedJob(id))
   ipcMain.handle('sj-claude-build:push', (_e, id: string) => pushApprovedCommit(id))
+  // Completion report (read-only inspection; no deployment).
+  ipcMain.handle('sj-claude-build:completion-report', (_e, id: string) => generateCompletionReport(id))
 
   // Parallel worktree builder (foundation). Main-only git/Claude execution; the
   // renderer sends only a source job id. No auto-merge / auto-delete.

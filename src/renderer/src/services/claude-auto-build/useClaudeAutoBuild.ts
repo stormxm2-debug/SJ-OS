@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type {
   ClaudeAutoBuildJob,
   ClaudeAutoBuildSource,
+  ClaudeBuildCompletionReport,
   ClaudeJobCommitState,
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
@@ -51,6 +52,7 @@ export interface UseClaudeAutoBuild {
   loadJobCommitState: (id: string) => Promise<ClaudeJobCommitState | null>
   commitApprovedJob: (id: string) => Promise<ClaudeJobCommitState | null>
   pushApprovedCommit: (id: string) => Promise<ClaudeJobCommitState | null>
+  generateCompletionReport: (id: string) => Promise<ClaudeBuildCompletionReport | null>
   checkEnvironment: () => Promise<void>
   smokeTest: () => Promise<ClaudeSmokeTestResult | null>
   // --- queue ---
@@ -167,6 +169,11 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
     async (id: string): Promise<ClaudeJobCommitState | null> => (await api()?.pushApprovedCommit(id)) ?? null,
     []
   )
+  const generateCompletionReport = useCallback(
+    async (id: string): Promise<ClaudeBuildCompletionReport | null> =>
+      (await api()?.generateCompletionReport(id)) ?? null,
+    []
+  )
 
   const checkEnvironment = useCallback(async (): Promise<void> => {
     setChecking(true)
@@ -212,6 +219,7 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
     loadJobCommitState,
     commitApprovedJob,
     pushApprovedCommit,
+    generateCompletionReport,
     checkEnvironment,
     smokeTest,
     queueState,

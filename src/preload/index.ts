@@ -19,6 +19,7 @@ import type {
 import type {
   AutoBuildJobUpdate,
   ClaudeAutoBuildJob,
+  ClaudeBuildCompletionReport,
   ClaudeJobCommitState,
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
@@ -149,6 +150,9 @@ const api = {
     /** Push the committed job to origin/<currentBranch> (explicit; never force). */
     pushApprovedCommit: (id: string): Promise<ClaudeJobCommitState> =>
       ipcRenderer.invoke('sj-claude-build:push', id),
+    /** Generate a human-readable completion report (read-only git inspection). */
+    generateCompletionReport: (id: string): Promise<ClaudeBuildCompletionReport | null> =>
+      ipcRenderer.invoke('sj-claude-build:completion-report', id),
     onQueueState: (callback: (state: QueueState) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, payload: QueueState): void => callback(payload)
       ipcRenderer.on('sj-claude-build:queue-state', handler)
