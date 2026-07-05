@@ -41,6 +41,14 @@ import {
 } from './claudeParallel'
 import type { ReviewDecision } from '@shared/claudeParallel'
 import {
+  cancelDeployment,
+  deployScriptExists,
+  getDeploymentRun,
+  runApprovedDeployment,
+  runDeployPreflight,
+  setDeploymentEmitter
+} from './deploymentRunner'
+import {
   configureAiGatewayRoots,
   getAiGatewayStatus,
   transcribeAudio
@@ -265,6 +273,16 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude-parallel:run', (_e, sourceJobId: string) => runWorktreeJob(sourceJobId))
   ipcMain.handle('sj-claude-parallel:get', (_e, sourceJobId: string) => getParallelJob(sourceJobId))
   ipcMain.handle('sj-claude-parallel:list', () => listParallelJobs())
+
+  // Approved deployment runner (main-only; fixed `npm run deploy`; no auto-deploy).
+  setDeploymentEmitter((run) => {
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('sj-deploy:run-update', { run }))
+  })
+  ipcMain.handle('sj-deploy:script-exists', () => deployScriptExists())
+  ipcMain.handle('sj-deploy:preflight', (_e, releaseItemId: string) => runDeployPreflight(releaseItemId))
+  ipcMain.handle('sj-deploy:run', (_e, releaseItemId: string) => runApprovedDeployment(releaseItemId))
+  ipcMain.handle('sj-deploy:cancel', (_e, releaseItemId: string) => cancelDeployment(releaseItemId))
+  ipcMain.handle('sj-deploy:get', (_e, releaseItemId: string) => getDeploymentRun(releaseItemId))
   // Review (read-only git inspection; NO merge).
   ipcMain.handle('sj-claude-parallel:review', (_e, sourceJobId: string) => loadWorktreeReview(sourceJobId))
   ipcMain.handle(

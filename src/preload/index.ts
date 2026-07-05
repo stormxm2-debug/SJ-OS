@@ -34,6 +34,7 @@ import type {
   WorktreeMergeResult,
   WorktreeReview
 } from '@shared/claudeParallel'
+import type { DeploymentRun, DeploymentRunUpdate } from '@shared/deployment'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -191,6 +192,27 @@ const api = {
       const handler = (_event: IpcRendererEvent, payload: ParallelJobUpdate): void => callback(payload)
       ipcRenderer.on('sj-claude-parallel:job-update', handler)
       return () => ipcRenderer.removeListener('sj-claude-parallel:job-update', handler)
+    }
+  },
+  deploy: {
+    /**
+     * Approved deployment runner. The renderer sends only a release item id; the
+     * main process runs preflight + the fixed `npm run deploy` (if package.json
+     * defines it). No arbitrary command, no shell, no auto-deploy.
+     */
+    scriptExists: (): Promise<boolean> => ipcRenderer.invoke('sj-deploy:script-exists'),
+    preflight: (releaseItemId: string): Promise<DeploymentRun> =>
+      ipcRenderer.invoke('sj-deploy:preflight', releaseItemId),
+    runApproved: (releaseItemId: string): Promise<DeploymentRun> =>
+      ipcRenderer.invoke('sj-deploy:run', releaseItemId),
+    cancel: (releaseItemId: string): Promise<DeploymentRun | null> =>
+      ipcRenderer.invoke('sj-deploy:cancel', releaseItemId),
+    get: (releaseItemId: string): Promise<DeploymentRun | null> =>
+      ipcRenderer.invoke('sj-deploy:get', releaseItemId),
+    onRunUpdate: (callback: (update: DeploymentRunUpdate) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, payload: DeploymentRunUpdate): void => callback(payload)
+      ipcRenderer.on('sj-deploy:run-update', handler)
+      return () => ipcRenderer.removeListener('sj-deploy:run-update', handler)
     }
   },
   companyStartup: {
