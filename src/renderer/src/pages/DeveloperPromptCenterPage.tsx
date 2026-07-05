@@ -20,6 +20,7 @@ import ClaudeCodeRunnerPanel from '@renderer/components/claude-code/ClaudeCodeRu
 import ClaudeAutoBuildPanel from '@renderer/components/claude-auto-build/ClaudeAutoBuildPanel'
 import ClaudeParallelPanel from '@renderer/components/claude-auto-build/ClaudeParallelPanel'
 import ClaudeRepairPanel from '@renderer/components/claude-auto-build/ClaudeRepairPanel'
+import ClaudeCommitPushPanel from '@renderer/components/claude-auto-build/ClaudeCommitPushPanel'
 import WorktreeReviewPanel from '@renderer/components/claude-auto-build/WorktreeReviewPanel'
 import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
@@ -121,6 +122,9 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
 
       {/* Auto-repair: generated repair jobs for failed verification (approval required) */}
       <ClaudeRepairPanel />
+
+      {/* Approved commit / push for succeeded main-workspace jobs (two-step) */}
+      <ClaudeCommitPushPanel />
 
       {/* Worktree-based parallel builder (foundation) */}
       <ClaudeParallelPanel />

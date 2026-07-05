@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type {
   ClaudeAutoBuildJob,
   ClaudeAutoBuildSource,
+  ClaudeJobCommitState,
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
   QueueState
@@ -47,6 +48,9 @@ export interface UseClaudeAutoBuild {
   runJob: (id: string) => Promise<void>
   cancelJob: (id: string) => Promise<void>
   approveRepairJob: (id: string) => Promise<void>
+  loadJobCommitState: (id: string) => Promise<ClaudeJobCommitState | null>
+  commitApprovedJob: (id: string) => Promise<ClaudeJobCommitState | null>
+  pushApprovedCommit: (id: string) => Promise<ClaudeJobCommitState | null>
   checkEnvironment: () => Promise<void>
   smokeTest: () => Promise<ClaudeSmokeTestResult | null>
   // --- queue ---
@@ -151,6 +155,18 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
   const approveRepairJob = useCallback(async (id: string): Promise<void> => {
     await api()?.approveRepairJob(id)
   }, [])
+  const loadJobCommitState = useCallback(
+    async (id: string): Promise<ClaudeJobCommitState | null> => (await api()?.loadJobCommitState(id)) ?? null,
+    []
+  )
+  const commitApprovedJob = useCallback(
+    async (id: string): Promise<ClaudeJobCommitState | null> => (await api()?.commitApprovedJob(id)) ?? null,
+    []
+  )
+  const pushApprovedCommit = useCallback(
+    async (id: string): Promise<ClaudeJobCommitState | null> => (await api()?.pushApprovedCommit(id)) ?? null,
+    []
+  )
 
   const checkEnvironment = useCallback(async (): Promise<void> => {
     setChecking(true)
@@ -193,6 +209,9 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
     runJob,
     cancelJob,
     approveRepairJob,
+    loadJobCommitState,
+    commitApprovedJob,
+    pushApprovedCommit,
     checkEnvironment,
     smokeTest,
     queueState,

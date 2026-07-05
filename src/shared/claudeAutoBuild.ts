@@ -94,6 +94,10 @@ export interface ClaudeAutoBuildJob {
   failedStage?: RepairStage
   /** One-line error summary shown in the repair card. */
   errorSummary?: string
+  // --- commit / push (main workspace) ---
+  committed?: boolean
+  commitHash?: string
+  pushed?: boolean
   // --- queue ---
   /** Monotonic position used to order the queue (FIFO). */
   queueIndex: number
@@ -108,6 +112,36 @@ export interface ClaudeAutoBuildJob {
   canRunInParallel: boolean
   createdAt: string
   updatedAt: string
+}
+
+export type CommitPushStatus =
+  | 'not-ready'
+  | 'ready-to-review'
+  | 'commit-ready'
+  | 'committing'
+  | 'committed'
+  | 'push-ready'
+  | 'pushing'
+  | 'pushed'
+  | 'blocked'
+  | 'failed'
+
+/** Commit/push state for a succeeded main-workspace job (main-only git). */
+export interface ClaudeJobCommitState {
+  jobId: string
+  status: CommitPushStatus
+  changedFiles: string[]
+  diffStat: string
+  gitStatusShort: string
+  commitMessage: string
+  commitHash?: string
+  currentBranch: string
+  pushRemote: 'origin'
+  pushTargetBranch: string
+  committedAt?: string
+  pushedAt?: string
+  errorMessage?: string
+  logLines: string[]
 }
 
 /** Which stage of an auto-build job failed. */

@@ -11,8 +11,11 @@ import {
   cancelAutoBuildJob,
   cancelQueuedJob,
   checkRunnerEnvironment,
+  commitApprovedJob,
   createAutoBuildJob,
   getAutoBuildJob,
+  loadJobCommitState,
+  pushApprovedCommit,
   getQueueState,
   listAutoBuildJobs,
   pauseQueue,
@@ -245,6 +248,10 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude-build:queue-cancel', (_e, id: string) => cancelQueuedJob(id))
   // Auto-repair: approve a generated repair job so it can be run.
   ipcMain.handle('sj-claude-build:approve-repair', (_e, id: string) => approveRepairJob(id))
+  // Approved commit / push (main workspace; explicit; no force, no `git add .`).
+  ipcMain.handle('sj-claude-build:commit-state', (_e, id: string) => loadJobCommitState(id))
+  ipcMain.handle('sj-claude-build:commit', (_e, id: string) => commitApprovedJob(id))
+  ipcMain.handle('sj-claude-build:push', (_e, id: string) => pushApprovedCommit(id))
 
   // Parallel worktree builder (foundation). Main-only git/Claude execution; the
   // renderer sends only a source job id. No auto-merge / auto-delete.

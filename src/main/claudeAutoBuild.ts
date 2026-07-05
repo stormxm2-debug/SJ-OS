@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import type {
   ClaudeAutoBuildJob,
   ClaudeAutoBuildStatus,
+  ClaudeJobCommitState,
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
   CreateAutoBuildJobRequest,
@@ -802,4 +803,194 @@ async function runVerification(jobId: string): Promise<void> {
     ]
   })
   onJobSettled(settled)
+}
+
+// --- approved commit / push (main workspace; explicit; no force) -----------
+
+const COMMIT_AUDIO_EXT = /\.(mp3|wav|m4a|webm|ogg|flac|aac)$/i
+const COMMIT_SECRET_RE = [
+  /sk-ant-[A-Za-z0-9_-]{16,}/,
+  /sk-[A-Za-z0-9_-]{16,}/,
+  /(?:OPENAI|ANTHROPIC)_API_KEY\s*=\s*['"]?[A-Za-z0-9_-]{12,}/
+]
+
+/** A path that must NEVER be committed (blocks the whole commit). */
+function commitBlockedPath(p: string): boolean {
+  const l = p.replace(/\\/g, '/').toLowerCase()
+  return /(^|\/)\.env(\.|$)/.test(l) || l === '.env' || l.includes('.env.local')
+}
+/** A path skipped from staging (not committed, doesn't block). */
+function commitSkippedPath(p: string): boolean {
+  const l = p.replace(/\\/g, '/').toLowerCase()
+  return l.includes('node_modules/') || COMMIT_AUDIO_EXT.test(l) || l.includes('..')
+}
+/** Parse `git status --short` into { path, deleted }. */
+function commitChangedFiles(statusShort: string): { path: string; deleted: boolean }[] {
+  return statusShort
+    .split(/\r?\n/)
+    .filter((l) => l.trim().length > 0)
+    .map((line) => {
+      const code = line.slice(0, 2)
+      let path = line.slice(3).trim()
+      if (path.includes('->')) path = path.split('->').pop()!.trim()
+      return { path, deleted: code.includes('D') }
+    })
+    .slice(0, 500)
+}
+function commitMessageFrom(title: string): string {
+  const clean = (title ?? '').replace(/[\r\n"`]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100)
+  if (!clean) return 'feat: SJ OS 자동 개발 변경'
+  return /^(feat|fix|chore|docs|refactor|style|test)\b|:/.test(clean) ? clean : `feat: ${clean}`
+}
+/** A branch name is safe if it has no whitespace / shell-ish chars. */
+function isSafeBranchName(b: string): boolean {
+  return /^[A-Za-z0-9._\-/]+$/.test(b) && !b.includes('..')
+}
+
+function baseCommitState(job: ClaudeAutoBuildJob | undefined, jobId: string): ClaudeJobCommitState {
+  return {
+    jobId,
+    status: 'not-ready',
+    changedFiles: [],
+    diffStat: '',
+    gitStatusShort: '',
+    commitMessage: commitMessageFrom(job?.title ?? ''),
+    commitHash: job?.commitHash,
+    currentBranch: '',
+    pushRemote: 'origin',
+    pushTargetBranch: '',
+    committedAt: undefined,
+    logLines: []
+  }
+}
+
+/** Read-only: changed files + eligibility for a succeeded job (no writes). */
+export async function loadJobCommitState(jobId: string): Promise<ClaudeJobCommitState> {
+  const job = jobs.get(jobId)
+  const state = baseCommitState(job, jobId)
+  if (!job) return { ...state, status: 'blocked', errorMessage: '작업을 찾을 수 없습니다.' }
+  const cwd = allowedRoot()
+
+  const branchR = await runFixed(cwd, 'git', ['branch', '--show-current'])
+  const currentBranch = branchR.out.trim().split(/\r?\n/)[0] ?? ''
+  const statusR = await runFixed(cwd, 'git', ['status', '--short'])
+  const statR = await runFixed(cwd, 'git', ['diff', '--stat'])
+  const entries = commitChangedFiles(statusR.out)
+
+  const verified = job.verification.typecheckStatus === 'passed' && job.verification.buildStatus === 'passed'
+  let status: ClaudeJobCommitState['status'] = 'ready-to-review'
+  let errorMessage: string | undefined
+  if (job.pushed) status = 'pushed'
+  else if (job.committed) status = 'push-ready'
+  else if (job.status !== 'succeeded') { status = 'blocked'; errorMessage = '검증에 통과한 완료 작업만 커밋할 수 있습니다.' }
+  else if (!verified) { status = 'blocked'; errorMessage = '검증 실패 상태에서는 커밋할 수 없습니다.' }
+  else if (entries.length === 0) { status = 'blocked'; errorMessage = '커밋할 변경사항이 없습니다.' }
+  else status = 'commit-ready'
+
+  return {
+    ...state,
+    status,
+    changedFiles: entries.map((e) => e.path),
+    diffStat: statR.out.trim().slice(0, 6000),
+    gitStatusShort: statusR.out.trim().slice(0, 4000),
+    currentBranch,
+    pushTargetBranch: currentBranch,
+    errorMessage
+  }
+}
+
+/** Commit the job's changes (explicit; safe staging; no `git add .`). */
+export async function commitApprovedJob(jobId: string): Promise<ClaudeJobCommitState> {
+  const job = jobs.get(jobId)
+  const state = baseCommitState(job, jobId)
+  if (!job) return { ...state, status: 'blocked', errorMessage: '작업을 찾을 수 없습니다.' }
+  const cwd = allowedRoot()
+  const logLines: string[] = []
+
+  // Eligibility.
+  if (job.status !== 'succeeded') return { ...state, status: 'blocked', errorMessage: '완료 상태의 작업만 커밋할 수 있습니다.' }
+  if (job.verification.typecheckStatus !== 'passed' || job.verification.buildStatus !== 'passed') {
+    return { ...state, status: 'blocked', errorMessage: '검증 실패 상태에서는 커밋할 수 없습니다.' }
+  }
+  const branchR = await runFixed(cwd, 'git', ['branch', '--show-current'])
+  const currentBranch = branchR.out.trim().split(/\r?\n/)[0] ?? ''
+  if (!currentBranch || !isSafeBranchName(currentBranch)) {
+    return { ...state, status: 'blocked', errorMessage: '현재 브랜치를 확인할 수 없습니다.' }
+  }
+  const statusR = await runFixed(cwd, 'git', ['status', '--short'])
+  const entries = commitChangedFiles(statusR.out)
+  if (entries.length === 0) return { ...state, status: 'blocked', currentBranch, errorMessage: '커밋할 변경사항이 없습니다.' }
+  if (entries.some((e) => commitBlockedPath(e.path))) {
+    return { ...state, status: 'blocked', currentBranch, errorMessage: '.env 변경이 감지되어 커밋을 차단했습니다.' }
+  }
+  // git diff --check (whitespace errors / conflict markers).
+  const checkR = await runFixed(cwd, 'git', ['diff', '--check'])
+  if (checkR.code !== 0) {
+    return { ...state, status: 'blocked', currentBranch, errorMessage: 'git diff --check 실패 (충돌 마커/공백 오류). 확인이 필요합니다.', logLines: [checkR.out.slice(-1000)] }
+  }
+  // Secret scan on the diff.
+  const diffR = await runFixed(cwd, 'git', ['diff'])
+  if (COMMIT_SECRET_RE.some((re) => re.test(diffR.out))) {
+    return { ...state, status: 'blocked', currentBranch, errorMessage: '민감 정보(비밀 키 값)로 보이는 문자열이 diff에 있어 커밋을 차단했습니다.' }
+  }
+  const safeFiles = entries.map((e) => e.path).filter((p) => !commitSkippedPath(p))
+  if (safeFiles.length === 0) return { ...state, status: 'blocked', currentBranch, errorMessage: '커밋 가능한 안전한 변경 파일이 없습니다.' }
+
+  // Stage ONLY specific safe files (never `git add .`).
+  const addR = await runFixed(cwd, 'git', ['add', ...safeFiles])
+  logLines.push(`git add ${safeFiles.length}개 파일 · exit ${addR.code}`)
+  if (addR.code !== 0) return { ...state, status: 'failed', currentBranch, changedFiles: safeFiles, logLines, errorMessage: 'git add 실패' }
+
+  const message = commitMessageFrom(job.title)
+  const commitR = await runFixed(cwd, 'git', ['commit', '-m', message])
+  logLines.push(commitR.out.trim().split(/\r?\n/).slice(-6).join('\n'))
+  if (commitR.code !== 0) return { ...state, status: 'failed', currentBranch, changedFiles: safeFiles, commitMessage: message, logLines, errorMessage: 'git commit 실패' }
+
+  const logR = await runFixed(cwd, 'git', ['log', '--oneline', '-1'])
+  const commitHash = logR.out.trim().split(/\s+/)[0] || undefined
+  touch(job, { committed: true, commitHash, logLines: [...job.logLines, `커밋 완료 · ${commitHash} · ${message}`] })
+
+  return {
+    ...state,
+    status: 'push-ready',
+    changedFiles: safeFiles,
+    currentBranch,
+    pushTargetBranch: currentBranch,
+    commitMessage: message,
+    commitHash,
+    committedAt: nowIso(),
+    logLines: [...logLines, '커밋 완료 · push는 별도 승인이 필요합니다.']
+  }
+}
+
+/** Push the committed job to origin/<currentBranch> (explicit; NEVER force). */
+export async function pushApprovedCommit(jobId: string): Promise<ClaudeJobCommitState> {
+  const job = jobs.get(jobId)
+  const state = baseCommitState(job, jobId)
+  if (!job) return { ...state, status: 'blocked', errorMessage: '작업을 찾을 수 없습니다.' }
+  if (!job.committed || !job.commitHash) return { ...state, status: 'blocked', errorMessage: '먼저 커밋을 생성해야 합니다.' }
+  const cwd = allowedRoot()
+
+  const branchR = await runFixed(cwd, 'git', ['branch', '--show-current'])
+  const currentBranch = branchR.out.trim().split(/\r?\n/)[0] ?? ''
+  if (!currentBranch || !isSafeBranchName(currentBranch)) {
+    return { ...state, status: 'blocked', commitHash: job.commitHash, errorMessage: '현재 브랜치를 확인할 수 없습니다.' }
+  }
+
+  // Fixed remote 'origin' + the current branch. NO --force, NO arbitrary refspec.
+  const pushR = await runFixed(cwd, 'git', ['push', 'origin', currentBranch])
+  const logLines = pushR.out.trim().split(/\r?\n/).slice(-12)
+  if (pushR.code !== 0) {
+    return { ...state, status: 'failed', commitHash: job.commitHash, currentBranch, pushTargetBranch: currentBranch, logLines, errorMessage: 'git push 실패 (로그 확인)' }
+  }
+  touch(job, { pushed: true, logLines: [...job.logLines, `push 완료 · origin/${currentBranch}`] })
+  return {
+    ...state,
+    status: 'pushed',
+    commitHash: job.commitHash,
+    currentBranch,
+    pushTargetBranch: currentBranch,
+    pushedAt: nowIso(),
+    logLines: [...logLines, `push 완료 · origin/${currentBranch}`]
+  }
 }

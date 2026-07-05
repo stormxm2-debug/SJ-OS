@@ -19,6 +19,7 @@ import type {
 import type {
   AutoBuildJobUpdate,
   ClaudeAutoBuildJob,
+  ClaudeJobCommitState,
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
   CreateAutoBuildJobRequest,
@@ -139,6 +140,15 @@ const api = {
     /** Approve a generated auto-repair job so it can be run (never auto-runs). */
     approveRepairJob: (id: string): Promise<ClaudeAutoBuildJob | null> =>
       ipcRenderer.invoke('sj-claude-build:approve-repair', id),
+    /** Read-only commit/push state (changed files + eligibility) for a job. */
+    loadJobCommitState: (id: string): Promise<ClaudeJobCommitState> =>
+      ipcRenderer.invoke('sj-claude-build:commit-state', id),
+    /** Commit the job's changes (explicit; safe staging; no `git add .`). */
+    commitApprovedJob: (id: string): Promise<ClaudeJobCommitState> =>
+      ipcRenderer.invoke('sj-claude-build:commit', id),
+    /** Push the committed job to origin/<currentBranch> (explicit; never force). */
+    pushApprovedCommit: (id: string): Promise<ClaudeJobCommitState> =>
+      ipcRenderer.invoke('sj-claude-build:push', id),
     onQueueState: (callback: (state: QueueState) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, payload: QueueState): void => callback(payload)
       ipcRenderer.on('sj-claude-build:queue-state', handler)
