@@ -32,6 +32,7 @@ import PackagingConfigPanel from '@renderer/components/release/PackagingConfigPa
 import ReleaseSnapshotPanel from '@renderer/components/release/ReleaseSnapshotPanel'
 import DistributionPackagePanel from '@renderer/components/release/DistributionPackagePanel'
 import InstallGuidePanel from '@renderer/components/release/InstallGuidePanel'
+import StaffUpdateDashboardPanel from '@renderer/components/release/StaffUpdateDashboardPanel'
 import { useRelease } from '@renderer/services/release/useRelease'
 import { releaseRepository } from '@renderer/services/release/ReleaseRepository'
 import type {
@@ -163,6 +164,9 @@ export default function ReleaseCenterPage(): JSX.Element {
 
       {/* Staff installation / update guide center (guide + local tracking only) */}
       <InstallGuidePanel />
+
+      {/* Staff update status dashboard (rollout counts + completion; local only) */}
+      <StaffUpdateDashboardPanel />
 
       <Card
         title="릴리즈 센터"
