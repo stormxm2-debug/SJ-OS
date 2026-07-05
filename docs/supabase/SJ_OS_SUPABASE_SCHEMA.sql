@@ -24,9 +24,12 @@ create table if not exists public.teams (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   leader_id uuid,
+  status text not null default 'active' check (status in ('active','inactive')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- If teams already exists without status, add it:
+-- alter table public.teams add column if not exists status text not null default 'active';
 
 -- attendance_records
 create table if not exists public.attendance_records (
@@ -118,6 +121,12 @@ create table if not exists public.notices (
 );
 
 -- Helpful indexes
+-- Staff/team operations management: profiles + teams lookups.
+create index if not exists profiles_role_idx on public.profiles(role);
+create index if not exists profiles_team_id_idx on public.profiles(team_id);
+create index if not exists profiles_status_idx on public.profiles(status);
+create index if not exists teams_leader_id_idx on public.teams(leader_id);
+create index if not exists teams_status_idx on public.teams(status);
 create index if not exists idx_attendance_staff on public.attendance_records(staff_id);
 -- Attendance management integration: time/type/status filters.
 create index if not exists attendance_records_timestamp_idx on public.attendance_records("timestamp" desc);

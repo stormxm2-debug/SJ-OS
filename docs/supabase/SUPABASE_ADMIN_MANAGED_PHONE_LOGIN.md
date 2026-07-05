@@ -36,6 +36,18 @@ login.**
 > 중복 번호는 "이미 등록된 휴대폰 번호입니다."로 차단됩니다. 대표만 다른 owner를 생성할 수
 > 있습니다(관리자는 owner 생성 옵션이 보이지 않음).
 
+## Staff / team management (owner/admin only)
+
+Organization structure is managed in **직원 / 팀 관리** (`staff-team`) — teams, leaders,
+roles, team assignment, and status — separate from **직원 로그인 관리** (`staff-login`,
+phone allowlist). Both are owner/admin only (FC/team-leader → access denied).
+
+Relationship: `staff_login_accounts` (login allowlist) ↔ `profiles` (the logged-in
+user; role/team/status drive RLS) ↔ `teams` (leader_id). See
+`SUPABASE_STAFF_TEAM_OPERATIONS_GUIDE.md`. The renderer updates
+staff_login_accounts/profiles/teams via the anon client under RLS; it never creates
+Auth users or uses service_role.
+
 ## Security model
 
 - The registered-phone list is an **entry gate** only. Actual business-data access is

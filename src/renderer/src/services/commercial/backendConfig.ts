@@ -123,6 +123,14 @@ export function getCommercialReadiness(): ReadinessItem[] {
     { label: '비밀번호 상태 확인', status: '준비됨' },
     { label: '최초 비밀번호 설정 서버함수 연동', status: cfgd ? '준비됨' : '수동 작업 필요' },
     { label: 'FC 직원관리 접근 차단', status: '완료' },
+    { label: '직원 목록 조회', status: '준비됨' },
+    { label: '팀 생성', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '팀장 지정', status: '준비됨' },
+    { label: '직원 팀 배정', status: '준비됨' },
+    { label: '직원 역할 변경', status: '준비됨' },
+    { label: '직원 비활성화/차단', status: '준비됨' },
+    { label: '휴대폰 번호 마스킹', status: '완료' },
+    { label: '팀장 직원관리 접근 차단', status: '완료' },
     { label: '로컬 mock → Supabase 전환', status: cfgd ? '준비됨' : '다음 단계' },
     { label: '고객/상담/출퇴근/실적 저장 테스트', status: '다음 단계' }
   ]

@@ -86,6 +86,14 @@ export function setAccountStatus(id: string, status: StaffLoginStatus): void {
   accounts = accounts.map((a) => (a.id === id ? { ...a, status, updatedAt: nowIso() } : a))
   persist()
 }
+export function setAccountRole(id: string, role: StaffRole): void {
+  accounts = accounts.map((a) => (a.id === id ? { ...a, role, updatedAt: nowIso() } : a))
+  persist()
+}
+export function setAccountTeam(id: string, teamId?: string, teamName?: string): void {
+  accounts = accounts.map((a) => (a.id === id ? { ...a, teamId, teamName, updatedAt: nowIso() } : a))
+  persist()
+}
 
 // --- password reset requests ----------------------------------------------
 

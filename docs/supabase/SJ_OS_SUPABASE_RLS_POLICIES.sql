@@ -40,6 +40,8 @@ alter table public.performance_records enable row level security;
 alter table public.notices             enable row level security;
 
 -- === profiles ===
+-- Staff/team operations: owner/admin manage all profiles (role/team/status updates).
+-- FC reads only their own profile (cannot list all profiles); team-leader reads team.
 -- Everyone can read their own profile; owner/admin can read all; team leader reads team.
 create policy profiles_select on public.profiles for select using (
   id = auth.uid()
@@ -50,7 +52,9 @@ create policy profiles_update_self on public.profiles for update using (id = aut
 create policy profiles_admin_manage on public.profiles for all using (public.is_owner_or_admin())
   with check (public.is_owner_or_admin());
 
--- === teams === (readable by authenticated; managed by owner/admin)
+-- === teams === (readable by authenticated; managed by owner/admin ONLY)
+-- Staff/team operations: only owner/admin may create/update/deactivate teams or set
+-- leaders. FC/team-leader can read team names but CANNOT manage teams.
 create policy teams_select on public.teams for select using (auth.role() = 'authenticated');
 create policy teams_admin_manage on public.teams for all using (public.is_owner_or_admin())
   with check (public.is_owner_or_admin());
