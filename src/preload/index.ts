@@ -47,6 +47,7 @@ import type {
   PackageRunUpdate
 } from '@shared/electronPackage'
 import type { ReleaseSnapshot, SnapshotMeta } from '@shared/releaseSnapshot'
+import type { PackageOutputInspection, RegisteredPackageInfo } from '@shared/distributionPackage'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -269,6 +270,16 @@ const api = {
       ipcRenderer.invoke('sj-snapshot:create-tag', snapshotId),
     pushApprovedTag: (snapshotId: string): Promise<ReleaseSnapshot> =>
       ipcRenderer.invoke('sj-snapshot:push-tag', snapshotId)
+  },
+  distributionPackage: {
+    /**
+     * Staff distribution package registry. The renderer sends only a detected id;
+     * main inspects fixed output folders and computes SHA-256 for a detected file.
+     * No upload, no publish, no build, no arbitrary path, no shell.
+     */
+    inspectPackageOutputs: (): Promise<PackageOutputInspection> => ipcRenderer.invoke('sj-dist:inspect'),
+    registerPackage: (detectedId: string): Promise<RegisteredPackageInfo> =>
+      ipcRenderer.invoke('sj-dist:register', detectedId)
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>

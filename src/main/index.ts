@@ -56,6 +56,7 @@ import {
   pushApprovedTag
 } from './releaseSnapshot'
 import type { SnapshotMeta } from '@shared/releaseSnapshot'
+import { inspectPackageOutputs, registerPackage } from './distributionPackage'
 import {
   applyApprovedPackagingConfig,
   cancelPackageBuild,
@@ -322,6 +323,10 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-snapshot:inspect', (_e, meta?: SnapshotMeta) => inspectTagReadiness(meta))
   ipcMain.handle('sj-snapshot:create-tag', (_e, snapshotId: string) => createApprovedTag(snapshotId))
   ipcMain.handle('sj-snapshot:push-tag', (_e, snapshotId: string) => pushApprovedTag(snapshotId))
+
+  // Staff distribution package registry (fixed folder inspection + SHA-256; no upload).
+  ipcMain.handle('sj-dist:inspect', () => inspectPackageOutputs())
+  ipcMain.handle('sj-dist:register', (_e, detectedId: string) => registerPackage(detectedId))
   // Review (read-only git inspection; NO merge).
   ipcMain.handle('sj-claude-parallel:review', (_e, sourceJobId: string) => loadWorktreeReview(sourceJobId))
   ipcMain.handle(

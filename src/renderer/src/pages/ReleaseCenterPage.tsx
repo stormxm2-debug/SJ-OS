@@ -30,6 +30,7 @@ import DeploymentProfilePanel from '@renderer/components/release/DeploymentProfi
 import ElectronPackagePanel from '@renderer/components/release/ElectronPackagePanel'
 import PackagingConfigPanel from '@renderer/components/release/PackagingConfigPanel'
 import ReleaseSnapshotPanel from '@renderer/components/release/ReleaseSnapshotPanel'
+import DistributionPackagePanel from '@renderer/components/release/DistributionPackagePanel'
 import { useRelease } from '@renderer/services/release/useRelease'
 import { releaseRepository } from '@renderer/services/release/ReleaseRepository'
 import type {
@@ -155,6 +156,9 @@ export default function ReleaseCenterPage(): JSX.Element {
 
       {/* Electron installer package center (existing package scripts only; no publish) */}
       <ElectronPackagePanel />
+
+      {/* Staff distribution package registry (folder inspect + SHA-256; no upload) */}
+      <DistributionPackagePanel />
 
       <Card
         title="릴리즈 센터"
