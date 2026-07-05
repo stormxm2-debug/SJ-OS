@@ -27,6 +27,7 @@ import Card from '@renderer/components/ui/Card'
 import ReleaseApprovalPanel from '@renderer/components/release/ReleaseApprovalPanel'
 import DeploymentPanel from '@renderer/components/release/DeploymentPanel'
 import DeploymentProfilePanel from '@renderer/components/release/DeploymentProfilePanel'
+import ElectronPackagePanel from '@renderer/components/release/ElectronPackagePanel'
 import { useRelease } from '@renderer/services/release/useRelease'
 import { releaseRepository } from '@renderer/services/release/ReleaseRepository'
 import type {
@@ -143,6 +144,9 @@ export default function ReleaseCenterPage(): JSX.Element {
 
       {/* Deployment profile / deploy-script manager (approved package.json write) */}
       <DeploymentProfilePanel />
+
+      {/* Electron installer package center (existing package scripts only; no publish) */}
+      <ElectronPackagePanel />
 
       <Card
         title="릴리즈 센터"

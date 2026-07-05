@@ -51,6 +51,14 @@ import {
   setDeploymentEmitter
 } from './deploymentRunner'
 import {
+  cancelPackageBuild,
+  getPackageRun,
+  inspectPackageReadiness,
+  runApprovedPackageBuild,
+  runPackagePreflight,
+  setPackageEmitter
+} from './electronPackage'
+import {
   configureAiGatewayRoots,
   getAiGatewayStatus,
   transcribeAudio
@@ -288,6 +296,16 @@ app.whenReady().then(() => {
   // Deployment profile / deploy-script manager (read + validated approved write).
   ipcMain.handle('sj-deploy:inspect-scripts', () => inspectPackageScripts())
   ipcMain.handle('sj-deploy:apply-script', (_e, script: string) => applyDeployScript(script))
+
+  // Electron installer package center (existing package scripts only; no publish).
+  setPackageEmitter((run) => {
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('sj-package:run-update', { run }))
+  })
+  ipcMain.handle('sj-package:inspect', () => inspectPackageReadiness())
+  ipcMain.handle('sj-package:preflight', (_e, id: string) => runPackagePreflight(id))
+  ipcMain.handle('sj-package:run', (_e, id: string) => runApprovedPackageBuild(id))
+  ipcMain.handle('sj-package:cancel', (_e, id: string) => cancelPackageBuild(id))
+  ipcMain.handle('sj-package:get', (_e, id: string) => getPackageRun(id))
   // Review (read-only git inspection; NO merge).
   ipcMain.handle('sj-claude-parallel:review', (_e, sourceJobId: string) => loadWorktreeReview(sourceJobId))
   ipcMain.handle(

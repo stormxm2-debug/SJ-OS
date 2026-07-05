@@ -40,6 +40,11 @@ import type {
   DeploymentRunUpdate,
   PackageScriptsInfo
 } from '@shared/deployment'
+import type {
+  ElectronPackageRun,
+  PackageReadiness,
+  PackageRunUpdate
+} from '@shared/electronPackage'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -225,6 +230,24 @@ const api = {
     /** Apply a validated deploy script to package.json (approved write; never runs it). */
     applyDeployScript: (script: string): Promise<ApplyDeployScriptResult> =>
       ipcRenderer.invoke('sj-deploy:apply-script', script)
+  },
+  electronPackage: {
+    /**
+     * Electron installer package center. The renderer sends only a run id; main
+     * inspects package.json and runs an EXISTING package script (dist/package/
+     * make/electron:build) after approval + preflight. No publish, no upload, no
+     * dependency install, no shell from the renderer.
+     */
+    inspectReadiness: (): Promise<PackageReadiness> => ipcRenderer.invoke('sj-package:inspect'),
+    preflight: (id: string): Promise<ElectronPackageRun> => ipcRenderer.invoke('sj-package:preflight', id),
+    runApproved: (id: string): Promise<ElectronPackageRun> => ipcRenderer.invoke('sj-package:run', id),
+    cancel: (id: string): Promise<ElectronPackageRun | null> => ipcRenderer.invoke('sj-package:cancel', id),
+    get: (id: string): Promise<ElectronPackageRun | null> => ipcRenderer.invoke('sj-package:get', id),
+    onRunUpdate: (callback: (update: PackageRunUpdate) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, payload: PackageRunUpdate): void => callback(payload)
+      ipcRenderer.on('sj-package:run-update', handler)
+      return () => ipcRenderer.removeListener('sj-package:run-update', handler)
+    }
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>
