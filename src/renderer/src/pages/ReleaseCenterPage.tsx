@@ -29,6 +29,7 @@ import DeploymentPanel from '@renderer/components/release/DeploymentPanel'
 import DeploymentProfilePanel from '@renderer/components/release/DeploymentProfilePanel'
 import ElectronPackagePanel from '@renderer/components/release/ElectronPackagePanel'
 import PackagingConfigPanel from '@renderer/components/release/PackagingConfigPanel'
+import ReleaseSnapshotPanel from '@renderer/components/release/ReleaseSnapshotPanel'
 import { useRelease } from '@renderer/services/release/useRelease'
 import { releaseRepository } from '@renderer/services/release/ReleaseRepository'
 import type {
@@ -139,6 +140,9 @@ export default function ReleaseCenterPage(): JSX.Element {
     <div className="space-y-5">
       {/* Claude 릴리즈 승인 센터 (approval + readiness) */}
       <ReleaseApprovalPanel />
+
+      {/* Release snapshot / Git tag center (two-step approved tag + push) */}
+      <ReleaseSnapshotPanel />
 
       {/* Approved deployment runner (release-ready only; two-step; fixed npm run deploy) */}
       <DeploymentPanel />

@@ -46,6 +46,7 @@ import type {
   PackageReadiness,
   PackageRunUpdate
 } from '@shared/electronPackage'
+import type { ReleaseSnapshot, SnapshotMeta } from '@shared/releaseSnapshot'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -253,6 +254,21 @@ const api = {
     inspectConfig: (): Promise<ElectronPackagingConfig> => ipcRenderer.invoke('sj-package-config:inspect'),
     /** Apply the approved packaging config to package.json (validated; missing keys only). */
     applyConfig: (): Promise<ElectronPackagingConfig> => ipcRenderer.invoke('sj-package-config:apply')
+  },
+  releaseSnapshot: {
+    /**
+     * Release snapshot / Git tag center. The renderer sends only a snapshot id
+     * (+ optional display metadata); the tag name is derived in main from
+     * package.json version. Main runs fixed git tag/push only — never `npm
+     * version`, `--tags`, `--force`, or a build. Tag create + push are two
+     * explicit steps.
+     */
+    inspectTagReadiness: (meta?: SnapshotMeta): Promise<ReleaseSnapshot> =>
+      ipcRenderer.invoke('sj-snapshot:inspect', meta),
+    createApprovedTag: (snapshotId: string): Promise<ReleaseSnapshot> =>
+      ipcRenderer.invoke('sj-snapshot:create-tag', snapshotId),
+    pushApprovedTag: (snapshotId: string): Promise<ReleaseSnapshot> =>
+      ipcRenderer.invoke('sj-snapshot:push-tag', snapshotId)
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>

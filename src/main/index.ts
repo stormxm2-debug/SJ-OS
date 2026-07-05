@@ -51,6 +51,12 @@ import {
   setDeploymentEmitter
 } from './deploymentRunner'
 import {
+  createApprovedTag,
+  inspectTagReadiness,
+  pushApprovedTag
+} from './releaseSnapshot'
+import type { SnapshotMeta } from '@shared/releaseSnapshot'
+import {
   applyApprovedPackagingConfig,
   cancelPackageBuild,
   getPackageRun,
@@ -311,6 +317,11 @@ app.whenReady().then(() => {
   // Packaging configuration center (read + approved package.json script/metadata write).
   ipcMain.handle('sj-package-config:inspect', () => inspectPackagingConfig())
   ipcMain.handle('sj-package-config:apply', () => applyApprovedPackagingConfig())
+
+  // Release snapshot / Git tag center (fixed git tag/push only; two-step approval).
+  ipcMain.handle('sj-snapshot:inspect', (_e, meta?: SnapshotMeta) => inspectTagReadiness(meta))
+  ipcMain.handle('sj-snapshot:create-tag', (_e, snapshotId: string) => createApprovedTag(snapshotId))
+  ipcMain.handle('sj-snapshot:push-tag', (_e, snapshotId: string) => pushApprovedTag(snapshotId))
   // Review (read-only git inspection; NO merge).
   ipcMain.handle('sj-claude-parallel:review', (_e, sourceJobId: string) => loadWorktreeReview(sourceJobId))
   ipcMain.handle(
