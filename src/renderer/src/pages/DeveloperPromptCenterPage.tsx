@@ -19,6 +19,7 @@ import ClaudeCodeBridgePanel from '@renderer/components/claude-code/ClaudeCodeBr
 import ClaudeCodeRunnerPanel from '@renderer/components/claude-code/ClaudeCodeRunnerPanel'
 import ClaudeAutoBuildPanel from '@renderer/components/claude-auto-build/ClaudeAutoBuildPanel'
 import ClaudeParallelPanel from '@renderer/components/claude-auto-build/ClaudeParallelPanel'
+import WorktreeReviewPanel from '@renderer/components/claude-auto-build/WorktreeReviewPanel'
 import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import type {
@@ -119,6 +120,9 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
 
       {/* Worktree-based parallel builder (foundation) */}
       <ClaudeParallelPanel />
+
+      {/* Worktree result review (read-only; no merge) */}
+      <WorktreeReviewPanel />
 
       {/* Summary */}
       <Card

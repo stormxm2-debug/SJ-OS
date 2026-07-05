@@ -2,8 +2,18 @@ import { app } from 'electron'
 import { type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import type { ParallelBuildJob } from '@shared/claudeParallel'
-import { MAX_PARALLEL_JOBS } from '@shared/claudeParallel'
+import type {
+  ChangedFileStatus,
+  ParallelBuildJob,
+  ReviewDecision,
+  WorktreeChangedFile,
+  WorktreeReview
+} from '@shared/claudeParallel'
+import {
+  MAX_DIFF_PREVIEW_CHARS,
+  MAX_DIFF_PREVIEW_LINES,
+  MAX_PARALLEL_JOBS
+} from '@shared/claudeParallel'
 import { scanAutoBuildPrompt } from '@shared/claudeAutoBuild'
 import { getAutoBuildJob, spawnTool } from './claudeAutoBuild'
 import type { ClaudeAutoBuildVerification } from '@shared/claudeAutoBuild'
@@ -357,5 +367,100 @@ async function verifyWorktree(sourceJobId: string): Promise<void> {
       `검증(참고): typecheck=${typecheckStatus}, build=${buildStatus}`,
       '작업이 별도 폴더에서 완료되었습니다. 병합은 다음 단계에서 대표님 승인 후 진행됩니다.'
     ]
+  })
+}
+
+// --- worktree result review (read-only; NO merge) --------------------------
+
+/** Parse `git status --short` into a changed-file list (covers untracked too). */
+function parseStatusShort(out: string): WorktreeChangedFile[] {
+  return out
+    .split(/\r?\n/)
+    .filter((l) => l.trim().length > 0)
+    .map((line) => {
+      const code = line.slice(0, 2)
+      let path = line.slice(3).trim()
+      const c = code.trim()
+      let status: ChangedFileStatus = 'unknown'
+      if (code === '??' || c === 'A') status = 'added'
+      else if (c.includes('D')) status = 'deleted'
+      else if (c.includes('R')) status = 'renamed'
+      else if (c.includes('M')) status = 'modified'
+      if (status === 'renamed' && path.includes('->')) path = path.split('->').pop()!.trim()
+      return { path, status }
+    })
+    .slice(0, 500)
+}
+
+/**
+ * Read-only inspection of a worktree job's changes. Runs ONLY fixed git inspection
+ * commands (status/diff/branch) inside the validated worktree — never a merge,
+ * never a write. The diff preview is size-limited to keep the UI responsive.
+ */
+export async function loadWorktreeReview(sourceJobId: string): Promise<WorktreeReview> {
+  const job = parallelJobs.get(sourceJobId)
+  const base: WorktreeReview = {
+    jobId: sourceJobId,
+    title: job?.title ?? sourceJobId,
+    worktreePath: job?.worktreePath,
+    branchName: job?.branchName,
+    status: 'failed',
+    changedFiles: [],
+    diffStat: '',
+    diffPreview: '',
+    diffTruncated: false,
+    gitStatusShort: '',
+    reviewDecision: job?.reviewDecision ?? 'not-reviewed',
+    reviewedAt: job?.reviewedAt,
+    notes: job?.reviewNotes
+  }
+  if (!job) return { ...base, error: '작업을 찾을 수 없습니다.' }
+  const wp = job.worktreePath
+  if (!wp || !wp.startsWith(worktreesRoot()) || !existsSync(wp)) {
+    return { ...base, error: 'worktree 폴더를 찾을 수 없습니다. 먼저 worktree를 준비/실행하세요.' }
+  }
+
+  const [statusR, statR, diffR, branchR] = await Promise.all([
+    runFixedIn(wp, 'git', ['status', '--short']),
+    runFixedIn(wp, 'git', ['diff', '--stat']),
+    runFixedIn(wp, 'git', ['diff']),
+    runFixedIn(wp, 'git', ['branch', '--show-current'])
+  ])
+
+  const rawDiff = diffR.out
+  const lines = rawDiff.split(/\r?\n/)
+  let diffTruncated = false
+  let diffPreview = rawDiff
+  if (lines.length > MAX_DIFF_PREVIEW_LINES || rawDiff.length > MAX_DIFF_PREVIEW_CHARS) {
+    diffTruncated = true
+    diffPreview = lines.slice(0, MAX_DIFF_PREVIEW_LINES).join('\n').slice(0, MAX_DIFF_PREVIEW_CHARS)
+  }
+
+  return {
+    ...base,
+    branchName: branchR.out.trim() || job.branchName,
+    status: 'ready',
+    changedFiles: parseStatusShort(statusR.out),
+    diffStat: statR.out.trim().slice(0, 6000),
+    diffPreview,
+    diffTruncated,
+    gitStatusShort: statusR.out.trim().slice(0, 4000),
+    verificationSummary: job.verificationResult
+  }
+}
+
+/** Record a review decision. This ONLY marks state — it never merges. */
+export function markReviewDecision(
+  sourceJobId: string,
+  decision: ReviewDecision,
+  notes?: string
+): ParallelBuildJob | null {
+  const job = parallelJobs.get(sourceJobId)
+  if (!job) return null
+  return touch(job, {
+    reviewDecision: decision,
+    reviewNotes: notes,
+    reviewedAt: nowIso(),
+    logLines: [...job.logLines, `검토 결정: ${decision}${notes ? ` · ${notes}` : ''}`]
   })
 }

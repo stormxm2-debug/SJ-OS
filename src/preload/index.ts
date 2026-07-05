@@ -24,7 +24,12 @@ import type {
   CreateAutoBuildJobRequest,
   QueueState
 } from '@shared/claudeAutoBuild'
-import type { ParallelBuildJob, ParallelJobUpdate } from '@shared/claudeParallel'
+import type {
+  ParallelBuildJob,
+  ParallelJobUpdate,
+  ReviewDecision,
+  WorktreeReview
+} from '@shared/claudeParallel'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -148,6 +153,15 @@ const api = {
     getJob: (sourceJobId: string): Promise<ParallelBuildJob | null> =>
       ipcRenderer.invoke('sj-claude-parallel:get', sourceJobId),
     listJobs: (): Promise<ParallelBuildJob[]> => ipcRenderer.invoke('sj-claude-parallel:list'),
+    /** Read-only worktree change review (fixed git inspection; NO merge). */
+    loadWorktreeReview: (sourceJobId: string): Promise<WorktreeReview> =>
+      ipcRenderer.invoke('sj-claude-parallel:review', sourceJobId),
+    markReviewDecision: (
+      sourceJobId: string,
+      decision: ReviewDecision,
+      notes?: string
+    ): Promise<ParallelBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-parallel:review-decision', { sourceJobId, decision, notes }),
     onJobUpdate: (callback: (update: ParallelJobUpdate) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, payload: ParallelJobUpdate): void => callback(payload)
       ipcRenderer.on('sj-claude-parallel:job-update', handler)

@@ -21,6 +21,9 @@ export type ParallelStatus =
   | 'needs-merge-review'
   | 'blocked'
 
+/** The user's review decision on a completed worktree job. */
+export type ReviewDecision = 'not-reviewed' | 'approved-for-merge' | 'needs-fix' | 'rejected'
+
 export interface ParallelBuildJob {
   id: string
   /** The auto-build job this parallel job was derived from. */
@@ -37,11 +40,49 @@ export interface ParallelBuildJob {
   logLines: string[]
   verificationResult?: ClaudeAutoBuildVerification
   blockedReason?: string
+  // --- review (does NOT merge) ---
+  reviewDecision?: ReviewDecision
+  reviewNotes?: string
+  reviewedAt?: string
   createdAt: string
   startedAt?: string
   finishedAt?: string
   updatedAt: string
 }
+
+export type ChangedFileStatus = 'added' | 'modified' | 'deleted' | 'renamed' | 'unknown'
+
+export interface WorktreeChangedFile {
+  path: string
+  status: ChangedFileStatus
+  additions?: number
+  deletions?: number
+}
+
+export type WorktreeReviewStatus = 'pending' | 'loading' | 'ready' | 'failed'
+
+/** Read-only inspection result of a worktree job's changes (no merge). */
+export interface WorktreeReview {
+  jobId: string
+  title: string
+  worktreePath?: string
+  branchName?: string
+  status: WorktreeReviewStatus
+  changedFiles: WorktreeChangedFile[]
+  diffStat: string
+  diffPreview: string
+  diffTruncated: boolean
+  gitStatusShort: string
+  verificationSummary?: ClaudeAutoBuildVerification
+  reviewDecision: ReviewDecision
+  reviewedAt?: string
+  notes?: string
+  error?: string
+}
+
+/** Diff preview safety limits (avoid freezing the UI on huge diffs). */
+export const MAX_DIFF_PREVIEW_LINES = 300
+export const MAX_DIFF_PREVIEW_CHARS = 30000
 
 /** Emitted to the renderer whenever a parallel job changes. */
 export interface ParallelJobUpdate {

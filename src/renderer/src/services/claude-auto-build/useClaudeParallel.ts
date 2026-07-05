@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ParallelBuildJob } from '@shared/claudeParallel'
+import type { ParallelBuildJob, ReviewDecision, WorktreeReview } from '@shared/claudeParallel'
 
 /**
  * Renderer hook for the worktree-based parallel builder. Subscribes to parallel
@@ -20,6 +20,8 @@ export interface UseClaudeParallel {
   available: boolean
   prepareWorktree: (sourceJobId: string) => Promise<void>
   runWorktreeJob: (sourceJobId: string) => Promise<void>
+  loadWorktreeReview: (sourceJobId: string) => Promise<WorktreeReview | null>
+  markReviewDecision: (sourceJobId: string, decision: ReviewDecision, notes?: string) => Promise<void>
 }
 
 export function useClaudeParallel(): UseClaudeParallel {
@@ -54,6 +56,25 @@ export function useClaudeParallel(): UseClaudeParallel {
   const runWorktreeJob = useCallback(async (sourceJobId: string): Promise<void> => {
     await api()?.runWorktreeJob(sourceJobId)
   }, [])
+  const loadWorktreeReview = useCallback(
+    async (sourceJobId: string): Promise<WorktreeReview | null> => {
+      return (await api()?.loadWorktreeReview(sourceJobId)) ?? null
+    },
+    []
+  )
+  const markReviewDecision = useCallback(
+    async (sourceJobId: string, decision: ReviewDecision, notes?: string): Promise<void> => {
+      await api()?.markReviewDecision(sourceJobId, decision, notes)
+    },
+    []
+  )
 
-  return { parallelJobs, available, prepareWorktree, runWorktreeJob }
+  return {
+    parallelJobs,
+    available,
+    prepareWorktree,
+    runWorktreeJob,
+    loadWorktreeReview,
+    markReviewDecision
+  }
 }

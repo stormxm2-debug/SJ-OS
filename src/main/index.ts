@@ -26,10 +26,13 @@ import {
 import {
   getParallelJob,
   listParallelJobs,
+  loadWorktreeReview,
+  markReviewDecision,
   prepareWorktree,
   runWorktreeJob,
   setParallelEmitter
 } from './claudeParallel'
+import type { ReviewDecision } from '@shared/claudeParallel'
 import {
   configureAiGatewayRoots,
   getAiGatewayStatus,
@@ -247,6 +250,13 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude-parallel:run', (_e, sourceJobId: string) => runWorktreeJob(sourceJobId))
   ipcMain.handle('sj-claude-parallel:get', (_e, sourceJobId: string) => getParallelJob(sourceJobId))
   ipcMain.handle('sj-claude-parallel:list', () => listParallelJobs())
+  // Review (read-only git inspection; NO merge).
+  ipcMain.handle('sj-claude-parallel:review', (_e, sourceJobId: string) => loadWorktreeReview(sourceJobId))
+  ipcMain.handle(
+    'sj-claude-parallel:review-decision',
+    (_e, args: { sourceJobId: string; decision: ReviewDecision; notes?: string }) =>
+      markReviewDecision(args.sourceJobId, args.decision, args.notes)
+  )
 
   createWindow()
 
