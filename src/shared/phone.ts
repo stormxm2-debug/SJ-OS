@@ -33,3 +33,9 @@ export function maskPhone(normalized: string): string {
   if (!normalized || normalized.length < 8) return '****'
   return `${normalized.slice(0, 5)}****${normalized.slice(-4)}`
 }
+
+/** Korean-friendly masked display, e.g. +8210XXXXXXXX → 010-****-5678. */
+export function maskKoreanPhoneDisplay(normalized: string): string {
+  if (!normalized || !normalized.startsWith('+8210') || normalized.length < 9) return maskPhone(normalized)
+  return `010-****-${normalized.slice(-4)}`
+}

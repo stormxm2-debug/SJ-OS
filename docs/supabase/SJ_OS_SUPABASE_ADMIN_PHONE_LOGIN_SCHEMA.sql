@@ -34,6 +34,9 @@ create table if not exists public.password_reset_requests (
 );
 
 create index if not exists staff_login_accounts_status_idx on public.staff_login_accounts(status);
+-- normalized_phone is already UNIQUE (a unique index) on staff_login_accounts.
+create index if not exists staff_login_accounts_role_idx on public.staff_login_accounts(role);
+create index if not exists staff_login_accounts_team_id_idx on public.staff_login_accounts(team_id);
 create index if not exists password_reset_requests_status_idx on public.password_reset_requests(status);
 -- normalized_phone is already UNIQUE (indexed) on staff_login_accounts.
 create index if not exists password_reset_requests_phone_idx on public.password_reset_requests(normalized_phone);

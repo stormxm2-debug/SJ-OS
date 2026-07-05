@@ -19,6 +19,23 @@ login.**
 5. **비밀번호 찾기** records a reset request; the owner/admin approves it, then the
    staff member sets a new password via the same first-password card.
 
+## 관리자 직원 번호 등록 절차
+
+1. 대표/관리자로 로그인합니다.
+2. **직원 로그인 관리**에 진입합니다. (FC/팀장은 접근 불가 — 메뉴 숨김 + 라우트 접근 시
+   "접근 권한이 없습니다.")
+3. **직원명 / 휴대폰 번호 / 역할 / 팀**을 입력합니다.
+4. **직원 등록**을 누릅니다. 번호는 `+8210…`로 정규화되어 `staff_login_accounts`에
+   `status=invited`, `password_status=not-set`로 저장됩니다. (렌더러는 Auth 사용자/비밀번호를
+   만들지 않습니다.)
+5. 직원에게 SJ OS 링크를 전달합니다.
+6. 직원이 번호 입력 → **최초 비밀번호 설정**(claim-phone-account 서버 함수)으로 비밀번호를
+   설정합니다.
+7. 이후 번호 + 비밀번호로 로그인합니다.
+
+> 중복 번호는 "이미 등록된 휴대폰 번호입니다."로 차단됩니다. 대표만 다른 owner를 생성할 수
+> 있습니다(관리자는 owner 생성 옵션이 보이지 않음).
+
 ## Security model
 
 - The registered-phone list is an **entry gate** only. Actual business-data access is

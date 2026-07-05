@@ -15,7 +15,8 @@ using ( public.is_owner_or_admin() );
 create policy staff_login_select_team on public.staff_login_accounts for select to authenticated
 using ( public.is_team_leader() and team_id = public.current_user_team_id() );
 
--- INSERT/UPDATE: owner/admin only. A team-leader may NOT create owner/admin accounts.
+-- INSERT/UPDATE: owner/admin ONLY. Team-leaders CANNOT create or manage accounts in
+-- this sprint (no insert/update policy grants them access). FC has no access at all.
 create policy staff_login_insert_admin on public.staff_login_accounts for insert to authenticated
 with check ( public.is_owner_or_admin() );
 

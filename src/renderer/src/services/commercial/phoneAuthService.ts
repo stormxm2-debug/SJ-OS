@@ -1,6 +1,7 @@
 import { normalizeKoreanPhoneNumber } from '@shared/phone'
 import { findByNormalizedPhone, requestPasswordReset } from './phoneLoginStore'
 import { getFunctionsBaseUrl, getSupabaseAnonKey } from './supabaseClient'
+import { getBackendConfig } from './backendConfig'
 
 /**
  * Phone/password login resolution + first-password / reset boundaries (renderer).
@@ -21,10 +22,19 @@ export type LoginResolution =
 const GATE_MSG = '등록된 직원만 이용할 수 있습니다. 관리자에게 계정 등록을 요청하세요.'
 const INACTIVE_MSG = '비활성 직원 계정입니다. 관리자에게 문의하세요.'
 
-/** Resolve what the login screen should do next for a given phone input. */
+/**
+ * Resolve what the login screen should do next for a given phone input.
+ *
+ * In Supabase mode the registered-phone list is NOT client-readable (RLS blocks it),
+ * so we defer to the server: return 'attempt' and let signInWithPassword / the claim
+ * Edge Function enforce registration/status. The local registry is used only in
+ * local-mock/dev mode. (A future SECURITY DEFINER login-gate RPC can restore the
+ * needs-setup hint in Supabase mode.)
+ */
 export function resolvePhoneLogin(phoneInput: string): LoginResolution {
   const norm = normalizeKoreanPhoneNumber(phoneInput)
   if (!norm.ok || !norm.value) return { kind: 'invalid-phone', message: norm.error ?? '휴대폰 번호 형식을 확인해주세요.' }
+  if (getBackendConfig().mode === 'supabase') return { kind: 'attempt', normalizedPhone: norm.value }
   const acc = findByNormalizedPhone(norm.value)
   if (!acc) return { kind: 'not-registered', message: GATE_MSG }
   if (acc.status === 'inactive' || acc.status === 'blocked') return { kind: 'inactive', message: INACTIVE_MSG }

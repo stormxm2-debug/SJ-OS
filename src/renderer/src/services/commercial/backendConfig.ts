@@ -116,6 +116,13 @@ export function getCommercialReadiness(): ReadinessItem[] {
     { label: 'Netlify Supabase URL env 필요', status: cfgd ? '완료' : '수동 작업 필요' },
     { label: 'Netlify Supabase anon key env 필요', status: cfgd ? '완료' : '수동 작업 필요' },
     { label: 'service role key 금지 (프론트엔드)', status: '완료' },
+    { label: '직원 번호 등록 Supabase 저장', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '직원 목록 Supabase 조회', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '중복 번호 차단', status: '완료' },
+    { label: '직원 비활성화/차단', status: '준비됨' },
+    { label: '비밀번호 상태 확인', status: '준비됨' },
+    { label: '최초 비밀번호 설정 서버함수 연동', status: cfgd ? '준비됨' : '수동 작업 필요' },
+    { label: 'FC 직원관리 접근 차단', status: '완료' },
     { label: '로컬 mock → Supabase 전환', status: cfgd ? '준비됨' : '다음 단계' },
     { label: '고객/상담/출퇴근/실적 저장 테스트', status: '다음 단계' }
   ]
