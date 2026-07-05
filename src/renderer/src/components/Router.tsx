@@ -1,6 +1,12 @@
 import { useNavigation } from '@renderer/navigation/NavigationContext'
+import { useSession } from '@renderer/navigation/SessionContext'
+import { canAccessRoute } from '@renderer/navigation/roleAccess'
+import AccessDenied from './layout/AccessDenied'
+import StaffMvpDashboard from './home/StaffMvpDashboard'
 import CommandCenterPage from '@renderer/pages/CommandCenterPage'
 import StaffHomePage from '@renderer/pages/StaffHomePage'
+import AttendancePage from '@renderer/pages/AttendancePage'
+import NoticePage from '@renderer/pages/NoticePage'
 import Dashboard from './dashboard/Dashboard'
 import WorkersPage from '@renderer/pages/WorkersPage'
 import WorkerDetailPage from '@renderer/pages/WorkerDetailPage'
@@ -31,12 +37,28 @@ import CompanySettingsPage from '@renderer/pages/CompanySettingsPage'
 /** Renders the active view chosen by the navigation state. */
 export default function Router(): JSX.Element {
   const { route } = useNavigation()
+  const { session } = useSession()
+
+  // Friendly role guard: non-admin roles reaching an admin/team-only route get an
+  // access-denied card instead of a crash or blank screen. Owner/admin see all.
+  if (!canAccessRoute(session.role, route.name)) {
+    return <AccessDenied />
+  }
 
   switch (route.name) {
     case 'assistant':
       return <CommandCenterPage />
     case 'staff-home':
-      return <StaffHomePage />
+      return (
+        <div className="space-y-6">
+          <StaffMvpDashboard />
+          <StaffHomePage />
+        </div>
+      )
+    case 'attendance':
+      return <AttendancePage />
+    case 'notice':
+      return <NoticePage />
     case 'company':
       return <LiveCompanyPage />
     case 'dashboard':

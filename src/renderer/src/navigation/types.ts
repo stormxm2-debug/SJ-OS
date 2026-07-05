@@ -4,6 +4,8 @@ export type WorkerTab = 'profile' | 'memory' | 'chat'
 export type View =
   | { name: 'assistant' }
   | { name: 'staff-home' }
+  | { name: 'attendance' }
+  | { name: 'notice' }
   | { name: 'company' }
   | { name: 'dashboard' }
   | { name: 'fcos' }
