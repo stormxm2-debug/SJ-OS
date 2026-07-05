@@ -52,10 +52,24 @@ enumeration). Missing profile → "직원 프로필이 없습니다…"; inactiv
 - **로컬 MVP 로그인**: dev/testing only, under the same toggle when Supabase is not
   configured. Not shown as a normal staff option.
 
-## This sprint vs. next
+## Edge Functions (server-side, required for first password)
 
-Implemented: phone normalization, admin registry (local/draft + SQL drafts), simple
-login UI, first-password/reset **frontend boundaries**, RLS drafts. **Not** implemented
-(server work): the `claim-phone-account` / `reset-phone-password` Edge Functions and
-the login-gate RPC. Until they exist, first-password setup shows "서버 함수가 아직
-연결되지 않았습니다." and does not fake success.
+The renderer **cannot** create Supabase Auth users. First-password setup calls the
+`claim-phone-account` Edge Function (source: `supabase/functions/claim-phone-account`),
+which runs with `service_role` (function env only) and:
+
+1. Looks up `staff_login_accounts` by normalized phone.
+2. Blocks **unregistered** ("등록된 직원만…"), **inactive/blocked** ("비활성 직원
+   계정입니다…"), and **already-claimed** ("이미 비밀번호가 설정된 계정입니다. 로그인해주세요.")
+   — it never overwrites a set password without an approved reset.
+3. Creates the Auth user (`phone`, `password`, `phone_confirm: true`), upserts
+   `profiles`, and sets `password_status='set'`, `status='active'`.
+
+Forgot password calls `request-phone-password-reset` (records a request, always
+returns the generic message). Reset itself is **admin-approved** — see
+`SUPABASE_PHONE_PASSWORD_RESET_FUNCTION_PLAN.md`.
+
+Deploy: `SUPABASE_EDGE_FUNCTION_DEPLOYMENT_GUIDE.md`. Until the functions are deployed
++ reachable, first-password setup shows "서버 함수가 아직 배포되지 않았습니다." and does
+NOT fake success. The frontend computes the function URL from `VITE_SUPABASE_URL`
+(`/functions/v1/…`) and sends only the **anon** key as Authorization.

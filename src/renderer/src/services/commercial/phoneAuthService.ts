@@ -1,6 +1,6 @@
 import { normalizeKoreanPhoneNumber } from '@shared/phone'
 import { findByNormalizedPhone, requestPasswordReset } from './phoneLoginStore'
-import { getEdgeFunctionBase } from './supabaseAuth'
+import { getFunctionsBaseUrl, getSupabaseAnonKey } from './supabaseClient'
 
 /**
  * Phone/password login resolution + first-password / reset boundaries (renderer).
@@ -53,34 +53,61 @@ export interface ServerActionResult {
   message: string
 }
 
-const SERVER_REQUIRED = '최초 비밀번호 설정 서버 함수가 아직 연결되지 않았습니다. 관리자에게 문의하세요.'
+const SERVER_REQUIRED = '최초 비밀번호 설정 서버 함수가 아직 배포되지 않았습니다. 관리자에게 문의하세요.'
+const RESET_GENERIC = '등록된 직원이면 관리자에게 비밀번호 재설정 요청이 전달됩니다.'
+
+/** Whether the Edge Function base URL is known (deploy readiness UI). */
+export function isClaimFunctionConfigured(): boolean {
+  return !!getFunctionsBaseUrl()
+}
+
+function functionHeaders(): Record<string, string> {
+  const anon = getSupabaseAnonKey() // public anon key only — never service_role
+  return { 'Content-Type': 'application/json', ...(anon ? { Authorization: `Bearer ${anon}`, apikey: anon } : {}) }
+}
 
 /**
- * Claim an account = set the first password. DEFERRED to a server Edge Function.
- * Never sends service_role. When no endpoint is configured, returns a clear
- * "server function required" result (does NOT fake success).
+ * Claim an account = set the first password via the server Edge Function
+ * (claim-phone-account). Never sends service_role. When no endpoint is configured,
+ * returns a clear "server function not deployed" result (does NOT fake success).
+ * Never logs phone/password.
  */
 export async function claimPhoneAccount(normalizedPhone: string, password: string): Promise<ServerActionResult> {
-  const base = getEdgeFunctionBase()
+  const base = getFunctionsBaseUrl()
   if (!base) return { ok: false, message: SERVER_REQUIRED }
   const v = validatePassword(password)
   if (!v.ok) return { ok: false, message: v.errors[0] }
   try {
     const res = await fetch(`${base}/claim-phone-account`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ normalizedPhone, password }) // anon call; server verifies + uses service_role server-side
+      headers: functionHeaders(),
+      body: JSON.stringify({ phone: normalizedPhone, password })
     })
-    if (!res.ok) return { ok: false, message: '비밀번호 설정에 실패했습니다. 관리자에게 문의하세요.' }
-    return { ok: true, message: '비밀번호가 설정되었습니다. 이제 로그인할 수 있습니다.' }
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string }
+    if (res.ok && data?.ok) return { ok: true, message: data.message ?? '비밀번호 설정이 완료되었습니다. 이제 로그인해주세요.' }
+    return { ok: false, message: data?.message ?? '비밀번호 설정에 실패했습니다. 관리자에게 문의하세요.' }
   } catch {
     return { ok: false, message: '네트워크 상태를 확인해주세요.' }
   }
 }
 
-/** Forgot password → record a reset request; always returns a GENERIC message. */
+/**
+ * Forgot password → record a local draft request + best-effort server call. Always
+ * returns a GENERIC message (no account enumeration). Never logs the phone.
+ */
 export function requestPhonePasswordReset(phoneInput: string): ServerActionResult {
   const norm = normalizeKoreanPhoneNumber(phoneInput)
-  if (norm.ok && norm.value) requestPasswordReset(norm.value)
-  return { ok: true, message: '등록된 직원이면 관리자에게 비밀번호 재설정 요청이 전달됩니다.' }
+  if (norm.ok && norm.value) {
+    requestPasswordReset(norm.value) // local/draft record for admin visibility
+    const base = getFunctionsBaseUrl()
+    if (base) {
+      // Fire-and-forget; errors are swallowed so nothing is revealed to the user.
+      void fetch(`${base}/request-phone-password-reset`, {
+        method: 'POST',
+        headers: functionHeaders(),
+        body: JSON.stringify({ phone: norm.value })
+      }).catch(() => {})
+    }
+  }
+  return { ok: true, message: RESET_GENERIC }
 }

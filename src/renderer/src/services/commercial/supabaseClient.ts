@@ -43,6 +43,23 @@ export function getSupabaseConfigStatus(): SupabaseConfigStatus {
   }
 }
 
+/** Public anon key (safe in the frontend). Used as Bearer for Edge Function calls. */
+export function getSupabaseAnonKey(): string | undefined {
+  return env().VITE_SUPABASE_ANON_KEY?.trim() || undefined
+}
+
+/**
+ * Base URL for Supabase Edge Functions, or undefined if unknown. Prefers an explicit
+ * VITE_SJ_EDGE_FUNCTION_URL override, else derives `<project-url>/functions/v1`.
+ * No secrets — the anon key (public) is sent separately as the Authorization Bearer.
+ */
+export function getFunctionsBaseUrl(): string | undefined {
+  const override = env().VITE_SJ_EDGE_FUNCTION_URL?.trim()
+  if (override) return override.replace(/\/+$/, '')
+  const url = getSupabaseConfigStatus().url
+  return url ? `${url.replace(/\/+$/, '')}/functions/v1` : undefined
+}
+
 // Cached client (any — the package types are optional/not installed).
 let cachedClient: unknown = null
 let initTried = false

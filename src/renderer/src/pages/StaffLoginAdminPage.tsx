@@ -11,6 +11,7 @@ import {
   setAccountStatus,
   useStaffLoginAccounts
 } from '@renderer/services/commercial/phoneLoginStore'
+import { isClaimFunctionConfigured } from '@renderer/services/commercial/phoneAuthService'
 
 /**
  * 직원 로그인 관리 (owner/admin only; guarded by the Router + hidden on mobile).
@@ -19,6 +20,17 @@ import {
  * server-side (Edge Function) — this page manages the local/draft registry that
  * mirrors the `staff_login_accounts` table. Phone numbers are masked in the list.
  */
+function FnStatus({ name, ready }: { name: string; ready: boolean }): JSX.Element {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-xs">
+      <span className="font-mono text-slate-600">{name}</span>
+      <span className={['rounded-full border px-2 py-0.5 text-[10px] font-bold', ready ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-amber-200 bg-amber-50 text-amber-600'].join(' ')}>
+        {ready ? '준비됨' : '배포 필요'}
+      </span>
+    </div>
+  )
+}
+
 export default function StaffLoginAdminPage(): JSX.Element {
   const { session } = useSession()
   const { accounts, resets } = useStaffLoginAccounts()
@@ -44,6 +56,16 @@ export default function StaffLoginAdminPage(): JSX.Element {
         <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600">관리자 전용</span>
       </div>
       <p className="text-xs text-slate-500">등록된 휴대폰 번호만 SJ OS에 접속할 수 있습니다. 실제 비밀번호 설정/재설정은 서버 함수(Edge Function)에서 처리됩니다. (service_role은 서버에만 저장)</p>
+
+      {/* Server function status */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-2 text-sm font-semibold text-slate-700">서버 함수 상태</div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <FnStatus name="claim-phone-account" ready={isClaimFunctionConfigured()} />
+          <FnStatus name="request-phone-password-reset" ready={isClaimFunctionConfigured()} />
+        </div>
+        <p className="mt-2 text-[10px] text-slate-400">배포 가이드: docs/supabase/SUPABASE_EDGE_FUNCTION_DEPLOYMENT_GUIDE.md · 프론트엔드는 anon key만 사용하고 service_role은 서버(Edge Function)에만 저장합니다.</p>
+      </div>
 
       {/* Add staff */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
