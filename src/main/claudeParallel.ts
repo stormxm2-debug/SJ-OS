@@ -1,12 +1,13 @@
 import { app } from 'electron'
 import { type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, symlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type {
   ChangedFileStatus,
   ParallelBuildJob,
   ReviewDecision,
   WorktreeChangedFile,
+  WorktreeCommitResult,
   WorktreeMergeResult,
   WorktreeReview
 } from '@shared/claudeParallel'
@@ -39,6 +40,24 @@ function mainWorkspace(): string {
 /** Sibling folder of the main workspace, e.g. …\.vscode\SJ-OS-worktrees */
 function worktreesRoot(): string {
   return resolve(join(mainWorkspace(), '..', 'SJ-OS-worktrees'))
+}
+
+/**
+ * Link the main workspace's node_modules into the worktree (read-only dep reuse)
+ * so typecheck/build can run there. Best-effort, never destructive: a Windows
+ * junction / posix dir symlink; skipped if it already exists.
+ */
+function linkNodeModules(worktreePath: string): string {
+  const target = join(mainWorkspace(), 'node_modules')
+  const link = join(worktreePath, 'node_modules')
+  if (existsSync(link)) return 'node_modules 이미 존재'
+  if (!existsSync(target)) return 'node_modules 원본 없음 (검증이 제한될 수 있음)'
+  try {
+    symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir')
+    return 'node_modules 링크 생성 (검증 가능)'
+  } catch (e) {
+    return `node_modules 링크 실패: ${e instanceof Error ? e.message : ''}`
+  }
 }
 
 function nowIso(): string {
@@ -196,10 +215,13 @@ export function prepareWorktree(sourceJobId: string): ParallelBuildJob | null {
     if (!cur) return
     const trimmed = out.trim().slice(0, 1500)
     if (code === 0) {
+      // Link the main workspace's node_modules into the worktree (read-only dep
+      // reuse) so typecheck/build can run there. Best-effort; never destructive.
+      const linkMsg = linkNodeModules(worktreePath)
       touch(cur, {
         parallelStatus: 'worktree-created',
         canRunInParallel: true,
-        logLines: [...cur.logLines, trimmed, `worktree 생성 완료 · 브랜치 ${branchName}`].filter(Boolean)
+        logLines: [...cur.logLines, trimmed, `worktree 생성 완료 · 브랜치 ${branchName}`, linkMsg].filter(Boolean)
       })
     } else {
       touch(cur, {
@@ -358,15 +380,23 @@ async function verifyWorktree(sourceJobId: string): Promise<void> {
     buildStatus,
     gitStatusShort: gs.out.trim().slice(0, 2000)
   }
-  // Claude finished in an isolated folder → always park at merge review (no merge).
+  // If verification passed AND there are changes → ready to commit. Otherwise park
+  // at merge review (nothing to commit, or verification needs attention).
+  const hasChanges = verification.gitStatusShort.trim().length > 0
+  const verified = typecheckStatus === 'passed' && buildStatus === 'passed'
+  const nextStatus = verified && hasChanges ? 'commit-ready' : 'needs-merge-review'
   touch(parallelJobs.get(sourceJobId)!, {
-    parallelStatus: 'needs-merge-review',
+    parallelStatus: nextStatus,
     finishedAt: nowIso(),
     verificationResult: verification,
     logLines: [
       ...parallelJobs.get(sourceJobId)!.logLines,
-      `검증(참고): typecheck=${typecheckStatus}, build=${buildStatus}`,
-      '작업이 별도 폴더에서 완료되었습니다. 병합은 다음 단계에서 대표님 승인 후 진행됩니다.'
+      `검증: typecheck=${typecheckStatus}, build=${buildStatus}`,
+      nextStatus === 'commit-ready'
+        ? '변경사항이 있어 커밋 준비됨. “Worktree 커밋 생성”을 눌러 커밋하세요.'
+        : hasChanges
+          ? '검증 실패 상태입니다. 커밋 전에 확인이 필요합니다.'
+          : '변경된 파일이 없습니다.'
     ]
   })
 }
@@ -579,5 +609,118 @@ export async function mergeApprovedWorktree(sourceJobId: string): Promise<Worktr
     ],
     conflictFiles: [],
     verification
+  }
+}
+
+// --- controlled worktree commit (explicit; safe staging; no push) ----------
+
+const AUDIO_EXT = /\.(mp3|wav|m4a|webm|ogg|flac|aac)$/i
+const SECRET_IN_DIFF = [/sk-ant-[A-Za-z0-9_-]{16,}/, /sk-[A-Za-z0-9_-]{16,}/, /(?:OPENAI|ANTHROPIC)_API_KEY\s*=\s*['"]?[A-Za-z0-9_-]{12,}/]
+
+/** A path that must NEVER be committed (blocks the whole commit). */
+function isBlockedPath(p: string): boolean {
+  const l = p.replace(/\\/g, '/').toLowerCase()
+  return l === '.env' || l.endsWith('/.env') || l.includes('.env.local') || /(^|\/)\.env(\.|$)/.test(l)
+}
+/** A path that is skipped from staging (not committed, but doesn't block). */
+function isSkippedPath(p: string): boolean {
+  const l = p.replace(/\\/g, '/').toLowerCase()
+  return l.includes('node_modules/') || AUDIO_EXT.test(l) || l.includes('..')
+}
+
+function sanitizeCommitMessage(title: string): string {
+  const clean = (title ?? '')
+    .replace(/[\r\n"`]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100)
+  if (!clean) return 'feat: SJ OS 자동 개발 변경'
+  return /^(feat|fix|chore|docs|refactor|style|test)\b|:/.test(clean) ? clean : `feat: ${clean}`
+}
+
+/**
+ * Commit a worktree's changes ON ITS BRANCH so the merge flow has something to
+ * merge. Explicit only (user click). Stages ONLY the specific safe changed files
+ * (never `git add .`), blocks .env/secrets, never pushes.
+ */
+export async function commitWorktreeJob(sourceJobId: string): Promise<WorktreeCommitResult> {
+  const job = parallelJobs.get(sourceJobId)
+  const base: WorktreeCommitResult = {
+    jobId: sourceJobId,
+    worktreePath: job?.worktreePath,
+    branchName: job?.branchName,
+    status: 'blocked',
+    changedFiles: [],
+    commitMessage: sanitizeCommitMessage(job?.title ?? '')
+  }
+  if (!job) return { ...base, errorMessage: '작업을 찾을 수 없습니다.' }
+  const wp = job.worktreePath
+  if (!wp || !wp.startsWith(worktreesRoot()) || !existsSync(wp)) {
+    return { ...base, errorMessage: '허용된 worktree를 찾을 수 없습니다.' }
+  }
+  if (!isSafeBranch(job.branchName)) return { ...base, errorMessage: '안전한 브랜치 이름이 아닙니다.' }
+
+  // Verification must have passed in the worktree.
+  const v = job.verificationResult
+  if (!v || v.typecheckStatus !== 'passed' || v.buildStatus !== 'passed') {
+    return { ...base, errorMessage: '검증 실패 상태에서는 커밋할 수 없습니다.' }
+  }
+
+  // Changed files.
+  const statusR = await runFixedIn(wp, 'git', ['status', '--short'])
+  const entries = parseStatusShort(statusR.out)
+  if (entries.length === 0) return { ...base, errorMessage: '커밋할 변경사항이 없습니다.' }
+
+  // Block entirely on .env; skip node_modules/audio.
+  if (entries.some((e) => isBlockedPath(e.path))) {
+    return { ...base, errorMessage: '.env 변경이 감지되어 커밋을 차단했습니다.' }
+  }
+  const safeFiles = entries.map((e) => e.path).filter((p) => !isSkippedPath(p))
+  if (safeFiles.length === 0) return { ...base, errorMessage: '커밋 가능한 안전한 변경 파일이 없습니다.' }
+
+  // Secret scan on the diff text.
+  const diffR = await runFixedIn(wp, 'git', ['diff'])
+  if (SECRET_IN_DIFF.some((re) => re.test(diffR.out))) {
+    return { ...base, errorMessage: '민감 정보(비밀 키 값)로 보이는 문자열이 diff에 있어 커밋을 차단했습니다.' }
+  }
+
+  const startedAt = nowIso()
+  touch(job, { parallelStatus: 'committing', logLines: [...job.logLines, `커밋 준비: ${safeFiles.length}개 파일`] })
+
+  // Stage ONLY the specific safe files (never `git add .`).
+  const addR = await runFixedIn(wp, 'git', ['add', ...safeFiles])
+  if (addR.code !== 0) {
+    touch(job, { parallelStatus: 'commit-ready', logLines: [...job.logLines, 'git add 실패'] })
+    return { ...base, status: 'failed', changedFiles: safeFiles, startedAt, finishedAt: nowIso(), errorMessage: 'git add 실패' }
+  }
+
+  const message = sanitizeCommitMessage(job.title)
+  const commitR = await runFixedIn(wp, 'git', ['commit', '-m', message])
+  if (commitR.code !== 0) {
+    touch(job, { parallelStatus: 'commit-ready', logLines: [...job.logLines, `git commit 실패: ${commitR.out.slice(-300)}`] })
+    return { ...base, status: 'failed', changedFiles: safeFiles, commitMessage: message, startedAt, finishedAt: nowIso(), errorMessage: 'git commit 실패' }
+  }
+
+  const logR = await runFixedIn(wp, 'git', ['log', '--oneline', '-1'])
+  const commitHash = logR.out.trim().split(/\s+/)[0] || undefined
+
+  touch(job, {
+    parallelStatus: 'needs-merge-review',
+    logLines: [
+      ...job.logLines,
+      `커밋 완료 · ${commitHash ?? ''} · ${message}`,
+      'worktree 커밋은 완료됐지만 push는 자동으로 하지 않았습니다.'
+    ]
+  })
+
+  return {
+    ...base,
+    status: 'committed',
+    changedFiles: safeFiles,
+    commitMessage: message,
+    commitHash,
+    stdoutPreview: commitR.out.slice(0, 2000),
+    startedAt,
+    finishedAt: nowIso()
   }
 }

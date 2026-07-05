@@ -16,6 +16,9 @@ export type ParallelStatus =
   | 'ready'
   | 'running'
   | 'verifying'
+  | 'commit-ready'
+  | 'committing'
+  | 'committed'
   | 'succeeded'
   | 'failed'
   | 'needs-merge-review'
@@ -83,6 +86,24 @@ export interface WorktreeReview {
 /** Diff preview safety limits (avoid freezing the UI on huge diffs). */
 export const MAX_DIFF_PREVIEW_LINES = 300
 export const MAX_DIFF_PREVIEW_CHARS = 30000
+
+export type CommitStatus = 'not-ready' | 'ready' | 'committing' | 'committed' | 'failed' | 'blocked'
+
+/** Result of a controlled commit inside a worktree branch (main-only; no push). */
+export interface WorktreeCommitResult {
+  jobId: string
+  worktreePath?: string
+  branchName?: string
+  status: CommitStatus
+  changedFiles: string[]
+  commitMessage: string
+  commitHash?: string
+  stdoutPreview?: string
+  stderrPreview?: string
+  startedAt?: string
+  finishedAt?: string
+  errorMessage?: string
+}
 
 export type MergeStatus =
   | 'not-ready'

@@ -5,9 +5,11 @@ import type {
   ParallelBuildJob,
   ReviewDecision,
   WorktreeReview,
+  WorktreeCommitResult,
   WorktreeMergeResult,
   ChangedFileStatus
 } from '@shared/claudeParallel'
+import { GitCommitHorizontal } from 'lucide-react'
 import { useClaudeParallel } from '@renderer/services/claude-auto-build/useClaudeParallel'
 import { copyPromptToClipboard } from '@renderer/services/claude-code/claudeCodeBridge'
 
@@ -17,7 +19,7 @@ import { copyPromptToClipboard } from '@renderer/services/claude-code/claudeCode
  * user mark a decision. **Nothing merges here.** Inline cards only.
  */
 export default function WorktreeReviewPanel(): JSX.Element {
-  const { parallelJobs, available, loadWorktreeReview, markReviewDecision, mergeApprovedWorktree } =
+  const { parallelJobs, available, loadWorktreeReview, markReviewDecision, commitWorktreeJob, mergeApprovedWorktree } =
     useClaudeParallel()
   const [reviews, setReviews] = useState<Record<string, WorktreeReview>>({})
   const [loadingId, setLoadingId] = useState<string | null>(null)
@@ -78,6 +80,7 @@ export default function WorktreeReviewPanel(): JSX.Element {
                 })
               }
               onMerge={() => mergeApprovedWorktree(job.sourceJobId)}
+              onCommit={() => commitWorktreeJob(job.sourceJobId)}
             />
           ))}
         </div>
@@ -96,7 +99,8 @@ function ReviewCard({
   onDecide,
   onToggleDiff,
   onCopyFollowUp,
-  onMerge
+  onMerge,
+  onCommit
 }: {
   job: ParallelBuildJob
   review: WorktreeReview | null
@@ -108,6 +112,7 @@ function ReviewCard({
   onToggleDiff: () => void
   onCopyFollowUp: (text: string) => void
   onMerge: () => Promise<WorktreeMergeResult | null>
+  onCommit: () => Promise<WorktreeCommitResult | null>
 }): JSX.Element {
   const decision = review?.reviewDecision ?? job.reviewDecision ?? 'not-reviewed'
   const v = review?.verificationSummary ?? job.verificationResult
@@ -118,12 +123,23 @@ function ReviewCard({
   const [merging, setMerging] = useState(false)
   const [mergeResult, setMergeResult] = useState<WorktreeMergeResult | null>(null)
 
+  // Commit state.
+  const [committing, setCommitting] = useState(false)
+  const [commitResult, setCommitResult] = useState<WorktreeCommitResult | null>(null)
+  const showCommit = job.parallelStatus === 'commit-ready' || job.parallelStatus === 'committing' || !!commitResult
+
   const doMerge = async (): Promise<void> => {
     setMerging(true)
     setConfirming(false)
     const r = await onMerge()
     setMergeResult(r)
     setMerging(false)
+  }
+  const doCommit = async (): Promise<void> => {
+    setCommitting(true)
+    const r = await onCommit()
+    setCommitResult(r)
+    setCommitting(false)
   }
 
   const followUp =
@@ -156,6 +172,45 @@ function ReviewCard({
           검증: typecheck={v.typecheckStatus} · build={v.buildStatus}
           {verifyFailed ? (
             <span className="ml-2 text-amber-300">검증 실패 상태에서는 병합하지 않는 것을 권장합니다.</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Worktree 커밋 — commit changes onto the branch so the merge has content */}
+      {showCommit ? (
+        <div className="mt-3 rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-indigo-300">
+            <GitCommitHorizontal className="h-3.5 w-3.5" /> Worktree 커밋
+          </div>
+          <div className="text-[11px] text-slate-500">
+            worktree 변경사항을 브랜치에 커밋합니다. 안전한 변경 파일만 스테이징하며 (git add . 사용 안 함),
+            .env/시크릿은 차단됩니다. push는 하지 않습니다.
+          </div>
+          {!commitResult && !committing ? (
+            <button
+              type="button"
+              onClick={() => void doCommit()}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-[11px] font-semibold text-indigo-300 transition hover:bg-indigo-500/20"
+            >
+              <GitCommitHorizontal className="h-3 w-3" /> Worktree 커밋 생성
+            </button>
+          ) : null}
+          {committing ? (
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-indigo-300">
+              <Loader2 className="h-3 w-3 animate-spin" /> 커밋 중…
+            </div>
+          ) : null}
+          {commitResult ? (
+            commitResult.status === 'committed' ? (
+              <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-200">
+                커밋 완료 · <span className="font-mono">{commitResult.commitHash}</span> · {commitResult.changedFiles.length}개 파일 · 이제 병합 검토가 가능합니다.
+                <div className="mt-1 text-[10px] text-slate-500">worktree 커밋은 완료됐지만 push는 자동으로 하지 않았습니다.</div>
+              </div>
+            ) : (
+              <div className="mt-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-200">
+                {commitResult.errorMessage ?? '커밋에 실패했습니다.'}
+              </div>
+            )
           ) : null}
         </div>
       ) : null}

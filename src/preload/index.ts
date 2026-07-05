@@ -28,6 +28,7 @@ import type {
   ParallelBuildJob,
   ParallelJobUpdate,
   ReviewDecision,
+  WorktreeCommitResult,
   WorktreeMergeResult,
   WorktreeReview
 } from '@shared/claudeParallel'
@@ -163,6 +164,9 @@ const api = {
       notes?: string
     ): Promise<ParallelBuildJob | null> =>
       ipcRenderer.invoke('sj-claude-parallel:review-decision', { sourceJobId, decision, notes }),
+    /** Commit a worktree's changes on its branch (explicit; safe staging; no push). */
+    commitWorktreeJob: (sourceJobId: string): Promise<WorktreeCommitResult> =>
+      ipcRenderer.invoke('sj-claude-parallel:commit', sourceJobId),
     /** Merge an APPROVED worktree into main (explicit; validated; no push). */
     mergeApprovedWorktree: (sourceJobId: string): Promise<WorktreeMergeResult> =>
       ipcRenderer.invoke('sj-claude-parallel:merge', sourceJobId),

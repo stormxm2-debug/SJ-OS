@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type {
   ParallelBuildJob,
   ReviewDecision,
+  WorktreeCommitResult,
   WorktreeMergeResult,
   WorktreeReview
 } from '@shared/claudeParallel'
@@ -27,6 +28,7 @@ export interface UseClaudeParallel {
   runWorktreeJob: (sourceJobId: string) => Promise<void>
   loadWorktreeReview: (sourceJobId: string) => Promise<WorktreeReview | null>
   markReviewDecision: (sourceJobId: string, decision: ReviewDecision, notes?: string) => Promise<void>
+  commitWorktreeJob: (sourceJobId: string) => Promise<WorktreeCommitResult | null>
   mergeApprovedWorktree: (sourceJobId: string) => Promise<WorktreeMergeResult | null>
 }
 
@@ -75,6 +77,12 @@ export function useClaudeParallel(): UseClaudeParallel {
     []
   )
 
+  const commitWorktreeJob = useCallback(
+    async (sourceJobId: string): Promise<WorktreeCommitResult | null> => {
+      return (await api()?.commitWorktreeJob(sourceJobId)) ?? null
+    },
+    []
+  )
   const mergeApprovedWorktree = useCallback(
     async (sourceJobId: string): Promise<WorktreeMergeResult | null> => {
       return (await api()?.mergeApprovedWorktree(sourceJobId)) ?? null
@@ -89,6 +97,7 @@ export function useClaudeParallel(): UseClaudeParallel {
     runWorktreeJob,
     loadWorktreeReview,
     markReviewDecision,
+    commitWorktreeJob,
     mergeApprovedWorktree
   }
 }

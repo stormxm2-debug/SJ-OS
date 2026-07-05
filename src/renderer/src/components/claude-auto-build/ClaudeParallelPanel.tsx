@@ -198,6 +198,9 @@ const BADGE: Record<ParallelStatus, { text: string; cls: string }> = {
   ready: { text: '실행 준비', cls: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' },
   running: { text: '실행 중', cls: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' },
   verifying: { text: '검증 중', cls: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
+  'commit-ready': { text: '커밋 준비됨', cls: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' },
+  committing: { text: '커밋 중', cls: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
+  committed: { text: '커밋 완료', cls: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
   succeeded: { text: '완료', cls: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
   failed: { text: '실패', cls: 'border-rose-500/30 bg-rose-500/10 text-rose-300' },
   'needs-merge-review': { text: '병합 검토 대기', cls: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
@@ -206,7 +209,7 @@ const BADGE: Record<ParallelStatus, { text: string; cls: string }> = {
 
 function ParallelBadge({ status }: { status: ParallelStatus }): JSX.Element {
   const b = BADGE[status]
-  const spinning = status === 'running' || status === 'verifying' || status === 'preparing'
+  const spinning = status === 'running' || status === 'verifying' || status === 'preparing' || status === 'committing'
   return (
     <span className={['inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', b.cls].join(' ')}>
       {spinning ? <Loader2 className="h-3 w-3 animate-spin" /> : null}

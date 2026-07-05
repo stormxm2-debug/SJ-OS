@@ -24,6 +24,7 @@ import {
   smokeTestRunner
 } from './claudeAutoBuild'
 import {
+  commitWorktreeJob,
   getParallelJob,
   listParallelJobs,
   loadWorktreeReview,
@@ -258,6 +259,8 @@ app.whenReady().then(() => {
     (_e, args: { sourceJobId: string; decision: ReviewDecision; notes?: string }) =>
       markReviewDecision(args.sourceJobId, args.decision, args.notes)
   )
+  // Controlled worktree commit (explicit; safe staging; no push).
+  ipcMain.handle('sj-claude-parallel:commit', (_e, sourceJobId: string) => commitWorktreeJob(sourceJobId))
   // Approved merge into main (explicit; validated; no push, no force).
   ipcMain.handle('sj-claude-parallel:merge', (_e, sourceJobId: string) =>
     mergeApprovedWorktree(sourceJobId)
