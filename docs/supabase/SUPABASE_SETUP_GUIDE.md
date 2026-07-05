@@ -34,13 +34,24 @@ team-leader = team, fc = own). **Review the policies before production.**
 
 ## 5. Create the first owner account
 
-1. **Authentication → Users → Add user** (email + password) for the 대표.
-2. In **SQL Editor**, add the matching profile row:
+### 첫 대표 계정 생성 절차
+
+1. Supabase Dashboard → **Authentication → Users**.
+2. **Add user** with the representative's email + password (a strong password; do
+   **not** put it in the app or repo).
+3. Copy the created user's **auth user id** (UUID).
+4. In **SQL Editor**, insert the matching profile row (see
+   `SJ_OS_SUPABASE_FIRST_OWNER_PROFILE.sql`):
    ```sql
    insert into public.profiles (id, name, role, status)
-   values ('<auth-user-uuid>', '김세종', 'owner', 'active');
+   values ('<auth-user-uuid>', '김세종 대표', 'owner', 'active');
    ```
-3. Repeat for staff (role `team-leader` / `fc`, with `team_id` as needed).
+5. Run the app with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` configured.
+6. Log in from SJ OS with the owner email/password.
+7. Confirm the role-based **owner** menu appears (full sidebar + admin tools).
+
+Repeat for staff (role `team-leader` / `fc`, with `team_id` as needed) — see
+`SJ_OS_SUPABASE_STAFF_ACCOUNT_GUIDE.md`.
 
 ## 6. Configure the app locally (do not commit)
 

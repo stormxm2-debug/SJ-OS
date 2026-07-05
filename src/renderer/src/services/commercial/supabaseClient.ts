@@ -8,13 +8,17 @@ import type { ConnectionStatus } from '@shared/commercial/apiContract'
  * never reach the renderer). No secret is ever logged or returned. When config is
  * missing the app stays in local-mock mode and nothing here throws.
  *
- * The real client is created only after the user installs `@supabase/supabase-js`
- * AND configures env — see getSupabaseClientOrNull() below. Until then this module
- * only reports configuration status; it never contacts a server.
+ * The real client is created only after `@supabase/supabase-js` is installed AND
+ * env is configured. The package is loaded via a guarded dynamic import so the app
+ * builds with zero new dependencies; if the package is absent the import fails
+ * safely and the client stays null (local-mock).
  */
 
+// Non-literal specifier + @vite-ignore so the bundler/tsc do not require the
+// package to be present. Resolves at runtime only when installed.
+const SUPABASE_PKG = '@supabase/supabase-js'
+
 function env(): Record<string, string | undefined> {
-  // Defensive access so typecheck passes without vite/client types.
   return ((import.meta as unknown as { env?: Record<string, string | undefined> }).env) ?? {}
 }
 
@@ -39,23 +43,45 @@ export function getSupabaseConfigStatus(): SupabaseConfigStatus {
   }
 }
 
+// Cached client (any — the package types are optional/not installed).
+let cachedClient: unknown = null
+let initTried = false
+
 /**
- * Returns a Supabase client, or null when not usable.
- *
- * Currently returns null because `@supabase/supabase-js` is not installed. To
- * enable Supabase mode later:
- *   1) npm install @supabase/supabase-js
- *   2) set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY (public anon key only)
- *   3) replace the body below with:
- *        import { createClient } from '@supabase/supabase-js'
- *        return createClient(status.url!, <anon key>, { auth: { persistSession: true } })
- * The anon key is safe in the renderer; RLS enforces per-row access on the server.
+ * Initialize the Supabase client if configured + package available. Uses the anon
+ * public key only; RLS enforces per-row access on the server. Safe to call
+ * repeatedly. Returns null when not configured or package missing.
  */
-export function getSupabaseClientOrNull(): unknown | null {
+export async function initSupabaseClient(): Promise<unknown | null> {
+  if (cachedClient) return cachedClient
+  if (initTried) return cachedClient
+  initTried = true
   const status = getSupabaseConfigStatus()
   if (!status.isConfigured) return null
-  // Package not installed yet — do not attempt to import/bundle it.
-  return null
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod: any = await import(/* @vite-ignore */ SUPABASE_PKG)
+    const createClient = mod?.createClient
+    if (typeof createClient !== 'function') return null
+    const e = env()
+    cachedClient = createClient(status.url, e.VITE_SUPABASE_ANON_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true }
+    })
+    return cachedClient
+  } catch {
+    // Package not installed / failed to load — stay in local-mock.
+    return null
+  }
+}
+
+/** Cached client (or null). Call initSupabaseClient() first. */
+export function getSupabaseClient(): unknown | null {
+  return cachedClient
+}
+
+/** Back-compat: cached client or null (never throws). */
+export function getSupabaseClientOrNull(): unknown | null {
+  return cachedClient
 }
 
 export interface ConnectionTestResult {
@@ -63,19 +89,24 @@ export interface ConnectionTestResult {
   message: string
 }
 
-/** Safe connection test — never writes, never prints secrets. */
+/** Safe connection test — never writes, never prints secrets/tokens. */
 export async function testSupabaseConnection(): Promise<ConnectionTestResult> {
   const status = getSupabaseConfigStatus()
   if (!status.isConfigured) {
     return { status: 'not-configured', message: 'Supabase URL/anon key가 설정되지 않았습니다. 현재 local-mock 모드입니다.' }
   }
-  const client = getSupabaseClientOrNull()
-  if (!client) {
+  const client = (await initSupabaseClient()) as { auth?: { getSession: () => Promise<{ error?: unknown }> } } | null
+  if (!client?.auth) {
     return {
       status: 'unknown',
-      message: '@supabase/supabase-js 미설치 또는 클라이언트 미활성화. 설치·활성화 후 연결 테스트가 가능합니다.'
+      message: '@supabase/supabase-js 미설치 또는 클라이언트 미활성화. 설치 후 연결 테스트가 가능합니다.'
     }
   }
-  // Future: run a lightweight read-only check (e.g. auth.getSession()) here.
-  return { status: 'ready', message: 'Supabase 설정이 감지되었습니다. (실제 연결 검증은 다음 단계에서 활성화)' }
+  try {
+    const { error } = await client.auth.getSession()
+    if (error) return { status: 'failed', message: '세션 확인에 실패했습니다. URL/anon key 설정을 확인하세요.' }
+    return { status: 'ready', message: 'Supabase 연결이 확인되었습니다. (로그인 후 프로필이 필요합니다)' }
+  } catch {
+    return { status: 'failed', message: 'Supabase 연결 확인 중 오류가 발생했습니다.' }
+  }
 }

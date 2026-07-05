@@ -72,8 +72,13 @@ export function getCommercialReadiness(): ReadinessItem[] {
     { label: 'Supabase anon key 설정', status: cfgd ? '완료' : '미설정' },
     { label: 'DB schema 적용', status: '수동 작업 필요' },
     { label: 'RLS 정책 적용', status: '수동 작업 필요' },
-    { label: '첫 대표 계정 생성', status: '수동 작업 필요' },
-    { label: '직원 계정 생성', status: '수동 작업 필요' },
+    { label: 'Supabase Auth 로그인 UI', status: '준비됨' },
+    { label: '프로필 role 연동', status: '준비됨' },
+    { label: '대표 계정 프로필 생성', status: '수동 작업 필요' },
+    { label: '직원 계정 프로필 생성', status: '수동 작업 필요' },
+    { label: 'FC 권한 제한', status: '완료' },
+    { label: '팀장 권한 제한', status: '완료' },
+    { label: '관리자 전체 접근', status: '완료' },
     { label: '로컬 mock → Supabase 전환', status: cfgd ? '준비됨' : '다음 단계' },
     { label: '고객/상담/출퇴근/실적 저장 테스트', status: '다음 단계' }
   ]

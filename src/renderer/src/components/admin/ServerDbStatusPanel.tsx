@@ -7,6 +7,8 @@ import {
   type ServerDbStatus
 } from '@renderer/services/commercial/backendConfig'
 import { testSupabaseConnection, type ConnectionTestResult } from '@renderer/services/commercial/supabaseClient'
+import { useSession } from '@renderer/navigation/SessionContext'
+import { ROLE_LABEL } from '@renderer/navigation/roleAccess'
 
 /**
  * Supabase 연결 상태 + 상용화 준비 체크리스트 (owner/admin only). Reports local Supabase
@@ -20,6 +22,7 @@ export default function ServerDbStatusPanel(): JSX.Element {
   const [showSchema, setShowSchema] = useState(false)
   const [showRls, setShowRls] = useState(false)
   const readiness = getCommercialReadiness()
+  const { authMode, authState, session, supabaseConfigured } = useSession()
 
   const runTest = async (): Promise<void> => {
     setTest(await testSupabaseConnection())
@@ -44,6 +47,15 @@ export default function ServerDbStatusPanel(): JSX.Element {
           <Field label="service role" value="사용 금지" danger />
           <Field label="연결 상태" value={status.connectionStatus} />
           <Field label="RLS 준비" value={status.rlsStatus} />
+        </div>
+        {/* Auth status */}
+        <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+          <Field label="Auth 방식" value={authMode} />
+          <Field label="Supabase 설정" value={supabaseConfigured ? 'configured' : 'not configured'} />
+          <Field label="현재 세션" value={authState === 'logged-in' ? 'active' : 'inactive'} />
+          <Field label="프로필 로드" value={authState === 'logged-in' ? 'yes' : authState === 'profile-missing' ? 'missing' : 'no'} />
+          <Field label="현재 권한" value={authState === 'logged-in' ? ROLE_LABEL[session.role] : '-'} />
+          <Field label="RLS" value="required" />
         </div>
         <div className="mt-2 text-[10px] text-slate-400">마지막 확인: {status.lastCheckedAt}</div>
         <div className="mt-3 flex flex-wrap gap-2">
