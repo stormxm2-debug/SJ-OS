@@ -1,9 +1,10 @@
-import { Clock, UserPlus, ClipboardList, CalendarDays, BarChart3, Megaphone, Bot, Users } from 'lucide-react'
+import { Clock, UserPlus, ClipboardList, CalendarDays, BarChart3, Bot, Users } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { ROLE_LABEL } from '@renderer/navigation/roleAccess'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
-import { attendanceService, customerService, noticeService, performanceService, staffService } from '@renderer/services/mvp'
+import { attendanceService, customerService, performanceService, staffService } from '@renderer/services/mvp'
+import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
 
 /**
  * Mobile staff home (role-aware). Quick actions + local/mock summaries. Staff-only —
@@ -16,7 +17,6 @@ export default function MobileHome(): JSX.Element {
   const role = session.role
   const att = attendanceService.myStatus()
   const cust = customerService.summary()
-  const notices = noticeService.list()
 
   const quick = [
     { label: '출퇴근', icon: <Clock className="h-5 w-5" />, onClick: () => navigate({ name: 'attendance' }) },
@@ -75,18 +75,8 @@ export default function MobileHome(): JSX.Element {
         )}
       </div>
 
-      {/* Notices */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-3">
-        <div className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700"><Megaphone className="h-4 w-4 text-indigo-500" /> 공지사항</div>
-        <div className="space-y-1">
-          {notices.slice(0, 3).map((n) => (
-            <button key={n.id} type="button" onClick={() => navigate({ name: 'notice' })} className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-xs transition active:bg-slate-50">
-              <span className="font-medium text-slate-700">{n.pinned ? '📌 ' : ''}{n.title}</span>
-              <span className="text-[10px] text-slate-400">{n.postedAt}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Recent announcements */}
+      <RecentAnnouncementsWidget />
 
       {/* Jarvis */}
       <button type="button" onClick={() => jarvisService.open()} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3 text-sm font-semibold text-white">

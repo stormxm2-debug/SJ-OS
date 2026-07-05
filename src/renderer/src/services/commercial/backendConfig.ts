@@ -131,6 +131,14 @@ export function getCommercialReadiness(): ReadinessItem[] {
     { label: '직원 비활성화/차단', status: '준비됨' },
     { label: '휴대폰 번호 마스킹', status: '완료' },
     { label: '팀장 직원관리 접근 차단', status: '완료' },
+    { label: '공지 작성', status: '준비됨' },
+    { label: '전체 공지 게시', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '역할별 공지 게시', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '팀별 공지 게시', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '중요공지 상단 고정', status: '완료' },
+    { label: '직원 읽음 처리', status: '준비됨' },
+    { label: 'FC 공지관리 접근 차단', status: '완료' },
+    { label: '모바일 공지 화면 확인', status: '완료' },
     { label: '로컬 mock → Supabase 전환', status: cfgd ? '준비됨' : '다음 단계' },
     { label: '고객/상담/출퇴근/실적 저장 테스트', status: '다음 단계' }
   ]

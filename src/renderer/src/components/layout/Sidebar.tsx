@@ -108,6 +108,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'projects', label: '프로젝트', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] },
       { key: 'activity', label: '활동 로그', icon: Activity, view: { name: 'activity' }, match: ['activity'] },
       { key: 'staff-team', label: '직원 / 팀 관리', icon: UsersRound, view: { name: 'staff-team' }, match: ['staff-team'] },
+      { key: 'announcements', label: '공지사항 관리', icon: Megaphone, view: { name: 'announcements' }, match: ['announcements'] },
       { key: 'staff-login', label: '직원 로그인 관리', icon: UserRound, view: { name: 'staff-login' }, match: ['staff-login'] },
       { key: 'settings', label: '설정', icon: Settings, view: { name: 'settings' }, match: ['settings'] }
     ]

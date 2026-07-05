@@ -1,13 +1,12 @@
-import { Clock, Users, CalendarDays, BarChart3, UserRound, Megaphone, Bot, Sparkles, Building2 } from 'lucide-react'
+import { Clock, Users, CalendarDays, BarChart3, UserRound, Bot, Sparkles, Building2 } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { ROLE_LABEL, isAdminRole } from '@renderer/navigation/roleAccess'
 import ServerDbStatusPanel from '@renderer/components/admin/ServerDbStatusPanel'
-import { useNavigation } from '@renderer/navigation/NavigationContext'
+import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import {
   attendanceService,
   customerService,
-  noticeService,
   performanceService,
   staffService
 } from '@renderer/services/mvp'
@@ -19,11 +18,9 @@ import {
  */
 export default function StaffMvpDashboard(): JSX.Element {
   const { session } = useSession()
-  const { navigate } = useNavigation()
   const role = session.role
   const att = attendanceService.myStatus()
   const cust = customerService.summary()
-  const notices = noticeService.list()
 
   const jarvisExamples =
     role === 'owner' || role === 'admin'
@@ -90,18 +87,8 @@ export default function StaffMvpDashboard(): JSX.Element {
         </div>
       ) : null}
 
-      {/* Notices */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700"><Megaphone className="h-4 w-4 text-indigo-500" /> 공지사항</div>
-        <div className="space-y-1">
-          {notices.slice(0, 3).map((n) => (
-            <button key={n.id} type="button" onClick={() => navigate({ name: 'notice' })} className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-xs transition hover:bg-slate-50">
-              <span className="font-medium text-slate-700">{n.pinned ? '📌 ' : ''}{n.title}</span>
-              <span className="text-slate-400">{n.postedAt}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Recent announcements */}
+      <RecentAnnouncementsWidget />
 
       {/* Server/DB status + commercial readiness — owner/admin only */}
       {isAdminRole(role) ? <ServerDbStatusPanel /> : null}
