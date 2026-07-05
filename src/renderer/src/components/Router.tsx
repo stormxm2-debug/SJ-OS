@@ -4,6 +4,7 @@ import { canAccessRoute } from '@renderer/navigation/roleAccess'
 import AccessDenied from './layout/AccessDenied'
 import StaffMvpDashboard from './home/StaffMvpDashboard'
 import SupabaseCustomerManager from './customer/SupabaseCustomerManager'
+import SupabaseConsultationManager from './consultation/SupabaseConsultationManager'
 import CommandCenterPage from '@renderer/pages/CommandCenterPage'
 import StaffHomePage from '@renderer/pages/StaffHomePage'
 import AttendancePage from '@renderer/pages/AttendancePage'
@@ -82,7 +83,12 @@ export default function Router(): JSX.Element {
     case 'team-leader':
       return <TeamLeaderPage />
     case 'consultation':
-      return <ConsultationPage />
+      return (
+        <div className="space-y-6">
+          <SupabaseConsultationManager />
+          <ConsultationPage />
+        </div>
+      )
     case 'insurance-analysis':
       return <InsuranceAnalysisPage />
     case 'app-builder':

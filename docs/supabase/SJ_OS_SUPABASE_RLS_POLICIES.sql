@@ -78,6 +78,7 @@ create policy customers_delete_own on public.customers for delete using (
 );
 
 -- === consultations === own staff rows; owner/admin all; team-leader team
+-- SELECT: owner/admin all; own staff rows; team-leader via the customer's team_id.
 create policy consultations_select on public.consultations for select using (
   public.is_owner_or_admin()
   or staff_id = auth.uid()
@@ -85,9 +86,18 @@ create policy consultations_select on public.consultations for select using (
         select 1 from public.customers c
         where c.id = consultations.customer_id and c.team_id = public.current_user_team_id()))
 );
-create policy consultations_write_own on public.consultations for all using (
+-- INSERT: a non-admin may only create rows they OWN (staff_id = auth.uid()); the
+-- customer must be one they can see (RLS on customers already scopes selection).
+create policy consultations_insert on public.consultations for insert with check (
+  public.is_owner_or_admin() or staff_id = auth.uid()
+);
+-- UPDATE/DELETE: owner/admin all; others only their own rows.
+create policy consultations_modify_own on public.consultations for update using (
   public.is_owner_or_admin() or staff_id = auth.uid()
 ) with check (
+  public.is_owner_or_admin() or staff_id = auth.uid()
+);
+create policy consultations_delete_own on public.consultations for delete using (
   public.is_owner_or_admin() or staff_id = auth.uid()
 );
 

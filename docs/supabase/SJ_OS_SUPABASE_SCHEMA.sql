@@ -126,5 +126,9 @@ create index if not exists customers_status_idx on public.customers(status);
 create index if not exists customers_updated_at_idx on public.customers(updated_at desc);
 create index if not exists idx_consultations_customer on public.consultations(customer_id);
 create index if not exists idx_consultations_staff on public.consultations(staff_id);
+-- Consultation records integration: status + schedule/recency filters/sorts.
+create index if not exists consultations_status_idx on public.consultations(status);
+create index if not exists consultations_scheduled_at_idx on public.consultations(scheduled_at desc);
+create index if not exists consultations_updated_at_idx on public.consultations(updated_at desc);
 create index if not exists idx_schedule_staff on public.schedule_events(staff_id);
 create index if not exists idx_performance_staff_month on public.performance_records(staff_id, month);

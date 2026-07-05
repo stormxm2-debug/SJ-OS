@@ -86,6 +86,14 @@ export function getCommercialReadiness(): ReadinessItem[] {
     { label: '팀장 고객 권한 제한', status: '준비됨' },
     { label: '대표 전체 고객 조회', status: '준비됨' },
     { label: '고객 RLS 정책 준비', status: '준비됨' },
+    { label: '상담기록 Supabase 조회', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '상담기록 Supabase 저장', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '상담기록 수정 저장', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '고객 선택 연동', status: '완료' },
+    { label: 'FC 상담 권한 제한', status: '준비됨' },
+    { label: '팀장 상담 권한 제한', status: '준비됨' },
+    { label: '대표 전체 상담 조회', status: '준비됨' },
+    { label: '상담 RLS 정책 준비', status: '준비됨' },
     { label: '로컬 mock → Supabase 전환', status: cfgd ? '준비됨' : '다음 단계' },
     { label: '고객/상담/출퇴근/실적 저장 테스트', status: '다음 단계' }
   ]
