@@ -46,6 +46,7 @@ export interface UseClaudeAutoBuild {
   }) => Promise<ClaudeAutoBuildJob | null>
   runJob: (id: string) => Promise<void>
   cancelJob: (id: string) => Promise<void>
+  approveRepairJob: (id: string) => Promise<void>
   checkEnvironment: () => Promise<void>
   smokeTest: () => Promise<ClaudeSmokeTestResult | null>
   // --- queue ---
@@ -147,6 +148,10 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
     await api()?.cancelJob(id)
   }, [])
 
+  const approveRepairJob = useCallback(async (id: string): Promise<void> => {
+    await api()?.approveRepairJob(id)
+  }, [])
+
   const checkEnvironment = useCallback(async (): Promise<void> => {
     setChecking(true)
     try {
@@ -187,6 +192,7 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
     createJobFromPrompt,
     runJob,
     cancelJob,
+    approveRepairJob,
     checkEnvironment,
     smokeTest,
     queueState,

@@ -136,6 +136,9 @@ const api = {
       ipcRenderer.invoke('sj-claude-build:queue-next'),
     cancelQueuedJob: (id: string): Promise<ClaudeAutoBuildJob | null> =>
       ipcRenderer.invoke('sj-claude-build:queue-cancel', id),
+    /** Approve a generated auto-repair job so it can be run (never auto-runs). */
+    approveRepairJob: (id: string): Promise<ClaudeAutoBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-build:approve-repair', id),
     onQueueState: (callback: (state: QueueState) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, payload: QueueState): void => callback(payload)
       ipcRenderer.on('sj-claude-build:queue-state', handler)

@@ -83,6 +83,17 @@ export interface ClaudeAutoBuildJob {
   exitCode?: number
   verification: ClaudeAutoBuildVerification
   promptFilePath?: string
+  // --- auto-repair (this job repairs a failed source job) ---
+  /** The source job this repair job fixes (undefined for normal jobs). */
+  repairOfJobId?: string
+  /** 1-based repair attempt in the source chain (max 2). */
+  repairAttempt?: number
+  /** Repair jobs never run until the user explicitly approves. */
+  repairApproved?: boolean
+  /** Which stage of the source job failed. */
+  failedStage?: RepairStage
+  /** One-line error summary shown in the repair card. */
+  errorSummary?: string
   // --- queue ---
   /** Monotonic position used to order the queue (FIFO). */
   queueIndex: number
@@ -97,6 +108,59 @@ export interface ClaudeAutoBuildJob {
   canRunInParallel: boolean
   createdAt: string
   updatedAt: string
+}
+
+/** Which stage of an auto-build job failed. */
+export type RepairStage = 'typecheck' | 'build' | 'claude-run' | 'unknown'
+
+/** Max auto-repair jobs generated per source-job chain. */
+export const MAX_REPAIR_ATTEMPTS = 2
+
+/** Build a focused Claude Code repair prompt from a failed job's error logs. */
+export function generateRepairPrompt(args: {
+  originalCommand: string
+  title: string
+  stage: RepairStage
+  errorLogs: string
+  workspacePath: string
+}): string {
+  return `IMPORTANT:
+시니어 Electron/React/TypeScript 엔지니어로서 행동하세요.
+
+## Mission
+이전 SJ OS 자동 개발 작업이 실패했습니다. 실패한 ${args.stage} 오류만 수정하세요.
+새 기능 추가나 재설계는 하지 마세요.
+
+## 원래 요청
+${args.originalCommand}
+
+## 작업
+${args.title}
+
+## 실패 단계
+${args.stage}
+
+## 오류 로그
+\`\`\`
+${args.errorLogs}
+\`\`\`
+
+## 규칙 (Hard rules)
+- 위에 표시된 오류만 수정할 것. 관련 없는 파일/기능을 건드리지 말 것.
+- 재설계 금지 · 동작하는 코드를 다시 쓰지 말 것.
+- .env / .env.local 및 API 키를 만지지 말 것.
+- 런타임 클릭 상호작용을 깨뜨리지 말 것.
+- 파괴적 명령을 절대 사용 금지: git reset --hard, git clean -fd, git push --force,
+  git push -f, rm -rf, Remove-Item -Recurse, del /s, format.
+
+## 검증 (구현 후 반드시 실행)
+- npm run typecheck
+- npm run build
+- git status --short
+
+## 작업 폴더
+${args.workspacePath}
+`
 }
 
 /** Renderer → main: create a job from a pre-generated prompt. */

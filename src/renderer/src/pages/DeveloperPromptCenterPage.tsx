@@ -19,6 +19,7 @@ import ClaudeCodeBridgePanel from '@renderer/components/claude-code/ClaudeCodeBr
 import ClaudeCodeRunnerPanel from '@renderer/components/claude-code/ClaudeCodeRunnerPanel'
 import ClaudeAutoBuildPanel from '@renderer/components/claude-auto-build/ClaudeAutoBuildPanel'
 import ClaudeParallelPanel from '@renderer/components/claude-auto-build/ClaudeParallelPanel'
+import ClaudeRepairPanel from '@renderer/components/claude-auto-build/ClaudeRepairPanel'
 import WorktreeReviewPanel from '@renderer/components/claude-auto-build/WorktreeReviewPanel'
 import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
@@ -117,6 +118,9 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
     <div className="space-y-5">
       {/* Jarvis → Claude Code Auto Builder (primary autonomous flow) */}
       <ClaudeAutoBuildPanel />
+
+      {/* Auto-repair: generated repair jobs for failed verification (approval required) */}
+      <ClaudeRepairPanel />
 
       {/* Worktree-based parallel builder (foundation) */}
       <ClaudeParallelPanel />

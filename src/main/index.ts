@@ -7,6 +7,7 @@ import { getAiProxyStatus } from './aiProxyStatus'
 import { exportClaudePrompt } from './claudeExport'
 import { openPromptsFolder, runApprovedJob } from './claudeRunner'
 import {
+  approveRepairJob,
   cancelAutoBuildJob,
   cancelQueuedJob,
   checkRunnerEnvironment,
@@ -242,6 +243,8 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude-build:queue-resume', () => resumeQueue())
   ipcMain.handle('sj-claude-build:queue-next', () => runNextQueued())
   ipcMain.handle('sj-claude-build:queue-cancel', (_e, id: string) => cancelQueuedJob(id))
+  // Auto-repair: approve a generated repair job so it can be run.
+  ipcMain.handle('sj-claude-build:approve-repair', (_e, id: string) => approveRepairJob(id))
 
   // Parallel worktree builder (foundation). Main-only git/Claude execution; the
   // renderer sends only a source job id. No auto-merge / auto-delete.

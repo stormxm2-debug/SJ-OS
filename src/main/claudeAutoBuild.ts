@@ -9,9 +9,15 @@ import type {
   ClaudeSmokeTestResult,
   CreateAutoBuildJobRequest,
   QueueState,
+  RepairStage,
   SelectedRunner
 } from '@shared/claudeAutoBuild'
-import { classifyConflictGroup, scanAutoBuildPrompt } from '@shared/claudeAutoBuild'
+import {
+  classifyConflictGroup,
+  generateRepairPrompt,
+  MAX_REPAIR_ATTEMPTS,
+  scanAutoBuildPrompt
+} from '@shared/claudeAutoBuild'
 
 /**
  * Jarvis → Claude Code Auto Builder — Electron MAIN runner.
@@ -114,6 +120,8 @@ function maybeRunNext(): void {
 /** Called whenever a job reaches a terminal-ish state, to drive the queue. */
 function onJobSettled(job: ClaudeAutoBuildJob): void {
   if (job.status === 'failed' || job.status === 'needs-review') {
+    // Auto-GENERATE (not auto-run) a focused repair job from the failure logs.
+    maybeCreateRepairJob(job)
     pauseQueueWith('이전 작업 검토가 필요하여 큐를 멈췄습니다.')
     return
   }
@@ -387,6 +395,115 @@ export function createAutoBuildJob(request: CreateAutoBuildJobRequest): ClaudeAu
   return job
 }
 
+// --- auto-repair loop (generate on failure; run only after approval) -------
+
+function detectFailedStage(job: ClaudeAutoBuildJob): RepairStage {
+  if (job.verification.typecheckStatus === 'failed') return 'typecheck'
+  if (job.verification.buildStatus === 'failed') return 'build'
+  if (job.status === 'failed') return 'claude-run'
+  return 'unknown'
+}
+
+/** Last useful error text from a failed job (bounded). */
+function extractErrorLogs(job: ClaudeAutoBuildJob): string {
+  const tail = job.logLines.slice(-200).join('\n')
+  const combined = (job.stderrPreview ? job.stderrPreview.slice(-8000) + '\n' : '') + tail
+  return combined.slice(-30000)
+}
+
+function errorSummaryFrom(logs: string): string {
+  const line =
+    logs.split(/\r?\n/).find((l) => /error TS\d+|error:|✗|failed|❌/i.test(l)) ??
+    logs.split(/\r?\n/).find((l) => l.trim().length > 0)
+  return (line ?? '검증 실패').trim().slice(0, 200)
+}
+
+/** Walk the repair chain to the root job's original command. */
+function rootCommand(job: ClaudeAutoBuildJob): string {
+  let cur: ClaudeAutoBuildJob | undefined = job
+  const seen = new Set<string>()
+  while (cur?.repairOfJobId && !seen.has(cur.id)) {
+    seen.add(cur.id)
+    cur = jobs.get(cur.repairOfJobId)
+  }
+  return cur?.originalUserCommand ?? job.originalUserCommand
+}
+
+/**
+ * Generate (never auto-run) a focused repair job from a failed source job.
+ * Enforces the per-chain attempt cap. Repair jobs require explicit approval.
+ */
+function maybeCreateRepairJob(source: ClaudeAutoBuildJob): void {
+  // Only repair real code failures (verification) or a Claude run that produced output.
+  const isRepairable =
+    source.status === 'needs-review' || (source.status === 'failed' && typeof source.exitCode === 'number')
+  if (!isRepairable) return
+
+  const attempt = (source.repairAttempt ?? 0) + 1
+  if (attempt > MAX_REPAIR_ATTEMPTS) {
+    touch(source, {
+      logLines: [...source.logLines, '자동 복구 한도에 도달했습니다. 수동 검토가 필요합니다.']
+    })
+    return
+  }
+  // Don't double-generate for the same source.
+  if (Array.from(jobs.values()).some((j) => j.repairOfJobId === source.id)) return
+
+  const stage = detectFailedStage(source)
+  const errorLogs = extractErrorLogs(source)
+  const errorSummary = errorSummaryFrom(errorLogs)
+  const prompt = generateRepairPrompt({
+    originalCommand: rootCommand(source),
+    title: source.title,
+    stage,
+    errorLogs,
+    workspacePath: allowedRoot()
+  })
+  const safety = scanAutoBuildPrompt(prompt, true)
+
+  const repair: ClaudeAutoBuildJob = {
+    id: nextId(),
+    title: `복구 ${attempt}차 · ${source.title}`,
+    source: 'developer-prompt-center',
+    originalUserCommand: source.originalUserCommand,
+    generatedPrompt: prompt,
+    workspacePath: allowedRoot(),
+    status: safety.promptSafe ? 'queued' : 'blocked',
+    safetyResult: safety,
+    logLines: [
+      `자동 복구 프롬프트 생성됨 (${attempt}/${MAX_REPAIR_ATTEMPTS}) · 실패 단계 ${stage}`,
+      '승인 후 “Claude Code로 복구 실행”을 눌러 실행하세요.'
+    ],
+    stdoutPreview: '',
+    stderrPreview: '',
+    verification: { typecheckStatus: 'pending', buildStatus: 'pending', gitStatusShort: '' },
+    queueIndex: ++queueSeq,
+    autoRun: false,
+    conflictGroup: source.conflictGroup,
+    canRunInParallel: false,
+    repairOfJobId: source.id,
+    repairAttempt: attempt,
+    repairApproved: false,
+    failedStage: stage,
+    errorSummary,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  }
+  jobs.set(repair.id, repair)
+  emitJobUpdate(repair)
+  // NOTE: intentionally NOT calling maybeRunNext — repair jobs never auto-run.
+}
+
+/** Approve a repair job so it can be run. */
+export function approveRepairJob(id: string): ClaudeAutoBuildJob | null {
+  const job = jobs.get(id)
+  if (!job || !job.repairOfJobId) return job ?? null
+  return touch(job, {
+    repairApproved: true,
+    logLines: [...job.logLines, `복구 작업 승인됨 · ${nowIso()}`]
+  })
+}
+
 export function getAutoBuildJob(id: string): ClaudeAutoBuildJob | null {
   return jobs.get(id) ?? null
 }
@@ -471,6 +588,13 @@ export function runAutoBuildJob(id: string): ClaudeAutoBuildJob | null {
     job.status === 'needs-review' ||
     job.status === 'failed'
   if (!runnable) return job
+
+  // HARD RULE: repair jobs never run until explicitly approved by the user.
+  if (job.repairOfJobId && !job.repairApproved) {
+    return touch(job, {
+      logLines: [...job.logLines, '복구 작업은 승인 후에만 실행할 수 있습니다.']
+    })
+  }
 
   // HARD RULE: only ONE code-writing job in the main workspace at a time. If
   // another job is active, keep this one queued instead of starting it.
