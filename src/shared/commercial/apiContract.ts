@@ -18,15 +18,25 @@ import type {
  * supplied at runtime via CommercialBackendConfig (never hardcoded, never .env).
  */
 
-export type DataMode = 'local-mock' | 'future-api'
-export type AuthMode = 'local-demo' | 'token' | 'session'
+export type DataMode = 'local-mock' | 'supabase'
+export type AuthMode = 'local-demo' | 'supabase-auth'
+export type ConnectionStatus = 'not-configured' | 'ready' | 'failed' | 'unknown'
 
-/** Safe, secret-free backend configuration. */
+/**
+ * Safe, secret-free backend configuration.
+ *
+ * Only the Supabase URL + anon public key are ever used in the renderer. The
+ * service_role key is FORBIDDEN here. No real key is stored in this object — only
+ * booleans indicating whether env config is present.
+ */
 export interface CommercialBackendConfig {
   mode: DataMode
-  apiBaseUrl?: string // supplied at runtime; NEVER hardcoded or committed
-  authMode: AuthMode
+  supabaseUrl?: string // from VITE_SUPABASE_URL at runtime; never committed
+  supabaseAnonKeyConfigured: boolean // whether VITE_SUPABASE_ANON_KEY is present
   isConfigured: boolean
+  authMode: AuthMode
+  lastConnectionCheckAt?: string
+  connectionStatus: ConnectionStatus
 }
 
 /** Endpoint catalog (method + path template). Paths are relative to apiBaseUrl. */

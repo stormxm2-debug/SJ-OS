@@ -38,8 +38,8 @@ function notConfigured(): never {
 function createRepository<T extends { id: string }>(seed: T[]): Repository<T> {
   let data = [...seed]
   const guard = (): void => {
-    if (backendConfig.mode === 'future-api' && !backendConfig.isConfigured) notConfigured()
-    // Future: when mode === 'future-api' && configured, route to fetch(apiBaseUrl).
+    if (backendConfig.mode === 'supabase' && !backendConfig.isConfigured) notConfigured()
+    // Future: when mode === 'supabase' && configured, route to the Supabase adapters.
   }
   return {
     async list() {
