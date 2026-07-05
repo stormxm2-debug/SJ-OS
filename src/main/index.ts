@@ -24,6 +24,13 @@ import {
   smokeTestRunner
 } from './claudeAutoBuild'
 import {
+  getParallelJob,
+  listParallelJobs,
+  prepareWorktree,
+  runWorktreeJob,
+  setParallelEmitter
+} from './claudeParallel'
+import {
   configureAiGatewayRoots,
   getAiGatewayStatus,
   transcribeAudio
@@ -230,6 +237,16 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude-build:queue-resume', () => resumeQueue())
   ipcMain.handle('sj-claude-build:queue-next', () => runNextQueued())
   ipcMain.handle('sj-claude-build:queue-cancel', (_e, id: string) => cancelQueuedJob(id))
+
+  // Parallel worktree builder (foundation). Main-only git/Claude execution; the
+  // renderer sends only a source job id. No auto-merge / auto-delete.
+  setParallelEmitter((job) => {
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('sj-claude-parallel:job-update', { job }))
+  })
+  ipcMain.handle('sj-claude-parallel:prepare', (_e, sourceJobId: string) => prepareWorktree(sourceJobId))
+  ipcMain.handle('sj-claude-parallel:run', (_e, sourceJobId: string) => runWorktreeJob(sourceJobId))
+  ipcMain.handle('sj-claude-parallel:get', (_e, sourceJobId: string) => getParallelJob(sourceJobId))
+  ipcMain.handle('sj-claude-parallel:list', () => listParallelJobs())
 
   createWindow()
 

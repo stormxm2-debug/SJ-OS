@@ -18,6 +18,7 @@ import Card from '@renderer/components/ui/Card'
 import ClaudeCodeBridgePanel from '@renderer/components/claude-code/ClaudeCodeBridgePanel'
 import ClaudeCodeRunnerPanel from '@renderer/components/claude-code/ClaudeCodeRunnerPanel'
 import ClaudeAutoBuildPanel from '@renderer/components/claude-auto-build/ClaudeAutoBuildPanel'
+import ClaudeParallelPanel from '@renderer/components/claude-auto-build/ClaudeParallelPanel'
 import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import type {
@@ -115,6 +116,9 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
     <div className="space-y-5">
       {/* Jarvis → Claude Code Auto Builder (primary autonomous flow) */}
       <ClaudeAutoBuildPanel />
+
+      {/* Worktree-based parallel builder (foundation) */}
+      <ClaudeParallelPanel />
 
       {/* Summary */}
       <Card

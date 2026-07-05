@@ -57,7 +57,7 @@ const WIN_CMD_SHIMS = new Set(['npm', 'npx', 'claude', 'yarn', 'pnpm'])
  * via PATHEXT. Native exes (node/git) and non-Windows spawn directly. Nothing here
  * comes from the renderer — the tool and args are always fixed by the caller.
  */
-function spawnTool(tool: string, args: string[], opts: Parameters<typeof spawn>[2]): ChildProcess {
+export function spawnTool(tool: string, args: string[], opts: Parameters<typeof spawn>[2]): ChildProcess {
   if (isWin() && WIN_CMD_SHIMS.has(tool)) {
     return spawn('cmd.exe', ['/d', '/s', '/c', tool, ...args], opts)
   }

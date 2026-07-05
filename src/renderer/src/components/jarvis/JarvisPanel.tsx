@@ -1290,6 +1290,11 @@ export default function JarvisPanel(): JSX.Element | null {
                     <p className="mt-2 text-[11px] text-amber-300">
                       Claude Code 실행 환경을 먼저 확인해주세요. “로그 보기 → Claude Code 실행 환경”에서 점검할 수 있습니다.
                     </p>
+                  ) : autoBuild.jobs.filter((j) => j.status === 'queued').length >= 2 ? (
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      이 작업들은 병렬 후보입니다. 같은 폴더에서 동시에 수정하지 않고, 개발 센터의 “병렬 Claude 개발”에서
+                      별도 worktree로 분리해 실행할 수 있습니다. (순차 실행 / 병렬 준비 / 나중에 선택)
+                    </p>
                   ) : null}
                 </div>
               ) : null}

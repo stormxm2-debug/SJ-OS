@@ -24,6 +24,7 @@ import type {
   CreateAutoBuildJobRequest,
   QueueState
 } from '@shared/claudeAutoBuild'
+import type { ParallelBuildJob, ParallelJobUpdate } from '@shared/claudeParallel'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -132,6 +133,25 @@ const api = {
       const handler = (_event: IpcRendererEvent, payload: QueueState): void => callback(payload)
       ipcRenderer.on('sj-claude-build:queue-state', handler)
       return () => ipcRenderer.removeListener('sj-claude-build:queue-state', handler)
+    }
+  },
+  claudeParallel: {
+    /**
+     * Worktree-based parallel builder (foundation). The renderer sends only a
+     * source job id; the main process prepares an isolated git worktree/branch
+     * and runs Claude Code inside it. No auto-merge, no shell from the renderer.
+     */
+    prepareWorktree: (sourceJobId: string): Promise<ParallelBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-parallel:prepare', sourceJobId),
+    runWorktreeJob: (sourceJobId: string): Promise<ParallelBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-parallel:run', sourceJobId),
+    getJob: (sourceJobId: string): Promise<ParallelBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-parallel:get', sourceJobId),
+    listJobs: (): Promise<ParallelBuildJob[]> => ipcRenderer.invoke('sj-claude-parallel:list'),
+    onJobUpdate: (callback: (update: ParallelJobUpdate) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, payload: ParallelJobUpdate): void => callback(payload)
+      ipcRenderer.on('sj-claude-parallel:job-update', handler)
+      return () => ipcRenderer.removeListener('sj-claude-parallel:job-update', handler)
     }
   },
   companyStartup: {
