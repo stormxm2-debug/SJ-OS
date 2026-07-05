@@ -8,9 +8,10 @@ import type {
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
   CreateAutoBuildJobRequest,
+  QueueState,
   SelectedRunner
 } from '@shared/claudeAutoBuild'
-import { scanAutoBuildPrompt } from '@shared/claudeAutoBuild'
+import { classifyConflictGroup, scanAutoBuildPrompt } from '@shared/claudeAutoBuild'
 
 /**
  * Jarvis → Claude Code Auto Builder — Electron MAIN runner.
@@ -68,9 +69,56 @@ export function setAutoBuildEmitter(fn: (job: ClaudeAutoBuildJob) => void): void
   emitJobUpdate = fn
 }
 
+let emitQueueState: (state: QueueState) => void = () => {}
+export function setQueueStateEmitter(fn: (state: QueueState) => void): void {
+  emitQueueState = fn
+}
+
 const jobs = new Map<string, ClaudeAutoBuildJob>()
 const procs = new Map<string, ChildProcess>()
 let seq = 0
+
+// --- queue state (main owns single-writer serialization) -------------------
+let queueAutoRun = false
+let queuePaused = false
+let queuePausedReason: string | undefined
+let queueSeq = 0
+
+export function getQueueState(): QueueState {
+  return { autoRun: queueAutoRun, paused: queuePaused, pausedReason: queuePausedReason }
+}
+function broadcastQueueState(): void {
+  emitQueueState(getQueueState())
+}
+/** True while a job is actively writing/verifying in the workspace. */
+function hasActiveJob(): boolean {
+  return Array.from(jobs.values()).some((j) => j.status === 'running' || j.status === 'verifying')
+}
+/** Oldest job still waiting in the queue. */
+function nextQueuedJob(): ClaudeAutoBuildJob | undefined {
+  return Array.from(jobs.values())
+    .filter((j) => j.status === 'queued')
+    .sort((a, b) => a.queueIndex - b.queueIndex)[0]
+}
+function pauseQueueWith(reason: string): void {
+  queuePaused = true
+  queuePausedReason = reason
+  broadcastQueueState()
+}
+/** Start the next queued job if the workspace is free and the queue isn't paused. */
+function maybeRunNext(): void {
+  if (queuePaused || hasActiveJob()) return
+  const next = nextQueuedJob()
+  if (next) runAutoBuildJob(next.id)
+}
+/** Called whenever a job reaches a terminal-ish state, to drive the queue. */
+function onJobSettled(job: ClaudeAutoBuildJob): void {
+  if (job.status === 'failed' || job.status === 'needs-review') {
+    pauseQueueWith('이전 작업 검토가 필요하여 큐를 멈췄습니다.')
+    return
+  }
+  if (job.status === 'succeeded' && queueAutoRun) maybeRunNext()
+}
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -305,7 +353,9 @@ function log(jobId: string, line: string): void {
 export function createAutoBuildJob(request: CreateAutoBuildJobRequest): ClaudeAutoBuildJob {
   const workspaceAllowed = resolve(request.workspacePath || '') === allowedRoot()
   const safety = scanAutoBuildPrompt(request.generatedPrompt ?? '', workspaceAllowed)
-  const status: ClaudeAutoBuildStatus = safety.promptSafe && workspaceAllowed ? 'ready' : 'blocked'
+  // Safe jobs enter the QUEUE ('queued'); the queue runs one at a time.
+  const status: ClaudeAutoBuildStatus = safety.promptSafe && workspaceAllowed ? 'queued' : 'blocked'
+  const queueIndex = ++queueSeq
   const job: ClaudeAutoBuildJob = {
     id: nextId(),
     title: request.title || request.originalUserCommand.slice(0, 60) || 'Claude 자동 개발',
@@ -317,16 +367,23 @@ export function createAutoBuildJob(request: CreateAutoBuildJobRequest): ClaudeAu
     safetyResult: safety,
     logLines: [
       `작업 생성됨 · ${nowIso()}`,
-      status === 'blocked' ? `차단됨: ${safety.blockedReason}` : '안전 검사 통과 · 실행 준비 완료'
+      status === 'blocked' ? `차단됨: ${safety.blockedReason}` : `큐에 추가됨 · 대기 순번 ${queueIndex}번`
     ],
     stdoutPreview: '',
     stderrPreview: '',
     verification: { typecheckStatus: 'pending', buildStatus: 'pending', gitStatusShort: '' },
+    queueIndex,
+    queuedAt: status === 'queued' ? nowIso() : undefined,
+    autoRun: queueAutoRun,
+    conflictGroup: classifyConflictGroup(request.originalUserCommand),
+    canRunInParallel: false,
     createdAt: nowIso(),
     updatedAt: nowIso()
   }
   jobs.set(job.id, job)
   emitJobUpdate(job)
+  // If auto-run is on and the workspace is free, start immediately.
+  if (status === 'queued' && queueAutoRun) maybeRunNext()
   return job
 }
 
@@ -349,15 +406,79 @@ export function cancelAutoBuildJob(id: string): ClaudeAutoBuildJob | null {
   }
   const job = jobs.get(id)
   if (!job) return null
-  return touch(job, { status: 'cancelled', finishedAt: nowIso() })
+  const settled = touch(job, { status: 'cancelled', finishedAt: nowIso() })
+  // A cancel frees the workspace — let the queue advance if auto-run is on.
+  if (queueAutoRun) maybeRunNext()
+  return settled
 }
 
-/** Run an approved/ready job: spawn Claude Code, stream logs, then verify. */
+// --- queue controls --------------------------------------------------------
+
+export function setQueueAutoRun(on: boolean): QueueState {
+  queueAutoRun = on
+  if (on) {
+    queuePaused = false
+    queuePausedReason = undefined
+    broadcastQueueState()
+    maybeRunNext()
+  } else {
+    broadcastQueueState()
+  }
+  return getQueueState()
+}
+
+export function pauseQueue(): QueueState {
+  pauseQueueWith('사용자가 큐를 일시정지했습니다.')
+  return getQueueState()
+}
+
+export function resumeQueue(): QueueState {
+  queuePaused = false
+  queuePausedReason = undefined
+  broadcastQueueState()
+  maybeRunNext()
+  return getQueueState()
+}
+
+/** Manual "다음 작업 실행": clear any pause and start the next queued job. */
+export function runNextQueued(): ClaudeAutoBuildJob | null {
+  queuePaused = false
+  queuePausedReason = undefined
+  broadcastQueueState()
+  if (hasActiveJob()) return null
+  const next = nextQueuedJob()
+  return next ? runAutoBuildJob(next.id) : null
+}
+
+export function cancelQueuedJob(id: string): ClaudeAutoBuildJob | null {
+  const job = jobs.get(id)
+  if (!job) return null
+  if (job.status !== 'queued' && job.status !== 'ready') return job
+  return touch(job, {
+    status: 'cancelled',
+    finishedAt: nowIso(),
+    logLines: [...job.logLines, '큐에서 취소되었습니다.']
+  })
+}
+
+/** Run an approved/queued job: spawn Claude Code, stream logs, then verify. */
 export function runAutoBuildJob(id: string): ClaudeAutoBuildJob | null {
   let job = jobs.get(id)
   if (!job) return null
-  if (job.status !== 'ready' && job.status !== 'needs-review' && job.status !== 'failed') {
-    return job
+  const runnable =
+    job.status === 'queued' ||
+    job.status === 'ready' ||
+    job.status === 'needs-review' ||
+    job.status === 'failed'
+  if (!runnable) return job
+
+  // HARD RULE: only ONE code-writing job in the main workspace at a time. If
+  // another job is active, keep this one queued instead of starting it.
+  if (hasActiveJob()) {
+    return touch(job, {
+      status: 'queued',
+      logLines: [...job.logLines, '다른 작업이 실행 중이라 큐에서 대기합니다.']
+    })
   }
 
   // Re-validate safety in main (defense-in-depth).
@@ -445,16 +566,18 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
     const exit = code ?? -1
     // Non-zero exit ⇒ Claude Code failed; skip verification and surface stderr.
     if (exit !== 0) {
-      touch(cur, {
-        status: 'failed',
-        exitCode: exit,
-        finishedAt: nowIso(),
-        logLines: [
-          ...cur.logLines,
-          `Claude Code 실패 · exit ${exit}`,
-          cur.stderrPreview ? `stderr:\n${cur.stderrPreview.slice(-1200)}` : ''
-        ].filter((l) => l.length > 0)
-      })
+      onJobSettled(
+        touch(cur, {
+          status: 'failed',
+          exitCode: exit,
+          finishedAt: nowIso(),
+          logLines: [
+            ...cur.logLines,
+            `Claude Code 실패 · exit ${exit}`,
+            cur.stderrPreview ? `stderr:\n${cur.stderrPreview.slice(-1200)}` : ''
+          ].filter((l) => l.length > 0)
+        })
+      )
       return
     }
     touch(cur, { exitCode: exit, logLines: [...cur.logLines, `Claude Code 완료 · exit ${exit}`] })
@@ -471,15 +594,17 @@ function handleSpawnError(jobId: string, command: 'claude' | 'npx'): void {
   }
   const job = jobs.get(jobId)
   if (!job) return
-  touch(job, {
-    status: 'failed',
-    finishedAt: nowIso(),
-    logLines: [
-      ...job.logLines,
-      'npx로 Claude Code를 실행하지 못했습니다.',
-      'Claude Code 실행 환경을 찾지 못했습니다. Claude Code 설치 또는 npx 실행 환경을 확인해주세요.'
-    ]
-  })
+  onJobSettled(
+    touch(job, {
+      status: 'failed',
+      finishedAt: nowIso(),
+      logLines: [
+        ...job.logLines,
+        'npx로 Claude Code를 실행하지 못했습니다.',
+        'Claude Code 실행 환경을 찾지 못했습니다. Claude Code 설치 또는 npx 실행 환경을 확인해주세요.'
+      ]
+    })
+  )
 }
 
 function appendStream(jobId: string, text: string, kind: 'stdout' | 'stderr'): void {
@@ -542,7 +667,7 @@ async function runVerification(jobId: string): Promise<void> {
   const finalStatus: ClaudeAutoBuildStatus =
     typecheckStatus === 'passed' && buildStatus === 'passed' ? 'succeeded' : 'needs-review'
 
-  touch(jobs.get(jobId)!, {
+  const settled = touch(jobs.get(jobId)!, {
     status: finalStatus,
     finishedAt: nowIso(),
     verification: { typecheckStatus, buildStatus, gitStatusShort },
@@ -552,4 +677,5 @@ async function runVerification(jobId: string): Promise<void> {
       finalStatus === 'succeeded' ? '완료: 검증 통과' : '검토 필요: 검증 실패 항목이 있습니다.'
     ]
   })
+  onJobSettled(settled)
 }

@@ -330,12 +330,14 @@ const AUTO_STATUS_LABEL: Record<ClaudeAutoBuildStatus, string> = {
   'safety-checking': '검증 중',
   blocked: '차단됨',
   ready: '실행 준비',
+  queued: '대기 중',
   running: '실행 중',
   verifying: '검증 중',
   succeeded: '완료',
   failed: '실패',
   cancelled: '취소됨',
-  'needs-review': '검토 필요'
+  'needs-review': '검토 필요',
+  skipped: '건너뜀'
 }
 
 function verifyTone(status: VerificationStatus): Tone {

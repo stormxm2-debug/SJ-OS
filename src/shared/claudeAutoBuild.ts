@@ -18,12 +18,27 @@ export type ClaudeAutoBuildStatus =
   | 'safety-checking'
   | 'blocked'
   | 'ready'
+  | 'queued'
   | 'running'
   | 'verifying'
   | 'succeeded'
   | 'failed'
   | 'cancelled'
   | 'needs-review'
+  | 'skipped'
+
+/**
+ * Which resources a job's changes touch. Used to reason about (future) parallel
+ * safety. For now every real code-writing job is 'main-workspace' and serialized.
+ */
+export type ConflictGroup = 'main-workspace' | 'frontend' | 'backend' | 'docs' | 'tests' | 'unknown'
+
+/** Queue-level state (Electron main owns it). */
+export interface QueueState {
+  autoRun: boolean
+  paused: boolean
+  pausedReason?: string
+}
 
 export type VerificationStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped'
 
@@ -68,6 +83,18 @@ export interface ClaudeAutoBuildJob {
   exitCode?: number
   verification: ClaudeAutoBuildVerification
   promptFilePath?: string
+  // --- queue ---
+  /** Monotonic position used to order the queue (FIFO). */
+  queueIndex: number
+  queuedAt?: string
+  /** Optional explicit predecessor (reserved for future dependency ordering). */
+  runAfterJobId?: string
+  /** Snapshot of queue auto-run at enqueue time (informational). */
+  autoRun: boolean
+  /** Which resources this job's edits touch (all serialize on 'main-workspace' now). */
+  conflictGroup: ConflictGroup
+  /** Always false for now — true parallel writers are not enabled. */
+  canRunInParallel: boolean
   createdAt: string
   updatedAt: string
 }
@@ -121,6 +148,21 @@ export interface ClaudeSmokeTestResult {
   output: string
   error?: string
   timedOut: boolean
+}
+
+/**
+ * Classify which resource group a command touches (heuristic). This does NOT
+ * enable parallelism yet — every real code-writing job still serializes on the
+ * main workspace — it only labels jobs for the future worktree strategy.
+ */
+export function classifyConflictGroup(command: string): ConflictGroup {
+  const t = (command ?? '').toLowerCase()
+  const has = (words: string[]): boolean => words.some((w) => t.includes(w.toLowerCase()))
+  if (has(['서버', 'api', '백엔드', 'backend', 'db', '데이터베이스', '엔드포인트', 'endpoint'])) return 'backend'
+  if (has(['화면', 'ui', '버튼', '페이지', 'page', 'screen', 'component', '컴포넌트', '프론트'])) return 'frontend'
+  if (has(['문서', 'readme', 'docs', '가이드', 'documentation'])) return 'docs'
+  if (has(['테스트', 'test', '검증', 'spec'])) return 'tests'
+  return 'main-workspace'
 }
 
 /**

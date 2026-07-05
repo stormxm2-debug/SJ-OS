@@ -304,12 +304,14 @@ export default function JarvisPanel(): JSX.Element | null {
       'safety-checking': '안전 검사 중',
       blocked: '차단됨',
       ready: '실행 대기',
+      queued: '대기 중',
       running: '실행 중',
       verifying: '검증 중',
       succeeded: '완료',
       failed: '실패',
       cancelled: '취소됨',
-      'needs-review': '검토 필요'
+      'needs-review': '검토 필요',
+      skipped: '건너뜀'
     })[status] ?? status
 
   // Persistent GPT status badge: Ready / Disabled / Proxy Error / Local Only.
@@ -506,8 +508,9 @@ export default function JarvisPanel(): JSX.Element | null {
         void autoBuild.createFromCommand(trimmed, 'jarvis').then((job) => {
           if (!job) return
           setLastAutoBuildJobId(job.id)
-          // Auto Mode: run immediately only when ON and the job passed safety.
-          if (autoRunDev && job.status === 'ready') void autoBuild.runJob(job.id)
+          // Auto Mode: run immediately only when ON and the job passed safety. The
+          // main queue still serializes — if another job is active, this waits.
+          if (autoRunDev && job.status === 'queued') void autoBuild.runJob(job.id)
         })
       }
     }
@@ -1161,7 +1164,11 @@ export default function JarvisPanel(): JSX.Element | null {
                   {/* Title + status */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-100">Claude 자동 개발 작업을 생성했습니다.</div>
+                      <div className="text-sm font-semibold text-slate-100">
+                        {lastAutoBuildJob?.status === 'queued'
+                          ? `개발 작업 큐에 추가했습니다. 대기 순번 ${lastAutoBuildJob.queueIndex}번`
+                          : 'Claude 자동 개발 작업을 생성했습니다.'}
+                      </div>
                       <div className="mt-0.5 truncate text-[11px] text-slate-500">
                         {(lastAutoBuildJob?.title ?? devPreview.command)}
                       </div>
@@ -1232,6 +1239,7 @@ export default function JarvisPanel(): JSX.Element | null {
                         !autoBuild.envReady ||
                         !(
                           lastAutoBuildJob.status === 'ready' ||
+                          lastAutoBuildJob.status === 'queued' ||
                           lastAutoBuildJob.status === 'failed' ||
                           lastAutoBuildJob.status === 'needs-review'
                         )
@@ -1241,6 +1249,7 @@ export default function JarvisPanel(): JSX.Element | null {
                         lastAutoBuildJob &&
                         autoBuild.envReady &&
                         (lastAutoBuildJob.status === 'ready' ||
+                          lastAutoBuildJob.status === 'queued' ||
                           lastAutoBuildJob.status === 'failed' ||
                           lastAutoBuildJob.status === 'needs-review')
                           ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'

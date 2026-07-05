@@ -8,12 +8,19 @@ import { exportClaudePrompt } from './claudeExport'
 import { openPromptsFolder, runApprovedJob } from './claudeRunner'
 import {
   cancelAutoBuildJob,
+  cancelQueuedJob,
   checkRunnerEnvironment,
   createAutoBuildJob,
   getAutoBuildJob,
+  getQueueState,
   listAutoBuildJobs,
+  pauseQueue,
+  resumeQueue,
   runAutoBuildJob,
+  runNextQueued,
   setAutoBuildEmitter,
+  setQueueAutoRun,
+  setQueueStateEmitter,
   smokeTestRunner
 } from './claudeAutoBuild'
 import {
@@ -203,6 +210,9 @@ app.whenReady().then(() => {
   setAutoBuildEmitter((job) => {
     BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('sj-claude-build:job-update', { job }))
   })
+  setQueueStateEmitter((state) => {
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('sj-claude-build:queue-state', state))
+  })
   ipcMain.handle('sj-claude-build:create', (_e, request: CreateAutoBuildJobRequest) =>
     createAutoBuildJob(request)
   )
@@ -213,6 +223,13 @@ app.whenReady().then(() => {
   // Runner environment diagnostics (fixed checks only; no renderer commands).
   ipcMain.handle('sj-claude-build:check-env', () => checkRunnerEnvironment())
   ipcMain.handle('sj-claude-build:smoke-test', () => smokeTestRunner())
+  // Queue controls (single-writer serialization is enforced in main).
+  ipcMain.handle('sj-claude-build:queue-state', () => getQueueState())
+  ipcMain.handle('sj-claude-build:queue-auto-run', (_e, on: boolean) => setQueueAutoRun(on))
+  ipcMain.handle('sj-claude-build:queue-pause', () => pauseQueue())
+  ipcMain.handle('sj-claude-build:queue-resume', () => resumeQueue())
+  ipcMain.handle('sj-claude-build:queue-next', () => runNextQueued())
+  ipcMain.handle('sj-claude-build:queue-cancel', (_e, id: string) => cancelQueuedJob(id))
 
   createWindow()
 

@@ -3,7 +3,8 @@ import type {
   ClaudeAutoBuildJob,
   ClaudeAutoBuildSource,
   ClaudeRunnerDiagnostics,
-  ClaudeSmokeTestResult
+  ClaudeSmokeTestResult,
+  QueueState
 } from '@shared/claudeAutoBuild'
 import { ALLOWED_WORKSPACE } from '@renderer/services/claude-code/claudeCodeBridge'
 import { deriveTitle, generateAutoBuildPrompt } from './promptGenerator'
@@ -47,16 +48,39 @@ export interface UseClaudeAutoBuild {
   cancelJob: (id: string) => Promise<void>
   checkEnvironment: () => Promise<void>
   smokeTest: () => Promise<ClaudeSmokeTestResult | null>
+  // --- queue ---
+  queueState: QueueState | null
+  setQueueAutoRun: (on: boolean) => Promise<void>
+  pauseQueue: () => Promise<void>
+  resumeQueue: () => Promise<void>
+  runNextQueued: () => Promise<void>
+  cancelQueuedJob: (id: string) => Promise<void>
 }
 
 export function useClaudeAutoBuild(): UseClaudeAutoBuild {
   const [jobs, setJobs] = useState<ClaudeAutoBuildJob[]>([])
   const [diagnostics, setDiagnostics] = useState<ClaudeRunnerDiagnostics | null>(getRunnerDiagnostics())
   const [checking, setChecking] = useState(false)
+  const [queueState, setQueueState] = useState<QueueState | null>(null)
   const available = isAutoBuildAvailable()
 
   // Mirror the shared diagnostics store.
   useEffect(() => subscribeDiagnostics(() => setDiagnostics(getRunnerDiagnostics())), [])
+
+  // Queue state: hydrate on mount + subscribe to main's broadcasts.
+  useEffect(() => {
+    const bridge = api()
+    if (!bridge) return
+    let active = true
+    void bridge.getQueueState().then((s) => {
+      if (active) setQueueState(s)
+    })
+    const off = bridge.onQueueState((s) => setQueueState(s))
+    return () => {
+      active = false
+      off()
+    }
+  }, [])
 
   useEffect(() => {
     const bridge = api()
@@ -134,6 +158,25 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
 
   const smokeTest = useCallback((): Promise<ClaudeSmokeTestResult | null> => runSmokeTest(), [])
 
+  const setQueueAutoRun = useCallback(async (on: boolean): Promise<void> => {
+    const s = await api()?.setQueueAutoRun(on)
+    if (s) setQueueState(s)
+  }, [])
+  const pauseQueue = useCallback(async (): Promise<void> => {
+    const s = await api()?.pauseQueue()
+    if (s) setQueueState(s)
+  }, [])
+  const resumeQueue = useCallback(async (): Promise<void> => {
+    const s = await api()?.resumeQueue()
+    if (s) setQueueState(s)
+  }, [])
+  const runNextQueued = useCallback(async (): Promise<void> => {
+    await api()?.runNextQueued()
+  }, [])
+  const cancelQueuedJob = useCallback(async (id: string): Promise<void> => {
+    await api()?.cancelQueuedJob(id)
+  }, [])
+
   return {
     jobs,
     available,
@@ -145,6 +188,12 @@ export function useClaudeAutoBuild(): UseClaudeAutoBuild {
     runJob,
     cancelJob,
     checkEnvironment,
-    smokeTest
+    smokeTest,
+    queueState,
+    setQueueAutoRun,
+    pauseQueue,
+    resumeQueue,
+    runNextQueued,
+    cancelQueuedJob
   }
 }

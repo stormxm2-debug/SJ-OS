@@ -12,9 +12,28 @@ import ClaudeRunnerDiagnosticsPanel from './ClaudeRunnerDiagnosticsPanel'
  * only — no overlays, no modals.
  */
 export default function ClaudeAutoBuildPanel(): JSX.Element {
-  const { jobs, available, envReady, diagnostics, createFromCommand, runJob, cancelJob } = useClaudeAutoBuild()
+  const {
+    jobs,
+    available,
+    envReady,
+    diagnostics,
+    createFromCommand,
+    runJob,
+    cancelJob,
+    queueState,
+    setQueueAutoRun,
+    pauseQueue,
+    resumeQueue,
+    runNextQueued,
+    cancelQueuedJob
+  } = useClaudeAutoBuild()
   const [command, setCommand] = useState('')
   const [busy, setBusy] = useState(false)
+
+  const activeJob = jobs.find((j) => j.status === 'running' || j.status === 'verifying') ?? null
+  const queuedJobs = jobs
+    .filter((j) => j.status === 'queued')
+    .sort((a, b) => a.queueIndex - b.queueIndex)
 
   const create = async (): Promise<void> => {
     const text = command.trim()
@@ -74,6 +93,67 @@ export default function ClaudeAutoBuildPanel(): JSX.Element {
         </button>
       </div>
 
+      {/* Queue controls (Claude 자동개발 큐) — single writer, one job at a time */}
+      <div className="mb-4 rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs font-semibold text-slate-300">Claude 자동개발 큐</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void setQueueAutoRun(!queueState?.autoRun)}
+              className={[
+                'rounded-full border px-2.5 py-1 text-[11px] font-semibold transition',
+                queueState?.autoRun
+                  ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                  : 'border-slate-700 bg-slate-800/50 text-slate-400'
+              ].join(' ')}
+            >
+              큐 자동 실행: {queueState?.autoRun ? 'ON' : 'OFF'}
+            </button>
+            {queueState?.paused ? (
+              <button
+                type="button"
+                onClick={() => void resumeQueue()}
+                className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition hover:bg-emerald-500/20"
+              >
+                큐 재개
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void pauseQueue()}
+                className="rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-slate-700/60"
+              >
+                큐 일시정지
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void runNextQueued()}
+              disabled={!envReady || !!activeJob || queuedJobs.length === 0}
+              className={[
+                'rounded-md border px-2.5 py-1 text-[11px] font-medium transition',
+                !envReady || !!activeJob || queuedJobs.length === 0
+                  ? 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
+                  : 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20'
+              ].join(' ')}
+            >
+              다음 작업 실행
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+          <span>현재 작업: {activeJob ? activeJob.title : '없음'}</span>
+          <span>대기: {queuedJobs.length}건</span>
+        </div>
+        {queueState?.paused && queueState.pausedReason ? (
+          <p className="mt-1 text-[11px] text-amber-300">{queueState.pausedReason}</p>
+        ) : null}
+        <p className="mt-1 text-[10px] text-slate-600">
+          같은 작업 폴더에서는 한 번에 하나의 작업만 실행됩니다. 병렬 실행은 git worktree 기반 안정화 후 활성화됩니다.
+        </p>
+      </div>
+
       {jobs.length === 0 ? (
         <p className="py-4 text-center text-sm text-slate-500">아직 자동 개발 작업이 없습니다.</p>
       ) : (
@@ -87,6 +167,7 @@ export default function ClaudeAutoBuildPanel(): JSX.Element {
               runnerUnavailable={diagnostics?.selectedRunner === 'unavailable'}
               onRun={() => void runJob(job.id)}
               onCancel={() => void cancelJob(job.id)}
+              onCancelQueued={() => void cancelQueuedJob(job.id)}
             />
           ))}
         </div>
@@ -104,7 +185,8 @@ function JobCard({
   envChecked,
   runnerUnavailable,
   onRun,
-  onCancel
+  onCancel,
+  onCancelQueued
 }: {
   job: ClaudeAutoBuildJob
   envReady: boolean
@@ -112,20 +194,29 @@ function JobCard({
   runnerUnavailable: boolean
   onRun: () => void
   onCancel: () => void
+  onCancelQueued: () => void
 }): JSX.Element {
   const [showLogs, setShowLogs] = useState(false)
   const active = job.status === 'running' || job.status === 'verifying'
-  const statusRunnable = job.status === 'ready' || job.status === 'needs-review' || job.status === 'failed'
+  const statusRunnable =
+    job.status === 'queued' ||
+    job.status === 'ready' ||
+    job.status === 'needs-review' ||
+    job.status === 'failed'
   // Only allow a run when the job is runnable AND the environment is confirmed ready.
   const canRun = statusRunnable && envReady
   const blocked = job.status === 'blocked'
+  const isQueued = job.status === 'queued'
 
   return (
     <div className="rounded-xl border border-slate-800 bg-white p-3 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-slate-100">{job.title}</div>
-          <div className="mt-0.5 truncate text-[11px] text-slate-500">명령: {job.originalUserCommand}</div>
+          <div className="mt-0.5 truncate text-[11px] text-slate-500">
+            명령: {job.originalUserCommand}
+            {isQueued ? ` · 대기 순번 ${job.queueIndex}번 · ${job.conflictGroup}` : ''}
+          </div>
         </div>
         <StatusBadge status={job.status} />
       </div>
@@ -165,8 +256,22 @@ function JobCard({
           ].join(' ')}
         >
           <Play className="h-3 w-3" />
-          {job.status === 'failed' || job.status === 'needs-review' ? '다시 시도' : 'Claude Code 실행'}
+          {job.status === 'failed' || job.status === 'needs-review'
+            ? '다시 시도'
+            : isQueued
+              ? '지금 실행'
+              : 'Claude Code 실행'}
         </button>
+        {isQueued ? (
+          <button
+            type="button"
+            onClick={onCancelQueued}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-slate-700/60"
+          >
+            <Square className="h-3 w-3" />
+            큐에서 취소
+          </button>
+        ) : null}
         {statusRunnable && !canRun ? (
           <span className="inline-flex items-center text-[11px] text-amber-300">
             {runnerUnavailable
@@ -253,12 +358,14 @@ const STATUS_LABEL: Record<ClaudeAutoBuildStatus, { text: string; tone: Tone }> 
   'safety-checking': { text: '안전 검사 중', tone: 'amber' },
   blocked: { text: '차단됨', tone: 'rose' },
   ready: { text: '실행 준비', tone: 'indigo' },
+  queued: { text: '대기 중', tone: 'slate' },
   running: { text: '실행 중', tone: 'indigo' },
   verifying: { text: '검증 중', tone: 'amber' },
   succeeded: { text: '완료', tone: 'emerald' },
   failed: { text: '실패', tone: 'rose' },
   cancelled: { text: '취소됨', tone: 'slate' },
-  'needs-review': { text: '검토 필요', tone: 'amber' }
+  'needs-review': { text: '검토 필요', tone: 'amber' },
+  skipped: { text: '건너뜀', tone: 'slate' }
 }
 
 function StatusBadge({ status }: { status: ClaudeAutoBuildStatus }): JSX.Element {

@@ -21,7 +21,8 @@ import type {
   ClaudeAutoBuildJob,
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
-  CreateAutoBuildJobRequest
+  CreateAutoBuildJobRequest,
+  QueueState
 } from '@shared/claudeAutoBuild'
 
 /**
@@ -116,6 +117,21 @@ const api = {
       const handler = (_event: IpcRendererEvent, payload: AutoBuildJobUpdate): void => callback(payload)
       ipcRenderer.on('sj-claude-build:job-update', handler)
       return () => ipcRenderer.removeListener('sj-claude-build:job-update', handler)
+    },
+    // --- queue (single writer; main serializes) ---
+    getQueueState: (): Promise<QueueState> => ipcRenderer.invoke('sj-claude-build:queue-state'),
+    setQueueAutoRun: (on: boolean): Promise<QueueState> =>
+      ipcRenderer.invoke('sj-claude-build:queue-auto-run', on),
+    pauseQueue: (): Promise<QueueState> => ipcRenderer.invoke('sj-claude-build:queue-pause'),
+    resumeQueue: (): Promise<QueueState> => ipcRenderer.invoke('sj-claude-build:queue-resume'),
+    runNextQueued: (): Promise<ClaudeAutoBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-build:queue-next'),
+    cancelQueuedJob: (id: string): Promise<ClaudeAutoBuildJob | null> =>
+      ipcRenderer.invoke('sj-claude-build:queue-cancel', id),
+    onQueueState: (callback: (state: QueueState) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, payload: QueueState): void => callback(payload)
+      ipcRenderer.on('sj-claude-build:queue-state', handler)
+      return () => ipcRenderer.removeListener('sj-claude-build:queue-state', handler)
     }
   },
   companyStartup: {
