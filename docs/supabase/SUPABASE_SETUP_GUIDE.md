@@ -77,3 +77,19 @@ Log in as 대표/관리자 → home → **Supabase 연결 상태** panel. Confir
 > Enabling the live client also requires `npm install @supabase/supabase-js` and
 > wiring `getSupabaseClientOrNull()` (see the TODO in `supabaseClient.ts`). Until
 > then the app reports config status but stays in local-mock for data.
+
+## 9. 고객관리 연결 테스트
+
+1. Supabase Auth로 대표 계정 로그인.
+2. profiles role이 `owner`로 인식되는지 확인 (전체 메뉴 표시).
+3. 사이드바에서 **고객관리** 진입.
+4. **고객 등록**으로 테스트 고객 1명 등록.
+5. Supabase → Table Editor → `customers` 테이블에 행이 저장됐는지 확인.
+6. FC 계정으로 로그인 → 고객관리에서 **자기 고객만** 보이는지 확인.
+7. 팀장 계정으로 로그인 → **팀 고객** 조회 확인 (team_id/RLS 적용 시).
+8. 대표 계정으로 로그인 → **전체 고객** 조회 확인.
+9. 고객 상태/메모 수정 후 `updated_at`이 갱신되는지 확인.
+
+> 데이터 모드 배지가 **Supabase 공용 DB**로 표시되면 실제 DB를 사용 중입니다. **로컬 MVP
+> 데이터**로 표시되면 아직 Supabase가 연결되지 않은 것입니다. 실제 접근 제한은 항상 RLS가
+> 적용합니다(클라이언트 필터는 UX 보조용).

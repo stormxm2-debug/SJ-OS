@@ -55,15 +55,25 @@ create policy teams_select on public.teams for select using (auth.role() = 'auth
 create policy teams_admin_manage on public.teams for all using (public.is_owner_or_admin())
   with check (public.is_owner_or_admin());
 
--- === customers === owner/admin=all, team-leader=team, fc=own
+-- === customers === owner/admin=all, team-leader=team (read), fc=own
+-- SELECT: owner/admin see all; team-leader sees own-team rows; everyone sees own.
 create policy customers_select on public.customers for select using (
   public.is_owner_or_admin()
   or (public.is_team_leader() and team_id = public.current_user_team_id())
   or owner_staff_id = auth.uid()
 );
-create policy customers_write_own on public.customers for all using (
+-- INSERT: a non-admin may only create rows they OWN (owner_staff_id = auth.uid()).
+-- This guarantees FC inserts cannot spoof another owner. owner/admin may insert any.
+create policy customers_insert on public.customers for insert with check (
+  public.is_owner_or_admin() or owner_staff_id = auth.uid()
+);
+-- UPDATE/DELETE: owner/admin all; others only their own rows.
+create policy customers_modify_own on public.customers for update using (
   public.is_owner_or_admin() or owner_staff_id = auth.uid()
 ) with check (
+  public.is_owner_or_admin() or owner_staff_id = auth.uid()
+);
+create policy customers_delete_own on public.customers for delete using (
   public.is_owner_or_admin() or owner_staff_id = auth.uid()
 );
 

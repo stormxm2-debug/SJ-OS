@@ -3,6 +3,7 @@ import { useSession } from '@renderer/navigation/SessionContext'
 import { canAccessRoute } from '@renderer/navigation/roleAccess'
 import AccessDenied from './layout/AccessDenied'
 import StaffMvpDashboard from './home/StaffMvpDashboard'
+import SupabaseCustomerManager from './customer/SupabaseCustomerManager'
 import CommandCenterPage from '@renderer/pages/CommandCenterPage'
 import StaffHomePage from '@renderer/pages/StaffHomePage'
 import AttendancePage from '@renderer/pages/AttendancePage'
@@ -66,7 +67,12 @@ export default function Router(): JSX.Element {
     case 'fcos':
       return <FcOsPage />
     case 'customer':
-      return <CustomerWorkspacePage />
+      return (
+        <div className="space-y-6">
+          <SupabaseCustomerManager />
+          <CustomerWorkspacePage />
+        </div>
+      )
     case 'sales-activity':
       return <SalesActivityWorkspacePage />
     case 'schedule':

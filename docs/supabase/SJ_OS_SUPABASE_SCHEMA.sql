@@ -121,6 +121,9 @@ create table if not exists public.notices (
 create index if not exists idx_attendance_staff on public.attendance_records(staff_id);
 create index if not exists idx_customers_owner on public.customers(owner_staff_id);
 create index if not exists idx_customers_team on public.customers(team_id);
+-- Customer management integration: status + recency filters/sorts.
+create index if not exists customers_status_idx on public.customers(status);
+create index if not exists customers_updated_at_idx on public.customers(updated_at desc);
 create index if not exists idx_consultations_customer on public.consultations(customer_id);
 create index if not exists idx_consultations_staff on public.consultations(staff_id);
 create index if not exists idx_schedule_staff on public.schedule_events(staff_id);
