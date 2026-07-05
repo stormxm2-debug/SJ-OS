@@ -38,7 +38,7 @@ export interface SignInResult {
 interface SupaClient {
   auth: {
     getSession: () => Promise<{ data: { session: { user: { id: string } } | null }; error: unknown }>
-    signInWithPassword: (c: { email: string; password: string }) => Promise<{ data: unknown; error: { message?: string } | null }>
+    signInWithPassword: (c: { email?: string; phone?: string; password: string }) => Promise<{ data: unknown; error: { message?: string } | null }>
     signOut: () => Promise<{ error: unknown }>
     onAuthStateChange: (cb: () => void) => { data: { subscription: { unsubscribe: () => void } } }
   }
@@ -70,6 +70,27 @@ export async function signInWithEmailPassword(email: string, password: string): 
   } catch {
     return { ok: false, message: '로그인 처리 중 오류가 발생했습니다.' }
   }
+}
+
+/** Sign in with phone + password (admin-managed phone login). Never logs values. */
+export async function signInWithPhonePassword(normalizedPhone: string, password: string): Promise<SignInResult> {
+  const c = await client()
+  if (!c) return { ok: false, message: 'Supabase 설정이 없습니다.' }
+  if (!normalizedPhone || !password) return { ok: false, message: '휴대폰 번호 또는 비밀번호를 확인해주세요.' }
+  try {
+    const { error } = await c.auth.signInWithPassword({ phone: normalizedPhone, password })
+    // Never reveal whether the phone exists.
+    if (error) return { ok: false, message: '휴대폰 번호 또는 비밀번호를 확인해주세요.' }
+    return { ok: true }
+  } catch {
+    return { ok: false, message: '로그인 처리 중 오류가 발생했습니다.' }
+  }
+}
+
+/** Optional Edge Function base URL (server-side account claim/reset). No secret. */
+export function getEdgeFunctionBase(): string | undefined {
+  const e = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env) ?? {}
+  return e.VITE_SJ_EDGE_FUNCTION_URL?.trim() || undefined
 }
 
 export async function signOut(): Promise<void> {

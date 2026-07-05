@@ -32,5 +32,6 @@ export type View =
   | { name: 'approvals' }
   | { name: 'activity' }
   | { name: 'settings' }
+  | { name: 'staff-login' }
 
 export type ViewName = View['name']

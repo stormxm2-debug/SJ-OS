@@ -41,8 +41,18 @@ values ('<auth-user-uuid>', '이름', 'fc', '<team-uuid-or-null>', 'active');
   own). Never disable RLS.
 - Never commit real emails, passwords, UUIDs, or keys.
 
-## Future
+## Admin-managed phone login (current plan)
 
-Owner/admin will be able to manage staff accounts from an in-app admin screen (create
-profile rows, set role/team, activate/deactivate) once that screen is built. For now,
-staff accounts are provisioned in the Supabase Dashboard + SQL.
+The primary staff login is **admin-managed phone + password** (no Kakao, no normal
+SMS OTP). See `SUPABASE_ADMIN_MANAGED_PHONE_LOGIN.md`:
+
+1. **Owner/admin registers the phone** in 직원 로그인 관리 (name, phone, role, team) —
+   only registered phones may enter.
+2. **Staff sets their password once** on first login (via the server Edge Function).
+3. **Staff logs in** with phone + password.
+4. **Missing profile** → blocked ("직원 프로필이 없습니다…").
+5. **Inactive profile / account** → blocked ("비활성 직원 계정입니다…").
+
+The `email + profiles` provisioning below still works as an **owner/admin fallback**
+(hidden behind the 개발자/관리자 로그인 toggle). Actual account creation / password
+setting runs in a server-side Edge Function; `service_role` never reaches the browser.

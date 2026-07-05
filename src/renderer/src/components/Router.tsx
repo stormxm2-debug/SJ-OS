@@ -37,6 +37,7 @@ import ProjectManagerPage from '@renderer/pages/ProjectManagerPage'
 import ApprovalCenterPage from '@renderer/pages/ApprovalCenterPage'
 import CompanyActivityLogPage from '@renderer/pages/CompanyActivityLogPage'
 import CompanySettingsPage from '@renderer/pages/CompanySettingsPage'
+import StaffLoginAdminPage from '@renderer/pages/StaffLoginAdminPage'
 
 /** Renders the active view chosen by the navigation state. */
 export default function Router(): JSX.Element {
@@ -135,6 +136,8 @@ export default function Router(): JSX.Element {
       return <CompanyActivityLogPage />
     case 'settings':
       return <CompanySettingsPage />
+    case 'staff-login':
+      return <StaffLoginAdminPage />
     default:
       return <Dashboard />
   }

@@ -6,8 +6,10 @@ import {
   onAuthStateChange,
   resolveSessionAndProfile,
   signInWithEmailPassword,
+  signInWithPhonePassword,
   signOut as supabaseSignOut
 } from '@renderer/services/commercial/supabaseAuth'
+import { resolvePhoneLogin, claimPhoneAccount, requestPhonePasswordReset, type ServerActionResult } from '@renderer/services/commercial/phoneAuthService'
 
 /**
  * Session shell for both auth modes.
@@ -33,6 +35,11 @@ export interface UserSession {
 
 export type AuthUiState = 'loading' | 'logged-out' | 'logged-in' | 'profile-missing' | 'blocked'
 
+export type PhoneOutcome =
+  | { kind: 'ok' }
+  | { kind: 'needs-setup'; normalizedPhone: string }
+  | { kind: 'error'; message: string }
+
 interface SessionValue {
   session: UserSession
   authMode: AuthMode
@@ -43,6 +50,9 @@ interface SessionValue {
   logout: () => void
   switchUser: (userId: string) => void
   supabaseSignIn: (email: string, password: string) => Promise<void>
+  phoneSignIn: (phone: string, password: string) => Promise<PhoneOutcome>
+  claimPhonePassword: (normalizedPhone: string, password: string) => Promise<ServerActionResult>
+  requestPhoneReset: (phone: string) => ServerActionResult
 }
 
 const STORAGE_KEY = 'sj-os:session:v1'
@@ -190,7 +200,37 @@ export function SessionProvider({ children }: { children: ReactNode }): JSX.Elem
         } else {
           setAuthState('logged-out')
         }
-      }
+      },
+      phoneSignIn: async (phone, password) => {
+        const r = resolvePhoneLogin(phone)
+        if (r.kind === 'invalid-phone' || r.kind === 'not-registered' || r.kind === 'inactive') {
+          return { kind: 'error', message: r.message }
+        }
+        if (r.kind === 'needs-password-setup') return { kind: 'needs-setup', normalizedPhone: r.normalizedPhone }
+        // attempt: real phone/password auth requires Supabase.
+        if (!supabaseConfigured) return { kind: 'error', message: 'Supabase 로그인 설정이 필요합니다. 관리자에게 문의하세요.' }
+        setAuthState('loading')
+        const res = await signInWithPhonePassword(r.normalizedPhone, password)
+        if (!res.ok) {
+          setAuthState('logged-out')
+          return { kind: 'error', message: res.message ?? '휴대폰 번호 또는 비밀번호를 확인해주세요.' }
+        }
+        const s = await resolveSessionAndProfile()
+        if (s.state === 'ok') {
+          setSession({ id: s.profile.id, name: s.profile.name, role: s.profile.role, teamName: s.profile.teamId, isLoggedIn: true, lastLoginAt: nowIso() })
+          setAuthState('logged-in')
+          return { kind: 'ok' }
+        }
+        if (s.state === 'profile-missing' || s.state === 'blocked') {
+          setAuthError(s.message)
+          setAuthState(s.state)
+          return { kind: 'error', message: s.message }
+        }
+        setAuthState('logged-out')
+        return { kind: 'error', message: '로그인에 실패했습니다.' }
+      },
+      claimPhonePassword: (normalizedPhone, password) => claimPhoneAccount(normalizedPhone, password),
+      requestPhoneReset: (phone) => requestPhonePasswordReset(phone)
     }
   }, [session, authMode, supabaseConfigured, authState, authError])
 

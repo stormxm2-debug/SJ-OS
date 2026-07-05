@@ -1,141 +1,157 @@
 import { useState } from 'react'
-import { Bot, LogIn, Loader2, AlertTriangle, LogOut } from 'lucide-react'
+import { Bot, LogIn, Loader2, AlertTriangle, KeyRound, Smartphone, ChevronDown } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { DEMO_USERS, ROLE_LABEL } from '@renderer/navigation/roleAccess'
+import { validatePassword } from '@renderer/services/commercial/phoneAuthService'
 
 /**
- * Login shell for both auth modes.
+ * SJ OS login — simple, admin-managed phone + password.
  *
- * - local-demo: demo account picker (no real auth). Label "로컬 MVP 로그인".
- * - supabase-auth: real Supabase email/password login; role comes from the profile.
- *
- * Renders as a full page (not a modal backdrop) so it never blocks clicks. Never
- * shows tokens/passwords/keys.
+ * Normal staff see ONLY: 휴대폰 번호 / 비밀번호 / 로그인 / 비밀번호 찾기. No Kakao, no SMS
+ * OTP, no Google, no email button. First-password setup appears inline only for a
+ * registered phone whose password is not set. Local-demo + email login are hidden
+ * behind a small 개발자/관리자 로그인 toggle (dev/admin only). Never shows or logs
+ * phone/password/tokens. Full page (no blocking backdrop).
  */
 export default function LoginScreen(): JSX.Element {
-  const { authMode, authState, authError, supabaseSignIn, logout, login } = useSession()
+  const { phoneSignIn, claimPhonePassword, requestPhoneReset, login, supabaseSignIn, supabaseConfigured } = useSession()
 
-  if (authMode === 'supabase-auth') {
-    return <SupabaseLogin authState={authState} authError={authError} onSignIn={supabaseSignIn} onLogout={logout} />
-  }
-
-  // local-demo
-  return (
-    <Frame subtitle="보험 업무 플랫폼 · 로컬 MVP 로그인">
-      <div className="space-y-2">
-        {DEMO_USERS.map((u) => (
-          <button
-            key={u.id}
-            type="button"
-            onClick={() => login(u)}
-            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50"
-          >
-            <div>
-              <div className="text-sm font-semibold text-slate-800">{u.name} <span className="text-slate-400">· {u.position ?? ROLE_LABEL[u.role]}</span></div>
-              <div className="text-[11px] text-slate-500">{ROLE_LABEL[u.role]}{u.teamName ? ` · ${u.teamName}` : ''}</div>
-            </div>
-            <LogIn className="h-4 w-4 text-indigo-500" />
-          </button>
-        ))}
-      </div>
-      <p className="mt-5 text-center text-[11px] text-slate-400">이 로그인은 로컬 데모용입니다. 실제 인증은 Supabase 설정 후 활성화됩니다.</p>
-    </Frame>
-  )
-}
-
-function SupabaseLogin({
-  authState,
-  authError,
-  onSignIn,
-  onLogout
-}: {
-  authState: string
-  authError?: string
-  onSignIn: (email: string, password: string) => Promise<void>
-  onLogout: () => void
-}): JSX.Element {
-  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
-  const busy = authState === 'loading'
-  const blockedMsg = authState === 'profile-missing' || authState === 'blocked'
+  const [error, setError] = useState<string | undefined>()
+  const [busy, setBusy] = useState(false)
 
-  const submit = (e: React.FormEvent): void => {
+  // first-password setup
+  const [setupPhone, setSetupPhone] = useState<string | null>(null)
+  const [pw1, setPw1] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [setupMsg, setSetupMsg] = useState<string | undefined>()
+
+  // forgot password
+  const [forgotOpen, setForgotOpen] = useState(false)
+  const [forgotPhone, setForgotPhone] = useState('')
+  const [forgotMsg, setForgotMsg] = useState<string | undefined>()
+
+  // dev/admin
+  const [devOpen, setDevOpen] = useState(false)
+  const [email, setEmail] = useState('')
+  const [emailPw, setEmailPw] = useState('')
+
+  const onLogin = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    if (!busy) void onSignIn(email, password)
+    setError(undefined); setSetupMsg(undefined); setSetupPhone(null)
+    setBusy(true)
+    const r = await phoneSignIn(phone, password)
+    setBusy(false)
+    if (r.kind === 'needs-setup') { setSetupPhone(r.normalizedPhone); return }
+    if (r.kind === 'error') setError(r.message)
+    // 'ok' → AppGate switches to the app.
+  }
+
+  const onSetup = async (): Promise<void> => {
+    if (!setupPhone) return
+    const v = validatePassword(pw1, pw2)
+    if (!v.ok) { setSetupMsg(v.errors[0]); return }
+    setBusy(true)
+    const res = await claimPhonePassword(setupPhone, pw1)
+    setBusy(false)
+    setSetupMsg(res.message)
+    if (res.ok) { setPw1(''); setPw2(''); setSetupPhone(null); setPassword('') }
+  }
+
+  const onForgot = (): void => {
+    const res = requestPhoneReset(forgotPhone)
+    setForgotMsg(res.message)
   }
 
   return (
-    <Frame subtitle="보험 업무 플랫폼 · Supabase Auth" badge="Supabase Auth">
-      {authState === 'loading' && !authError ? (
-        <div className="flex items-center justify-center gap-2 py-6 text-sm text-slate-500">
-          <Loader2 className="h-4 w-4 animate-spin" /> 세션 확인 중…
-        </div>
-      ) : (
-        <form onSubmit={submit} className="space-y-2">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="이메일"
-            autoComplete="username"
-            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none"
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="비밀번호"
-            autoComplete="current-password"
-            className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:shadow-md disabled:opacity-60"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />} 로그인
-          </button>
-        </form>
-      )}
-
-      {authError ? (
-        <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600">
-          <AlertTriangle className="mr-1 inline h-3 w-3" />
-          {authError}
-        </div>
-      ) : null}
-
-      {blockedMsg ? (
-        <button type="button" onClick={onLogout} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50">
-          <LogOut className="h-3 w-3" /> 로그아웃 후 다시 시도
-        </button>
-      ) : null}
-
-      <p className="mt-5 text-center text-[11px] text-slate-400">Supabase Auth · 공용 anon key만 사용합니다. 토큰/비밀번호는 저장·표시되지 않습니다.</p>
-    </Frame>
-  )
-}
-
-function Frame({ children, subtitle, badge }: { children: ReactNodeLike; subtitle: string; badge?: string }): JSX.Element {
-  return (
-    <div className="flex h-screen w-screen items-center justify-center bg-gradient-to-br from-[#eef3fb] via-[#f5f8fd] to-[#e9eff9] p-6">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
+    <div className="flex min-h-screen w-screen items-center justify-center overflow-y-auto bg-gradient-to-br from-[#eef3fb] via-[#f5f8fd] to-[#e9eff9] p-6">
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-7 shadow-lg">
         <div className="mb-6 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md">
             <Bot className="h-6 w-6 text-white" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-lg font-bold text-slate-800">
-              SJ OS 로그인
-              {badge ? <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">{badge}</span> : null}
-            </div>
-            <div className="text-xs text-slate-500">{subtitle}</div>
+          <div>
+            <div className="text-lg font-bold text-slate-800">SJ OS 로그인</div>
+            <div className="text-xs text-slate-500">보험 업무 플랫폼</div>
           </div>
         </div>
-        {children}
+
+        {/* Primary: phone + password */}
+        <form onSubmit={onLogin} className="space-y-2">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3">
+            <Smartphone className="h-4 w-4 text-slate-400" />
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="휴대폰 번호" autoComplete="username"
+              className="w-full py-2.5 text-sm text-slate-800 focus:outline-none" />
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3">
+            <KeyRound className="h-4 w-4 text-slate-400" />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" autoComplete="current-password"
+              className="w-full py-2.5 text-sm text-slate-800 focus:outline-none" />
+          </div>
+          <button type="submit" disabled={busy}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:shadow-md disabled:opacity-60">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />} 로그인
+          </button>
+        </form>
+
+        {error ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600"><AlertTriangle className="mr-1 inline h-3 w-3" />{error}</div> : null}
+
+        {/* First-password setup (only when phone is registered & not set) */}
+        {setupPhone ? (
+          <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
+            <div className="text-[12px] font-semibold text-slate-700">최초 비밀번호 설정이 필요합니다.</div>
+            <input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} placeholder="새 비밀번호 (8자 이상, 영문+숫자)" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
+            <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="새 비밀번호 확인" className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
+            <button type="button" onClick={() => void onSetup()} disabled={busy} className="mt-2 w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white disabled:opacity-60">비밀번호 설정</button>
+            {setupMsg ? <p className="mt-2 text-[11px] text-slate-600">{setupMsg}</p> : null}
+          </div>
+        ) : null}
+
+        {/* Forgot password */}
+        <div className="mt-3 text-center">
+          <button type="button" onClick={() => { setForgotOpen((v) => !v); setForgotMsg(undefined) }} className="text-[12px] font-medium text-indigo-600">비밀번호 찾기</button>
+        </div>
+        {forgotOpen ? (
+          <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <input value={forgotPhone} onChange={(e) => setForgotPhone(e.target.value)} inputMode="tel" placeholder="휴대폰 번호" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
+            <button type="button" onClick={onForgot} className="mt-2 w-full rounded-lg border border-indigo-300 bg-white py-2 text-sm font-semibold text-indigo-600">재설정 요청</button>
+            {forgotMsg ? <p className="mt-2 text-[11px] text-slate-600">{forgotMsg}</p> : null}
+          </div>
+        ) : null}
+
+        <p className="mt-4 text-center text-[11px] text-slate-400">등록된 직원만 이용할 수 있습니다.</p>
+
+        {/* Dev/admin only: local-demo + email login (hidden by default) */}
+        <div className="mt-4 border-t border-slate-100 pt-3">
+          <button type="button" onClick={() => setDevOpen((v) => !v)} className="flex w-full items-center justify-center gap-1 text-[10px] font-medium text-slate-400">
+            개발자/관리자 로그인 <ChevronDown className={['h-3 w-3 transition', devOpen ? 'rotate-180' : ''].join(' ')} />
+          </button>
+          {devOpen ? (
+            <div className="mt-2 space-y-2">
+              {supabaseConfigured ? (
+                <div className="rounded-lg border border-slate-200 bg-white p-2">
+                  <div className="mb-1 text-[10px] font-semibold text-slate-500">이메일 로그인 (관리자)</div>
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일" className="w-full rounded border border-slate-200 px-2 py-1.5 text-[12px] focus:outline-none" />
+                  <input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} placeholder="비밀번호" className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5 text-[12px] focus:outline-none" />
+                  <button type="button" onClick={() => void supabaseSignIn(email, emailPw)} className="mt-1.5 w-full rounded bg-slate-700 py-1.5 text-[12px] font-semibold text-white">이메일 로그인</button>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-slate-200 bg-white p-2">
+                  <div className="mb-1 text-[10px] font-semibold text-slate-500">로컬 MVP 로그인 (개발/테스트)</div>
+                  <div className="flex flex-wrap gap-1">
+                    {DEMO_USERS.map((u) => (
+                      <button key={u.id} type="button" onClick={() => login(u)} className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50">
+                        {u.name}·{ROLE_LABEL[u.role]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   )
 }
-
-type ReactNodeLike = React.ReactNode
