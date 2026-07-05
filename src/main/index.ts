@@ -28,6 +28,7 @@ import {
   listParallelJobs,
   loadWorktreeReview,
   markReviewDecision,
+  mergeApprovedWorktree,
   prepareWorktree,
   runWorktreeJob,
   setParallelEmitter
@@ -256,6 +257,10 @@ app.whenReady().then(() => {
     'sj-claude-parallel:review-decision',
     (_e, args: { sourceJobId: string; decision: ReviewDecision; notes?: string }) =>
       markReviewDecision(args.sourceJobId, args.decision, args.notes)
+  )
+  // Approved merge into main (explicit; validated; no push, no force).
+  ipcMain.handle('sj-claude-parallel:merge', (_e, sourceJobId: string) =>
+    mergeApprovedWorktree(sourceJobId)
   )
 
   createWindow()

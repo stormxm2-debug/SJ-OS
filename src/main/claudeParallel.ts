@@ -7,6 +7,7 @@ import type {
   ParallelBuildJob,
   ReviewDecision,
   WorktreeChangedFile,
+  WorktreeMergeResult,
   WorktreeReview
 } from '@shared/claudeParallel'
 import {
@@ -463,4 +464,120 @@ export function markReviewDecision(
     reviewedAt: nowIso(),
     logLines: [...job.logLines, `검토 결정: ${decision}${notes ? ` · ${notes}` : ''}`]
   })
+}
+
+// --- approved merge (main workspace; explicit; no push, no force) ----------
+
+/** A safe worktree branch is exactly `sjos/auto/<slug>`. */
+function isSafeBranch(branch: string | undefined): boolean {
+  return !!branch && /^sjos\/auto\/[\p{L}\p{N}-]+$/u.test(branch)
+}
+
+/** Parse conflict/unmerged files from `git status --short` (UU/AA/DD/AU/UA/UD/DU). */
+function parseConflictFiles(statusShort: string): string[] {
+  return statusShort
+    .split(/\r?\n/)
+    .filter((l) => /^(UU|AA|DD|AU|UA|UD|DU)\s/.test(l))
+    .map((l) => l.slice(3).trim())
+    .slice(0, 200)
+}
+
+/**
+ * Merge an APPROVED worktree branch into the main workspace — only on explicit
+ * request, only when eligible. Runs `git merge --no-ff <safeBranch>` in the main
+ * workspace, then verification. Conflicts are left for MANUAL resolution (no
+ * abort/reset/clean/force). NEVER pushes.
+ */
+export async function mergeApprovedWorktree(sourceJobId: string): Promise<WorktreeMergeResult> {
+  const main = mainWorkspace()
+  const job = parallelJobs.get(sourceJobId)
+  const base: WorktreeMergeResult = {
+    jobId: sourceJobId,
+    status: 'blocked',
+    branchName: job?.branchName,
+    worktreePath: job?.worktreePath,
+    mainWorkspacePath: main,
+    preMergeStatus: '',
+    mergeLogLines: [],
+    conflictFiles: []
+  }
+  if (!job) return { ...base, errorMessage: '작업을 찾을 수 없습니다.' }
+
+  // 1) Eligibility: paths, branch, review decision.
+  if (!job.worktreePath || !job.worktreePath.startsWith(worktreesRoot()) || !existsSync(job.worktreePath)) {
+    return { ...base, errorMessage: '허용된 worktree를 찾을 수 없습니다.' }
+  }
+  if (!isSafeBranch(job.branchName)) {
+    return { ...base, errorMessage: '안전한 브랜치 이름이 아닙니다.' }
+  }
+  if (job.baseWorkspacePath !== main) {
+    return { ...base, errorMessage: '메인 작업 폴더가 일치하지 않습니다.' }
+  }
+  if (job.reviewDecision !== 'approved-for-merge') {
+    return { ...base, errorMessage: '병합 승인(approved-for-merge) 상태가 아닙니다.' }
+  }
+
+  // 2) Main workspace must be clean.
+  const preStatus = await runFixedIn(main, 'git', ['status', '--short'])
+  const preMergeStatus = preStatus.out.trim()
+  if (preMergeStatus.length > 0) {
+    return {
+      ...base,
+      preMergeStatus,
+      errorMessage: '메인 작업 폴더에 미커밋 변경사항이 있어 병합을 차단했습니다.'
+    }
+  }
+
+  // 3) Merge (explicit, no-ff, no push).
+  const startedAt = nowIso()
+  const branch = job.branchName!
+  const merge = await runFixedIn(main, 'git', ['merge', '--no-ff', branch])
+  const mergeLogLines = merge.out.trim().split(/\r?\n/).filter(Boolean).slice(-200)
+
+  // 4) Detect conflicts (never auto-resolve).
+  const postStatus = await runFixedIn(main, 'git', ['status', '--short'])
+  const conflictFiles = parseConflictFiles(postStatus.out)
+  if (merge.code !== 0 || conflictFiles.length > 0) {
+    return {
+      ...base,
+      status: 'conflict',
+      preMergeStatus,
+      startedAt,
+      finishedAt: nowIso(),
+      mergeLogLines: [
+        ...mergeLogLines,
+        '병합 충돌이 발생했습니다. 자동 해결하지 않습니다. 수동 확인이 필요합니다.'
+      ],
+      conflictFiles,
+      errorMessage: '병합 충돌 · 수동 확인 필요'
+    }
+  }
+
+  // 5) Post-merge verification in the MAIN workspace (has node_modules).
+  const tc = await runFixedIn(main, 'npm', ['run', 'typecheck'])
+  const typecheckStatus = tc.code === 0 ? 'passed' : 'failed'
+  const bd = await runFixedIn(main, 'npm', ['run', 'build'])
+  const buildStatus = bd.code === 0 ? 'passed' : 'failed'
+  const gs = await runFixedIn(main, 'git', ['status', '--short'])
+  const verification = {
+    typecheckStatus: typecheckStatus as 'passed' | 'failed',
+    buildStatus: buildStatus as 'passed' | 'failed',
+    gitStatusShort: gs.out.trim().slice(0, 2000)
+  }
+  const finalStatus = typecheckStatus === 'passed' && buildStatus === 'passed' ? 'succeeded' : 'needs-review'
+
+  return {
+    ...base,
+    status: finalStatus,
+    preMergeStatus,
+    startedAt,
+    finishedAt: nowIso(),
+    mergeLogLines: [
+      ...mergeLogLines,
+      `병합 완료 · 검증 typecheck=${typecheckStatus}, build=${buildStatus}`,
+      '병합은 완료되었지만 push는 자동으로 하지 않았습니다.'
+    ],
+    conflictFiles: [],
+    verification
+  }
 }

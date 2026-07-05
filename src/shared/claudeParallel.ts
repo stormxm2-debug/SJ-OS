@@ -84,6 +84,35 @@ export interface WorktreeReview {
 export const MAX_DIFF_PREVIEW_LINES = 300
 export const MAX_DIFF_PREVIEW_CHARS = 30000
 
+export type MergeStatus =
+  | 'not-ready'
+  | 'ready'
+  | 'merging'
+  | 'merged'
+  | 'conflict'
+  | 'failed'
+  | 'blocked'
+  | 'verifying'
+  | 'succeeded'
+  | 'needs-review'
+
+/** Result of an approved worktree → main merge attempt (main-only; no push). */
+export interface WorktreeMergeResult {
+  jobId: string
+  status: MergeStatus
+  branchName?: string
+  worktreePath?: string
+  mainWorkspacePath: string
+  /** `git status --short` of the main workspace BEFORE the merge. */
+  preMergeStatus: string
+  mergeLogLines: string[]
+  conflictFiles: string[]
+  verification?: ClaudeAutoBuildVerification
+  startedAt?: string
+  finishedAt?: string
+  errorMessage?: string
+}
+
 /** Emitted to the renderer whenever a parallel job changes. */
 export interface ParallelJobUpdate {
   job: ParallelBuildJob

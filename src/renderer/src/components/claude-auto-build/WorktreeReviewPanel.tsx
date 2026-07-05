@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react'
-import { ClipboardCheck, GitBranch, FileDiff, Check, Copy, ScrollText, AlertTriangle, Loader2 } from 'lucide-react'
+import { ClipboardCheck, GitBranch, FileDiff, Check, Copy, AlertTriangle, Loader2, GitMerge } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import type {
   ParallelBuildJob,
   ReviewDecision,
   WorktreeReview,
+  WorktreeMergeResult,
   ChangedFileStatus
 } from '@shared/claudeParallel'
 import { useClaudeParallel } from '@renderer/services/claude-auto-build/useClaudeParallel'
@@ -16,7 +17,8 @@ import { copyPromptToClipboard } from '@renderer/services/claude-code/claudeCode
  * user mark a decision. **Nothing merges here.** Inline cards only.
  */
 export default function WorktreeReviewPanel(): JSX.Element {
-  const { parallelJobs, available, loadWorktreeReview, markReviewDecision } = useClaudeParallel()
+  const { parallelJobs, available, loadWorktreeReview, markReviewDecision, mergeApprovedWorktree } =
+    useClaudeParallel()
   const [reviews, setReviews] = useState<Record<string, WorktreeReview>>({})
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({})
@@ -41,7 +43,7 @@ export default function WorktreeReviewPanel(): JSX.Element {
       icon={<ClipboardCheck className="h-4 w-4 text-indigo-300" />}
       action={
         <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
-          병렬 결과 검토 안전 빌드
+          병렬 결과 검토 · 승인 병합 안전 빌드
         </span>
       }
     >
@@ -75,6 +77,7 @@ export default function WorktreeReviewPanel(): JSX.Element {
                   }
                 })
               }
+              onMerge={() => mergeApprovedWorktree(job.sourceJobId)}
             />
           ))}
         </div>
@@ -92,7 +95,8 @@ function ReviewCard({
   onLoad,
   onDecide,
   onToggleDiff,
-  onCopyFollowUp
+  onCopyFollowUp,
+  onMerge
 }: {
   job: ParallelBuildJob
   review: WorktreeReview | null
@@ -103,10 +107,24 @@ function ReviewCard({
   onDecide: (d: ReviewDecision) => void
   onToggleDiff: () => void
   onCopyFollowUp: (text: string) => void
+  onMerge: () => Promise<WorktreeMergeResult | null>
 }): JSX.Element {
   const decision = review?.reviewDecision ?? job.reviewDecision ?? 'not-reviewed'
   const v = review?.verificationSummary ?? job.verificationResult
   const verifyFailed = v && (v.typecheckStatus === 'failed' || v.buildStatus === 'failed')
+
+  // Merge state (double-confirm: first click expands, second click merges).
+  const [confirming, setConfirming] = useState(false)
+  const [merging, setMerging] = useState(false)
+  const [mergeResult, setMergeResult] = useState<WorktreeMergeResult | null>(null)
+
+  const doMerge = async (): Promise<void> => {
+    setMerging(true)
+    setConfirming(false)
+    const r = await onMerge()
+    setMergeResult(r)
+    setMerging(false)
+  }
 
   const followUp =
     `이 worktree 결과에서 다음 부분을 수정해줘.\n\n` +
@@ -168,6 +186,55 @@ function ReviewCard({
           <pre className="mt-1 max-h-32 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70 p-2 font-mono text-[10px] leading-5 text-slate-400">
             {followUp}
           </pre>
+        </div>
+      ) : null}
+
+      {/* 병합 준비 — only after approved-for-merge (explicit, double-confirm) */}
+      {decision === 'approved-for-merge' ? (
+        <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
+            <GitMerge className="h-3.5 w-3.5" /> 병합 준비
+          </div>
+          <div className="text-[11px] text-slate-500">
+            메인 SJ OS 작업 폴더로 병합합니다. push는 하지 않습니다. 메인 폴더가 깨끗해야 병합됩니다.
+          </div>
+          {verifyFailed ? (
+            <p className="mt-1 text-[11px] text-amber-300">검증 실패 상태입니다. 병합을 권장하지 않습니다.</p>
+          ) : null}
+
+          {!confirming && !merging && !mergeResult ? (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+            >
+              <GitMerge className="h-3 w-3" /> 승인된 작업 병합
+            </button>
+          ) : null}
+
+          {confirming ? (
+            <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2">
+              <p className="text-[11px] font-semibold text-amber-200">이 작업을 메인 SJ OS에 병합합니다. 계속하시겠습니까?</p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={() => void doMerge()}
+                  className="rounded-md border border-emerald-500/30 bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-500/25">
+                  병합 실행
+                </button>
+                <button type="button" onClick={() => setConfirming(false)}
+                  className="rounded-md border border-slate-700 bg-slate-800/50 px-3 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-slate-700/60">
+                  취소
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {merging ? (
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-indigo-300">
+              <Loader2 className="h-3 w-3 animate-spin" /> 병합 중 · 검증 중…
+            </div>
+          ) : null}
+
+          {mergeResult ? <MergeResultView result={mergeResult} /> : null}
         </div>
       ) : null}
 
@@ -261,4 +328,52 @@ const FILE_TAG: Record<ChangedFileStatus, { text: string; tone: Tone }> = {
 function FileTag({ status }: { status: ChangedFileStatus }): JSX.Element {
   const t = FILE_TAG[status]
   return <span className={['inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[9px] font-bold', TONES[t.tone]].join(' ')}>{t.text}</span>
+}
+
+function MergeResultView({ result }: { result: WorktreeMergeResult }): JSX.Element {
+  const tone: Tone =
+    result.status === 'succeeded' ? 'emerald'
+    : result.status === 'conflict' ? 'rose'
+    : result.status === 'needs-review' ? 'amber'
+    : result.status === 'blocked' || result.status === 'failed' ? 'rose'
+    : 'slate'
+  const label: Record<string, string> = {
+    succeeded: '병합 완료 · 검증 통과',
+    'needs-review': '병합 완료 · 검토 필요',
+    conflict: '병합 충돌',
+    blocked: '병합 차단됨',
+    failed: '병합 실패',
+    merged: '병합 완료'
+  }
+  return (
+    <div className="mt-2">
+      <div className={['inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', TONES[tone]].join(' ')}>
+        {label[result.status] ?? result.status}
+      </div>
+      {result.errorMessage ? <div className="mt-1 text-[11px] text-rose-300">{result.errorMessage}</div> : null}
+      {result.status === 'conflict' ? (
+        <div className="mt-1 text-[11px] text-rose-300">
+          병합 충돌이 발생했습니다. 자동 해결하지 않습니다. 수동 확인이 필요합니다.
+          {result.conflictFiles.length > 0 ? (
+            <pre className="mt-1 max-h-24 overflow-y-auto rounded border border-slate-800 bg-slate-950/70 p-2 font-mono text-[10px] text-slate-400">
+              {result.conflictFiles.join('\n')}
+            </pre>
+          ) : null}
+        </div>
+      ) : null}
+      {result.verification ? (
+        <div className="mt-1 text-[11px] text-slate-500">
+          메인 검증: typecheck={result.verification.typecheckStatus} · build={result.verification.buildStatus}
+        </div>
+      ) : null}
+      {result.mergeLogLines.length > 0 ? (
+        <pre className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70 p-2 font-mono text-[10px] leading-5 text-slate-400">
+          {result.mergeLogLines.join('\n')}
+        </pre>
+      ) : null}
+      {result.status === 'succeeded' || result.status === 'needs-review' ? (
+        <p className="mt-1 text-[10px] text-slate-500">병합은 완료되었지만 push는 자동으로 하지 않았습니다.</p>
+      ) : null}
+    </div>
+  )
 }
