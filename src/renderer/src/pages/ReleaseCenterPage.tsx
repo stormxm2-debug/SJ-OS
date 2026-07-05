@@ -26,6 +26,7 @@ import {
 import Card from '@renderer/components/ui/Card'
 import ReleaseApprovalPanel from '@renderer/components/release/ReleaseApprovalPanel'
 import DeploymentPanel from '@renderer/components/release/DeploymentPanel'
+import DeploymentProfilePanel from '@renderer/components/release/DeploymentProfilePanel'
 import { useRelease } from '@renderer/services/release/useRelease'
 import { releaseRepository } from '@renderer/services/release/ReleaseRepository'
 import type {
@@ -139,6 +140,9 @@ export default function ReleaseCenterPage(): JSX.Element {
 
       {/* Approved deployment runner (release-ready only; two-step; fixed npm run deploy) */}
       <DeploymentPanel />
+
+      {/* Deployment profile / deploy-script manager (approved package.json write) */}
+      <DeploymentProfilePanel />
 
       <Card
         title="릴리즈 센터"

@@ -1,9 +1,14 @@
 import { app } from 'electron'
 import { type ChildProcess } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import type { DeployPreflight, DeploymentRun } from '@shared/deployment'
-import { maskSecrets } from '@shared/deployment'
+import type {
+  ApplyDeployScriptResult,
+  DeployPreflight,
+  DeploymentRun,
+  PackageScriptsInfo
+} from '@shared/deployment'
+import { detectDeployTool, maskSecrets, validateDeployScript } from '@shared/deployment'
 import { spawnTool } from './claudeAutoBuild'
 
 /**
@@ -50,15 +55,69 @@ function addLog(releaseItemId: string, line: string): void {
   touch(run, { logLines: [...run.logLines, maskSecrets(line)].slice(-200) })
 }
 
+function readPackageJson(): { raw: string; pkg: { scripts?: Record<string, string> } } | null {
+  try {
+    const raw = readFileSync(join(mainWorkspace(), 'package.json'), 'utf8')
+    return { raw, pkg: JSON.parse(raw) as { scripts?: Record<string, string> } }
+  } catch {
+    return null
+  }
+}
+
 /** Does package.json define a `deploy` script? (read-only; never executes it) */
 export function deployScriptExists(): boolean {
+  const read = readPackageJson()
+  const deploy = read?.pkg.scripts?.deploy
+  return typeof deploy === 'string' && deploy.trim().length > 0
+}
+
+/** Read-only inspection of package.json's deploy/build/typecheck scripts. */
+export function inspectPackageScripts(): PackageScriptsInfo {
+  const read = readPackageJson()
+  const scripts = read?.pkg.scripts ?? {}
+  const deployScript = scripts.deploy
+  return {
+    deployScript,
+    buildScript: scripts.build,
+    typecheckScript: scripts.typecheck,
+    hasDeploy: typeof deployScript === 'string' && deployScript.trim().length > 0,
+    hasBuild: typeof scripts.build === 'string',
+    hasTypecheck: typeof scripts.typecheck === 'string',
+    detectedTool: detectDeployTool(deployScript)
+  }
+}
+
+/**
+ * Apply a deploy script to package.json AFTER explicit approval. Validates the
+ * script (blocks destructive / secret content), writes only `scripts.deploy`, and
+ * never runs it. This is the ONLY place the renderer flow can change package.json,
+ * and only via this validated main path.
+ */
+export function applyDeployScript(script: string): ApplyDeployScriptResult {
+  const validation = validateDeployScript(script)
+  if (!sameWorkspace(mainWorkspace(), ALLOWED_WORKSPACE_MAIN)) {
+    return { applied: false, scripts: inspectPackageScripts(), validation, errorMessage: '허용된 작업 폴더가 아닙니다.' }
+  }
+  if (!validation.safe) {
+    return { applied: false, scripts: inspectPackageScripts(), validation, errorMessage: `안전하지 않은 스크립트입니다: ${validation.reasons.join(', ')}` }
+  }
+  const read = readPackageJson()
+  if (!read) {
+    return { applied: false, scripts: inspectPackageScripts(), validation, errorMessage: 'package.json을 읽지 못했습니다.' }
+  }
   try {
-    const pkg = JSON.parse(readFileSync(join(mainWorkspace(), 'package.json'), 'utf8')) as {
-      scripts?: Record<string, string>
+    const pkg = read.pkg
+    pkg.scripts = { ...(pkg.scripts ?? {}), deploy: script.trim() }
+    // Preserve 2-space JSON formatting + trailing newline (matches repo style).
+    writeFileSync(join(mainWorkspace(), 'package.json'), JSON.stringify(pkg, null, 2) + '\n', 'utf8')
+    return { applied: true, scripts: inspectPackageScripts(), validation }
+  } catch (e) {
+    return {
+      applied: false,
+      scripts: inspectPackageScripts(),
+      validation,
+      errorMessage: e instanceof Error ? e.message : 'package.json 저장 실패'
     }
-    return typeof pkg.scripts?.deploy === 'string' && pkg.scripts.deploy.trim().length > 0
-  } catch {
-    return false
   }
 }
 

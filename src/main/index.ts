@@ -41,9 +41,11 @@ import {
 } from './claudeParallel'
 import type { ReviewDecision } from '@shared/claudeParallel'
 import {
+  applyDeployScript,
   cancelDeployment,
   deployScriptExists,
   getDeploymentRun,
+  inspectPackageScripts,
   runApprovedDeployment,
   runDeployPreflight,
   setDeploymentEmitter
@@ -283,6 +285,9 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-deploy:run', (_e, releaseItemId: string) => runApprovedDeployment(releaseItemId))
   ipcMain.handle('sj-deploy:cancel', (_e, releaseItemId: string) => cancelDeployment(releaseItemId))
   ipcMain.handle('sj-deploy:get', (_e, releaseItemId: string) => getDeploymentRun(releaseItemId))
+  // Deployment profile / deploy-script manager (read + validated approved write).
+  ipcMain.handle('sj-deploy:inspect-scripts', () => inspectPackageScripts())
+  ipcMain.handle('sj-deploy:apply-script', (_e, script: string) => applyDeployScript(script))
   // Review (read-only git inspection; NO merge).
   ipcMain.handle('sj-claude-parallel:review', (_e, sourceJobId: string) => loadWorktreeReview(sourceJobId))
   ipcMain.handle(

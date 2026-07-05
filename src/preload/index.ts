@@ -34,7 +34,12 @@ import type {
   WorktreeMergeResult,
   WorktreeReview
 } from '@shared/claudeParallel'
-import type { DeploymentRun, DeploymentRunUpdate } from '@shared/deployment'
+import type {
+  ApplyDeployScriptResult,
+  DeploymentRun,
+  DeploymentRunUpdate,
+  PackageScriptsInfo
+} from '@shared/deployment'
 
 /**
  * Secure bridge between the renderer (UI) and the main process (backend).
@@ -213,7 +218,13 @@ const api = {
       const handler = (_event: IpcRendererEvent, payload: DeploymentRunUpdate): void => callback(payload)
       ipcRenderer.on('sj-deploy:run-update', handler)
       return () => ipcRenderer.removeListener('sj-deploy:run-update', handler)
-    }
+    },
+    /** Read-only inspection of package.json deploy/build/typecheck scripts. */
+    inspectPackageScripts: (): Promise<PackageScriptsInfo> =>
+      ipcRenderer.invoke('sj-deploy:inspect-scripts'),
+    /** Apply a validated deploy script to package.json (approved write; never runs it). */
+    applyDeployScript: (script: string): Promise<ApplyDeployScriptResult> =>
+      ipcRenderer.invoke('sj-deploy:apply-script', script)
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>
