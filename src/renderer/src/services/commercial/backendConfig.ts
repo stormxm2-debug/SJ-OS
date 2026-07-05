@@ -111,6 +111,11 @@ export function getCommercialReadiness(): ReadinessItem[] {
     { label: '대표 전체 출퇴근 조회', status: '준비됨' },
     { label: '출퇴근 RLS 정책 준비', status: '준비됨' },
     { label: 'Storage 정책 초안 준비', status: '준비됨' },
+    { label: 'Web/PWA 빌드 준비 (build:web)', status: '준비됨' },
+    { label: 'Netlify 설정 준비 (netlify.toml)', status: '준비됨' },
+    { label: 'Netlify Supabase URL env 필요', status: cfgd ? '완료' : '수동 작업 필요' },
+    { label: 'Netlify Supabase anon key env 필요', status: cfgd ? '완료' : '수동 작업 필요' },
+    { label: 'service role key 금지 (프론트엔드)', status: '완료' },
     { label: '로컬 mock → Supabase 전환', status: cfgd ? '준비됨' : '다음 단계' },
     { label: '고객/상담/출퇴근/실적 저장 테스트', status: '다음 단계' }
   ]

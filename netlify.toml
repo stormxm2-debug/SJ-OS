@@ -1,0 +1,14 @@
+# Netlify config for the SJ OS mobile PWA / staff web app.
+# Static hosting of the Vite web build. NO secrets here — set VITE_SUPABASE_URL and
+# VITE_SUPABASE_ANON_KEY in Netlify's Environment variables UI (never service_role).
+
+[build]
+  command = "npm run build:web"
+  publish = "dist"
+
+# SPA fallback: every path serves index.html so client-side routes / refreshes
+# do not 404.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
