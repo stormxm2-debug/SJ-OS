@@ -24,6 +24,7 @@ import {
   Activity
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
+import ReleaseApprovalPanel from '@renderer/components/release/ReleaseApprovalPanel'
 import { useRelease } from '@renderer/services/release/useRelease'
 import { releaseRepository } from '@renderer/services/release/ReleaseRepository'
 import type {
@@ -132,6 +133,9 @@ export default function ReleaseCenterPage(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      {/* Claude 릴리즈 승인 센터 (approval + readiness; no deployment) */}
+      <ReleaseApprovalPanel />
+
       <Card
         title="릴리즈 센터"
         icon={<Rocket className="h-4 w-4" />}
