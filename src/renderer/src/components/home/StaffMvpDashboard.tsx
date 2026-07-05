@@ -1,6 +1,7 @@
 import { Clock, Users, CalendarDays, BarChart3, UserRound, Megaphone, Bot, Sparkles, Building2 } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
-import { ROLE_LABEL } from '@renderer/navigation/roleAccess'
+import { ROLE_LABEL, isAdminRole } from '@renderer/navigation/roleAccess'
+import ServerDbStatusPanel from '@renderer/components/admin/ServerDbStatusPanel'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import {
@@ -101,6 +102,9 @@ export default function StaffMvpDashboard(): JSX.Element {
           ))}
         </div>
       </div>
+
+      {/* Server/DB status + commercial readiness — owner/admin only */}
+      {isAdminRole(role) ? <ServerDbStatusPanel /> : null}
 
       {/* Jarvis quick launch */}
       <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 p-4 shadow-sm">
