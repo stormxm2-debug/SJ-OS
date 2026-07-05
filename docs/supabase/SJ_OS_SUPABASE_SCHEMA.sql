@@ -131,4 +131,9 @@ create index if not exists consultations_status_idx on public.consultations(stat
 create index if not exists consultations_scheduled_at_idx on public.consultations(scheduled_at desc);
 create index if not exists consultations_updated_at_idx on public.consultations(updated_at desc);
 create index if not exists idx_schedule_staff on public.schedule_events(staff_id);
+-- Schedule management integration: customer link + time/status/type filters.
+create index if not exists schedule_events_customer_id_idx on public.schedule_events(customer_id);
+create index if not exists schedule_events_starts_at_idx on public.schedule_events(starts_at);
+create index if not exists schedule_events_status_idx on public.schedule_events(status);
+create index if not exists schedule_events_type_idx on public.schedule_events(type);
 create index if not exists idx_performance_staff_month on public.performance_records(staff_id, month);

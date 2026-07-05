@@ -1,0 +1,125 @@
+import type { ScheduleEvent } from '@shared/commercial/models'
+import type { ScheduleInput } from './scheduleValidation'
+import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
+
+/**
+ * Supabase schedule adapter — real queries against public.schedule_events.
+ *
+ * SECURITY: anon public client only (never service_role). RLS is the real access
+ * boundary; client-side filtering is UX only. Never logs memo or customer PII.
+ * staff_id is set to the auth user id on insert and is never client-overwritten.
+ */
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+const SELECT_COLS =
+  'id, staff_id, customer_id, title, type, starts_at, ends_at, status, memo, created_at, updated_at, customer:customers(id, name, status, owner_staff_id, team_id)'
+
+export type AdapterReason = 'not-configured' | 'no-session' | 'error'
+export interface AdapterOk<T> {
+  ok: true
+  data: T
+}
+export interface AdapterErr {
+  ok: false
+  reason: AdapterReason
+  message: string
+}
+export type AdapterResult<T> = AdapterOk<T> | AdapterErr
+
+function err(reason: AdapterReason, message: string): AdapterErr {
+  return { ok: false, reason, message }
+}
+
+async function getClient(): Promise<any | null> {
+  await initSupabaseClient()
+  return (getSupabaseClient() as any) ?? null
+}
+async function currentUserId(client: any): Promise<string | null> {
+  try {
+    const { data } = await client.auth.getSession()
+    return data?.session?.user?.id ?? null
+  } catch {
+    return null
+  }
+}
+
+export interface ScheduleWithCustomer extends ScheduleEvent {
+  customerName?: string
+}
+
+function mapRow(row: Record<string, unknown>): ScheduleWithCustomer {
+  const cust = (row.customer as Record<string, unknown> | null) ?? null
+  return {
+    id: String(row.id),
+    staffId: String(row.staff_id ?? ''),
+    staffName: '',
+    customerId: (row.customer_id as string | null) ?? undefined,
+    title: String(row.title ?? ''),
+    type: (row.type as ScheduleEvent['type']) ?? 'internal',
+    startsAt: String(row.starts_at ?? ''),
+    endsAt: (row.ends_at as string | null) ?? undefined,
+    status: (row.status as ScheduleEvent['status']) ?? 'planned',
+    memo: (row.memo as string | null) ?? undefined,
+    customerName: cust ? String(cust.name ?? '') : undefined
+  }
+}
+
+function buildInsert(input: ScheduleInput, staffId: string): Record<string, unknown> {
+  return {
+    staff_id: staffId, // must equal auth.uid() (RLS enforces)
+    customer_id: input.customerId?.trim() || null,
+    title: input.title.trim(),
+    type: input.type,
+    starts_at: input.startsAt,
+    ends_at: input.endsAt?.trim() || null,
+    status: input.status,
+    memo: input.memo?.trim() || null
+  }
+}
+
+export const supabaseScheduleAdapter = {
+  async listScheduleEvents(): Promise<AdapterResult<ScheduleWithCustomer[]>> {
+    const client = await getClient()
+    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
+    const { data, error } = await client.from('schedule_events').select(SELECT_COLS).order('starts_at', { ascending: true })
+    if (error) return err('error', '일정 목록을 불러오지 못했습니다.')
+    return { ok: true, data: (data ?? []).map(mapRow) }
+  },
+
+  async getScheduleEvent(id: string): Promise<AdapterResult<ScheduleWithCustomer | null>> {
+    const client = await getClient()
+    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    const { data, error } = await client.from('schedule_events').select(SELECT_COLS).eq('id', id).maybeSingle()
+    if (error) return err('error', '일정을 불러오지 못했습니다.')
+    return { ok: true, data: data ? mapRow(data) : null }
+  },
+
+  async createScheduleEvent(input: ScheduleInput): Promise<AdapterResult<ScheduleWithCustomer>> {
+    const client = await getClient()
+    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    const userId = await currentUserId(client)
+    if (!userId) return err('no-session', '로그인 세션이 없습니다.')
+    const { data, error } = await client.from('schedule_events').insert(buildInsert(input, userId)).select(SELECT_COLS).single()
+    if (error) return err('error', '일정 저장에 실패했습니다.')
+    return { ok: true, data: mapRow(data) }
+  },
+
+  async updateScheduleEvent(id: string, input: Partial<ScheduleInput>): Promise<AdapterResult<ScheduleWithCustomer>> {
+    const client = await getClient()
+    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    // Allowed fields only — never staff_id from the renderer.
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (input.customerId !== undefined) patch.customer_id = input.customerId?.trim() || null
+    if (input.title !== undefined) patch.title = input.title.trim()
+    if (input.type !== undefined) patch.type = input.type
+    if (input.startsAt !== undefined) patch.starts_at = input.startsAt
+    if (input.endsAt !== undefined) patch.ends_at = input.endsAt?.trim() || null
+    if (input.status !== undefined) patch.status = input.status
+    if (input.memo !== undefined) patch.memo = input.memo?.trim() || null
+    const { data, error } = await client.from('schedule_events').update(patch).eq('id', id).select(SELECT_COLS).single()
+    if (error) return err('error', '일정 저장에 실패했습니다.')
+    return { ok: true, data: mapRow(data) }
+  }
+}

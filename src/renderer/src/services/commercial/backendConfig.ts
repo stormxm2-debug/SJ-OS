@@ -94,6 +94,14 @@ export function getCommercialReadiness(): ReadinessItem[] {
     { label: '팀장 상담 권한 제한', status: '준비됨' },
     { label: '대표 전체 상담 조회', status: '준비됨' },
     { label: '상담 RLS 정책 준비', status: '준비됨' },
+    { label: '일정관리 Supabase 조회', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '일정 생성 Supabase 저장', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '일정 수정 Supabase 저장', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '오늘/이번 주 일정 조회', status: '완료' },
+    { label: 'FC 일정 권한 제한', status: '준비됨' },
+    { label: '팀장 일정 권한 제한', status: '준비됨' },
+    { label: '대표 전체 일정 조회', status: '준비됨' },
+    { label: '일정 RLS 정책 준비', status: '준비됨' },
     { label: '로컬 mock → Supabase 전환', status: cfgd ? '준비됨' : '다음 단계' },
     { label: '고객/상담/출퇴근/실적 저장 테스트', status: '다음 단계' }
   ]

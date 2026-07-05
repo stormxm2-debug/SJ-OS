@@ -5,6 +5,7 @@ import AccessDenied from './layout/AccessDenied'
 import StaffMvpDashboard from './home/StaffMvpDashboard'
 import SupabaseCustomerManager from './customer/SupabaseCustomerManager'
 import SupabaseConsultationManager from './consultation/SupabaseConsultationManager'
+import SupabaseScheduleManager from './schedule/SupabaseScheduleManager'
 import CommandCenterPage from '@renderer/pages/CommandCenterPage'
 import StaffHomePage from '@renderer/pages/StaffHomePage'
 import AttendancePage from '@renderer/pages/AttendancePage'
@@ -77,7 +78,12 @@ export default function Router(): JSX.Element {
     case 'sales-activity':
       return <SalesActivityWorkspacePage />
     case 'schedule':
-      return <SchedulePage />
+      return (
+        <div className="space-y-6">
+          <SupabaseScheduleManager />
+          <SchedulePage />
+        </div>
+      )
     case 'performance':
       return <PerformancePage />
     case 'team-leader':

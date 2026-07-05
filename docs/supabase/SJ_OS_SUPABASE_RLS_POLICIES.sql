@@ -101,15 +101,28 @@ create policy consultations_delete_own on public.consultations for delete using 
   public.is_owner_or_admin() or staff_id = auth.uid()
 );
 
--- === schedule_events === own staff rows; owner/admin all
+-- === schedule_events === own staff rows; owner/admin all; team-leader team
+-- SELECT: owner/admin all; own staff rows; team-leader for own-team staff OR the
+-- linked customer's team.
 create policy schedule_select on public.schedule_events for select using (
   public.is_owner_or_admin()
   or staff_id = auth.uid()
-  or (public.is_team_leader())
+  or (public.is_team_leader() and (
+        exists (select 1 from public.profiles p where p.id = schedule_events.staff_id and p.team_id = public.current_user_team_id())
+        or exists (select 1 from public.customers c where c.id = schedule_events.customer_id and c.team_id = public.current_user_team_id())
+      ))
 );
-create policy schedule_write_own on public.schedule_events for all using (
+-- INSERT: a non-admin may only create rows they OWN (staff_id = auth.uid()).
+create policy schedule_insert on public.schedule_events for insert with check (
+  public.is_owner_or_admin() or staff_id = auth.uid()
+);
+-- UPDATE/DELETE: owner/admin all; others only their own rows.
+create policy schedule_modify_own on public.schedule_events for update using (
   public.is_owner_or_admin() or staff_id = auth.uid()
 ) with check (
+  public.is_owner_or_admin() or staff_id = auth.uid()
+);
+create policy schedule_delete_own on public.schedule_events for delete using (
   public.is_owner_or_admin() or staff_id = auth.uid()
 );
 
