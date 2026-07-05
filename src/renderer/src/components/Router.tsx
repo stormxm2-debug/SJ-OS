@@ -6,6 +6,7 @@ import StaffMvpDashboard from './home/StaffMvpDashboard'
 import SupabaseCustomerManager from './customer/SupabaseCustomerManager'
 import SupabaseConsultationManager from './consultation/SupabaseConsultationManager'
 import SupabaseScheduleManager from './schedule/SupabaseScheduleManager'
+import SupabaseAttendanceManager from './attendance/SupabaseAttendanceManager'
 import CommandCenterPage from '@renderer/pages/CommandCenterPage'
 import StaffHomePage from '@renderer/pages/StaffHomePage'
 import AttendancePage from '@renderer/pages/AttendancePage'
@@ -59,7 +60,12 @@ export default function Router(): JSX.Element {
         </div>
       )
     case 'attendance':
-      return <AttendancePage />
+      return (
+        <div className="space-y-6">
+          <SupabaseAttendanceManager />
+          <AttendancePage />
+        </div>
+      )
     case 'notice':
       return <NoticePage />
     case 'company':

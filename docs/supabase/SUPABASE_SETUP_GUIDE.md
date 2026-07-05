@@ -119,3 +119,17 @@ Log in as 대표/관리자 → home → **Supabase 연결 상태** panel. Confir
 8. 팀장 계정으로 로그인 → **팀 일정** 조회 확인 (팀원/고객 team_id + RLS).
 9. 대표 계정으로 로그인 → **전체 일정** 조회 확인.
 10. 상태를 완료/취소로 변경 → `updated_at` 갱신 확인.
+
+## 12. 출퇴근 연결 테스트
+
+1. Supabase Auth로 FC 계정 로그인.
+2. 사이드바에서 **출퇴근** 진입.
+3. **출근하기** 클릭.
+4. Supabase → Table Editor → `attendance_records` 테이블에 행 저장 확인 (staff_id = auth.uid()).
+5. **퇴근하기** 클릭 → 두 번째 행 저장 확인.
+6. 오늘 출근/퇴근 상태 카드 확인.
+7. 팀장 계정으로 로그인 → **팀원 출퇴근** 조회 확인 (profiles.team_id + RLS).
+8. 대표 계정으로 로그인 → **전체 출퇴근** + 요약 카드 확인.
+9. 사진 저장소를 사용할 경우: `attendance-photos` 비공개 bucket 생성 후
+   `SJ_OS_SUPABASE_STORAGE_POLICIES.sql`의 storage policies를 검토·적용하세요. (이번
+   단계에서는 사진 업로드가 보류되어 워터마크 텍스트만 저장됩니다.)

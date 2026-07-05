@@ -102,6 +102,15 @@ export function getCommercialReadiness(): ReadinessItem[] {
     { label: '팀장 일정 권한 제한', status: '준비됨' },
     { label: '대표 전체 일정 조회', status: '준비됨' },
     { label: '일정 RLS 정책 준비', status: '준비됨' },
+    { label: '출퇴근 Supabase 조회', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '출근 Supabase 저장', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '퇴근 Supabase 저장', status: cfgd ? '준비됨' : '다음 단계' },
+    { label: '사진/워터마크 기록 준비', status: '준비됨' },
+    { label: 'FC 출퇴근 권한 제한', status: '준비됨' },
+    { label: '팀장 출퇴근 권한 제한', status: '준비됨' },
+    { label: '대표 전체 출퇴근 조회', status: '준비됨' },
+    { label: '출퇴근 RLS 정책 준비', status: '준비됨' },
+    { label: 'Storage 정책 초안 준비', status: '준비됨' },
     { label: '로컬 mock → Supabase 전환', status: cfgd ? '준비됨' : '다음 단계' },
     { label: '고객/상담/출퇴근/실적 저장 테스트', status: '다음 단계' }
   ]

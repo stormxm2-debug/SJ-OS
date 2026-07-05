@@ -119,6 +119,10 @@ create table if not exists public.notices (
 
 -- Helpful indexes
 create index if not exists idx_attendance_staff on public.attendance_records(staff_id);
+-- Attendance management integration: time/type/status filters.
+create index if not exists attendance_records_timestamp_idx on public.attendance_records("timestamp" desc);
+create index if not exists attendance_records_type_idx on public.attendance_records(type);
+create index if not exists attendance_records_status_idx on public.attendance_records(status);
 create index if not exists idx_customers_owner on public.customers(owner_staff_id);
 create index if not exists idx_customers_team on public.customers(team_id);
 -- Customer management integration: status + recency filters/sorts.

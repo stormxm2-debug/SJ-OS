@@ -134,10 +134,18 @@ create policy attendance_select on public.attendance_records for select using (
         select 1 from public.profiles p
         where p.id = attendance_records.staff_id and p.team_id = public.current_user_team_id()))
 );
-create policy attendance_write_own on public.attendance_records for all using (
+-- INSERT: a staff member may only record their OWN attendance (staff_id = auth.uid()).
+create policy attendance_insert on public.attendance_records for insert with check (
+  public.is_owner_or_admin() or staff_id = auth.uid()
+);
+-- UPDATE: own rows (e.g. memo) or owner/admin. DELETE: owner/admin only (audit trail).
+create policy attendance_modify_own on public.attendance_records for update using (
   public.is_owner_or_admin() or staff_id = auth.uid()
 ) with check (
   public.is_owner_or_admin() or staff_id = auth.uid()
+);
+create policy attendance_delete_admin on public.attendance_records for delete using (
+  public.is_owner_or_admin()
 );
 
 -- === performance_records === own; owner/admin all; team-leader team
