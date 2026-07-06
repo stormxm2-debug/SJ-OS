@@ -45,12 +45,23 @@ import {
  * implement the task autonomously inside the (whitelisted) workspace. The value
  * is a single constant below. If the installed Claude Code rejects the value the
  * process exits non-zero and the job is marked failed with the error shown.
- *   Valid Claude Code values: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'.
- *   This sprint activates execution with 'acceptEdits' (auto-accepts file edits so
- *   the project is actually modified) — change here to adjust.
+ *   Valid Claude Code values include: 'default' | 'acceptEdits' | 'auto' |
+ *   'bypassPermissions' | 'plan'. We use 'acceptEdits' for HEADLESS runs because it
+ *   deterministically auto-accepts file edits (so the project is actually modified)
+ *   while keeping safety boundaries — the documented best mode for non-interactive
+ *   file editing. (`--permission-mode auto` is valid too and is what the manual
+ *   fallback command uses interactively, but 'acceptEdits' is the reliable headless
+ *   choice.) Change here to adjust.
+ *
+ * TIMEOUT: every Claude Code run is bounded by CLAUDE_RUN_TIMEOUT_MS. On timeout the
+ * runner kills ONLY the process tree it started (never anything else), marks the job
+ * 'timed-out', and skips verification. This is the fix for "stuck / never completes".
  */
 
 const CLAUDE_PERMISSION_MODE = 'acceptEdits'
+
+/** Hard ceiling for a single Claude Code run (15 minutes). */
+const CLAUDE_RUN_TIMEOUT_MS = 15 * 60 * 1000
 
 const AUTO_BUILD_SUBDIR = join('.sj-os', 'claude-auto-build')
 const MAX_LOG_LINES = 300
@@ -91,7 +102,37 @@ export function setQueueStateEmitter(fn: (state: QueueState) => void): void {
 
 const jobs = new Map<string, ClaudeAutoBuildJob>()
 const procs = new Map<string, ChildProcess>()
+/** Per-job run timeout timers (cleared when the process settles). */
+const timers = new Map<string, ReturnType<typeof setTimeout>>()
 let seq = 0
+
+/**
+ * Kill ONLY the process tree we started for a job. Because Windows runs npm/npx/claude
+ * through a `cmd.exe` wrapper (see spawnTool), `child.kill()` would kill cmd.exe but
+ * leave the real Claude/Node grandchild running — so we use `taskkill /T /F <pid>` to
+ * terminate the whole tree. Nothing outside this runner's own child is touched.
+ */
+function killJobTree(child: ChildProcess): void {
+  const pid = child.pid
+  try {
+    if (isWin() && typeof pid === 'number') {
+      spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true })
+    } else {
+      child.kill('SIGTERM')
+    }
+  } catch {
+    /* already gone */
+  }
+}
+
+/** Clear and drop a job's timeout timer, if any. */
+function clearJobTimer(jobId: string): void {
+  const t = timers.get(jobId)
+  if (t) {
+    clearTimeout(t)
+    timers.delete(jobId)
+  }
+}
 
 // --- queue state (main owns single-writer serialization) -------------------
 let queueAutoRun = false
@@ -128,6 +169,11 @@ function maybeRunNext(): void {
 }
 /** Called whenever a job reaches a terminal-ish state, to drive the queue. */
 function onJobSettled(job: ClaudeAutoBuildJob): void {
+  if (job.status === 'timed-out') {
+    // A timeout isn't a code error to auto-repair — just pause for manual review.
+    pauseQueueWith('이전 작업이 시간 초과로 중단되어 큐를 멈췄습니다. 로그를 확인해주세요.')
+    return
+  }
   if (job.status === 'failed' || job.status === 'needs-review') {
     // Auto-GENERATE (not auto-run) a focused repair job from the failure logs.
     maybeCreateRepairJob(job)
@@ -594,18 +640,19 @@ export function listAutoBuildJobs(): ClaudeAutoBuildJob[] {
 }
 
 export function cancelAutoBuildJob(id: string): ClaudeAutoBuildJob | null {
+  clearJobTimer(id)
   const proc = procs.get(id)
   if (proc) {
-    try {
-      proc.kill()
-    } catch {
-      /* already gone */
-    }
+    killJobTree(proc)
     procs.delete(id)
   }
   const job = jobs.get(id)
   if (!job) return null
-  const settled = touch(job, { status: 'cancelled', finishedAt: nowIso() })
+  const settled = touch(job, {
+    status: 'cancelled',
+    finishedAt: nowIso(),
+    logLines: [...job.logLines, `작업이 취소되었습니다 · ${nowIso()}`]
+  })
   // A cancel frees the workspace — let the queue advance if auto-run is on.
   if (queueAutoRun) maybeRunNext()
   return settled
@@ -712,11 +759,16 @@ export function runAutoBuildJob(id: string): ClaudeAutoBuildJob | null {
     })
   }
 
+  const startedAt = nowIso()
   job = touch(job, {
     status: 'running',
-    startedAt: nowIso(),
+    startedAt,
     promptFilePath,
-    logLines: [...job.logLines, 'Claude Code 실행을 시작합니다…']
+    logLines: [
+      ...job.logLines,
+      `승인됨 · 실행을 시작합니다 · ${startedAt}`,
+      `프롬프트 파일 저장됨(수동 실행 대비): ${promptFilePath}`
+    ]
   })
 
   spawnClaude(job.id, 'claude')
@@ -724,6 +776,13 @@ export function runAutoBuildJob(id: string): ClaudeAutoBuildJob | null {
 }
 
 // --- execution -------------------------------------------------------------
+
+/** stderr fingerprints that mean the runner binary itself was not found. */
+function looksLikeMissingCommand(text: string): boolean {
+  return /is not recognized as an internal or external command|command not found|없는 명령|ENOENT|not found/i.test(
+    text
+  )
+}
 
 function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
   const job = jobs.get(jobId)
@@ -733,13 +792,16 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
   // Fixed args only — nothing here comes from the renderer.
   const runArgs = ['-p', '--permission-mode', CLAUDE_PERMISSION_MODE]
   const args = command === 'claude' ? runArgs : ['@anthropic-ai/claude-code', ...runArgs]
+  const label = command === 'claude' ? 'claude' : 'npx @anthropic-ai/claude-code'
   const cwd = allowedRoot()
+  const startMs = Date.now()
 
+  log(jobId, `Claude Code 실행 시작 · 러너: ${label}`)
   log(jobId, `$ ${command} ${args.join(' ')}`)
   // Observability: prove WHERE Claude runs, that edits are permitted, and that the
   // generated prompt is actually delivered (a common "exit 0, no changes" cause).
   log(jobId, `작업 폴더(cwd): ${cwd}`)
-  log(jobId, `권한 모드: ${CLAUDE_PERMISSION_MODE} (파일 생성/수정 허용) · 프롬프트 ${job.generatedPrompt.length}자 전달`)
+  log(jobId, `권한 모드: ${CLAUDE_PERMISSION_MODE} (파일 생성/수정 허용) · 최대 실행 시간 ${CLAUDE_RUN_TIMEOUT_MS / 60000}분`)
 
   let child: ChildProcess
   try {
@@ -751,32 +813,84 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
 
   procs.set(jobId, child)
 
+  // --- 15-minute timeout: kill the tree, mark timed-out, SKIP verification. -----
+  let settledOnce = false
+  const timer = setTimeout(() => {
+    if (settledOnce) return
+    settledOnce = true
+    timers.delete(jobId)
+    killJobTree(child)
+    procs.delete(jobId)
+    const cur = jobs.get(jobId)
+    if (!cur || cur.status === 'cancelled') return
+    const durationSec = Math.round((Date.now() - startMs) / 1000)
+    onJobSettled(
+      touch(cur, {
+        status: 'timed-out',
+        finishedAt: nowIso(),
+        logLines: [
+          ...cur.logLines,
+          `⏱ 시간 초과(${CLAUDE_RUN_TIMEOUT_MS / 60000}분) · 실행을 중단했습니다 · 소요 ${durationSec}s`,
+          '실행 중이던 Claude Code 프로세스만 종료했습니다. typecheck/build는 진행하지 않습니다.',
+          '수동 실행이 필요하면 아래 프롬프트/명령을 복사해 VS Code Claude Code에서 실행하세요.'
+        ]
+      })
+    )
+  }, CLAUDE_RUN_TIMEOUT_MS)
+  timers.set(jobId, timer)
+
   child.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'ENOENT') {
+      if (settledOnce) return
+      settledOnce = true // prevent this child's later 'close' from double-settling
+      clearJobTimer(jobId)
+      procs.delete(jobId)
       handleSpawnError(jobId, command)
     } else {
       log(jobId, `실행 오류: ${err.message}`)
     }
   })
 
-  // Feed the prompt via stdin (never as a shell argument).
+  // Feed the prompt via stdin and close it (EOF) so headless `-p` stops reading and
+  // runs. Never passed as a shell argument. If stdin is unavailable, the prompt file
+  // written by runAutoBuildJob is the manual fallback (logged at start).
   try {
-    child.stdin?.write(job.generatedPrompt)
-    child.stdin?.end()
+    if (child.stdin) {
+      child.stdin.write(job.generatedPrompt)
+      child.stdin.end()
+      log(jobId, `프롬프트 전달 방식: stdin (${job.generatedPrompt.length}자) · stdin 종료(EOF)`)
+    } else {
+      log(jobId, '프롬프트 전달 경고: stdin을 사용할 수 없습니다. 수동 실행이 필요할 수 있습니다.')
+    }
   } catch {
-    log(jobId, '프롬프트 전달 중 오류가 발생했습니다.')
+    log(jobId, '프롬프트 전달 방식 확인이 필요합니다. (stdin 쓰기 오류)')
   }
 
   child.stdout?.on('data', (data: Buffer) => appendStream(jobId, data.toString(), 'stdout'))
   child.stderr?.on('data', (data: Buffer) => appendStream(jobId, data.toString(), 'stderr'))
 
   child.on('close', (code) => {
+    if (settledOnce) return
+    settledOnce = true
+    clearJobTimer(jobId)
     procs.delete(jobId)
     const cur = jobs.get(jobId)
-    if (!cur || cur.status === 'cancelled') return
+    if (!cur || cur.status === 'cancelled' || cur.status === 'timed-out') return
     const exit = code ?? -1
+    const durationSec = Math.round((Date.now() - startMs) / 1000)
+
+    // The Windows cmd.exe wrapper masks a missing binary as exit 1 (no ENOENT), so
+    // detect "not recognized" and fall back from `claude` → `npx` once.
+    if (exit !== 0 && command === 'claude' && looksLikeMissingCommand(cur.stderrPreview)) {
+      log(jobId, 'claude 전역 명령을 찾지 못했습니다. npx @anthropic-ai/claude-code 로 재시도합니다…')
+      settledOnce = false
+      spawnClaude(jobId, 'npx')
+      return
+    }
+
     // Non-zero exit ⇒ Claude Code failed; skip verification and surface stderr.
     if (exit !== 0) {
+      const missing = looksLikeMissingCommand(cur.stderrPreview)
       onJobSettled(
         touch(cur, {
           status: 'failed',
@@ -784,14 +898,20 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
           finishedAt: nowIso(),
           logLines: [
             ...cur.logLines,
-            `Claude Code 실패 · exit ${exit}`,
+            `Claude Code 실패 · exit ${exit} · 소요 ${durationSec}s`,
+            missing
+              ? 'Claude Code CLI를 찾을 수 없습니다. npx @anthropic-ai/claude-code --permission-mode auto 명령을 확인하세요.'
+              : '자동 실행이 완료되지 않았습니다. 로그(stderr)를 확인하거나 수동 실행하세요.',
             cur.stderrPreview ? `stderr:\n${cur.stderrPreview.slice(-1200)}` : ''
           ].filter((l) => l.length > 0)
         })
       )
       return
     }
-    touch(cur, { exitCode: exit, logLines: [...cur.logLines, `Claude Code 완료 · exit ${exit}`] })
+    touch(cur, {
+      exitCode: exit,
+      logLines: [...cur.logLines, `Claude Code 완료 · exit ${exit} · 소요 ${durationSec}s`]
+    })
     void runVerification(jobId)
   })
 }
@@ -812,7 +932,7 @@ function handleSpawnError(jobId: string, command: 'claude' | 'npx'): void {
       logLines: [
         ...job.logLines,
         'npx로 Claude Code를 실행하지 못했습니다.',
-        'Claude Code 실행 환경을 찾지 못했습니다. Claude Code 설치 또는 npx 실행 환경을 확인해주세요.'
+        'Claude Code CLI를 찾을 수 없습니다. npx @anthropic-ai/claude-code --permission-mode auto 명령을 확인하세요.'
       ]
     })
   )
@@ -855,21 +975,21 @@ async function runVerification(jobId: string): Promise<void> {
   job = touch(job, {
     status: 'verifying',
     verification: { typecheckStatus: 'running', buildStatus: 'pending', gitStatusShort: '' },
-    logLines: [...job.logLines, '검증 시작: npm run typecheck']
+    logLines: [...job.logLines, 'typecheck 시작 · npm run typecheck']
   })
 
   const tc = await runFixed(cwd, 'npm', ['run', 'typecheck'])
   const typecheckStatus = tc.code === 0 ? 'passed' : 'failed'
   job = touch(jobs.get(jobId)!, {
     verification: { ...jobs.get(jobId)!.verification, typecheckStatus, buildStatus: 'running' },
-    logLines: [...jobs.get(jobId)!.logLines, `typecheck: ${typecheckStatus}`, '검증: npm run build']
+    logLines: [...jobs.get(jobId)!.logLines, `typecheck ${typecheckStatus}`, 'build 시작 · npm run build']
   })
 
   const bd = await runFixed(cwd, 'npm', ['run', 'build'])
   const buildStatus = bd.code === 0 ? 'passed' : 'failed'
   job = touch(jobs.get(jobId)!, {
     verification: { ...jobs.get(jobId)!.verification, buildStatus },
-    logLines: [...jobs.get(jobId)!.logLines, `build: ${buildStatus}`, '검증: git status --short']
+    logLines: [...jobs.get(jobId)!.logLines, `build ${buildStatus}`, 'git status --short 실행']
   })
 
   const gs = await runFixed(cwd, 'git', ['status', '--short'])

@@ -336,6 +336,7 @@ const AUTO_STATUS_LABEL: Record<ClaudeAutoBuildStatus, string> = {
   succeeded: '완료',
   failed: '실패',
   cancelled: '취소됨',
+  'timed-out': '시간 초과',
   'needs-review': '검토 필요',
   skipped: '건너뜀'
 }

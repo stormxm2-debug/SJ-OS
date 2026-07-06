@@ -24,6 +24,7 @@ export type ClaudeAutoBuildStatus =
   | 'succeeded'
   | 'failed'
   | 'cancelled'
+  | 'timed-out'
   | 'needs-review'
   | 'skipped'
 
@@ -289,6 +290,56 @@ ${args.errorLogs}
 
 ## 작업 폴더
 ${args.workspacePath}
+`
+}
+
+/** Path (relative to the workspace root) of the app-internal verification doc. */
+export const APP_TEST_DOC_PATH = 'docs/SJ_OS_AUTOMATION_ENGINE_APP_TEST.md'
+
+/** The exact content the app-run verification task must write. */
+export const APP_TEST_DOC_CONTENT = `# SJ OS 자동화 엔진 앱 내부 테스트
+
+- SJ OS 앱에서 자비스 명령 입력 성공
+- Claude 자동개발 큐 등록 성공
+- Claude Code 실행 성공
+- 실제 파일 생성 성공
+- typecheck 통과
+- build 통과
+`
+
+/**
+ * Build the prompt for the app-internal verification task. Running this job through
+ * the IN-APP runner proves the whole path works end-to-end: the runner spawns Claude
+ * Code, Claude Code actually CREATES a file (${APP_TEST_DOC_PATH}), and the runner
+ * then verifies with typecheck / build / git status. This is the smallest safe task
+ * that produces a real file change, so an empty diff means the runner failed.
+ */
+export function generateAppTestVerificationPrompt(workspacePath: string): string {
+  return `# SJ OS 자동화 엔진 · 앱 내부 검증 작업 (실제 파일 생성)
+
+## Mission
+SJ OS 인앱 Claude 자동개발 러너가 실제로 동작하는지 검증하기 위한 **최소 안전 작업**입니다.
+아래 파일을 **실제로 생성**하세요. 분석/설명만 하고 끝내지 말고 반드시 파일을 만들어야 합니다.
+
+## 해야 할 일 (딱 이것만)
+- 다음 경로에 파일을 새로 생성(Write)하세요: \`${APP_TEST_DOC_PATH}\`
+- 파일 내용은 아래와 **정확히 동일**해야 합니다:
+
+\`\`\`markdown
+${APP_TEST_DOC_CONTENT}\`\`\`
+
+## 하지 말 것
+- 다른 파일을 수정/삭제하지 마세요. 오직 위 한 개 파일만 생성합니다.
+- 코드/설정/보안 파일을 건드리지 마세요. .env / .env.local 을 만지지 마세요.
+- git commit / git push 를 직접 실행하지 마세요. 러너가 검증 후 승인받아 처리합니다.
+- 파괴적 명령(git reset --hard, git clean -fd, rm -rf, Remove-Item -Recurse 등)을 절대 사용하지 마세요.
+
+## 검증 (러너가 자동 수행)
+- 파일 생성 후 러너가 \`npm run typecheck\`, \`npm run build\`, \`git status --short\` 를 실행합니다.
+- 여러분은 파일만 정확히 생성하면 됩니다.
+
+## 작업 폴더
+${workspacePath}
 `
 }
 

@@ -63,7 +63,7 @@ export default function ClaudeAutoBuildPanel(): JSX.Element {
 
       {!available ? (
         <div className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-          자동 개발 실행은 데스크톱 앱(npm run dev)에서만 가능합니다.
+          Claude 자동개발 실행은 PC앱 전용입니다. (데스크톱 앱 · 대표/관리자) Web/PWA에서는 실행할 수 없습니다.
         </div>
       ) : null}
 
@@ -364,6 +364,7 @@ const STATUS_LABEL: Record<ClaudeAutoBuildStatus, { text: string; tone: Tone }> 
   succeeded: { text: '완료', tone: 'emerald' },
   failed: { text: '실패', tone: 'rose' },
   cancelled: { text: '취소됨', tone: 'slate' },
+  'timed-out': { text: '시간 초과', tone: 'rose' },
   'needs-review': { text: '검토 필요', tone: 'amber' },
   skipped: { text: '건너뜀', tone: 'slate' }
 }

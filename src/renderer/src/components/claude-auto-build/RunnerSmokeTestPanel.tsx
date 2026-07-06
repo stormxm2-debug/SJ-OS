@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Loader2, Play, Copy, Check, GitBranch, ListChecks, Hammer, Globe, Bot, FlaskConical, AlertTriangle } from 'lucide-react'
+import { Loader2, Play, Copy, Check, GitBranch, ListChecks, Hammer, Globe, Bot, FlaskConical, AlertTriangle, FileCheck2 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import type { SafeCheckKind, SafeCheckResult } from '@shared/claudeAutoBuild'
+import { APP_TEST_DOC_PATH, generateAppTestVerificationPrompt } from '@shared/claudeAutoBuild'
 import { copyPromptToClipboard } from '@renderer/services/claude-code/claudeCodeBridge'
 
 /**
@@ -51,6 +52,20 @@ export default function RunnerSmokeTestPanel(): JSX.Element {
   const addFirstTask = async (): Promise<void> => {
     const job = await api()?.createJob({ title: '자동화 엔진 연결 테스트', source: 'developer-prompt-center', originalUserCommand: SAFE_PROMPT, generatedPrompt: SAFE_PROMPT, workspacePath: WORKSPACE })
     setTaskMsg(job ? '큐에 추가되었습니다. 개발 프롬프트 센터에서 승인 후 실행하세요.' : '작업 추가에 실패했습니다.')
+  }
+  const addAppTestTask = async (): Promise<void> => {
+    const job = await api()?.createJob({
+      title: '자동화 엔진 앱 내부 테스트 (파일 생성)',
+      source: 'developer-prompt-center',
+      originalUserCommand: `${APP_TEST_DOC_PATH} 생성으로 인앱 러너 검증`,
+      generatedPrompt: generateAppTestVerificationPrompt(WORKSPACE),
+      workspacePath: WORKSPACE
+    })
+    setTaskMsg(
+      job
+        ? `큐에 추가되었습니다. 위 "Claude Code 실행"으로 실행하면 러너가 ${APP_TEST_DOC_PATH} 파일을 생성합니다.`
+        : '작업 추가에 실패했습니다.'
+    )
   }
 
   return (
@@ -102,9 +117,27 @@ export default function RunnerSmokeTestPanel(): JSX.Element {
             {taskMsg ? <p className="mt-2 text-[11px] text-indigo-300">{taskMsg}</p> : null}
           </div>
 
+          {/* App-internal verification task (actually creates a file) */}
+          <div className="mb-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-300">
+              <FileCheck2 className="h-3.5 w-3.5" /> 앱 내부 검증 작업 (실제 파일 생성)
+            </div>
+            <p className="mb-2 text-[11px] text-slate-400">
+              인앱 러너가 정말 동작하는지 끝까지 검증합니다. 실행하면 러너가 Claude Code를 실행해{' '}
+              <span className="font-mono text-slate-300">{APP_TEST_DOC_PATH}</span> 파일을 생성하고, 이어서
+              typecheck / build / git status 로 검증합니다.
+            </p>
+            <button type="button" onClick={() => void addAppTestTask()} className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/20">
+              <Play className="h-3 w-3" /> 앱 내부 검증 작업 큐에 추가
+            </button>
+          </div>
+
           {/* Manual fallback */}
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
             <div className="mb-1 text-[11px] font-semibold text-slate-300">수동 실행 명령 (자동 입력 확인 필요 시)</div>
+            <p className="mb-2 text-[10px] text-slate-500">
+              자동 실행이 완료되지 않거나 시간 초과되면: 프롬프트를 복사한 뒤 아래 명령으로 VS Code Claude Code에서 수동 실행하세요.
+            </p>
             <pre className="mb-2 whitespace-pre-wrap rounded-lg border border-slate-800 bg-slate-950/70 p-2 font-mono text-[10px] text-slate-400">{MANUAL_CMD}</pre>
             <button type="button" onClick={() => void copy('cmd', MANUAL_CMD)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700/60">{copied === 'cmd' ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />} 명령 복사</button>
           </div>
