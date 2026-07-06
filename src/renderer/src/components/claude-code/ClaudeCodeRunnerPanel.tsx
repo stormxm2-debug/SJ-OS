@@ -213,7 +213,7 @@ export default function ClaudeCodeRunnerPanel(): JSX.Element {
                 ].join(' ')}
               >
                 <ShieldCheck className="h-3.5 w-3.5" />
-                {approved ? '승인됨' : '승인 후 실행 명령 생성'}
+                {approved ? '승인됨' : '승인하고 실행'}
               </button>
               <button
                 type="button"

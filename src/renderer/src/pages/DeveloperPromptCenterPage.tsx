@@ -12,7 +12,10 @@ import {
   ListChecks,
   AlertTriangle,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Settings2,
+  ShieldAlert,
+  MonitorSmartphone
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import ClaudeCodeBridgePanel from '@renderer/components/claude-code/ClaudeCodeBridgePanel'
@@ -24,6 +27,9 @@ import ClaudeCommitPushPanel from '@renderer/components/claude-auto-build/Claude
 import ClaudeCompletionReportPanel from '@renderer/components/claude-auto-build/ClaudeCompletionReportPanel'
 import WorktreeReviewPanel from '@renderer/components/claude-auto-build/WorktreeReviewPanel'
 import RunnerSmokeTestPanel from '@renderer/components/claude-auto-build/RunnerSmokeTestPanel'
+import { useSession } from '@renderer/navigation/SessionContext'
+import { isAdminRole, ROLE_LABEL } from '@renderer/navigation/roleAccess'
+import { isElectronRuntime, useIsMobile } from '@renderer/navigation/appTarget'
 import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import type {
@@ -92,17 +98,26 @@ function exportQueue(): void {
 }
 
 /**
- * Developer Prompt Center — the safe bridge between a CEO development command and
- * real Claude Code work. Jarvis turns each build/developer command into a
- * structured Claude Code prompt packet; the CEO copies it into Claude Code and
- * tracks its status here (생성됨 → 복사됨 → Claude 전달됨 → 개발 중 → 완료). No files are
- * edited from this screen and no external API is called.
+ * 자비스 자동개발 (Developer Prompt Center) — the CEO/admin command center for the
+ * in-app Claude Code automation engine. The normal screen shows only the simple
+ * flow — ① 명령 입력 → ② 프롬프트 미리보기 → ③ 승인하고 실행 → ④ 실행 로그 → ⑤ 결과 확인 —
+ * driven by <ClaudeAutoBuildPanel>. Every extra tool (실행 승인 러너, 스모크 테스트,
+ * 자동 복구, 커밋/푸시, 완료 리포트, 병렬/워크트리, 개발 프롬프트 큐) is tucked behind
+ * 고급 설정 열기 so 대표/관리자 are not overwhelmed.
+ *
+ * Access: 대표/관리자 전용 (FC/팀장 차단) · PC앱(데스크톱 Electron) 전용 (Web/PWA 차단).
  */
 export default function DeveloperPromptCenterPage(): JSX.Element {
+  const { session } = useSession()
+  const isMobile = useIsMobile()
   const snapshot = useDeveloperPrompt()
   const summary = developerPromptRepository.getSummary()
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
+  const isAdmin = isAdminRole(session.role)
+  const isDesktopApp = isElectronRuntime() && !isMobile
 
   const copy = (packet: DeveloperPromptPacket): void => {
     const done = (): void => {
@@ -117,92 +132,158 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
     }
   }
 
+  // FC/팀장 차단 — 자비스 자동개발은 대표/관리자 전용.
+  if (!isAdmin) {
+    return (
+      <Card title="자비스 자동개발" icon={<ShieldAlert className="h-4 w-4 text-amber-300" />}>
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-6 text-center">
+          <p className="text-sm font-semibold text-amber-200">자비스 자동개발은 대표/관리자 전용입니다.</p>
+          <p className="mt-1 text-xs text-amber-300/80">
+            현재 로그인: {ROLE_LABEL[session.role]} · FC/팀장은 이 화면에 접근할 수 없습니다.
+          </p>
+        </div>
+      </Card>
+    )
+  }
+
+  // Web/PWA 차단 — 실제 파일 생성/실행은 데스크톱 앱에서만 가능.
+  if (!isDesktopApp) {
+    return (
+      <Card title="자비스 자동개발" icon={<MonitorSmartphone className="h-4 w-4 text-indigo-300" />}>
+        <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/10 px-4 py-6 text-center">
+          <p className="text-sm font-semibold text-indigo-200">자비스 자동개발은 PC앱 전용입니다.</p>
+          <p className="mt-1 text-xs text-indigo-300/80">
+            Web/PWA(모바일)에서는 실행할 수 없습니다. SJ OS 데스크톱 앱에서 열어주세요.
+          </p>
+        </div>
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-5">
-      {/* Jarvis → Claude Code Auto Builder (primary autonomous flow) */}
-      <ClaudeAutoBuildPanel />
-
-      {/* Safe runner smoke tests (fixed checks + first task + manual fallback) */}
-      <RunnerSmokeTestPanel />
-
-      {/* Auto-repair: generated repair jobs for failed verification (approval required) */}
-      <ClaudeRepairPanel />
-
-      {/* Approved commit / push for succeeded main-workspace jobs (two-step) */}
-      <ClaudeCommitPushPanel />
-
-      {/* Completion report + release note for finished jobs */}
-      <ClaudeCompletionReportPanel />
-
-      {/* Worktree-based parallel builder (foundation) */}
-      <ClaudeParallelPanel />
-
-      {/* Worktree result review (read-only; no merge) */}
-      <WorktreeReviewPanel />
-
-      {/* Summary */}
-      <Card
-        title="개발 프롬프트 센터"
-        icon={<Terminal className="h-4 w-4" />}
-        action={
-          <div className="flex items-center gap-2">
-            <HeaderButton icon={<Download className="h-3.5 w-3.5" />} label="내보내기" onClick={exportQueue} />
-            <HeaderButton
-              icon={<RotateCcw className="h-3.5 w-3.5" />}
-              label="초기화"
-              onClick={() => developerPromptRepository.resetDemoState()}
-            />
-          </div>
-        }
-      >
-        <p className="mb-3 text-xs text-slate-500">
-          Jarvis가 CEO의 개발 지시를 구조화된 Claude Code 프롬프트로 변환합니다. 프롬프트를 복사해 Claude
-          Code에 붙여넣고, 이곳에서 상태를 추적하세요. 이 화면은 코드를 직접 수정하지 않습니다.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <StatTile icon={<Clock className="h-4 w-4" />} label="대기 중" value={summary.pending} />
-          <StatTile icon={<Send className="h-4 w-4" />} label="Claude 전달 대기" value={summary.waitingForClaude} />
-          <StatTile icon={<ListChecks className="h-4 w-4" />} label="개발 중" value={summary.inDevelopment} />
-          <StatTile icon={<CheckCircle2 className="h-4 w-4" />} label="완료" value={summary.completed} />
-          <StatTile icon={<AlertTriangle className="h-4 w-4" />} label="차단됨" value={summary.blocked} tone={summary.blocked > 0 ? 'text-rose-300' : undefined} />
+      {/* Simple 5-step flow guide */}
+      <Card title="자비스 자동개발 — 사용 순서" icon={<Terminal className="h-4 w-4 text-indigo-300" />}>
+        <div className="flex flex-wrap gap-2">
+          {['명령 입력', '프롬프트 미리보기', '승인하고 실행', '실행 로그', '결과 확인'].map((step, i) => (
+            <span
+              key={step}
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-800/50 px-3 py-1 text-[11px] font-medium text-slate-300"
+            >
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500/20 text-[10px] font-bold text-indigo-300">
+                {i + 1}
+              </span>
+              {step}
+            </span>
+          ))}
         </div>
       </Card>
 
-      {/* Columns */}
-      {COLUMNS.map((col) => {
-        const packets = snapshot.packets.filter((p) => col.statuses.includes(p.status))
-        return (
+      {/* Primary flow (Jarvis → Claude Code Auto Builder) */}
+      <ClaudeAutoBuildPanel advanced={showAdvanced} />
+
+      {/* Advanced settings toggle */}
+      <button
+        type="button"
+        onClick={() => setShowAdvanced((v) => !v)}
+        className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-slate-700/60"
+      >
+        <Settings2 className="h-4 w-4" />
+        {showAdvanced ? '고급 설정 닫기' : '고급 설정 열기'}
+        {showAdvanced ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+      </button>
+
+      {/* Advanced tools — hidden by default so the normal screen stays simple */}
+      {showAdvanced ? (
+        <div className="space-y-5">
+          <p className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-[11px] text-slate-500">
+            고급 설정: 실행 승인 러너 · 스모크 테스트 · Claude Code CLI 확인 · 자동 복구 · 커밋/푸시 · 완료 리포트 ·
+            병렬/워크트리 · 개발 프롬프트 큐. 일반 사용에는 필요하지 않습니다.
+          </p>
+
+          {/* Approval runner (packet approval → command → run + logs) */}
+          <ClaudeCodeRunnerPanel />
+
+          {/* Safe runner smoke tests + Claude Code CLI 확인 + manual fallback */}
+          <RunnerSmokeTestPanel />
+
+          {/* Auto-repair: generated repair jobs for failed verification (approval required) */}
+          <ClaudeRepairPanel />
+
+          {/* Approved commit / push for succeeded main-workspace jobs (two-step) */}
+          <ClaudeCommitPushPanel />
+
+          {/* Completion report + release note for finished jobs */}
+          <ClaudeCompletionReportPanel />
+
+          {/* Worktree-based parallel builder (foundation) */}
+          <ClaudeParallelPanel />
+
+          {/* Worktree result review (read-only; no merge) */}
+          <WorktreeReviewPanel />
+
+          {/* Claude Code Bridge — prepare prompts for delivery to Claude Code */}
+          <ClaudeCodeBridgePanel />
+
+          {/* Developer prompt queue summary */}
           <Card
-            key={col.key}
-            title={col.title}
-            icon={col.icon}
-            action={<span className="text-xs text-slate-500">{packets.length}개</span>}
-          >
-            {packets.length === 0 ? (
-              <p className="py-4 text-center text-xs text-slate-600">항목이 없습니다.</p>
-            ) : (
-              <div className="space-y-3">
-                {packets.map((packet) => (
-                  <PacketCard
-                    key={packet.id}
-                    packet={packet}
-                    copied={copiedId === packet.id}
-                    expanded={expandedId === packet.id}
-                    onCopy={() => copy(packet)}
-                    onToggle={() => setExpandedId((id) => (id === packet.id ? null : packet.id))}
-                  />
-                ))}
+            title="개발 프롬프트 센터"
+            icon={<Terminal className="h-4 w-4" />}
+            action={
+              <div className="flex items-center gap-2">
+                <HeaderButton icon={<Download className="h-3.5 w-3.5" />} label="내보내기" onClick={exportQueue} />
+                <HeaderButton
+                  icon={<RotateCcw className="h-3.5 w-3.5" />}
+                  label="초기화"
+                  onClick={() => developerPromptRepository.resetDemoState()}
+                />
               </div>
-            )}
+            }
+          >
+            <p className="mb-3 text-xs text-slate-500">
+              Jarvis가 CEO의 개발 지시를 구조화된 Claude Code 프롬프트로 변환합니다. 프롬프트를 복사해 Claude
+              Code에 붙여넣고, 이곳에서 상태를 추적하세요. 이 화면은 코드를 직접 수정하지 않습니다.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <StatTile icon={<Clock className="h-4 w-4" />} label="대기 중" value={summary.pending} />
+              <StatTile icon={<Send className="h-4 w-4" />} label="Claude 전달 대기" value={summary.waitingForClaude} />
+              <StatTile icon={<ListChecks className="h-4 w-4" />} label="개발 중" value={summary.inDevelopment} />
+              <StatTile icon={<CheckCircle2 className="h-4 w-4" />} label="완료" value={summary.completed} />
+              <StatTile icon={<AlertTriangle className="h-4 w-4" />} label="차단됨" value={summary.blocked} tone={summary.blocked > 0 ? 'text-rose-300' : undefined} />
+            </div>
           </Card>
-        )
-      })}
 
-      {/* Claude Code Bridge — prepare prompts for delivery to Claude Code */}
-      <ClaudeCodeBridgePanel />
-
-      {/* Claude Code Runner — approval → command → (disabled) launch + logs */}
-      <ClaudeCodeRunnerPanel />
+          {/* Columns */}
+          {COLUMNS.map((col) => {
+            const packets = snapshot.packets.filter((p) => col.statuses.includes(p.status))
+            return (
+              <Card
+                key={col.key}
+                title={col.title}
+                icon={col.icon}
+                action={<span className="text-xs text-slate-500">{packets.length}개</span>}
+              >
+                {packets.length === 0 ? (
+                  <p className="py-4 text-center text-xs text-slate-600">항목이 없습니다.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {packets.map((packet) => (
+                      <PacketCard
+                        key={packet.id}
+                        packet={packet}
+                        copied={copiedId === packet.id}
+                        expanded={expandedId === packet.id}
+                        onCopy={() => copy(packet)}
+                        onToggle={() => setExpandedId((id) => (id === packet.id ? null : packet.id))}
+                      />
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )
+          })}
+        </div>
+      ) : null}
     </div>
   )
 }
