@@ -9,6 +9,8 @@ import type {
   ClaudeJobCommitState,
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
+  SafeCheckKind,
+  SafeCheckResult,
   CreateAutoBuildJobRequest,
   QueueState,
   RepairStage,
@@ -145,6 +147,79 @@ function nextId(): string {
 
 function allowedRoot(): string {
   return resolve(app.getAppPath())
+}
+
+/**
+ * Fixed, non-mutating safe checks for the smoke-test panel. The renderer sends only
+ * a kind (enum) — never a command string. Each maps to a FIXED tool+args run in the
+ * project workspace. Read-only / verification only (no git write, no file mutation).
+ * Output is truncated; secrets are not emitted by these commands.
+ */
+const SAFE_CHECKS: Record<SafeCheckKind, { label: string; tool: string; args: string[] }> = {
+  'git-status': { label: 'Git 상태 확인', tool: 'git', args: ['status', '--short'] },
+  'git-log': { label: '최근 커밋 확인', tool: 'git', args: ['log', '--oneline', '-8'] },
+  typecheck: { label: 'Typecheck 실행', tool: 'npm', args: ['run', 'typecheck'] },
+  build: { label: 'Build 실행', tool: 'npm', args: ['run', 'build'] },
+  'build-web': { label: 'Web Build 실행', tool: 'npm', args: ['run', 'build:web'] },
+  'claude-version': { label: 'Claude Code CLI 확인', tool: 'npx', args: ['@anthropic-ai/claude-code', '--version'] }
+}
+
+export async function runSafeCheck(kind: SafeCheckKind): Promise<SafeCheckResult> {
+  const spec = SAFE_CHECKS[kind]
+  const cwd = allowedRoot()
+  const base: SafeCheckResult = {
+    kind,
+    label: spec?.label ?? String(kind),
+    command: spec ? `${spec.tool} ${spec.args.join(' ')}` : '',
+    cwd,
+    available: true,
+    ok: false,
+    exitCode: -1,
+    durationMs: 0,
+    stdoutTail: '',
+    stderrTail: ''
+  }
+  if (!spec) return { ...base, available: false, message: '허용되지 않은 점검입니다.' }
+  if (kind === 'build-web') {
+    try {
+      const { readFileSync } = require('node:fs') as typeof import('node:fs')
+      const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }
+      if (!pkg.scripts?.['build:web']) return { ...base, available: false, message: 'build:web 스크립트가 없습니다.' }
+    } catch {
+      return { ...base, available: false, message: 'package.json을 읽지 못했습니다.' }
+    }
+  }
+  const start = Date.now()
+  return new Promise<SafeCheckResult>((resolveP) => {
+    let out = ''
+    let err = ''
+    let child: ChildProcess
+    try {
+      child = spawnTool(spec.tool, spec.args, { cwd, windowsHide: true })
+    } catch {
+      resolveP({ ...base, available: kind !== 'claude-version', message: `${spec.tool} 실행 실패` })
+      return
+    }
+    child.stdout?.on('data', (d: Buffer) => (out += d.toString()))
+    child.stderr?.on('data', (d: Buffer) => (err += d.toString()))
+    child.on('error', () => resolveP({ ...base, durationMs: Date.now() - start, available: kind !== 'claude-version', message: `${spec.tool} 실행 오류` }))
+    child.on('close', (code) => {
+      const ok = (code ?? -1) === 0
+      resolveP({
+        ...base,
+        ok,
+        exitCode: code ?? -1,
+        durationMs: Date.now() - start,
+        stdoutTail: out.slice(-4000),
+        stderrTail: err.slice(-2000),
+        available: kind === 'claude-version' ? ok : true,
+        message:
+          !ok && kind === 'claude-version'
+            ? 'Claude Code CLI 비대화형 버전 확인이 어렵습니다. 수동 실행이 필요할 수 있습니다.'
+            : undefined
+      })
+    })
+  })
 }
 
 /** The intended SJ-OS project folder (for the workspace-match diagnostic). */

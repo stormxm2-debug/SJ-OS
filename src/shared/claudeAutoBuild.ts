@@ -301,6 +301,23 @@ export interface CreateAutoBuildJobRequest {
   workspacePath: string
 }
 
+/** Fixed, non-mutating safe checks the runner smoke-test panel can run. */
+export type SafeCheckKind = 'git-status' | 'git-log' | 'typecheck' | 'build' | 'build-web' | 'claude-version'
+
+export interface SafeCheckResult {
+  kind: SafeCheckKind
+  label: string
+  command: string
+  cwd: string
+  available: boolean
+  ok: boolean
+  exitCode: number
+  durationMs: number
+  stdoutTail: string
+  stderrTail: string
+  message?: string
+}
+
 /** Emitted to the renderer whenever a job changes. */
 export interface AutoBuildJobUpdate {
   job: ClaudeAutoBuildJob

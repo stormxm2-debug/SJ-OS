@@ -26,7 +26,8 @@ import {
   setAutoBuildEmitter,
   setQueueAutoRun,
   setQueueStateEmitter,
-  smokeTestRunner
+  smokeTestRunner,
+  runSafeCheck
 } from './claudeAutoBuild'
 import {
   commitWorktreeJob,
@@ -75,7 +76,7 @@ import {
 import type { CodingExecRequest } from '@shared/providers'
 import type { AiTranscribeRequest } from '@shared/aiGateway'
 import type { ClaudeExportRequest, ClaudeRunRequest } from '@shared/claudeCode'
-import type { CreateAutoBuildJobRequest } from '@shared/claudeAutoBuild'
+import type { CreateAutoBuildJobRequest, SafeCheckKind } from '@shared/claudeAutoBuild'
 
 /**
  * SJ AI Company — Electron main process (Node backend).
@@ -267,6 +268,12 @@ app.whenReady().then(() => {
   // Runner environment diagnostics (fixed checks only; no renderer commands).
   ipcMain.handle('sj-claude-build:check-env', () => checkRunnerEnvironment())
   ipcMain.handle('sj-claude-build:smoke-test', () => smokeTestRunner())
+  // Fixed, enum-gated safe checks (no arbitrary command from renderer).
+  ipcMain.handle('sj-claude-build:safe-check', (_e, kind: SafeCheckKind) => {
+    const allowed: SafeCheckKind[] = ['git-status', 'git-log', 'typecheck', 'build', 'build-web', 'claude-version']
+    if (!allowed.includes(kind)) return { kind, label: '', command: '', cwd: '', available: false, ok: false, exitCode: -1, durationMs: 0, stdoutTail: '', stderrTail: '', message: '허용되지 않은 점검입니다.' }
+    return runSafeCheck(kind)
+  })
   // Queue controls (single-writer serialization is enforced in main).
   ipcMain.handle('sj-claude-build:queue-state', () => getQueueState())
   ipcMain.handle('sj-claude-build:queue-auto-run', (_e, on: boolean) => setQueueAutoRun(on))

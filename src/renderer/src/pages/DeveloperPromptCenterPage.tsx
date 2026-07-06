@@ -23,6 +23,7 @@ import ClaudeRepairPanel from '@renderer/components/claude-auto-build/ClaudeRepa
 import ClaudeCommitPushPanel from '@renderer/components/claude-auto-build/ClaudeCommitPushPanel'
 import ClaudeCompletionReportPanel from '@renderer/components/claude-auto-build/ClaudeCompletionReportPanel'
 import WorktreeReviewPanel from '@renderer/components/claude-auto-build/WorktreeReviewPanel'
+import RunnerSmokeTestPanel from '@renderer/components/claude-auto-build/RunnerSmokeTestPanel'
 import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import type {
@@ -120,6 +121,9 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
     <div className="space-y-5">
       {/* Jarvis → Claude Code Auto Builder (primary autonomous flow) */}
       <ClaudeAutoBuildPanel />
+
+      {/* Safe runner smoke tests (fixed checks + first task + manual fallback) */}
+      <RunnerSmokeTestPanel />
 
       {/* Auto-repair: generated repair jobs for failed verification (approval required) */}
       <ClaudeRepairPanel />

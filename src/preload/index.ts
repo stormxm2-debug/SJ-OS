@@ -24,7 +24,9 @@ import type {
   ClaudeRunnerDiagnostics,
   ClaudeSmokeTestResult,
   CreateAutoBuildJobRequest,
-  QueueState
+  QueueState,
+  SafeCheckKind,
+  SafeCheckResult
 } from '@shared/claudeAutoBuild'
 import type {
   ParallelBuildJob,
@@ -137,6 +139,8 @@ const api = {
       ipcRenderer.invoke('sj-claude-build:check-env'),
     /** Harmless smoke test (fixed prompt, no file changes). */
     smokeTest: (): Promise<ClaudeSmokeTestResult> => ipcRenderer.invoke('sj-claude-build:smoke-test'),
+    /** Run a fixed, non-mutating safe check (enum only; never an arbitrary command). */
+    safeCheck: (kind: SafeCheckKind): Promise<SafeCheckResult> => ipcRenderer.invoke('sj-claude-build:safe-check', kind),
     onJobUpdate: (callback: (update: AutoBuildJobUpdate) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, payload: AutoBuildJobUpdate): void => callback(payload)
       ipcRenderer.on('sj-claude-build:job-update', handler)
