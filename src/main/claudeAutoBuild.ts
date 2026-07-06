@@ -733,12 +733,17 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
   // Fixed args only — nothing here comes from the renderer.
   const runArgs = ['-p', '--permission-mode', CLAUDE_PERMISSION_MODE]
   const args = command === 'claude' ? runArgs : ['@anthropic-ai/claude-code', ...runArgs]
+  const cwd = allowedRoot()
 
   log(jobId, `$ ${command} ${args.join(' ')}`)
+  // Observability: prove WHERE Claude runs, that edits are permitted, and that the
+  // generated prompt is actually delivered (a common "exit 0, no changes" cause).
+  log(jobId, `작업 폴더(cwd): ${cwd}`)
+  log(jobId, `권한 모드: ${CLAUDE_PERMISSION_MODE} (파일 생성/수정 허용) · 프롬프트 ${job.generatedPrompt.length}자 전달`)
 
   let child: ChildProcess
   try {
-    child = spawnTool(command, args, { cwd: allowedRoot(), windowsHide: true })
+    child = spawnTool(command, args, { cwd, windowsHide: true })
   } catch {
     handleSpawnError(jobId, command)
     return
@@ -870,18 +875,28 @@ async function runVerification(jobId: string): Promise<void> {
   const gs = await runFixed(cwd, 'git', ['status', '--short'])
   const gitStatusShort = gs.out.trim().slice(0, 2000)
 
+  const noFileChanges = gitStatusShort.length === 0
   const finalStatus: ClaudeAutoBuildStatus =
     typecheckStatus === 'passed' && buildStatus === 'passed' ? 'succeeded' : 'needs-review'
+
+  const closingLines: string[] = [`git status --short:\n${gitStatusShort || '(변경 없음)'}`]
+  if (finalStatus === 'succeeded' && noFileChanges) {
+    // Verification passed but Claude Code produced NO diff. Surface this clearly
+    // instead of reporting a clean success — this is the exact symptom users hit
+    // when a run only analyzes/verifies without creating or modifying files.
+    closingLines.push(
+      '⚠ 검증은 통과했지만 파일 변경이 감지되지 않았습니다. Claude Code가 실제 파일을 생성/수정하지 않았습니다.',
+      '프롬프트가 실제 구현(파일 생성/수정)을 명확히 요청했는지, 실행 환경 권한이 acceptEdits인지 확인하세요.'
+    )
+  } else {
+    closingLines.push(finalStatus === 'succeeded' ? '완료: 검증 통과' : '검토 필요: 검증 실패 항목이 있습니다.')
+  }
 
   const settled = touch(jobs.get(jobId)!, {
     status: finalStatus,
     finishedAt: nowIso(),
     verification: { typecheckStatus, buildStatus, gitStatusShort },
-    logLines: [
-      ...jobs.get(jobId)!.logLines,
-      `git status --short:\n${gitStatusShort || '(변경 없음)'}`,
-      finalStatus === 'succeeded' ? '완료: 검증 통과' : '검토 필요: 검증 실패 항목이 있습니다.'
-    ]
+    logLines: [...jobs.get(jobId)!.logLines, ...closingLines]
   })
   onJobSettled(settled)
 }
