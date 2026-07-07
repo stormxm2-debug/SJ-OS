@@ -39,8 +39,12 @@ import AttendanceCamera, { type CapturedAttendancePhoto } from './AttendanceCame
  * when configured + logged in, else local-mock). RLS enforces access; role guidance
  * + client filters are UX only. On check-in/out the staff takes a photo whose GPS +
  * time are burned in as a watermark (see AttendanceCamera); the watermarked JPEG data
- * URL travels as photoPath and the thumbnail is shown in the record list. Raw photo
+ * URL travels as photoDataUrl and the thumbnail is shown in the record list. Raw photo
  * bytes are never logged.
+ *
+ * Colors: this app remaps the `slate` scale to a BRIGHT theme (bg-white/bg-slate-950
+ * are light surfaces; text-slate-100/300/500 are dark, readable text). The premium
+ * hero uses explicit hex so it is reliably a dark navy→indigo banner with white text.
  */
 export default function SupabaseAttendanceManager(): JSX.Element {
   const { session } = useSession()
@@ -55,7 +59,6 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   const [cameraFor, setCameraFor] = useState<AttendanceInput['type'] | null>(null)
   const [now, setNow] = useState(() => new Date())
 
-  // Live clock for the hero.
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(id)
@@ -125,7 +128,6 @@ export default function SupabaseAttendanceManager(): JSX.Element {
     void load()
   }
 
-  // 출근/퇴근 → confirm guard → open camera → capture(+watermark) → submit.
   const openCamera = (type: AttendanceInput['type']): void => {
     setConfirm(null)
     setError(undefined)
@@ -142,14 +144,14 @@ export default function SupabaseAttendanceManager(): JSX.Element {
 
   return (
     <div className="space-y-4">
-      {/* ─── Premium hero ─────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-6 text-white shadow-xl ring-1 ring-white/10">
-        <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-indigo-500/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-10 h-56 w-56 rounded-full bg-violet-500/10 blur-3xl" />
+      {/* ─── Premium hero (explicit dark hex → reliably dark w/ white text) ─── */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f1a2e] via-[#1b2a4a] to-[#312e81] p-6 text-white shadow-lg ring-1 ring-black/5">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-indigo-400/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-sky-400/10 blur-3xl" />
 
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] font-medium text-indigo-200/80">
+            <div className="flex items-center gap-2 text-[11px] font-medium text-white/70">
               <Clock className="h-3.5 w-3.5" /> 출퇴근 관리
               <ModeBadge mode={mode} />
             </div>
@@ -157,21 +159,21 @@ export default function SupabaseAttendanceManager(): JSX.Element {
               <span className="text-5xl font-bold tabular-nums tracking-tight text-white sm:text-6xl">
                 {hh}:{mm}
               </span>
-              <span className="mb-1.5 text-lg font-semibold tabular-nums text-indigo-200/70">{ss}</span>
+              <span className="mb-1.5 text-lg font-semibold tabular-nums text-white/60">{ss}</span>
             </div>
-            <div className="mt-1 flex items-center gap-1.5 text-sm text-indigo-100/80">
+            <div className="mt-1 flex items-center gap-1.5 text-sm text-white/75">
               <CalendarDays className="h-3.5 w-3.5" />
               {now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
             </div>
-            <div className="mt-2 text-sm text-indigo-100/70">
+            <div className="mt-2 text-sm text-white/65">
               {session.name || '직원'}님, {greeting}.
             </div>
           </div>
 
           <div className="flex flex-col items-end gap-2">
             <WorkStatePill state={workState} />
-            <div className="rounded-2xl bg-white/5 px-4 py-2.5 text-right ring-1 ring-white/10 backdrop-blur">
-              <div className="flex items-center justify-end gap-1 text-[10px] uppercase tracking-wide text-indigo-200/60">
+            <div className="rounded-2xl bg-white/10 px-4 py-2.5 text-right ring-1 ring-white/15 backdrop-blur">
+              <div className="flex items-center justify-end gap-1 text-[10px] uppercase tracking-wide text-white/55">
                 <Timer className="h-3 w-3" /> {worked.ended ? '오늘 근무' : '근무 (진행)'}
               </div>
               <div className="text-xl font-bold tabular-nums text-white">{worked.label}</div>
@@ -179,17 +181,16 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           </div>
         </div>
 
-        {/* Action buttons */}
         <div className="relative mt-5 flex flex-wrap gap-3">
           <button
             type="button"
             onClick={onCheckIn}
             disabled={busy}
-            className="group inline-flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-emerald-600 px-6 py-3 text-base font-bold text-white shadow-lg shadow-emerald-500/30 transition hover:brightness-110 disabled:opacity-60"
+            className="inline-flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-emerald-400 to-emerald-600 px-6 py-3 text-base font-bold text-white shadow-lg shadow-emerald-900/30 transition hover:brightness-110 disabled:opacity-60"
           >
             {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="h-5 w-5" />}
             출근하기
-            <span className="ml-1 hidden items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold sm:inline-flex">
+            <span className="ml-1 hidden items-center gap-1 rounded-full bg-black/15 px-2 py-0.5 text-[10px] font-semibold sm:inline-flex">
               <Camera className="h-3 w-3" /> 사진
             </span>
           </button>
@@ -197,7 +198,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
             type="button"
             onClick={onCheckOut}
             disabled={busy}
-            className="inline-flex items-center gap-2.5 rounded-2xl border border-white/25 bg-white/5 px-6 py-3 text-base font-bold text-white backdrop-blur transition hover:bg-white/10 disabled:opacity-60"
+            className="inline-flex items-center gap-2.5 rounded-2xl border border-white/25 bg-white/10 px-6 py-3 text-base font-bold text-white backdrop-blur transition hover:bg-white/20 disabled:opacity-60"
           >
             <LogOut className="h-5 w-5" /> 퇴근하기
             <span className="ml-1 hidden items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold sm:inline-flex">
@@ -206,13 +207,13 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           </button>
         </div>
 
-        <div className="relative mt-3 flex items-center gap-1.5 text-[11px] text-indigo-200/60">
+        <div className="relative mt-3 flex items-center gap-1.5 text-[11px] text-white/60">
           <MapPin className="h-3 w-3" /> 촬영한 사진에 GPS 위치와 시간이 워터마크로 자동 기록됩니다.
         </div>
       </div>
 
-      {/* ─── Body ─────────────────────────────────────────────────────── */}
-      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      {/* ─── Body (bright surfaces + dark text) ───────────────────────────── */}
+      <div className="rounded-3xl border border-slate-800 bg-white p-5 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p className="text-[11px] text-slate-500">
             {roleHint} <span className="text-slate-400">(실제 접근 권한은 Supabase RLS가 적용됩니다.)</span>
@@ -220,22 +221,22 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           <button
             type="button"
             onClick={() => void load()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-950"
           >
             <RefreshCw className="h-3 w-3" /> 새로고침
           </button>
         </div>
 
-        {mode === 'not-configured' ? <Notice text="Supabase가 아직 연결되지 않아 로컬 MVP 데이터로 표시됩니다." /> : null}
+        {mode === 'not-configured' ? <Notice text="Supabase가 아직 연결되지 않아 로컬 데이터로 표시됩니다." /> : null}
         {mode === 'no-session' ? <Notice text="Supabase 로그인 후 출퇴근 DB를 사용할 수 있습니다." /> : null}
         {error ? (
-          <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600">
+          <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700">
             <AlertTriangle className="mr-1 inline h-3 w-3" />
             {error}
           </div>
         ) : null}
 
-        {/* Today snapshot + memo */}
+        {/* Today snapshot */}
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Field label="오늘 출근" value={hasCheckIn ? '완료' : '미출근'} tone={hasCheckIn ? 'emerald' : 'amber'} />
           <Field label="오늘 퇴근" value={hasCheckOut ? '완료' : '-'} tone={hasCheckOut ? 'emerald' : 'slate'} />
@@ -249,7 +250,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           value={memo}
           onChange={(e) => setMemo(e.target.value)}
           placeholder="메모 (선택) — 출근/퇴근 시 함께 기록됩니다."
-          className="mb-4 w-full rounded-xl border border-slate-200 px-3 py-2 text-[12px] text-slate-700 placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+          className="mb-4 w-full rounded-xl border border-slate-800 bg-white px-3 py-2 text-[12px] text-slate-100 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
         />
         {confirm === 'checkin-dup' ? (
           <ConfirmBar text="오늘 이미 출근 기록이 있습니다. 계속하시겠습니까?" onYes={() => openCamera('check-in')} onNo={() => setConfirm(null)} />
@@ -272,19 +273,19 @@ export default function SupabaseAttendanceManager(): JSX.Element {
         ) : null}
 
         {/* Records — photo cards */}
-        <div className="mb-2 flex items-center gap-2 text-[12px] font-bold text-slate-700">
-          <Camera className="h-4 w-4 text-indigo-500" /> 출퇴근 기록
-          {!loading ? <span className="text-[11px] font-medium text-slate-400">({records.length})</span> : null}
+        <div className="mb-2 flex items-center gap-2 text-[12px] font-bold text-slate-100">
+          <Camera className="h-4 w-4 text-indigo-600" /> 출퇴근 기록
+          {!loading ? <span className="text-[11px] font-medium text-slate-500">({records.length})</span> : null}
         </div>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" /> 출퇴근 기록을 불러오는 중입니다.
           </div>
         ) : records.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center">
-            <Camera className="mx-auto mb-2 h-7 w-7 text-slate-300" />
-            <div className="text-sm text-slate-500">아직 출퇴근 기록이 없습니다.</div>
-            <div className="text-[11px] text-slate-400">위의 출근하기 버튼으로 사진과 함께 기록을 시작하세요.</div>
+          <div className="rounded-2xl border border-dashed border-slate-700 py-10 text-center">
+            <Camera className="mx-auto mb-2 h-7 w-7 text-slate-600" />
+            <div className="text-sm text-slate-300">아직 출퇴근 기록이 없습니다.</div>
+            <div className="text-[11px] text-slate-500">위의 출근하기 버튼으로 사진과 함께 기록을 시작하세요.</div>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -321,13 +322,12 @@ function RecordCard({ record: r }: { record: AttendanceWithStaff }): JSX.Element
   const isIn = r.type === 'check-in'
   const time = r.timestamp ? new Date(r.timestamp) : null
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
-      <div className="relative aspect-[4/3] w-full bg-slate-100">
+    <div className="overflow-hidden rounded-2xl border border-slate-800 bg-white shadow-sm transition hover:shadow-md">
+      <div className="relative aspect-[4/3] w-full bg-slate-950">
         {r.photoUrl ? (
-          // eslint-disable-next-line jsx-a11y/img-redundant-alt
-          <img src={r.photoUrl} alt="출퇴근 사진" className="h-full w-full object-cover" loading="lazy" />
+          <img src={r.photoUrl} alt="출퇴근 인증 사진" className="h-full w-full object-cover" loading="lazy" />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-gradient-to-br from-slate-50 to-slate-100 text-slate-300">
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-slate-600">
             <ImageOff className="h-6 w-6" />
             <span className="text-[10px]">사진 없음</span>
           </div>
@@ -335,21 +335,21 @@ function RecordCard({ record: r }: { record: AttendanceWithStaff }): JSX.Element
         <span
           className={[
             'absolute left-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur',
-            isIn ? 'bg-emerald-600/90' : 'bg-slate-700/90'
+            isIn ? 'bg-emerald-600/90' : 'bg-[#0f1a2e]/85'
           ].join(' ')}
         >
           {isIn ? <LogIn className="h-3 w-3" /> : <LogOut className="h-3 w-3" />}
           {ATTENDANCE_TYPE_LABEL[r.type]}
         </span>
         {r.watermarkText ? (
-          <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/45 px-2 py-0.5 text-[9px] font-medium text-white/90 backdrop-blur">
+          <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-medium text-white/90 backdrop-blur">
             <MapPin className="h-2.5 w-2.5" /> GPS·시간
           </span>
         ) : null}
       </div>
       <div className="p-2.5">
         <div className="flex items-center justify-between gap-1">
-          <span className="truncate text-[12px] font-semibold text-slate-700">{r.staffName || '직원'}</span>
+          <span className="truncate text-[12px] font-semibold text-slate-100">{r.staffName || '직원'}</span>
           <StatusChip label={ATTENDANCE_STATUS_LABEL[r.status]} status={r.status} />
         </div>
         <div className="mt-0.5 text-[11px] tabular-nums text-slate-500">
@@ -364,12 +364,12 @@ function RecordCard({ record: r }: { record: AttendanceWithStaff }): JSX.Element
 function WorkStatePill({ state }: { state: 'before' | 'working' | 'done' }): JSX.Element {
   const cfg =
     state === 'working'
-      ? { label: '근무 중', dot: 'bg-emerald-400', ring: 'ring-emerald-400/30', text: 'text-emerald-200' }
+      ? { label: '근무 중', dot: 'bg-emerald-400' }
       : state === 'done'
-        ? { label: '퇴근 완료', dot: 'bg-indigo-300', ring: 'ring-indigo-400/30', text: 'text-indigo-200' }
-        : { label: '출근 전', dot: 'bg-amber-400', ring: 'ring-amber-400/30', text: 'text-amber-200' }
+        ? { label: '퇴근 완료', dot: 'bg-sky-300' }
+        : { label: '출근 전', dot: 'bg-amber-400' }
   return (
-    <span className={['inline-flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1 text-xs font-bold ring-1 backdrop-blur', cfg.ring, cfg.text].join(' ')}>
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white ring-1 ring-white/20 backdrop-blur">
       <span className={['h-2 w-2 rounded-full', cfg.dot, state === 'working' ? 'animate-pulse' : ''].join(' ')} />
       {cfg.label}
     </span>
@@ -378,13 +378,13 @@ function WorkStatePill({ state }: { state: 'before' | 'working' | 'done' }): JSX
 
 function ConfirmBar({ text, onYes, onNo }: { text: string; onYes: () => void; onNo: () => void }): JSX.Element {
   return (
-    <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+    <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
       <p className="text-[12px] font-semibold text-amber-800">{text}</p>
       <div className="mt-2 flex gap-2">
         <button type="button" onClick={onYes} className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-amber-700">
           <Camera className="h-3 w-3" /> 촬영 후 계속
         </button>
-        <button type="button" onClick={onNo} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] text-slate-600 hover:bg-slate-50">
+        <button type="button" onClick={onNo} className="rounded-lg border border-slate-800 bg-white px-3 py-1.5 text-[11px] text-slate-300 hover:bg-slate-950">
           취소
         </button>
       </div>
@@ -392,10 +392,10 @@ function ConfirmBar({ text, onYes, onNo }: { text: string; onYes: () => void; on
   )
 }
 function Field({ label, value, tone }: { label: string; value: string; tone?: 'emerald' | 'amber' | 'slate' }): JSX.Element {
-  const t = tone === 'emerald' ? 'text-emerald-600' : tone === 'amber' ? 'text-amber-600' : 'text-slate-700'
+  const t = tone === 'emerald' ? 'text-emerald-600' : tone === 'amber' ? 'text-amber-600' : 'text-slate-100'
   return (
-    <div className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5">
-      <div className="text-[10px] text-slate-400">{label}</div>
+    <div className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5">
+      <div className="text-[10px] text-slate-500">{label}</div>
       <div className={['mt-0.5 text-[13px] font-bold', t].join(' ')}>{value}</div>
     </div>
   )
@@ -410,9 +410,9 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'em
           ? 'text-amber-600'
           : tone === 'rose'
             ? 'text-rose-600'
-            : 'text-slate-700'
+            : 'text-slate-100'
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-2 text-center">
+    <div className="rounded-xl border border-slate-800 bg-slate-950 p-2 text-center">
       <div className={['text-lg font-bold', t].join(' ')}>{value}</div>
       <div className="text-[10px] text-slate-500">{label}</div>
     </div>
@@ -421,26 +421,21 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'em
 function StatusChip({ label, status }: { label: string; status: string }): JSX.Element {
   const tone =
     status === 'normal'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+      ? 'bg-emerald-50 text-emerald-700'
       : status === 'missing'
-        ? 'border-rose-200 bg-rose-50 text-rose-600'
-        : 'border-amber-200 bg-amber-50 text-amber-600'
-  return <span className={['shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold', tone].join(' ')}>{label}</span>
+        ? 'bg-rose-50 text-rose-700'
+        : 'bg-amber-50 text-amber-700'
+  return <span className={['shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold', tone].join(' ')}>{label}</span>
 }
 function ModeBadge({ mode }: { mode: AttendanceDataMode }): JSX.Element {
   const supa = mode === 'supabase'
   return (
-    <span
-      className={[
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ring-1',
-        supa ? 'bg-emerald-400/15 text-emerald-200 ring-emerald-400/30' : 'bg-white/5 text-indigo-100/80 ring-white/15'
-      ].join(' ')}
-    >
+    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/90 ring-1 ring-white/20">
       {supa ? <Database className="h-3 w-3" /> : <HardDrive className="h-3 w-3" />}
-      {supa ? 'Supabase 공용 DB' : '로컬 MVP'}
+      {supa ? 'Supabase 공용 DB' : '로컬 데이터'}
     </span>
   )
 }
 function Notice({ text }: { text: string }): JSX.Element {
-  return <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">{text}</div>
+  return <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">{text}</div>
 }

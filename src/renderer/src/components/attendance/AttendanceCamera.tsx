@@ -11,7 +11,9 @@ import { Camera, X, MapPin, Loader2, RefreshCw, CheckCircle2, AlertTriangle } fr
  * process grants camera + geolocation for local origins (geolocation may be
  * unavailable → the photo is still captured with a "위치 미확인" watermark).
  *
- * The stream is always stopped on capture / cancel / unmount. No photo is logged.
+ * Colors use theme-independent dark chrome (black/neutral/white + explicit hex), NOT
+ * the app's remapped `slate` tokens, so the camera viewfinder is always dark. The
+ * stream is always stopped on capture / cancel / unmount. No photo is logged.
  */
 export interface CapturedAttendancePhoto {
   dataUrl: string
@@ -46,6 +48,23 @@ export default function AttendanceCamera({
   const stopStream = (): void => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
+  }
+
+  const startCamera = async (): Promise<void> => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play().catch(() => undefined)
+      }
+      setReady(true)
+    } catch {
+      setCamError('카메라를 열 수 없습니다. 권한을 허용했는지 확인해 주세요.')
+    }
   }
 
   // Start camera + geolocation when opened; always clean up.
@@ -135,7 +154,7 @@ export default function AttendanceCamera({
     ctx.shadowBlur = Math.round(6 * scale)
 
     // Line 1 (bottom): GPS
-    ctx.fillStyle = geo ? '#a7f3d0' : '#fca5a5'
+    ctx.fillStyle = geo ? '#6ee7b7' : '#fca5a5'
     ctx.font = `${Math.round(30 * scale)}px sans-serif`
     ctx.fillText(gpsStr, pad, h - pad)
     // Line 2: timestamp
@@ -167,27 +186,27 @@ export default function AttendanceCamera({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-3xl border border-slate-700 bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 bg-gradient-to-r from-indigo-950 to-slate-900 px-4 py-3">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-3xl border border-neutral-700 bg-neutral-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-neutral-800 bg-neutral-900 px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-bold text-white">
-            <Camera className="h-4 w-4 text-indigo-300" />
+            <Camera className="h-4 w-4 text-indigo-400" />
             {label} 사진 촬영
           </div>
-          <button type="button" onClick={close} aria-label="닫기" className="rounded-lg p-1 text-slate-400 hover:text-white">
+          <button type="button" onClick={close} aria-label="닫기" className="rounded-lg p-1 text-neutral-400 hover:text-white">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="relative aspect-[3/4] w-full bg-slate-950">
+        <div className="relative aspect-[3/4] w-full bg-black">
           <video ref={videoRef} playsInline muted className="h-full w-full object-cover" />
           {!ready && !camError ? (
-            <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-slate-300">
+            <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-neutral-300">
               <Loader2 className="h-4 w-4 animate-spin" /> 카메라 준비 중…
             </div>
           ) : null}
           {camError ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-rose-200">
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-[#fca5a5]">
               <AlertTriangle className="h-6 w-6" />
               {camError}
             </div>
@@ -197,10 +216,10 @@ export default function AttendanceCamera({
             className={[
               'absolute left-3 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold backdrop-blur',
               geoState === 'ok'
-                ? 'bg-emerald-500/20 text-emerald-200'
+                ? 'bg-emerald-500/25 text-[#6ee7b7]'
                 : geoState === 'unavailable'
-                  ? 'bg-rose-500/20 text-rose-200'
-                  : 'bg-slate-700/50 text-slate-200'
+                  ? 'bg-rose-500/25 text-[#fca5a5]'
+                  : 'bg-white/10 text-neutral-100'
             ].join(' ')}
           >
             {geoState === 'locating' ? <Loader2 className="h-3 w-3 animate-spin" /> : <MapPin className="h-3 w-3" />}
@@ -212,7 +231,7 @@ export default function AttendanceCamera({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 border-t border-slate-800 bg-slate-900 px-4 py-3">
+        <div className="flex items-center gap-2 border-t border-neutral-800 bg-neutral-900 px-4 py-3">
           <button
             type="button"
             onClick={capture}
@@ -221,7 +240,7 @@ export default function AttendanceCamera({
               'inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition',
               ready
                 ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-sm shadow-emerald-500/30 hover:brightness-110'
-                : 'cursor-not-allowed bg-slate-700 text-slate-400'
+                : 'cursor-not-allowed bg-neutral-700 text-neutral-400'
             ].join(' ')}
           >
             <CheckCircle2 className="h-4 w-4" />
@@ -233,22 +252,9 @@ export default function AttendanceCamera({
               onClick={() => {
                 setCamError(null)
                 setReady(false)
-                // Re-trigger the effect by toggling: simplest is to reload the stream.
-                void (async () => {
-                  try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
-                    streamRef.current = stream
-                    if (videoRef.current) {
-                      videoRef.current.srcObject = stream
-                      await videoRef.current.play().catch(() => undefined)
-                    }
-                    setReady(true)
-                  } catch {
-                    setCamError('카메라를 열 수 없습니다. 권한을 허용했는지 확인해 주세요.')
-                  }
-                })()
+                void startCamera()
               }}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-600 px-3 py-2.5 text-xs font-medium text-slate-200 hover:bg-slate-800"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-600 px-3 py-2.5 text-xs font-medium text-neutral-200 hover:bg-neutral-800"
             >
               <RefreshCw className="h-3.5 w-3.5" /> 다시
             </button>
@@ -260,7 +266,7 @@ export default function AttendanceCamera({
                 stopStream()
                 onSkip()
               }}
-              className="inline-flex items-center rounded-xl px-3 py-2.5 text-xs font-medium text-slate-400 underline-offset-2 hover:text-slate-200 hover:underline"
+              className="inline-flex items-center rounded-xl px-3 py-2.5 text-xs font-medium text-neutral-400 underline-offset-2 hover:text-neutral-200 hover:underline"
             >
               사진 없이 기록
             </button>
