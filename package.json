@@ -27,7 +27,7 @@
   },
   "build": {
     "appId": "com.sjinvest.sjos",
-    "productName": "SJ OS",
+    "productName": "SJ INVEST",
     "directories": {
       "output": "release"
     },
@@ -43,7 +43,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "SJ OS"
+      "shortcutName": "SJ INVEST"
     }
   },
   "dependencies": {

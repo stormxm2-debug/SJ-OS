@@ -1,20 +1,26 @@
 {
-  "name": "SJ OS",
-  "short_name": "SJ OS",
-  "description": "SJ OS 직원 업무 앱 (보험 업무 플랫폼)",
+  "name": "SJ INVEST",
+  "short_name": "SJ INVEST",
+  "description": "SJ INVEST 보험 업무 앱 (WEALTH · INSURANCE · FUTURE)",
   "display": "standalone",
   "start_url": "/",
   "scope": "/",
-  "theme_color": "#4f46e5",
-  "background_color": "#eef3fb",
+  "theme_color": "#0e1e3a",
+  "background_color": "#0e1e3a",
   "lang": "ko",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512'%3E%3Crect width='512' height='512' rx='96' fill='%234f46e5'/%3E%3Ctext x='50%25' y='54%25' font-family='Arial' font-size='200' fill='white' text-anchor='middle' dominant-baseline='middle'%3ESJ%3C/text%3E%3C/svg%3E",
+      "src": "/sj-icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/sj-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

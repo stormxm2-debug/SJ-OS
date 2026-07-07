@@ -3,6 +3,7 @@ import { Home, Clock, UserRound, CalendarDays, Menu, ClipboardList, BarChart3, M
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useSession } from '@renderer/navigation/SessionContext'
+import BrandLogo from '@renderer/components/brand/BrandLogo'
 import { ROLE_LABEL, routeCategory } from '@renderer/navigation/roleAccess'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
@@ -53,14 +54,9 @@ export default function MobileShell(): JSX.Element {
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-800">
       {/* Top bar */}
       <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600">
-            <Bot className="h-4 w-4 text-white" />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-slate-100">SJ OS</div>
-            <div className="text-[10px] text-slate-500">{session.name || '직원'} · {ROLE_LABEL[session.role]}</div>
-          </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <BrandLogo markClassName="h-7" wordmarkClassName="text-base" />
+          <span className="truncate text-[10px] text-slate-500">{session.name || '직원'} · {ROLE_LABEL[session.role]}</span>
         </div>
         <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">모바일</span>
       </header>

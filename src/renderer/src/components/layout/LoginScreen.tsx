@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Bot, LogIn, Loader2, AlertTriangle, KeyRound, Smartphone, ChevronDown } from 'lucide-react'
+import { LogIn, Loader2, AlertTriangle, KeyRound, Smartphone, ChevronDown } from 'lucide-react'
+import BrandLogo from '@renderer/components/brand/BrandLogo'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { DEMO_USERS, ROLE_LABEL } from '@renderer/navigation/roleAccess'
 import { validatePassword } from '@renderer/services/commercial/phoneAuthService'
@@ -67,14 +68,9 @@ export default function LoginScreen(): JSX.Element {
   return (
     <div className="flex min-h-screen w-screen items-center justify-center overflow-y-auto bg-gradient-to-br from-[#eef3fb] via-[#f5f8fd] to-[#e9eff9] p-6">
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-7 shadow-lg">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md">
-            <Bot className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <div className="text-lg font-bold text-slate-100">SJ OS 로그인</div>
-            <div className="text-xs text-slate-500">보험 업무 플랫폼</div>
-          </div>
+        <div className="mb-6 flex flex-col items-center gap-1.5">
+          <BrandLogo markClassName="h-12" showTagline wordmarkClassName="text-2xl" />
+          <div className="mt-1 text-xs font-medium text-slate-500">보험 업무 플랫폼 · 로그인</div>
         </div>
 
         {/* Primary: phone + password */}

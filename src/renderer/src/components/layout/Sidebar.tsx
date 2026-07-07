@@ -41,6 +41,7 @@ import { useAppMode, type AppMode } from '@renderer/navigation/AppModeContext'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { DEMO_USERS, ROLE_LABEL, isAdminRole } from '@renderer/navigation/roleAccess'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
+import BrandLogo from '@renderer/components/brand/BrandLogo'
 
 type NavItem = {
   key: string
@@ -221,14 +222,8 @@ export default function Sidebar(): JSX.Element {
 
   return (
     <aside className="flex w-64 flex-col border-r border-slate-800 bg-white shadow-sm">
-      <div className="flex items-center gap-3 border-b border-slate-800 px-5 py-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-md shadow-indigo-500/30">
-          <Bot className="h-5 w-5 text-white" />
-        </div>
-        <div>
-          <div className="text-sm font-semibold text-slate-100">SJ AI 컴퍼니</div>
-          <div className="text-xs text-slate-500">보험 업무 플랫폼</div>
-        </div>
+      <div className="flex items-center border-b border-slate-800 px-5 py-5">
+        <BrandLogo markClassName="h-9" wordmarkClassName="text-lg" showTagline />
       </div>
 
       {/* CEO / Staff mode switch — owner/admin only */}
@@ -337,7 +332,7 @@ export default function Sidebar(): JSX.Element {
             </div>
           </div>
         ) : null}
-        <div className="mt-2 px-1 text-[10px] text-slate-600">SJ OS · 직원 실사용 MVP 안전 빌드</div>
+        <div className="mt-2 px-1 text-[10px] text-slate-600">SJ INVEST · 보험 업무 플랫폼</div>
       </div>
     </aside>
   )

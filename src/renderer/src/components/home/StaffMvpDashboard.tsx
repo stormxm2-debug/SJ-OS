@@ -55,7 +55,7 @@ export default function StaffMvpDashboard(): JSX.Element {
               </span>
             </div>
             <p className="mt-1 text-sm text-white/70">
-              SJ OS · 보험 업무 플랫폼{session.teamName ? ` · ${session.teamName}` : ''}
+              SJ INVEST · 보험 업무 플랫폼{session.teamName ? ` · ${session.teamName}` : ''}
             </p>
           </div>
           <div className="flex flex-col items-end gap-1">

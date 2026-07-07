@@ -34,7 +34,7 @@ export default function MobileHome(): JSX.Element {
           <span className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-600">{ROLE_LABEL[role]}</span>
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-          <span>SJ OS 모바일</span>
+          <span>SJ INVEST 모바일</span>
           <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-600">로컬 MVP 데이터</span>
         </div>
       </div>
