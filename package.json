@@ -21,7 +21,23 @@
     "proxy:status": "node scripts/proxy-status.mjs",
     "proxy:env": "node scripts/check-proxy-env.mjs",
     "proxy:kill": "node scripts/kill-proxy-port.mjs",
-    "dev:all": "node scripts/dev-all.mjs"
+    "dev:all": "node scripts/dev-all.mjs",
+    "dist": "electron-vite build && electron-builder --win",
+    "dist:dir": "electron-vite build && electron-builder --win --dir"
+  },
+  "build": {
+    "appId": "com.sjinvest.sjos",
+    "productName": "SJ OS",
+    "directories": { "output": "release" },
+    "files": ["out/**/*", "package.json"],
+    "win": { "target": "nsis" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "SJ OS"
+    }
   },
   "dependencies": {
     "lucide-react": "^1.22.0",
@@ -35,6 +51,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "electron": "^33.2.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
