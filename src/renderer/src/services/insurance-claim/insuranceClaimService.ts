@@ -1,4 +1,5 @@
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
+import { activeProxyUrl, detectProxyStatus, getLastWorkingUrl } from '@renderer/services/jarvis/proxyConfig'
 
 /**
  * 보험금 청구비서 (Insurance Claim Assistant) service.
@@ -88,5 +89,100 @@ export async function estimateClaim(input: ClaimInput): Promise<ClaimEstimate> {
     headline: res.success ? extractHeadline(res.answer) : undefined,
     error: res.error,
     source: res.source
+  }
+}
+
+const VISION_TIMEOUT_MS = 45000
+
+/** Build the instruction that accompanies an uploaded document image. */
+function buildVisionMessage(insurer: string, incident: string): string {
+  return [
+    '첨부한 보험 서류 이미지(증권/진단서/영수증 등)를 읽고 예상 지급 보험금을 분석하세요.',
+    `보험사: ${insurer.trim() || DEFAULT_INSURER}`,
+    incident.trim() ? `추가 사고/청구 내용: ${incident.trim()}` : '',
+    '',
+    '## 반드시 지킬 응답 형식',
+    '1) 응답 맨 첫 줄에 "예상 총 보험금: 약 OOO원 (범위 OOO원 ~ OOO원)"',
+    '2) "■ 이미지 판독" — 서류에서 읽어낸 핵심 정보(담보/진단명/치료·입원/금액). 흐릿해서 불확실한 부분은 명시',
+    '3) "■ 담보별 산정 내역" 표 [담보명 / 근거 약관 조항 / 산정 금액 / 산정 근거]',
+    '4) "■ 참고 사례" 2~3건, 5) "■ 필요 서류", 6) "■ 주의·리스크"',
+    '불확실한 값은 "추정"임을 명시하고, 실제 지급은 약관 심사·손해사정 결과에 따라 달라질 수 있음을 마지막에 안내하세요.'
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+/**
+ * Analyze a claim from an uploaded document IMAGE (증권/진단서/영수증 사진). Sends the
+ * image to the proxy's /ai/vision endpoint (multipart; the OpenAI key stays on the
+ * backend) and normalizes the response into a ClaimEstimate. Never throws.
+ */
+export async function analyzeClaimImage(
+  file: File,
+  opts?: { insurer?: string; incident?: string }
+): Promise<ClaimEstimate> {
+  if (!jarvisGptBrainService.isEnabled()) {
+    return {
+      ok: false,
+      disabled: true,
+      canRetry: false,
+      answer: '',
+      error: 'AI 프록시가 비활성화되어 있어 서류 이미지 분석을 사용할 수 없습니다.',
+      source: 'disabled'
+    }
+  }
+  // Make sure we know a reachable proxy URL before the (large) upload.
+  if (!getLastWorkingUrl()) {
+    await detectProxyStatus()
+  }
+  const base = activeProxyUrl()
+  const form = new FormData()
+  form.append('image', file)
+  form.append('message', buildVisionMessage(opts?.insurer ?? DEFAULT_INSURER, opts?.incident ?? ''))
+  form.append('mode', 'insurance-claim')
+
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), VISION_TIMEOUT_MS)
+  try {
+    const res = await fetch(`${base}/ai/vision`, { method: 'POST', body: form, signal: controller.signal })
+    const data = (await res.json().catch(() => ({ success: false }))) as {
+      success?: boolean
+      answer?: string
+      error?: string
+      source?: string
+      disabled?: boolean
+    }
+    if (!res.ok || !data.success) {
+      return {
+        ok: false,
+        disabled: Boolean(data.disabled),
+        canRetry: !data.disabled,
+        answer: data.answer ?? '',
+        error: data.error ?? `서류 이미지 분석에 실패했습니다 (HTTP ${res.status}).`,
+        source: data.source ?? 'error'
+      }
+    }
+    return {
+      ok: true,
+      disabled: false,
+      canRetry: false,
+      answer: data.answer ?? '',
+      headline: extractHeadline(data.answer ?? ''),
+      source: data.source ?? 'openai'
+    }
+  } catch (error) {
+    const aborted = error instanceof DOMException && error.name === 'AbortError'
+    return {
+      ok: false,
+      disabled: false,
+      canRetry: true,
+      answer: '',
+      error: aborted
+        ? '서류 이미지 분석이 시간 내에 완료되지 않았습니다 (타임아웃). 다시 시도해 주세요.'
+        : 'AI 프록시에 연결할 수 없습니다. 프록시가 실행 중인지 확인해 주세요.',
+      source: 'error'
+    }
+  } finally {
+    window.clearTimeout(timer)
   }
 }

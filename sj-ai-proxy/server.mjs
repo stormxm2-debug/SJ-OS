@@ -254,6 +254,21 @@ async function getAudioUpload() {
   return cachedAudioUpload
 }
 
+/** Max size for an uploaded document image (증권/진단서/영수증 사진). */
+const MAX_IMAGE_UPLOAD_MB = Number(process.env.MAX_IMAGE_UPLOAD_MB ?? 12)
+let cachedImageUpload = null
+/** Lazily build the multipart IMAGE upload middleware (memory only, never disk). */
+async function getImageUpload() {
+  if (cachedImageUpload) return cachedImageUpload
+  const mod = await import('multer')
+  const multer = mod.default ?? mod
+  cachedImageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_IMAGE_UPLOAD_MB * 1024 * 1024, files: 1 }
+  }).single('image')
+  return cachedImageUpload
+}
+
 app.post('/ai/chat', async (req, res) => {
   const { message, mode, context, localSnapshot, conversationId } = req.body ?? {}
 
@@ -356,6 +371,135 @@ app.post('/ai/chat', async (req, res) => {
   } finally {
     clearTimeout(timer)
   }
+})
+
+/**
+ * POST /ai/vision — read a document IMAGE (증권/진단서/영수증 사진) and analyze it.
+ *
+ * Input: multipart/form-data with an `image` file + optional `message` / `mode`
+ * text fields. Uses the OpenAI vision-capable chat model. Same safety model as
+ * /ai/transcribe: key from env only, image held IN MEMORY (never disk, never
+ * logged), enable/key gates run BEFORE the upload is parsed.
+ */
+app.post('/ai/vision', async (req, res) => {
+  if (!OPENAI_ENABLED) {
+    res.json(fallbackResponse(req.body?.mode, 'disabled'))
+    return
+  }
+  if (!API_KEY_CONFIGURED) {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'OPENAI_API_KEY_MISSING',
+      error:
+        'OPENAI_ENABLED=true 이지만 OPENAI_API_KEY 가 설정되지 않았습니다. ' +
+        '백엔드 환경변수에 API 키를 설정하세요 (프론트엔드에는 절대 입력하지 마세요).',
+      mode: req.body?.mode ?? 'insurance-claim',
+      model: OPENAI_MODEL
+    })
+    return
+  }
+
+  let upload
+  try {
+    upload = await getImageUpload()
+  } catch {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'IMAGE_DEPENDENCY_MISSING',
+      error: '이미지 업로드 처리를 위한 서버 의존성이 없습니다. sj-ai-proxy 에서 npm install 을 실행하세요.',
+      mode: 'insurance-claim',
+      model: OPENAI_MODEL
+    })
+    return
+  }
+
+  upload(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const tooLarge = uploadErr.code === 'LIMIT_FILE_SIZE'
+      res.status(tooLarge ? 413 : 400).json({
+        success: false,
+        source: 'backend',
+        code: tooLarge ? 'IMAGE_TOO_LARGE' : 'IMAGE_UPLOAD_ERROR',
+        error: tooLarge
+          ? `이미지 파일이 너무 큽니다 (최대 ${MAX_IMAGE_UPLOAD_MB}MB).`
+          : '이미지 업로드 처리 중 오류가 발생했습니다.',
+        mode: 'insurance-claim',
+        model: OPENAI_MODEL
+      })
+      return
+    }
+
+    const file = req.file
+    if (!file || !file.buffer || file.buffer.length === 0) {
+      res.status(400).json({
+        success: false,
+        source: 'backend',
+        code: 'IMAGE_MISSING',
+        error: '이미지 데이터가 전송되지 않았습니다. image 필드로 서류 사진을 업로드하세요.',
+        mode: 'insurance-claim',
+        model: OPENAI_MODEL
+      })
+      return
+    }
+
+    const mime = file.mimetype && file.mimetype.startsWith('image/') ? file.mimetype : 'image/jpeg'
+    const dataUrl = `data:${mime};base64,${file.buffer.toString('base64')}`
+    const mode =
+      typeof req.body?.mode === 'string' && req.body.mode.trim() ? req.body.mode.trim() : 'insurance-claim'
+    const message =
+      typeof req.body?.message === 'string' && req.body.message.trim()
+        ? req.body.message
+        : '첨부한 보험 서류(증권/진단서/영수증 등) 이미지를 읽고, 확인되는 담보/진단/치료 내역을 근거로 분석하세요.'
+    const systemPrompt = systemPromptFor(mode)
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+    try {
+      const client = await getOpenAiClient()
+      const completion = await client.chat.completions.create(
+        {
+          model: OPENAI_MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: message },
+                { type: 'image_url', image_url: { url: dataUrl } }
+              ]
+            }
+          ],
+          temperature: 0.3
+        },
+        { signal: controller.signal }
+      )
+      const answer = completion.choices?.[0]?.message?.content?.trim() ?? ''
+      res.json({
+        success: true,
+        source: 'openai',
+        answer: answer || '이미지에서 분석 결과를 생성하지 못했습니다.',
+        mode,
+        model: completion.model ?? OPENAI_MODEL,
+        usage: completion.usage ?? undefined
+      })
+    } catch (error) {
+      const aborted = error?.name === 'AbortError'
+      res.status(aborted ? 504 : 502).json({
+        success: false,
+        source: 'openai',
+        error: aborted
+          ? '이미지 분석이 시간 내에 완료되지 않았습니다. 다시 시도해 주세요.'
+          : '이미지 분석 중 오류가 발생했습니다.',
+        detail: error?.message ?? String(error),
+        mode,
+        model: OPENAI_MODEL
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  })
 })
 
 /**
