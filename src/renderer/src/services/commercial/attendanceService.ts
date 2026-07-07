@@ -77,6 +77,10 @@ async function saveLocal(input: AttendanceInput, type: AttendanceRecord['type'])
     type,
     status: input.status,
     timestamp: input.timestamp,
+    // Local-mock keeps the watermarked photo (an inline data URL) so the record
+    // thumbnail renders offline. Supabase mode uses photoPath (a short storage key)
+    // and never round-trips raw photo bytes through a DB column.
+    photoUrl: input.photoDataUrl || input.photoPath?.trim() || undefined,
     watermarkText: input.watermarkText?.trim() || undefined,
     memo: input.memo?.trim() || undefined
   }

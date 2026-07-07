@@ -135,20 +135,22 @@ function isMicOriginAllowed(originOrUrl: string): boolean {
 }
 
 /**
- * Restrict Electron permission grants: allow ONLY microphone (audio media) for
- * our own local origins, and deny every other permission (camera, geolocation,
- * notifications, etc.). Voice Mode needs the mic; nothing here needs more.
+ * Restrict Electron permission grants to our OWN local origins only, and deny
+ * everything else. Voice Mode needs the microphone; the 출퇴근 photo report needs
+ * the camera; the photo watermark needs geolocation. Camera + mic (media) and
+ * geolocation are granted ONLY for file:// (our app) and the local dev origins —
+ * no third-party origin can ever request them. All other permissions are denied.
  */
 function installPermissionHandlers(): void {
   const ses = session.defaultSession
 
   ses.setPermissionRequestHandler((_webContents, permission, callback, details) => {
-    if (permission === 'media') {
-      // 'media' covers mic and/or camera — allow audio only, never video.
-      const mediaTypes = 'mediaTypes' in details ? details.mediaTypes : undefined
-      const wantsVideo = Array.isArray(mediaTypes) && mediaTypes.includes('video')
-      const requestingUrl = 'requestingUrl' in details ? details.requestingUrl : ''
-      callback(!wantsVideo && isMicOriginAllowed(requestingUrl ?? ''))
+    const requestingUrl = 'requestingUrl' in details ? details.requestingUrl : ''
+    const trusted = isMicOriginAllowed(requestingUrl ?? '')
+    // 'media' = mic and/or camera (Voice Mode + 출퇴근 사진); 'geolocation' = 사진
+    // 워터마크. Both only for trusted local origins.
+    if (permission === 'media' || permission === 'geolocation') {
+      callback(trusted)
       return
     }
     // Default-deny all other permissions.
@@ -156,7 +158,9 @@ function installPermissionHandlers(): void {
   })
 
   ses.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
-    if (permission === 'media') return isMicOriginAllowed(requestingOrigin ?? '')
+    if (permission === 'media' || permission === 'geolocation') {
+      return isMicOriginAllowed(requestingOrigin ?? '')
+    }
     return false
   })
 }

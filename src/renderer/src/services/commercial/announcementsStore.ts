@@ -20,11 +20,8 @@ function load(): AnnouncementRecord[] {
   } catch {
     /* ignore */
   }
-  // seed one example so the staff screen isn't empty in local demo.
-  const now = new Date().toISOString()
-  return [
-    { id: 'ann-seed-1', title: 'SJ OS 사용 안내', body: '공지사항 기능이 추가되었습니다. 중요 공지는 상단에 고정됩니다.', priority: 'normal', targetType: 'all', status: 'published', pinned: true, createdBy: 'local', createdByName: '관리자', publishedAt: now, createdAt: now, updatedAt: now }
-  ]
+  // No demo announcement — a real admin publishes the first notice.
+  return []
 }
 function loadReads(): string[] {
   try {

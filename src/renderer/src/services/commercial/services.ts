@@ -63,9 +63,9 @@ function createRepository<T extends { id: string }>(seed: T[]): Repository<T> {
   }
 }
 
-const now = (): string => new Date().toISOString()
-
 // --- seed (local-mock) -----------------------------------------------------
+// Business records start EMPTY so a real employee begins from a clean slate.
+// Only the staff roster (derived from login accounts) is kept as scaffolding.
 
 const staffSeed: StaffUser[] = DEMO_USERS.map((u) => ({
   id: u.id,
@@ -77,25 +77,12 @@ const staffSeed: StaffUser[] = DEMO_USERS.map((u) => ({
   updatedAt: '2026-01-01T00:00:00.000Z'
 }))
 
-const customerSeed: CustomerRecord[] = [
-  { id: 'c1', ownerStaffId: 'u-fc', ownerStaffName: '일반 FC', name: '김고객', phone: '010-1111-2222', status: 'consulting', tags: ['소개'], createdAt: now(), updatedAt: now() },
-  { id: 'c2', ownerStaffId: 'u-fc', ownerStaffName: '일반 FC', name: '이고객', status: 'proposal', tags: [], createdAt: now(), updatedAt: now() }
-]
-const consultationSeed: ConsultationRecord[] = [
-  { id: 's1', customerId: 'c1', staffId: 'u-fc', staffName: '일반 FC', consultationType: 'first', status: 'completed', summary: '초회 상담 완료', createdAt: now(), updatedAt: now() }
-]
-const scheduleSeed: ScheduleEvent[] = [
-  { id: 'e1', staffId: 'u-fc', staffName: '일반 FC', customerId: 'c1', title: '김고객 상담', type: 'consultation', startsAt: now(), status: 'planned' }
-]
-const attendanceSeed: AttendanceRecord[] = [
-  { id: 'a1', staffId: 'u-fc', staffName: '일반 FC', type: 'check-in', status: 'normal', timestamp: now() }
-]
-const performanceSeed: PerformanceRecord[] = [
-  { id: 'p1', staffId: 'u-fc', staffName: '일반 FC', month: '2026-07', totalPremium: 3200000, contractCount: 5, createdAt: now(), updatedAt: now() }
-]
-const noticeSeed: NoticeRecord[] = [
-  { id: 'no1', title: '7월 시책 안내', content: '이번 달 시책이 업데이트되었습니다.', targetRoles: ['fc', 'team-leader'], createdBy: '관리자', pinned: true, createdAt: now(), updatedAt: now() }
-]
+const customerSeed: CustomerRecord[] = []
+const consultationSeed: ConsultationRecord[] = []
+const scheduleSeed: ScheduleEvent[] = []
+const attendanceSeed: AttendanceRecord[] = []
+const performanceSeed: PerformanceRecord[] = []
+const noticeSeed: NoticeRecord[] = []
 
 // --- repositories + services ----------------------------------------------
 
