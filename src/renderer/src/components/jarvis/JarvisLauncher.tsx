@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot } from 'lucide-react'
+import { Bot, Sparkles } from 'lucide-react'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 
 /**
@@ -40,10 +40,12 @@ export default function JarvisLauncher(): JSX.Element | null {
       onClick={() => jarvisService.open()}
       title="자비스 열기"
       aria-label="자비스 열기"
-      className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-black/40 transition hover:bg-indigo-500"
+      className="group fixed bottom-6 right-6 z-40 inline-flex items-center gap-2 rounded-full border border-indigo-400/40 bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/50 ring-1 ring-white/10 transition hover:shadow-xl hover:shadow-indigo-500/60 hover:brightness-110"
     >
-      <Bot className="h-5 w-5" />
-      자비스
+      <span className="pointer-events-none absolute -inset-1 rounded-full bg-indigo-500/25 blur-md" aria-hidden />
+      <Bot className="relative h-5 w-5" />
+      <span className="relative">자비스</span>
+      <Sparkles className="relative h-3.5 w-3.5 text-amber-300" />
     </button>
   )
 }

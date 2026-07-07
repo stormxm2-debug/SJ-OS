@@ -979,10 +979,11 @@ export default function JarvisPanel(): JSX.Element | null {
     // There is no full-screen backdrop/overlay, so the sidebar and main content
     // are always clickable while Jarvis is open. Closing unmounts this entirely.
     <div className="fixed bottom-3 right-3 top-3 z-50 flex w-[min(94vw,640px)]">
-      <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 shadow-2xl shadow-indigo-900/25 ring-1 ring-indigo-500/10">
-        <header className="relative flex items-center justify-between overflow-hidden border-b border-slate-800 bg-gradient-to-r from-indigo-50 via-white to-violet-50 px-5 py-4">
+      <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-indigo-500/20 bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl shadow-indigo-900/40 ring-1 ring-indigo-400/20">
+        <header className="relative flex items-center justify-between overflow-hidden border-b border-indigo-500/20 bg-gradient-to-r from-indigo-950 via-slate-900 to-violet-950 px-5 py-4">
           <div className="relative flex items-center gap-3">
-            <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/40">
+            <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/60 ring-1 ring-white/20">
+              <span className="pointer-events-none absolute inset-0 rounded-2xl bg-indigo-400/30 blur-md" aria-hidden />
               <Bot className="relative h-5 w-5" />
             </div>
             <div>

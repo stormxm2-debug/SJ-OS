@@ -28,7 +28,7 @@ export default function Card({
           <div className="flex items-center gap-2">
             {icon && <span className="text-slate-400">{icon}</span>}
             {title && (
-              <h2 className="text-sm font-semibold tracking-tight text-slate-200">{title}</h2>
+              <h2 className="text-sm font-semibold tracking-tight text-slate-800">{title}</h2>
             )}
           </div>
           {action}

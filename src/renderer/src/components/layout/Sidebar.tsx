@@ -29,8 +29,12 @@ import {
   Bot,
   Clock,
   Megaphone,
-  LogOut
+  LogOut,
+  ChevronDown,
+  ChevronRight,
+  ReceiptText
 } from 'lucide-react'
+import { useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useAppMode, type AppMode } from '@renderer/navigation/AppModeContext'
@@ -49,13 +53,15 @@ type NavItem = {
 type NavGroup = {
   label: string
   items: NavItem[]
+  /** Advanced/rarely-used groups render collapsed by default to declutter the main menu. */
+  collapsible?: boolean
 }
 
 /**
  * CEO-mode menu, organized into staff-friendly labeled groups. Every existing
- * route is preserved (nothing removed) — advanced/developer pages are simply
- * grouped lower under 관리자 · 개발. Labels are display-only; route ids/logic are
- * unchanged. No collapse/accordion (kept simple + safe), just section headers.
+ * route is preserved (nothing removed) — advanced/developer/admin pages are
+ * grouped lower and marked `collapsible` so they render COLLAPSED by default,
+ * keeping the main menu clean. Labels are display-only; route ids/logic unchanged.
  */
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -72,7 +78,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'customer', label: '고객 관리', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
       { key: 'consultation', label: '상담 관리', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
-      { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] }
+      { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
+      { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] }
     ]
   },
   {
@@ -91,26 +98,39 @@ const NAV_GROUPS: NavGroup[] = [
     ]
   },
   {
-    label: '관리자 · 개발',
+    label: '설정 · 관리',
+    collapsible: true,
     items: [
+      { key: 'settings', label: '설정', icon: Settings, view: { name: 'settings' }, match: ['settings'] },
+      { key: 'staff-team', label: '직원 / 팀 관리', icon: UsersRound, view: { name: 'staff-team' }, match: ['staff-team'] },
+      { key: 'staff-login', label: '직원 로그인 관리', icon: UserRound, view: { name: 'staff-login' }, match: ['staff-login'] },
+      { key: 'announcements', label: '공지사항 관리', icon: Megaphone, view: { name: 'announcements' }, match: ['announcements'] },
+      { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] }
+    ]
+  },
+  {
+    label: '개발 · 자동화',
+    collapsible: true,
+    items: [
+      { key: 'devprompt', label: '자비스 자동개발', icon: Terminal, view: { name: 'devprompt' }, match: ['devprompt'] },
       { key: 'autopilot', label: '오토파일럿', icon: Rocket, view: { name: 'autopilot' }, match: ['autopilot'] },
       { key: 'app-builder', label: '범용 앱 빌더', icon: Boxes, view: { name: 'app-builder' }, match: ['app-builder'] },
-      { key: 'devprompt', label: '개발 프롬프트 센터', icon: Terminal, view: { name: 'devprompt' }, match: ['devprompt'] },
       { key: 'devos', label: '개발 OS', icon: Cpu, view: { name: 'devos' }, match: ['devos'] },
+      { key: 'workers', label: 'AI 워커', icon: Users, view: { name: 'workers' }, match: ['workers', 'worker'] },
+      { key: 'backlog', label: '제품 백로그', icon: ClipboardList, view: { name: 'backlog' }, match: ['backlog'] },
+      { key: 'projects', label: '프로젝트', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] }
+    ]
+  },
+  {
+    label: '운영 · 기타',
+    collapsible: true,
+    items: [
       { key: 'pm', label: 'PM 플래너', icon: KanbanSquare, view: { name: 'pm' }, match: ['pm'] },
       { key: 'cto', label: 'CTO 룸', icon: Gauge, view: { name: 'cto' }, match: ['cto'] },
-      { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
       { key: 'qa', label: 'QA 센터', icon: ClipboardCheck, view: { name: 'qa' }, match: ['qa'] },
       { key: 'release', label: '릴리즈 센터', icon: PackageCheck, view: { name: 'release' }, match: ['release'] },
       { key: 'devops', label: 'DevOps 센터', icon: Server, view: { name: 'devops' }, match: ['devops'] },
-      { key: 'backlog', label: '제품 백로그', icon: ClipboardList, view: { name: 'backlog' }, match: ['backlog'] },
-      { key: 'workers', label: 'AI 워커', icon: Users, view: { name: 'workers' }, match: ['workers', 'worker'] },
-      { key: 'projects', label: '프로젝트', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] },
-      { key: 'activity', label: '활동 로그', icon: Activity, view: { name: 'activity' }, match: ['activity'] },
-      { key: 'staff-team', label: '직원 / 팀 관리', icon: UsersRound, view: { name: 'staff-team' }, match: ['staff-team'] },
-      { key: 'announcements', label: '공지사항 관리', icon: Megaphone, view: { name: 'announcements' }, match: ['announcements'] },
-      { key: 'staff-login', label: '직원 로그인 관리', icon: UserRound, view: { name: 'staff-login' }, match: ['staff-login'] },
-      { key: 'settings', label: '설정', icon: Settings, view: { name: 'settings' }, match: ['settings'] }
+      { key: 'activity', label: '활동 로그', icon: Activity, view: { name: 'activity' }, match: ['activity'] }
     ]
   }
 ]
@@ -128,6 +148,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'consultation', label: '상담', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
+  { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'fcos', label: '내 업무', icon: Briefcase, view: { name: 'fcos' }, match: ['fcos'] }
 ]
 
@@ -142,6 +163,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' }, match: ['attendance'] },
   { key: 'customer', label: '고객관리', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
   { key: 'consultation', label: '상담기록', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
+  { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
   { key: 'performance', label: '실적관리', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }
@@ -155,6 +177,14 @@ export default function Sidebar(): JSX.Element {
   const { mode, setMode } = useAppMode()
   const { session, logout, switchUser } = useSession()
   const admin = isAdminRole(session.role)
+
+  // Advanced/admin groups start collapsed to keep the main menu clean; a group
+  // still auto-expands when the active route lives inside it (see render below).
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {}
+    for (const g of NAV_GROUPS) if (g.collapsible) init[g.label] = true
+    return init
+  })
 
   // Switching mode never blocks a route; but if the current view is not in the
   // staff menu, land the user on the staff home so the sidebar stays coherent.
@@ -233,14 +263,29 @@ export default function Sidebar(): JSX.Element {
           <div className="space-y-1">{STAFF_NAV.map(renderItem)}</div>
         ) : (
           <div className="space-y-4">
-            {NAV_GROUPS.map((group) => (
-              <div key={group.label} className="space-y-1">
-                <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
-                  {group.label}
+            {NAV_GROUPS.map((group) => {
+              const hasActive = group.items.some((it) => it.match.includes(route.name))
+              const isCollapsed = !!group.collapsible && collapsed[group.label] && !hasActive
+              return (
+                <div key={group.label} className="space-y-1">
+                  {group.collapsible ? (
+                    <button
+                      type="button"
+                      onClick={() => setCollapsed((c) => ({ ...c, [group.label]: !c[group.label] }))}
+                      className="flex w-full items-center justify-between rounded-lg px-3 pb-1 pt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 transition hover:text-slate-300"
+                    >
+                      <span>{group.label}</span>
+                      {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    </button>
+                  ) : (
+                    <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                      {group.label}
+                    </div>
+                  )}
+                  {!isCollapsed ? group.items.map(renderItem) : null}
                 </div>
-                {group.items.map(renderItem)}
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </nav>
