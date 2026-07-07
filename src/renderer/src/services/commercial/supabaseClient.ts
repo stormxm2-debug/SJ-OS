@@ -14,10 +14,6 @@ import type { ConnectionStatus } from '@shared/commercial/apiContract'
  * safely and the client stays null (local-mock).
  */
 
-// Non-literal specifier + @vite-ignore so the bundler/tsc do not require the
-// package to be present. Resolves at runtime only when installed.
-const SUPABASE_PKG = '@supabase/supabase-js'
-
 function env(): Record<string, string | undefined> {
   return ((import.meta as unknown as { env?: Record<string, string | undefined> }).env) ?? {}
 }
@@ -76,8 +72,10 @@ export async function initSupabaseClient(): Promise<unknown | null> {
   const status = getSupabaseConfigStatus()
   if (!status.isConfigured) return null
   try {
+    // Lazy dynamic import → Vite code-splits @supabase/supabase-js into its own
+    // chunk, loaded only when Supabase env is configured (guarded above).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod: any = await import(/* @vite-ignore */ SUPABASE_PKG)
+    const mod: any = await import('@supabase/supabase-js')
     const createClient = mod?.createClient
     if (typeof createClient !== 'function') return null
     const e = env()
