@@ -44,10 +44,24 @@ const OPENAI_STT_MODEL = process.env.OPENAI_STT_MODEL ?? 'gpt-4o-mini-transcribe
 const MAX_AUDIO_SECONDS = Number(process.env.MAX_AUDIO_SECONDS ?? 10)
 const MAX_AUDIO_UPLOAD_MB = Number(process.env.MAX_AUDIO_UPLOAD_MB ?? 10)
 
+// Claude (Anthropic) — powers the 보험금 청구비서 with native PDF + image document
+// understanding. The SDK also reads ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL from the
+// environment; we accept the key from this .env too. The key is never exposed.
+const ANTHROPIC_ENABLED = String(process.env.ANTHROPIC_ENABLED ?? 'false').toLowerCase() === 'true'
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-8'
+const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN ?? '').trim()
+// Pin the standard Anthropic API by default. A dedicated override var avoids
+// colliding with an inherited ANTHROPIC_BASE_URL (which may point at an
+// incompatible gateway in the surrounding shell environment).
+const ANTHROPIC_BASE_URL = process.env.ANTHROPIC_API_BASE_URL ?? 'https://api.anthropic.com'
+const MAX_DOC_UPLOAD_MB = Number(process.env.MAX_DOC_UPLOAD_MB ?? 24)
+
 // Whether a real key is present (never expose the key itself, anywhere).
 const API_KEY_CONFIGURED = OPENAI_API_KEY.trim().length > 0
 // GPT is truly ready only when explicitly enabled AND a key is configured.
 const GPT_READY = OPENAI_ENABLED && API_KEY_CONFIGURED
+const ANTHROPIC_KEY_CONFIGURED = ANTHROPIC_API_KEY.length > 0
+const CLAUDE_READY = ANTHROPIC_ENABLED && ANTHROPIC_KEY_CONFIGURED
 
 /**
  * Allowed CORS origins. Prefer ALLOWED_ORIGINS (comma-separated); fall back to
@@ -206,6 +220,11 @@ app.get('/ai/status', (_req, res) => {
     // STT (Jarvis Voice Mode) capability — same enable/key gates as the brain.
     sttModel: OPENAI_STT_MODEL,
     maxAudioSeconds: MAX_AUDIO_SECONDS,
+    // Claude (보험금 청구비서) capability — separate enable/key gates from OpenAI.
+    anthropicEnabled: ANTHROPIC_ENABLED,
+    anthropicKeyConfigured: ANTHROPIC_KEY_CONFIGURED,
+    anthropicModel: ANTHROPIC_MODEL,
+    claudeReady: CLAUDE_READY,
     environment: ENVIRONMENT,
     timestamp: new Date().toISOString(),
     message
@@ -267,6 +286,32 @@ async function getImageUpload() {
     limits: { fileSize: MAX_IMAGE_UPLOAD_MB * 1024 * 1024, files: 1 }
   }).single('image')
   return cachedImageUpload
+}
+
+let cachedAnthropic = null
+/** Lazily construct the Anthropic client. Reads the key from this .env, else falls
+ *  back to the SDK's own env resolution (ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL). */
+async function getAnthropicClient() {
+  if (cachedAnthropic) return cachedAnthropic
+  const mod = await import('@anthropic-ai/sdk')
+  const Anthropic = mod.default ?? mod.Anthropic
+  const opts = { baseURL: ANTHROPIC_BASE_URL }
+  if (ANTHROPIC_API_KEY) opts.apiKey = ANTHROPIC_API_KEY
+  cachedAnthropic = new Anthropic(opts)
+  return cachedAnthropic
+}
+
+let cachedDocUpload = null
+/** Multipart upload for a claim document — PDF or image, memory only, never disk. */
+async function getDocumentUpload() {
+  if (cachedDocUpload) return cachedDocUpload
+  const mod = await import('multer')
+  const multer = mod.default ?? mod
+  cachedDocUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_DOC_UPLOAD_MB * 1024 * 1024, files: 1 }
+  }).single('document')
+  return cachedDocUpload
 }
 
 app.post('/ai/chat', async (req, res) => {
@@ -495,6 +540,148 @@ app.post('/ai/vision', async (req, res) => {
         detail: error?.message ?? String(error),
         mode,
         model: OPENAI_MODEL
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  })
+})
+
+/**
+ * POST /ai/claim — 보험금 청구비서. Analyze an insurance claim with CLAUDE, which
+ * reads PDF and image documents natively (no OCR/conversion). Input: multipart/
+ * form-data with an OPTIONAL `document` file (PDF or image) + a `message` text
+ * field. The Anthropic key is read from the environment only and never exposed; the
+ * document is held in memory (never written to disk, never logged).
+ */
+app.post('/ai/claim', async (req, res) => {
+  if (!ANTHROPIC_ENABLED) {
+    res.json({
+      success: false,
+      source: 'disabled',
+      disabled: true,
+      code: 'ANTHROPIC_DISABLED',
+      answer: '',
+      model: ANTHROPIC_MODEL,
+      error:
+        'Claude 청구 분석이 비활성화되어 있습니다 (ANTHROPIC_ENABLED=false). ' +
+        '백엔드에서 ANTHROPIC_ENABLED=true 와 ANTHROPIC_API_KEY 를 설정하세요.'
+    })
+    return
+  }
+  if (!ANTHROPIC_KEY_CONFIGURED) {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'ANTHROPIC_API_KEY_MISSING',
+      answer: '',
+      model: ANTHROPIC_MODEL,
+      error:
+        'ANTHROPIC_ENABLED=true 이지만 ANTHROPIC_API_KEY 가 설정되지 않았습니다. ' +
+        '백엔드 환경변수에 Anthropic 키를 설정하세요 (프론트엔드에는 절대 입력하지 마세요).'
+    })
+    return
+  }
+
+  let upload
+  try {
+    upload = await getDocumentUpload()
+  } catch {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'DOC_DEPENDENCY_MISSING',
+      answer: '',
+      model: ANTHROPIC_MODEL,
+      error: '문서 업로드 처리를 위한 서버 의존성이 없습니다. sj-ai-proxy 에서 npm install 을 실행하세요.'
+    })
+    return
+  }
+
+  upload(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const tooLarge = uploadErr.code === 'LIMIT_FILE_SIZE'
+      res.status(tooLarge ? 413 : 400).json({
+        success: false,
+        source: 'backend',
+        code: tooLarge ? 'DOC_TOO_LARGE' : 'DOC_UPLOAD_ERROR',
+        answer: '',
+        model: ANTHROPIC_MODEL,
+        error: tooLarge
+          ? `문서 파일이 너무 큽니다 (최대 ${MAX_DOC_UPLOAD_MB}MB).`
+          : '문서 업로드 처리 중 오류가 발생했습니다.'
+      })
+      return
+    }
+
+    const message =
+      typeof req.body?.message === 'string' && req.body.message.trim()
+        ? req.body.message
+        : '첨부한 보험 서류를 읽고 예상 지급 보험금을 분석하세요.'
+
+    // Build the user content: an optional document/image block (Claude reads both
+    // natively) followed by the instruction text.
+    const content = []
+    const file = req.file
+    if (file && file.buffer && file.buffer.length > 0) {
+      const mime = file.mimetype || 'application/octet-stream'
+      const b64 = file.buffer.toString('base64')
+      if (mime === 'application/pdf') {
+        content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } })
+      } else if (mime.startsWith('image/')) {
+        content.push({ type: 'image', source: { type: 'base64', media_type: mime, data: b64 } })
+      } else {
+        res.status(400).json({
+          success: false,
+          source: 'backend',
+          code: 'DOC_UNSUPPORTED_TYPE',
+          answer: '',
+          model: ANTHROPIC_MODEL,
+          error: '지원하지 않는 파일 형식입니다. PDF 또는 이미지(JPG/PNG) 서류를 올려주세요.'
+        })
+        return
+      }
+    }
+    content.push({ type: 'text', text: message })
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 120000)
+    try {
+      const client = await getAnthropicClient()
+      const completion = await client.messages.create(
+        {
+          model: ANTHROPIC_MODEL,
+          max_tokens: 4096,
+          system: EXPERT_MODE_INSTRUCTIONS['insurance-claim'],
+          messages: [{ role: 'user', content }]
+        },
+        { signal: controller.signal }
+      )
+      const answer = Array.isArray(completion.content)
+        ? completion.content
+            .filter((b) => b.type === 'text')
+            .map((b) => b.text)
+            .join('\n')
+            .trim()
+        : ''
+      res.json({
+        success: true,
+        source: 'claude',
+        answer: answer || '분석 결과를 생성하지 못했습니다.',
+        model: completion.model ?? ANTHROPIC_MODEL,
+        usage: completion.usage ?? undefined
+      })
+    } catch (error) {
+      const aborted = error?.name === 'AbortError' || /abort/i.test(error?.message ?? '')
+      res.status(aborted ? 504 : 502).json({
+        success: false,
+        source: 'claude',
+        answer: '',
+        model: ANTHROPIC_MODEL,
+        error: aborted
+          ? 'Claude 분석이 시간 내에 완료되지 않았습니다. 다시 시도해 주세요.'
+          : 'Claude 분석 중 오류가 발생했습니다. (키/모델/네트워크를 확인하세요)',
+        detail: error?.message ?? String(error)
       })
     } finally {
       clearTimeout(timer)

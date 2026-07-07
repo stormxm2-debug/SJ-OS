@@ -186,3 +186,83 @@ export async function analyzeClaimImage(
     window.clearTimeout(timer)
   }
 }
+
+const CLAIM_TIMEOUT_MS = 130000
+
+/**
+ * Analyze a claim with CLAUDE via the proxy's /ai/claim endpoint. Handles a text-only
+ * request OR an attached document — Claude reads PDF and images natively (no OCR /
+ * conversion). Never throws; proxy-off / key-missing / network errors come back as a
+ * normalized ClaimEstimate (disabled → the page shows setup guidance).
+ */
+export async function analyzeClaim(input: {
+  insurer: string
+  policyInfo: string
+  incident: string
+  file?: File | null
+}): Promise<ClaimEstimate> {
+  if (!getLastWorkingUrl()) {
+    await detectProxyStatus()
+  }
+  const base = activeProxyUrl()
+  const hasFile = Boolean(input.file)
+  const message = hasFile
+    ? [
+        buildVisionMessage(input.insurer, input.incident),
+        input.policyInfo.trim() ? `\n## 가입/증권 정보(참고)\n${input.policyInfo.trim()}` : ''
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : buildClaimPrompt(input)
+
+  const form = new FormData()
+  form.append('message', message)
+  if (input.file) form.append('document', input.file)
+
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), CLAIM_TIMEOUT_MS)
+  try {
+    const res = await fetch(`${base}/ai/claim`, { method: 'POST', body: form, signal: controller.signal })
+    const data = (await res.json().catch(() => ({ success: false }))) as {
+      success?: boolean
+      answer?: string
+      error?: string
+      source?: string
+      disabled?: boolean
+      code?: string
+    }
+    if (!res.ok || !data.success) {
+      const disabled = Boolean(data.disabled) || data.code === 'ANTHROPIC_DISABLED'
+      return {
+        ok: false,
+        disabled,
+        canRetry: !disabled,
+        answer: data.answer ?? '',
+        error: data.error ?? `Claude 분석에 실패했습니다 (HTTP ${res.status}).`,
+        source: data.source ?? 'error'
+      }
+    }
+    return {
+      ok: true,
+      disabled: false,
+      canRetry: false,
+      answer: data.answer ?? '',
+      headline: extractHeadline(data.answer ?? ''),
+      source: data.source ?? 'claude'
+    }
+  } catch (error) {
+    const aborted = error instanceof DOMException && error.name === 'AbortError'
+    return {
+      ok: false,
+      disabled: false,
+      canRetry: true,
+      answer: '',
+      error: aborted
+        ? 'Claude 분석이 시간 내에 완료되지 않았습니다 (타임아웃). 다시 시도해 주세요.'
+        : 'AI 프록시에 연결할 수 없습니다. 프록시가 실행 중인지 확인해 주세요.',
+      source: 'error'
+    }
+  } finally {
+    window.clearTimeout(timer)
+  }
+}

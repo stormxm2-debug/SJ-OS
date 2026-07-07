@@ -15,8 +15,7 @@ import {
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import {
-  estimateClaim,
-  analyzeClaimImage,
+  analyzeClaim,
   buildClaimPrompt,
   DEFAULT_INSURER,
   type ClaimEstimate
@@ -101,7 +100,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setLoading(true)
     setResult(null)
     try {
-      setResult(await estimateClaim({ insurer, policyInfo, incident }))
+      setResult(await analyzeClaim({ insurer, policyInfo, incident }))
     } finally {
       setLoading(false)
     }
@@ -113,15 +112,16 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-selecting the same file
     if (!file) return
+    const isPdf = file.type === 'application/pdf'
     setFileName(`${file.name} (${Math.round(file.size / 1024)}KB)`)
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev)
-      return URL.createObjectURL(file)
+      return isPdf ? null : URL.createObjectURL(file)
     })
     setLoading(true)
     setResult(null)
     try {
-      setResult(await analyzeClaimImage(file, { insurer, incident }))
+      setResult(await analyzeClaim({ insurer, policyInfo, incident, file }))
     } finally {
       setLoading(false)
     }
@@ -149,7 +149,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
       <Card title="보험금 청구비서" icon={<ShieldCheck className="h-4 w-4 text-indigo-500" />}>
         <p className="text-sm leading-6 text-slate-600">
           고객을 선택해 <span className="font-semibold text-slate-800">증권 정보를 자동으로 불러오고</span>,{' '}
-          <span className="font-semibold text-slate-800">서류 사진</span>을 올리면 AI가 직접 읽어{' '}
+          <span className="font-semibold text-slate-800">서류(PDF·사진)</span>를 올리면 Claude가 직접 읽어{' '}
           <span className="font-semibold text-indigo-600">예상 보험금</span>과{' '}
           <span className="font-semibold text-slate-800">청구서 초안</span>까지 자동으로 만들어 드립니다.
         </p>
@@ -221,12 +221,20 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
           <div className="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/40 p-4">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700">
               <Upload className="h-3.5 w-3.5" />
-              서류 사진 자동 분석 <span className="font-normal text-indigo-500/80">(증권·진단서·영수증 사진)</span>
+              서류 자동 분석 (PDF · 사진){' '}
+              <span className="font-normal text-indigo-500/80">증권·진단서·영수증</span>
             </div>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              사진을 올리면 AI가 서류를 직접 읽어 자동으로 분석합니다. 위 "사고/청구 내용"을 함께 적으면 더 정확합니다.
+              PDF나 사진을 올리면 Claude가 서류를 직접 읽어 자동으로 분석합니다. 위 "사고/청구 내용"을 함께 적으면 더
+              정확합니다.
             </p>
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={(e) => void onFile(e)} className="hidden" />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => void onFile(e)}
+              className="hidden"
+            />
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -240,7 +248,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
                 ].join(' ')}
               >
                 <Upload className="h-4 w-4" />
-                서류 사진 올리고 자동 분석
+                서류(PDF·사진) 올리고 자동 분석
               </button>
               {previewUrl ? (
                 <img
