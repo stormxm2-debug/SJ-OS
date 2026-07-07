@@ -144,9 +144,17 @@ export default function SupabaseAttendanceManager(): JSX.Element {
 
   return (
     <div className="space-y-4">
-      {/* ─── Premium hero (explicit dark hex → reliably dark w/ white text) ─── */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#0f1a2e] via-[#1b2a4a] to-[#312e81] p-6 text-white shadow-lg ring-1 ring-black/5">
-        <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-indigo-400/20 blur-3xl" />
+      {/* ─── Premium hero — deep navy + gold (Direction A). Explicit hex so it is
+          reliably dark with white text regardless of the slate token remap. ─── */}
+      <div
+        className="relative overflow-hidden rounded-3xl p-6 text-white shadow-xl ring-1 ring-black/5"
+        style={{
+          background:
+            'radial-gradient(680px 240px at 88% -30%, rgba(198,152,47,0.20), rgba(198,152,47,0) 60%), linear-gradient(135deg, #0e1e3a 0%, #16294b 60%, #1d2f57 100%)'
+        }}
+      >
+        {/* gold top hairline */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-[#c6982f] to-transparent opacity-80" />
         <div className="pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-sky-400/10 blur-3xl" />
 
         <div className="relative flex flex-wrap items-start justify-between gap-4">
