@@ -1,6 +1,7 @@
 import type { AttendanceRecord } from '@shared/commercial/models'
 import type { AttendanceInput } from './attendanceValidation'
 import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
+import { uploadAttendancePhoto, createSignedPhotoUrls, isAttendancePhotoStorageConfigured } from './attendancePhotoStorage'
 
 /**
  * Supabase attendance adapter — real queries against public.attendance_records.
@@ -83,6 +84,35 @@ function buildInsert(input: AttendanceInput, staffId: string): Record<string, un
   }
 }
 
+/**
+ * Upload the inline camera photo (data URL) to private Storage and return the storage
+ * PATH for photo_path (never the bytes). Falls back to any explicit photoPath, else
+ * undefined. Upload failures degrade gracefully to "record without photo".
+ */
+async function resolvePhotoPath(client: any, userId: string, input: AttendanceInput): Promise<string | undefined> {
+  const dataUrl = input.photoDataUrl?.trim()
+  if (dataUrl && isAttendancePhotoStorageConfigured()) {
+    const res = await uploadAttendancePhoto(client, userId, dataUrl)
+    if (res.ok && res.path) return res.path
+  }
+  return input.photoPath?.trim() || undefined
+}
+
+/** Attach RLS-scoped signed URLs (photoUrl) for rows that carry a photo_path. */
+async function attachSignedUrls(client: any, rows: any[], mapped: AttendanceWithStaff[]): Promise<AttendanceWithStaff[]> {
+  const paths = rows.map((r) => (r?.photo_path ? String(r.photo_path) : '')).filter(Boolean)
+  if (paths.length === 0) return mapped
+  const urls = await createSignedPhotoUrls(client, paths)
+  mapped.forEach((rec, i) => {
+    const path = rows[i]?.photo_path ? String(rows[i].photo_path) : ''
+    if (path) {
+      const url = urls.get(path)
+      if (url) rec.photoUrl = url
+    }
+  })
+  return mapped
+}
+
 export const supabaseAttendanceAdapter = {
   async listAttendanceRecords(): Promise<AdapterResult<AttendanceWithStaff[]>> {
     const client = await getClient()
@@ -90,7 +120,8 @@ export const supabaseAttendanceAdapter = {
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await client.from('attendance_records').select(SELECT_COLS).order('timestamp', { ascending: false })
     if (error) return err('error', '출퇴근 기록을 불러오지 못했습니다.')
-    return { ok: true, data: (data ?? []).map(mapRow) }
+    const rows = data ?? []
+    return { ok: true, data: await attachSignedUrls(client, rows, rows.map(mapRow)) }
   },
 
   async listTodayAttendanceRecords(): Promise<AdapterResult<AttendanceWithStaff[]>> {
@@ -104,7 +135,8 @@ export const supabaseAttendanceAdapter = {
       .lt('timestamp', end)
       .order('timestamp', { ascending: false })
     if (error) return err('error', '출퇴근 기록을 불러오지 못했습니다.')
-    return { ok: true, data: (data ?? []).map(mapRow) }
+    const rows = data ?? []
+    return { ok: true, data: await attachSignedUrls(client, rows, rows.map(mapRow)) }
   },
 
   async listMyTodayAttendance(): Promise<AdapterResult<AttendanceWithStaff[]>> {
@@ -121,7 +153,8 @@ export const supabaseAttendanceAdapter = {
       .lt('timestamp', end)
       .order('timestamp', { ascending: false })
     if (error) return err('error', '출퇴근 기록을 불러오지 못했습니다.')
-    return { ok: true, data: (data ?? []).map(mapRow) }
+    const rows = data ?? []
+    return { ok: true, data: await attachSignedUrls(client, rows, rows.map(mapRow)) }
   },
 
   async createCheckIn(input: AttendanceInput): Promise<AdapterResult<AttendanceWithStaff>> {
@@ -129,9 +162,11 @@ export const supabaseAttendanceAdapter = {
     if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
-    const { data, error } = await client.from('attendance_records').insert(buildInsert({ ...input, type: 'check-in' }, userId)).select(SELECT_COLS).single()
+    const photoPath = await resolvePhotoPath(client, userId, input)
+    const { data, error } = await client.from('attendance_records').insert(buildInsert({ ...input, type: 'check-in', photoPath }, userId)).select(SELECT_COLS).single()
     if (error) return err('error', '출근 기록 저장에 실패했습니다.')
-    return { ok: true, data: mapRow(data) }
+    const [rec] = await attachSignedUrls(client, [data], [mapRow(data)])
+    return { ok: true, data: rec }
   },
 
   async createCheckOut(input: AttendanceInput): Promise<AdapterResult<AttendanceWithStaff>> {
@@ -139,8 +174,10 @@ export const supabaseAttendanceAdapter = {
     if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
-    const { data, error } = await client.from('attendance_records').insert(buildInsert({ ...input, type: 'check-out' }, userId)).select(SELECT_COLS).single()
+    const photoPath = await resolvePhotoPath(client, userId, input)
+    const { data, error } = await client.from('attendance_records').insert(buildInsert({ ...input, type: 'check-out', photoPath }, userId)).select(SELECT_COLS).single()
     if (error) return err('error', '퇴근 기록 저장에 실패했습니다.')
-    return { ok: true, data: mapRow(data) }
+    const [rec] = await attachSignedUrls(client, [data], [mapRow(data)])
+    return { ok: true, data: rec }
   }
 }
