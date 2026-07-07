@@ -76,8 +76,10 @@ function extractHeadline(answer: string): string | undefined {
  */
 export async function estimateClaim(input: ClaimInput): Promise<ClaimEstimate> {
   const prompt = buildClaimPrompt(input)
-  // 'data-question' mode routes to the analytical brain persona on the proxy.
-  const res = await jarvisGptBrainService.ask(prompt, 'data-question')
+  // 'insurance-claim' is an EXPERT mode on the proxy — it bypasses the snapshot-only
+  // base instruction so the model answers from general insurance knowledge (a normal
+  // company-data mode returns "데이터가 없습니다" for a claim question).
+  const res = await jarvisGptBrainService.ask(prompt, 'insurance-claim')
   return {
     ok: res.success,
     disabled: Boolean(res.disabled),

@@ -19,6 +19,7 @@ export type GptMode =
   | 'data-question'
   | 'implementation-planning'
   | 'general-assistant'
+  | 'insurance-claim'
   | 'unknown-fallback'
 
 export type GptSource = 'gpt' | 'openai' | 'fallback' | 'disabled' | 'error' | 'backend'

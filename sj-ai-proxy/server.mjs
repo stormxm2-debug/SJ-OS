@@ -102,8 +102,28 @@ const MODE_SYSTEM_PROMPTS = {
   'unknown-fallback': '명령이 모호하면 무엇을 도와줄 수 있는지 간단히 안내하세요.'
 }
 
-/** Compose the full system prompt for a mode. */
+/**
+ * Expert-domain instructions for modes that must reason from general professional
+ * knowledge, NOT the SJ OS snapshot. Kept separate so the snapshot-only
+ * BASE_INSTRUCTION never forces "데이터가 없습니다" on a real domain question.
+ */
+const EXPERT_MODE_INSTRUCTIONS = {
+  'insurance-claim':
+    '당신은 대한민국 손해보험·생명보험 보험금 청구 및 손해사정 전문가입니다. ' +
+    '사용자가 제공한 보험 가입/증권 정보와 사고/청구 내용을 바탕으로, 일반적인 약관 지식과 실무 관행에 근거해 예상 지급 보험금을 분석하세요. ' +
+    '반드시 한국어로 답하고, 사용자가 요청한 출력 형식을 지키세요. ' +
+    '불확실한 값은 "추정"임을 명시하고, 실제 지급은 약관 심사·손해사정 결과에 따라 달라질 수 있음을 마지막에 안내하세요. ' +
+    '확실하지 않은 구체적 약관 조항 번호나 판례 번호를 사실인 것처럼 지어내지 말고, 일반적 담보 유형·관행 수준에서 설명하세요.'
+}
+
+/**
+ * Compose the full system prompt for a mode. Expert modes (e.g. insurance-claim)
+ * bypass the snapshot-only BASE_INSTRUCTION so they can use general professional
+ * knowledge; all other modes stay grounded in the SJ OS snapshot.
+ */
 function systemPromptFor(mode) {
+  const expert = EXPERT_MODE_INSTRUCTIONS[mode]
+  if (expert) return expert
   const modePrompt = MODE_SYSTEM_PROMPTS[mode] ?? MODE_SYSTEM_PROMPTS['general-assistant']
   return `${BASE_INSTRUCTION}\n\n[모드: ${mode ?? 'general-assistant'}] ${modePrompt}`
 }
