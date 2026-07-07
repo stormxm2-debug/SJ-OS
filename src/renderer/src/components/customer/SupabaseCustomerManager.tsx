@@ -89,7 +89,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-indigo-500" />
-          <h2 className="text-base font-bold text-slate-800">고객관리</h2>
+          <h2 className="text-base font-bold text-slate-100">고객관리</h2>
           <ModeBadge mode={mode} />
         </div>
         <div className="flex items-center gap-2">
@@ -108,9 +108,9 @@ export default function SupabaseCustomerManager(): JSX.Element {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5">
           <Search className="h-3.5 w-3.5 text-slate-400" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이름/연락처 검색" className="w-40 text-[11px] text-slate-700 focus:outline-none" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이름/연락처 검색" className="w-40 text-[11px] text-slate-300 focus:outline-none" />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as CustomerStatus | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as CustomerStatus | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300 focus:outline-none">
           <option value="all">전체 상태</option>
           {CUSTOMER_STATUSES.map((s) => <option key={s} value={s}>{CUSTOMER_STATUS_LABEL[s]}</option>)}
         </select>
@@ -119,7 +119,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
       {/* Create form */}
       {showForm ? (
         <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
-          <div className="mb-2 text-[11px] font-semibold text-slate-700">새 고객 등록</div>
+          <div className="mb-2 text-[11px] font-semibold text-slate-300">새 고객 등록</div>
           <CustomerFields input={form} onChange={setForm} />
           {formErrors.length > 0 ? <ul className="mt-2 space-y-0.5 text-[10px] text-rose-600">{formErrors.map((e) => <li key={e}>• {e}</li>)}</ul> : null}
           <div className="mt-2 flex gap-2">
@@ -152,7 +152,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
             <tbody>
               {visible.map((c) => (
                 <tr key={c.id} onClick={() => { setSelected({ ...c }); setShowForm(false) }} className="cursor-pointer border-b border-slate-50 hover:bg-slate-50">
-                  <td className="py-1.5 pr-2 font-medium text-slate-700">{c.name}</td>
+                  <td className="py-1.5 pr-2 font-medium text-slate-300">{c.name}</td>
                   <td className="py-1.5 pr-2 text-slate-500">{c.phone ?? '-'}</td>
                   <td className="py-1.5 pr-2"><StatusChip status={c.status} /></td>
                   <td className="py-1.5 pr-2 text-slate-500">{c.tags.slice(0, 3).join(', ')}</td>
@@ -168,7 +168,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
       {selected ? (
         <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-[11px] font-semibold text-slate-700">고객 상세 / 수정</div>
+            <div className="text-[11px] font-semibold text-slate-300">고객 상세 / 수정</div>
             <button type="button" onClick={() => { setSelected(null); setFormErrors([]) }} className="text-slate-400 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>
           </div>
           <CustomerFields input={{ name: selected.name, phone: selected.phone ?? '', birthDate: selected.birthDate ?? '', address: selected.address ?? '', source: selected.source ?? '', status: selected.status, tags: selected.tags, memo: selected.memo ?? '' }} onChange={(v) => setSelected({ ...selected, name: v.name, phone: v.phone, birthDate: v.birthDate, address: v.address, source: v.source, status: v.status, tags: v.tags, memo: v.memo })} />
@@ -192,13 +192,13 @@ function CustomerFields({ input, onChange }: { input: CustomerInput; onChange: (
       <Input label="유입경로" value={input.source ?? ''} onChange={(v) => set({ source: v })} />
       <Input label="주소" value={input.address ?? ''} onChange={(v) => set({ address: v })} />
       <label className="text-[10px] text-slate-500">상태
-        <select value={input.status} onChange={(e) => set({ status: e.target.value as CustomerStatus })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none">
+        <select value={input.status} onChange={(e) => set({ status: e.target.value as CustomerStatus })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300 focus:outline-none">
           {CUSTOMER_STATUSES.map((s) => <option key={s} value={s}>{CUSTOMER_STATUS_LABEL[s]}</option>)}
         </select>
       </label>
       <Input label="태그 (쉼표로 구분)" value={input.tags.join(', ')} onChange={(v) => set({ tags: v.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 10) })} />
       <label className="text-[10px] text-slate-500 sm:col-span-2">메모
-        <textarea value={input.memo ?? ''} onChange={(e) => set({ memo: e.target.value })} className="mt-0.5 h-14 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none" />
+        <textarea value={input.memo ?? ''} onChange={(e) => set({ memo: e.target.value })} className="mt-0.5 h-14 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300 focus:outline-none" />
       </label>
     </div>
   )
@@ -207,7 +207,7 @@ function CustomerFields({ input, onChange }: { input: CustomerInput; onChange: (
 function Input({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): JSX.Element {
   return (
     <label className="text-[10px] text-slate-500">{label}
-      <input value={value} onChange={(e) => onChange(e.target.value)} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none" />
+      <input value={value} onChange={(e) => onChange(e.target.value)} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300 focus:outline-none" />
     </label>
   )
 }

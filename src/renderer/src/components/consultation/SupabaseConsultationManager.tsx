@@ -111,7 +111,7 @@ export default function SupabaseConsultationManager(): JSX.Element {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <ClipboardList className="h-5 w-5 text-indigo-500" />
-          <h2 className="text-base font-bold text-slate-800">상담기록</h2>
+          <h2 className="text-base font-bold text-slate-100">상담기록</h2>
           <ModeBadge mode={mode} />
         </div>
         <div className="flex items-center gap-2">
@@ -136,13 +136,13 @@ export default function SupabaseConsultationManager(): JSX.Element {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5">
           <Search className="h-3.5 w-3.5 text-slate-400" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="고객명 검색" className="w-32 text-[11px] text-slate-700 focus:outline-none" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="고객명 검색" className="w-32 text-[11px] text-slate-300 focus:outline-none" />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ConsultationStatus | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ConsultationStatus | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300">
           <option value="all">전체 상태</option>
           {CONSULTATION_STATUSES.map((s) => <option key={s} value={s}>{CONSULTATION_STATUS_LABEL[s]}</option>)}
         </select>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ConsultationType | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700">
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ConsultationType | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300">
           <option value="all">전체 유형</option>
           {CONSULTATION_TYPES.map((t) => <option key={t} value={t}>{CONSULTATION_TYPE_LABEL[t]}</option>)}
         </select>
@@ -153,7 +153,7 @@ export default function SupabaseConsultationManager(): JSX.Element {
       {/* Create form */}
       {showForm && !noCustomers ? (
         <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
-          <div className="mb-2 text-[11px] font-semibold text-slate-700">새 상담기록</div>
+          <div className="mb-2 text-[11px] font-semibold text-slate-300">새 상담기록</div>
           <Fields input={form} onChange={setForm} customers={customers} />
           {formErrors.length > 0 ? <ul className="mt-2 space-y-0.5 text-[10px] text-rose-600">{formErrors.map((e) => <li key={e}>• {e}</li>)}</ul> : null}
           <div className="mt-2 flex gap-2">
@@ -182,7 +182,7 @@ export default function SupabaseConsultationManager(): JSX.Element {
             <tbody>
               {visible.map((c) => (
                 <tr key={c.id} onClick={() => { setSelected({ ...c }); setShowForm(false) }} className="cursor-pointer border-b border-slate-50 hover:bg-slate-50">
-                  <td className="py-1.5 pr-2 font-medium text-slate-700">{c.customerName ?? custName(c.customerId)}</td>
+                  <td className="py-1.5 pr-2 font-medium text-slate-300">{c.customerName ?? custName(c.customerId)}</td>
                   <td className="py-1.5 pr-2 text-slate-500">{CONSULTATION_TYPE_LABEL[c.consultationType]}</td>
                   <td className="py-1.5 pr-2"><StatusChip status={c.status} /></td>
                   <td className="py-1.5 pr-2 text-slate-500">{c.scheduledAt ? new Date(c.scheduledAt).toLocaleDateString() : '-'}</td>
@@ -199,7 +199,7 @@ export default function SupabaseConsultationManager(): JSX.Element {
       {selected ? (
         <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-[11px] font-semibold text-slate-700">상담기록 상세 / 수정 · {selected.customerName ?? custName(selected.customerId)}</div>
+            <div className="text-[11px] font-semibold text-slate-300">상담기록 상세 / 수정 · {selected.customerName ?? custName(selected.customerId)}</div>
             <button type="button" onClick={() => { setSelected(null); setFormErrors([]) }} className="text-slate-400 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>
           </div>
           <Fields input={{ customerId: selected.customerId, consultationType: selected.consultationType, status: selected.status, summary: selected.summary, nextAction: selected.nextAction ?? '', scheduledAt: selected.scheduledAt ?? '', completedAt: selected.completedAt ?? '' }} onChange={(v) => setSelected({ ...selected, consultationType: v.consultationType, status: v.status, summary: v.summary ?? '', nextAction: v.nextAction, scheduledAt: v.scheduledAt, completedAt: v.completedAt })} customers={customers} lockCustomer />
@@ -221,29 +221,29 @@ function Fields({ input, onChange, customers, lockCustomer }: { input: Consultat
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <label className="text-[10px] text-slate-500">고객 *
-        <select value={input.customerId} disabled={lockCustomer} onChange={(e) => set({ customerId: e.target.value })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 disabled:bg-slate-100">
+        <select value={input.customerId} disabled={lockCustomer} onChange={(e) => set({ customerId: e.target.value })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300 disabled:bg-slate-100">
           <option value="">고객 선택</option>
           {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </label>
       <label className="text-[10px] text-slate-500">상담 유형
-        <select value={input.consultationType} onChange={(e) => set({ consultationType: e.target.value as ConsultationType })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700">
+        <select value={input.consultationType} onChange={(e) => set({ consultationType: e.target.value as ConsultationType })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300">
           {CONSULTATION_TYPES.map((t) => <option key={t} value={t}>{CONSULTATION_TYPE_LABEL[t]}</option>)}
         </select>
       </label>
       <label className="text-[10px] text-slate-500">상태
-        <select value={input.status} onChange={(e) => set({ status: e.target.value as ConsultationStatus })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700">
+        <select value={input.status} onChange={(e) => set({ status: e.target.value as ConsultationStatus })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300">
           {CONSULTATION_STATUSES.map((s) => <option key={s} value={s}>{CONSULTATION_STATUS_LABEL[s]}</option>)}
         </select>
       </label>
       <label className="text-[10px] text-slate-500">상담 예정일
-        <input type="datetime-local" value={toLocalInput(input.scheduledAt)} onChange={(e) => set({ scheduledAt: fromLocalInput(e.target.value) })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700" />
+        <input type="datetime-local" value={toLocalInput(input.scheduledAt)} onChange={(e) => set({ scheduledAt: fromLocalInput(e.target.value) })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300" />
       </label>
       <label className="text-[10px] text-slate-500 sm:col-span-2">상담 요약
-        <textarea value={input.summary ?? ''} onChange={(e) => set({ summary: e.target.value })} className="mt-0.5 h-14 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700" />
+        <textarea value={input.summary ?? ''} onChange={(e) => set({ summary: e.target.value })} className="mt-0.5 h-14 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300" />
       </label>
       <label className="text-[10px] text-slate-500 sm:col-span-2">다음 액션
-        <input value={input.nextAction ?? ''} onChange={(e) => set({ nextAction: e.target.value })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700" />
+        <input value={input.nextAction ?? ''} onChange={(e) => set({ nextAction: e.target.value })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300" />
       </label>
     </div>
   )

@@ -115,7 +115,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <CalendarDays className="h-5 w-5 text-indigo-500" />
-          <h2 className="text-base font-bold text-slate-800">일정관리</h2>
+          <h2 className="text-base font-bold text-slate-100">일정관리</h2>
           <ModeBadge mode={mode} />
         </div>
         <div className="flex items-center gap-2">
@@ -133,13 +133,13 @@ export default function SupabaseScheduleManager(): JSX.Element {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5">
           <Search className="h-3.5 w-3.5 text-slate-400" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="일정/고객 검색" className="w-32 text-[11px] text-slate-700 focus:outline-none" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="일정/고객 검색" className="w-32 text-[11px] text-slate-300 focus:outline-none" />
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ScheduleStatus | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ScheduleStatus | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300">
           <option value="all">전체 상태</option>
           {SCHEDULE_STATUSES.map((s) => <option key={s} value={s}>{SCHEDULE_STATUS_LABEL[s]}</option>)}
         </select>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ScheduleType | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700">
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as ScheduleType | 'all')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300">
           <option value="all">전체 유형</option>
           {SCHEDULE_TYPES.map((t) => <option key={t} value={t}>{SCHEDULE_TYPE_LABEL[t]}</option>)}
         </select>
@@ -150,7 +150,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
       {/* Create form */}
       {showForm ? (
         <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
-          <div className="mb-2 text-[11px] font-semibold text-slate-700">새 일정</div>
+          <div className="mb-2 text-[11px] font-semibold text-slate-300">새 일정</div>
           <Fields input={form} onChange={setForm} customers={customers} />
           {needsCustomer && noCustomers ? <p className="mt-1 text-[10px] text-amber-600">고객 연결이 필요한 일정은 고객관리에서 고객을 먼저 등록해주세요. <button type="button" onClick={() => navigate({ name: 'customer' })} className="underline">고객관리로 이동</button></p> : null}
           {formErrors.length > 0 ? <ul className="mt-2 space-y-0.5 text-[10px] text-rose-600">{formErrors.map((e) => <li key={e}>• {e}</li>)}</ul> : null}
@@ -180,7 +180,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
             <tbody>
               {visible.map((ev) => (
                 <tr key={ev.id} onClick={() => { setSelected({ ...ev }); setShowForm(false) }} className="cursor-pointer border-b border-slate-50 hover:bg-slate-50">
-                  <td className="py-1.5 pr-2 font-medium text-slate-700">{ev.title}</td>
+                  <td className="py-1.5 pr-2 font-medium text-slate-300">{ev.title}</td>
                   <td className="py-1.5 pr-2 text-slate-500">{SCHEDULE_TYPE_LABEL[ev.type]}</td>
                   <td className="py-1.5 pr-2"><StatusChip status={ev.status} /></td>
                   <td className="py-1.5 pr-2 text-slate-500">{ev.customerName ?? custName(ev.customerId)}</td>
@@ -197,7 +197,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
       {selected ? (
         <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-[11px] font-semibold text-slate-700">일정 상세 / 수정</div>
+            <div className="text-[11px] font-semibold text-slate-300">일정 상세 / 수정</div>
             <button type="button" onClick={() => { setSelected(null); setFormErrors([]) }} className="text-slate-400 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>
           </div>
           <Fields input={{ title: selected.title, type: selected.type, status: selected.status, customerId: selected.customerId ?? '', startsAt: selected.startsAt, endsAt: selected.endsAt ?? '', memo: selected.memo ?? '' }} onChange={(v) => setSelected({ ...selected, title: v.title, type: v.type, status: v.status, customerId: v.customerId, startsAt: v.startsAt, endsAt: v.endsAt, memo: v.memo })} customers={customers} />
@@ -233,32 +233,32 @@ function Fields({ input, onChange, customers }: { input: ScheduleInput; onChange
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <label className="text-[10px] text-slate-500 sm:col-span-2">일정명 *
-        <input value={input.title} onChange={(e) => set({ title: e.target.value })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700" />
+        <input value={input.title} onChange={(e) => set({ title: e.target.value })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300" />
       </label>
       <label className="text-[10px] text-slate-500">일정 유형
-        <select value={input.type} onChange={(e) => set({ type: e.target.value as ScheduleType })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700">
+        <select value={input.type} onChange={(e) => set({ type: e.target.value as ScheduleType })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300">
           {SCHEDULE_TYPES.map((t) => <option key={t} value={t}>{SCHEDULE_TYPE_LABEL[t]}</option>)}
         </select>
       </label>
       <label className="text-[10px] text-slate-500">고객 (선택)
-        <select value={input.customerId ?? ''} onChange={(e) => set({ customerId: e.target.value })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700">
+        <select value={input.customerId ?? ''} onChange={(e) => set({ customerId: e.target.value })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300">
           <option value="">없음</option>
           {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       </label>
       <label className="text-[10px] text-slate-500">시작시간 *
-        <input type="datetime-local" value={toLocalInput(input.startsAt)} onChange={(e) => set({ startsAt: fromLocalInput(e.target.value) })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700" />
+        <input type="datetime-local" value={toLocalInput(input.startsAt)} onChange={(e) => set({ startsAt: fromLocalInput(e.target.value) })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300" />
       </label>
       <label className="text-[10px] text-slate-500">종료시간
-        <input type="datetime-local" value={toLocalInput(input.endsAt)} onChange={(e) => set({ endsAt: fromLocalInput(e.target.value) })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700" />
+        <input type="datetime-local" value={toLocalInput(input.endsAt)} onChange={(e) => set({ endsAt: fromLocalInput(e.target.value) })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300" />
       </label>
       <label className="text-[10px] text-slate-500">상태
-        <select value={input.status} onChange={(e) => set({ status: e.target.value as ScheduleStatus })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700">
+        <select value={input.status} onChange={(e) => set({ status: e.target.value as ScheduleStatus })} className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300">
           {SCHEDULE_STATUSES.map((s) => <option key={s} value={s}>{SCHEDULE_STATUS_LABEL[s]}</option>)}
         </select>
       </label>
       <label className="text-[10px] text-slate-500 sm:col-span-2">메모
-        <textarea value={input.memo ?? ''} onChange={(e) => set({ memo: e.target.value })} className="mt-0.5 h-14 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700" />
+        <textarea value={input.memo ?? ''} onChange={(e) => set({ memo: e.target.value })} className="mt-0.5 h-14 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-300" />
       </label>
     </div>
   )

@@ -72,7 +72,7 @@ export default function LoginScreen(): JSX.Element {
             <Bot className="h-6 w-6 text-white" />
           </div>
           <div>
-            <div className="text-lg font-bold text-slate-800">SJ OS 로그인</div>
+            <div className="text-lg font-bold text-slate-100">SJ OS 로그인</div>
             <div className="text-xs text-slate-500">보험 업무 플랫폼</div>
           </div>
         </div>
@@ -82,12 +82,12 @@ export default function LoginScreen(): JSX.Element {
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3">
             <Smartphone className="h-4 w-4 text-slate-400" />
             <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="휴대폰 번호" autoComplete="username"
-              className="w-full py-2.5 text-sm text-slate-800 focus:outline-none" />
+              className="w-full py-2.5 text-sm text-slate-100 focus:outline-none" />
           </div>
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3">
             <KeyRound className="h-4 w-4 text-slate-400" />
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" autoComplete="current-password"
-              className="w-full py-2.5 text-sm text-slate-800 focus:outline-none" />
+              className="w-full py-2.5 text-sm text-slate-100 focus:outline-none" />
           </div>
           <button type="submit" disabled={busy}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:shadow-md disabled:opacity-60">
@@ -100,7 +100,7 @@ export default function LoginScreen(): JSX.Element {
         {/* First-password setup (only when phone is registered & not set) */}
         {setupPhone ? (
           <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
-            <div className="text-[12px] font-semibold text-slate-700">최초 비밀번호 설정이 필요합니다.</div>
+            <div className="text-[12px] font-semibold text-slate-300">최초 비밀번호 설정이 필요합니다.</div>
             <input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} placeholder="새 비밀번호 (8자 이상, 영문+숫자)" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
             <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="새 비밀번호 확인" className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
             <button type="button" onClick={() => void onSetup()} disabled={busy} className="mt-2 w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white disabled:opacity-60">비밀번호 설정</button>

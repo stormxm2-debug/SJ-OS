@@ -30,7 +30,7 @@ export default function RecentAnnouncementsWidget(): JSX.Element {
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+      <div className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-slate-300">
         <Megaphone className="h-4 w-4 text-indigo-500" /> 최근 공지
         {unread > 0 ? <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">{unread}</span> : null}
       </div>
@@ -42,7 +42,7 @@ export default function RecentAnnouncementsWidget(): JSX.Element {
             <button key={a.id} type="button" onClick={() => navigate({ name: 'notice' })} className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left transition active:bg-slate-50">
               <span className="flex min-w-0 items-center gap-1.5 text-xs">
                 {a.priority === 'urgent' ? <AlertTriangle className="h-3 w-3 shrink-0 text-rose-500" /> : null}
-                <span className={['truncate', a.read ? 'font-medium text-slate-600' : 'font-bold text-slate-800'].join(' ')}>{a.pinned ? '📌 ' : ''}{a.title}</span>
+                <span className={['truncate', a.read ? 'font-medium text-slate-600' : 'font-bold text-slate-100'].join(' ')}>{a.pinned ? '📌 ' : ''}{a.title}</span>
               </span>
               {!a.read ? <span className="ml-2 h-2 w-2 shrink-0 rounded-full bg-rose-500" /> : null}
             </button>

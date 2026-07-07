@@ -15,11 +15,11 @@ export default function MobilePerformance(): JSX.Element {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <BarChart3 className="h-5 w-5 text-indigo-500" />
-        <h1 className="text-lg font-bold text-slate-800">실적관리</h1>
+        <h1 className="text-lg font-bold text-slate-100">실적관리</h1>
         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-600">로컬 MVP 데이터</span>
       </div>
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="text-sm font-semibold text-slate-700">{scope}</div>
+        <div className="text-sm font-semibold text-slate-300">{scope}</div>
         <div className="mt-2 grid grid-cols-2 gap-2 text-center">
           <Stat label="건수" value={`${p.monthlyCount}건`} />
           <Stat label="달성률" value={`${p.achievementRate}%`} tone />
@@ -35,7 +35,7 @@ export default function MobilePerformance(): JSX.Element {
 function Stat({ label, value, tone }: { label: string; value: string; tone?: boolean }): JSX.Element {
   return (
     <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-      <div className={['text-base font-bold', tone ? 'text-emerald-600' : 'text-slate-700'].join(' ')}>{value}</div>
+      <div className={['text-base font-bold', tone ? 'text-emerald-600' : 'text-slate-300'].join(' ')}>{value}</div>
       <div className="text-[10px] text-slate-500">{label}</div>
     </div>
   )

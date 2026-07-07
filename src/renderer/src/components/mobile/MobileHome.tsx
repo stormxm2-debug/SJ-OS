@@ -30,7 +30,7 @@ export default function MobileHome(): JSX.Element {
       {/* Greeting */}
       <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-slate-800">{session.name || '직원'}님</h1>
+          <h1 className="text-lg font-bold text-slate-100">{session.name || '직원'}님</h1>
           <span className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-600">{ROLE_LABEL[role]}</span>
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
@@ -42,7 +42,7 @@ export default function MobileHome(): JSX.Element {
       {/* Quick actions */}
       <div className="grid grid-cols-4 gap-2">
         {quick.map((q) => (
-          <button key={q.label} type="button" onClick={q.onClick} className="flex flex-col items-center gap-1 rounded-2xl border border-slate-200 bg-white py-3 text-slate-700 transition active:bg-slate-50">
+          <button key={q.label} type="button" onClick={q.onClick} className="flex flex-col items-center gap-1 rounded-2xl border border-slate-200 bg-white py-3 text-slate-300 transition active:bg-slate-50">
             <span className="text-indigo-500">{q.icon}</span>
             <span className="text-[11px] font-medium">{q.label}</span>
           </button>
@@ -87,7 +87,7 @@ export default function MobileHome(): JSX.Element {
 }
 
 function Card({ icon, label, value, tone }: { icon: JSX.Element; label: string; value: string; tone?: 'emerald' | 'indigo' | 'amber' }): JSX.Element {
-  const t = tone === 'emerald' ? 'text-emerald-600' : tone === 'indigo' ? 'text-indigo-600' : tone === 'amber' ? 'text-amber-600' : 'text-slate-700'
+  const t = tone === 'emerald' ? 'text-emerald-600' : tone === 'indigo' ? 'text-indigo-600' : tone === 'amber' ? 'text-amber-600' : 'text-slate-300'
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-3">
       <div className={['mb-1 flex h-7 w-7 items-center justify-center rounded-lg bg-slate-50 [&>svg]:h-4 [&>svg]:w-4', t].join(' ')}>{icon}</div>

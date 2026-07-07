@@ -93,7 +93,7 @@ export default function StaffTeamManagementPage(): JSX.Element {
     <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Users2 className="h-6 w-6 text-indigo-500" />
-        <h1 className="text-xl font-bold text-slate-800">직원 / 팀 관리</h1>
+        <h1 className="text-xl font-bold text-slate-100">직원 / 팀 관리</h1>
         <ModeBadge mode={mode} />
         <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600">관리자 전용</span>
       </div>
@@ -113,7 +113,7 @@ export default function StaffTeamManagementPage(): JSX.Element {
       {/* Team management */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-700">팀 관리</div>
+          <div className="text-sm font-semibold text-slate-300">팀 관리</div>
           <button type="button" onClick={() => void load()} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50"><RefreshCw className="h-3 w-3" /> 새로고침</button>
         </div>
         <div className="mb-2 flex flex-wrap gap-1.5">
@@ -124,7 +124,7 @@ export default function StaffTeamManagementPage(): JSX.Element {
           <div className="space-y-1">
             {teams.map((t) => (
               <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-xs">
-                <span className="font-medium text-slate-700">{t.name} <span className="text-slate-400">· 팀장 {t.leaderName ?? (staff.find((s) => s.id === t.leaderId || s.profileId === t.leaderId)?.name ?? '미지정')} · 인원 {memberCount(t.id)} · {t.status === 'active' ? '활성' : '비활성'}</span></span>
+                <span className="font-medium text-slate-300">{t.name} <span className="text-slate-400">· 팀장 {t.leaderName ?? (staff.find((s) => s.id === t.leaderId || s.profileId === t.leaderId)?.name ?? '미지정')} · 인원 {memberCount(t.id)} · {t.status === 'active' ? '활성' : '비활성'}</span></span>
                 <div className="flex flex-wrap gap-1">
                   <MiniBtn label="이름 변경" onClick={() => { const n = window.prompt('새 팀명', t.name); if (n) void run(() => renameTeam(t.id, n)) }} />
                   {t.status === 'active' ? <MiniBtn label="비활성화" tone="rose" onClick={() => void run(() => deactivateTeam(t.id))} /> : null}
@@ -148,7 +148,7 @@ export default function StaffTeamManagementPage(): JSX.Element {
 
       {/* Staff management */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 text-sm font-semibold text-slate-700">직원 관리 ({filtered.length})</div>
+        <div className="mb-2 text-sm font-semibold text-slate-300">직원 관리 ({filtered.length})</div>
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-4 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> 불러오는 중…</div>
         ) : filtered.length === 0 ? (
@@ -159,7 +159,7 @@ export default function StaffTeamManagementPage(): JSX.Element {
               <div key={s.id} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2 text-[11px]">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <span className="font-semibold text-slate-700">{s.name}</span>
+                    <span className="font-semibold text-slate-300">{s.name}</span>
                     <span className="text-slate-500"> · <span className="font-mono">{s.phoneMasked}</span> · {ROLE_LABEL[s.role]} · {teamName(s.teamId)} · {STAFF_LOGIN_STATUS_LABEL[s.status]} · 비번 {PASSWORD_STATUS_LABEL[s.passwordStatus]} · {s.profileLinked ? '프로필 연결됨' : '프로필 미연결'}</span>
                   </div>
                 </div>
@@ -179,12 +179,12 @@ export default function StaffTeamManagementPage(): JSX.Element {
 
       {/* Team leader assignment */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-700"><Crown className="h-4 w-4 text-amber-500" /> 팀장 지정</div>
+        <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-300"><Crown className="h-4 w-4 text-amber-500" /> 팀장 지정</div>
         <p className="mb-2 text-[11px] text-amber-600">팀장 지정 시 해당 직원의 역할이 팀장으로 변경될 수 있습니다.</p>
         <div className="flex flex-wrap gap-2">
           {teams.filter((t) => t.status === 'active').map((t) => (
             <div key={t.id} className="rounded-lg border border-slate-200 p-2">
-              <div className="mb-1 text-[11px] font-semibold text-slate-700">{t.name}</div>
+              <div className="mb-1 text-[11px] font-semibold text-slate-300">{t.name}</div>
               <Sel value="" onChange={(v) => { const s = staff.find((x) => x.id === v); if (s) setLeaderConfirm({ team: t, staff: s }) }} opts={[['', '팀장 선택'], ...staff.filter((s) => s.role !== 'owner' && s.role !== 'admin').map((s) => [s.id, s.name] as [string, string])]} small />
             </div>
           ))}
@@ -204,11 +204,11 @@ export default function StaffTeamManagementPage(): JSX.Element {
 }
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: 'emerald' | 'indigo' | 'amber' | 'rose' }): JSX.Element {
-  const t = tone === 'emerald' ? 'text-emerald-600' : tone === 'indigo' ? 'text-indigo-600' : tone === 'amber' ? 'text-amber-600' : tone === 'rose' ? 'text-rose-600' : 'text-slate-700'
+  const t = tone === 'emerald' ? 'text-emerald-600' : tone === 'indigo' ? 'text-indigo-600' : tone === 'amber' ? 'text-amber-600' : tone === 'rose' ? 'text-rose-600' : 'text-slate-300'
   return <div className="rounded-xl border border-slate-200 bg-white p-3 text-center"><div className={['text-lg font-bold', t].join(' ')}>{value}</div><div className="text-[10px] text-slate-500">{label}</div></div>
 }
 function Sel({ value, onChange, opts, small }: { value: string; onChange: (v: string) => void; opts: [string, string][]; small?: boolean }): JSX.Element {
-  return <select value={value} onChange={(e) => onChange(e.target.value)} className={['rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none', small ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1.5 text-[11px]'].join(' ')}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+  return <select value={value} onChange={(e) => onChange(e.target.value)} className={['rounded-lg border border-slate-200 bg-white text-slate-300 focus:outline-none', small ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1.5 text-[11px]'].join(' ')}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
 }
 function MiniBtn({ label, onClick, tone, icon }: { label: string; onClick: () => void; tone?: 'emerald' | 'rose'; icon?: JSX.Element }): JSX.Element {
   const t = tone === 'emerald' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : tone === 'rose' ? 'border-rose-300 bg-rose-50 text-rose-600' : 'border-slate-300 text-slate-600 hover:bg-slate-50'

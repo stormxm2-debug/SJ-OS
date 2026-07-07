@@ -80,7 +80,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <UserCog className="h-6 w-6 text-indigo-500" />
-        <h1 className="text-xl font-bold text-slate-800">직원 로그인 관리</h1>
+        <h1 className="text-xl font-bold text-slate-100">직원 로그인 관리</h1>
         <ModeBadge mode={mode} />
         <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600">관리자 전용</span>
       </div>
@@ -90,7 +90,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
 
       {/* Server function status */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 text-sm font-semibold text-slate-700">서버 함수 상태</div>
+        <div className="mb-2 text-sm font-semibold text-slate-300">서버 함수 상태</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <FnStatus name="claim-phone-account" ready={isClaimFunctionConfigured()} />
           <FnStatus name="request-phone-password-reset" ready={isClaimFunctionConfigured()} />
@@ -100,7 +100,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
 
       {/* Add staff */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 text-sm font-semibold text-slate-700">직원 번호 등록</div>
+        <div className="mb-2 text-sm font-semibold text-slate-300">직원 번호 등록</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="직원명" maxLength={50} className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
           <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="휴대폰 번호" className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
@@ -133,7 +133,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
       {/* Staff list */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-700">등록된 직원 ({accounts.length})</div>
+          <div className="text-sm font-semibold text-slate-300">등록된 직원 ({accounts.length})</div>
           <button type="button" onClick={() => void load()} className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"><RefreshCw className="h-3 w-3" /> 새로고침</button>
         </div>
         {loading ? (
@@ -156,7 +156,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
               <tbody>
                 {accounts.map((a) => (
                   <tr key={a.id} className="border-b border-slate-50">
-                    <td className="py-1.5 pr-2 font-medium text-slate-700">{a.name}</td>
+                    <td className="py-1.5 pr-2 font-medium text-slate-300">{a.name}</td>
                     <td className="py-1.5 pr-2 font-mono text-slate-500">{maskKoreanPhoneDisplay(a.normalizedPhone)}</td>
                     <td className="py-1.5 pr-2 text-slate-500">{ROLE_LABEL[a.role]}</td>
                     <td className="py-1.5 pr-2 text-slate-500">{a.teamName ?? '-'}</td>

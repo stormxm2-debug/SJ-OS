@@ -148,10 +148,10 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
       {/* Intro */}
       <Card title="보험금 청구비서" icon={<ShieldCheck className="h-4 w-4 text-indigo-500" />}>
         <p className="text-sm leading-6 text-slate-600">
-          고객을 선택해 <span className="font-semibold text-slate-800">증권 정보를 자동으로 불러오고</span>,{' '}
-          <span className="font-semibold text-slate-800">서류(PDF·사진)</span>를 올리면 Claude가 직접 읽어{' '}
+          고객을 선택해 <span className="font-semibold text-slate-100">증권 정보를 자동으로 불러오고</span>,{' '}
+          <span className="font-semibold text-slate-100">서류(PDF·사진)</span>를 올리면 Claude가 직접 읽어{' '}
           <span className="font-semibold text-indigo-600">예상 보험금</span>과{' '}
-          <span className="font-semibold text-slate-800">청구서 초안</span>까지 자동으로 만들어 드립니다.
+          <span className="font-semibold text-slate-100">청구서 초안</span>까지 자동으로 만들어 드립니다.
         </p>
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -167,14 +167,14 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
         <div className="space-y-4">
           {/* Customer auto-load */}
           <div>
-            <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+            <label className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-300">
               <UserRound className="h-3.5 w-3.5 text-indigo-500" />
               고객 선택 <span className="font-normal text-slate-400">(선택 시 증권 정보 자동 입력)</span>
             </label>
             <select
               value={selectedCustomerId}
               onChange={(e) => onSelectCustomer(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-100 focus:border-indigo-400 focus:outline-none"
             >
               <option value="">— 직접 입력 (고객 선택 안 함) —</option>
               {customers.map((c) => (
@@ -186,34 +186,34 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">보험사</label>
+            <label className="mb-1 block text-xs font-semibold text-slate-300">보험사</label>
             <input
               value={insurer}
               onChange={(e) => setInsurer(e.target.value)}
               placeholder="삼성화재"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">
+            <label className="mb-1 block text-xs font-semibold text-slate-300">
               증권 / 가입 담보 정보 <span className="font-normal text-slate-400">(고객 선택 시 자동 · 수정 가능)</span>
             </label>
             <textarea
               value={policyInfo}
               onChange={(e) => setPolicyInfo(e.target.value)}
               placeholder="예: 실손의료비, 상해입원일당 3만원, 골절진단금 30만원 …"
-              className="h-24 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
+              className="h-24 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-100 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-700">
+            <label className="mb-1 block text-xs font-semibold text-slate-300">
               사고 / 청구 내용 <span className="text-rose-500">*</span>
             </label>
             <textarea
               value={incident}
               onChange={(e) => setIncident(e.target.value)}
               placeholder="예: 계단에서 낙상하여 우측 발목 골절, 3일 입원 후 통원 5회. 진단명·경위·치료내역·입원일수를 적어주세요."
-              className="h-28 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-900 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
+              className="h-28 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-100 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none"
             />
           </div>
 
@@ -314,7 +314,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
                   <div className="text-base font-bold text-indigo-800">{result.headline}</div>
                 </div>
               ) : null}
-              <div className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-4 text-[13px] leading-6 text-slate-800">
+              <div className="whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-4 text-[13px] leading-6 text-slate-100">
                 {result.answer}
               </div>
               <p className="text-[11px] text-slate-400">
@@ -366,7 +366,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
           <p className="mb-2 text-[11px] text-slate-500">
             분석 결과로 자동 작성된 청구서 초안입니다. 복사해서 실제 청구에 사용하기 전 담보·금액·서류를 확인하세요.
           </p>
-          <pre className="whitespace-pre-wrap rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 font-sans text-[13px] leading-6 text-slate-800">
+          <pre className="whitespace-pre-wrap rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 font-sans text-[13px] leading-6 text-slate-100">
             {buildClaimDraft({
               insurer,
               claimant: selectedCustomer?.name ?? '',

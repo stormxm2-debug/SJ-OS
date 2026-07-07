@@ -53,9 +53,9 @@ export default function NoticePage(): JSX.Element {
             <PriorityBadge p={selected.priority} />
             <Badge tone="slate">{TARGET_LABEL[selected.targetType]}</Badge>
           </div>
-          <h1 className="text-lg font-bold text-slate-800">{selected.title}</h1>
+          <h1 className="text-lg font-bold text-slate-100">{selected.title}</h1>
           <div className="mt-1 text-[11px] text-slate-400">{selected.publishedAt ? new Date(selected.publishedAt).toLocaleString() : ''}</div>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{selected.body}</p>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">{selected.body}</p>
         </div>
       </div>
     )
@@ -65,7 +65,7 @@ export default function NoticePage(): JSX.Element {
     <div className="mx-auto max-w-2xl space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <Megaphone className="h-6 w-6 text-indigo-500" />
-        <h1 className="text-xl font-bold text-slate-800">공지사항</h1>
+        <h1 className="text-xl font-bold text-slate-100">공지사항</h1>
         {unread > 0 ? <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white">안읽음 {unread}</span> : null}
         <ModeBadge mode={mode} />
       </div>
@@ -85,7 +85,7 @@ export default function NoticePage(): JSX.Element {
                 <Badge tone="slate">{TARGET_LABEL[a.targetType]}</Badge>
                 {!a.read ? <span className="ml-auto h-2 w-2 rounded-full bg-rose-500" /> : null}
               </div>
-              <div className={['text-sm', a.read ? 'font-medium text-slate-700' : 'font-bold text-slate-800'].join(' ')}>{a.title}</div>
+              <div className={['text-sm', a.read ? 'font-medium text-slate-300' : 'font-bold text-slate-100'].join(' ')}>{a.title}</div>
               <div className="mt-0.5 line-clamp-2 text-[12px] text-slate-500">{a.body}</div>
               <div className="mt-1 text-[10px] text-slate-400">{a.publishedAt ? new Date(a.publishedAt).toLocaleDateString() : ''}</div>
             </button>

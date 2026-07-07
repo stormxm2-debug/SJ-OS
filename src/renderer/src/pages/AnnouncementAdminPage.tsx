@@ -79,7 +79,7 @@ export default function AnnouncementAdminPage(): JSX.Element {
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Megaphone className="h-6 w-6 text-indigo-500" />
-        <h1 className="text-xl font-bold text-slate-800">공지사항 관리</h1>
+        <h1 className="text-xl font-bold text-slate-100">공지사항 관리</h1>
         <span className={['inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', mode === 'supabase' ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-blue-200 bg-blue-50 text-blue-600'].join(' ')}>{mode === 'supabase' ? 'Supabase 공용 DB' : '로컬 MVP 데이터'}</span>
         <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600">관리자 전용</span>
       </div>
@@ -87,29 +87,29 @@ export default function AnnouncementAdminPage(): JSX.Element {
 
       {/* Compose */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 text-sm font-semibold text-slate-700">공지 작성</div>
+        <div className="mb-2 text-sm font-semibold text-slate-300">공지 작성</div>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="제목" className="mb-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
         <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="내용" className="mb-2 h-24 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
         <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px]">
           <label className="text-slate-500">중요도
-            <select value={priority} onChange={(e) => setPriority(e.target.value as AnnouncementPriority)} className="ml-1 rounded-lg border border-slate-200 px-2 py-1 text-slate-700">
+            <select value={priority} onChange={(e) => setPriority(e.target.value as AnnouncementPriority)} className="ml-1 rounded-lg border border-slate-200 px-2 py-1 text-slate-300">
               {(['normal', 'important', 'urgent'] as AnnouncementPriority[]).map((p) => <option key={p} value={p}>{PRIORITY_LABEL[p]}</option>)}
             </select>
           </label>
           <label className="text-slate-500">대상
-            <select value={targetType} onChange={(e) => setTargetType(e.target.value as AnnouncementTargetType)} className="ml-1 rounded-lg border border-slate-200 px-2 py-1 text-slate-700">
+            <select value={targetType} onChange={(e) => setTargetType(e.target.value as AnnouncementTargetType)} className="ml-1 rounded-lg border border-slate-200 px-2 py-1 text-slate-300">
               <option value="all">전체</option>
               <option value="role">역할별</option>
               <option value="team">팀별</option>
             </select>
           </label>
           {targetType === 'role' ? (
-            <select value={targetRole} onChange={(e) => setTargetRole(e.target.value as StaffRole)} className="rounded-lg border border-slate-200 px-2 py-1 text-slate-700">
+            <select value={targetRole} onChange={(e) => setTargetRole(e.target.value as StaffRole)} className="rounded-lg border border-slate-200 px-2 py-1 text-slate-300">
               {(['owner', 'admin', 'team-leader', 'fc'] as StaffRole[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
           ) : null}
           {targetType === 'team' ? (
-            <select value={targetTeamId} onChange={(e) => setTargetTeamId(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1 text-slate-700">
+            <select value={targetTeamId} onChange={(e) => setTargetTeamId(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1 text-slate-300">
               <option value="">팀 선택</option>
               {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -125,7 +125,7 @@ export default function AnnouncementAdminPage(): JSX.Element {
       {/* List */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-700">공지 목록 ({items.length})</div>
+          <div className="text-sm font-semibold text-slate-300">공지 목록 ({items.length})</div>
           <button type="button" onClick={() => void load()} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50"><RefreshCw className="h-3 w-3" /> 새로고침</button>
         </div>
         {loading ? (
@@ -138,7 +138,7 @@ export default function AnnouncementAdminPage(): JSX.Element {
               <div key={a.id} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2 text-[11px]">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <span className="font-semibold text-slate-700">{a.pinned ? '📌 ' : ''}{a.title}</span>
+                    <span className="font-semibold text-slate-300">{a.pinned ? '📌 ' : ''}{a.title}</span>
                     <span className="text-slate-500"> · {STATUS_LABEL[a.status]} · {PRIORITY_LABEL[a.priority]} · {targetLabel(a)}{typeof a.readCount === 'number' ? ` · 읽음 ${a.readCount}` : ''}</span>
                   </div>
                   <div className="flex flex-wrap gap-1">

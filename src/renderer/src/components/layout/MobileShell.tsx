@@ -58,7 +58,7 @@ export default function MobileShell(): JSX.Element {
             <Bot className="h-4 w-4 text-white" />
           </div>
           <div>
-            <div className="text-sm font-bold text-slate-800">SJ OS</div>
+            <div className="text-sm font-bold text-slate-100">SJ OS</div>
             <div className="text-[10px] text-slate-500">{session.name || '직원'} · {ROLE_LABEL[session.role]}</div>
           </div>
         </div>
@@ -139,7 +139,7 @@ function MobileAccessDenied(): JSX.Element {
       <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100">
         <ShieldAlert className="h-6 w-6 text-amber-600" />
       </div>
-      <h2 className="text-base font-bold text-slate-800">관리자 기능</h2>
+      <h2 className="text-base font-bold text-slate-100">관리자 기능</h2>
       <p className="mt-1.5 text-sm text-slate-500">모바일에서는 사용할 수 없는 관리자 기능입니다.</p>
       <button type="button" onClick={() => navigate({ name: 'staff-home' })} className="mt-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white">홈으로 이동</button>
     </div>
@@ -148,7 +148,7 @@ function MobileAccessDenied(): JSX.Element {
 
 function MoreItem({ icon, label, onClick, danger }: { icon: JSX.Element; label: string; onClick: () => void; danger?: boolean }): JSX.Element {
   return (
-    <button type="button" onClick={onClick} className={['flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition active:bg-slate-50', danger ? 'text-rose-600' : 'text-slate-700'].join(' ')}>
+    <button type="button" onClick={onClick} className={['flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition active:bg-slate-50', danger ? 'text-rose-600' : 'text-slate-300'].join(' ')}>
       <span className={danger ? 'text-rose-500' : 'text-indigo-500'}>{icon}</span>
       {label}
     </button>
