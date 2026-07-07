@@ -101,6 +101,37 @@ export async function createCheckOut(input: AttendanceInput): Promise<Attendance
   return saveLocal(input, 'check-out')
 }
 
+export interface WorkedDuration {
+  /** True once a check-in exists for today. */
+  started: boolean
+  /** True once a check-out exists for today (duration is final). */
+  ended: boolean
+  /** Elapsed minutes from first check-in to last check-out (or now if still working). */
+  minutes: number
+  /** Korean label e.g. "3시간 20분", or "-" when not started. */
+  label: string
+}
+
+/**
+ * Compute today's worked duration for a single person's records (already RLS-scoped
+ * to the current user via listMyTodayAttendance). Uses the earliest check-in and the
+ * latest check-out; if not yet checked out, measures up to `now`. Client-side UX only.
+ */
+export function getTodayWorkedDuration(myTodayRecords: AttendanceWithStaff[], now: Date = new Date()): WorkedDuration {
+  const today = myTodayRecords.filter((r) => isToday(r.timestamp))
+  const checkInTimes = today.filter((r) => r.type === 'check-in').map((r) => Date.parse(r.timestamp)).filter((t) => !Number.isNaN(t))
+  const checkOutTimes = today.filter((r) => r.type === 'check-out').map((r) => Date.parse(r.timestamp)).filter((t) => !Number.isNaN(t))
+  if (checkInTimes.length === 0) return { started: false, ended: false, minutes: 0, label: '-' }
+  const start = Math.min(...checkInTimes)
+  const ended = checkOutTimes.length > 0
+  const end = ended ? Math.max(...checkOutTimes) : now.getTime()
+  const minutes = Math.max(0, Math.round((end - start) / 60000))
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  const label = h > 0 ? `${h}시간 ${m}분` : `${m}분`
+  return { started: true, ended, minutes, label }
+}
+
 /** Team/owner summary computed from today's visible (RLS-scoped) records. */
 export function getAttendanceSummary(records: AttendanceWithStaff[]): AttendanceSummary {
   const today = records.filter((r) => isToday(r.timestamp))

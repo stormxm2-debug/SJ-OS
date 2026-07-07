@@ -24,6 +24,7 @@ import {
   generateReleaseNote,
   generateRepairPrompt,
   generateRiskNotes,
+  hasDestructiveIntent,
   MAX_REPAIR_ATTEMPTS,
   scanAutoBuildPrompt
 } from '@shared/claudeAutoBuild'
@@ -46,19 +47,23 @@ import {
  * is a single constant below. If the installed Claude Code rejects the value the
  * process exits non-zero and the job is marked failed with the error shown.
  *   Valid Claude Code values include: 'default' | 'acceptEdits' | 'auto' |
- *   'bypassPermissions' | 'plan'. We use 'acceptEdits' for HEADLESS runs because it
- *   deterministically auto-accepts file edits (so the project is actually modified)
- *   while keeping safety boundaries — the documented best mode for non-interactive
- *   file editing. (`--permission-mode auto` is valid too and is what the manual
- *   fallback command uses interactively, but 'acceptEdits' is the reliable headless
- *   choice.) Change here to adjust.
+ *   'bypassPermissions' | 'plan'. We use 'bypassPermissions' for UNATTENDED headless
+ *   runs: 'acceptEdits' only auto-accepts file EDITS and still blocks on other tools
+ *   (e.g. Bash), which silently stalls a piped-stdin headless run — the process hangs
+ *   with no way to answer the prompt, writes no files, and leaks. 'bypassPermissions'
+ *   auto-approves every tool so the task actually completes without a human. Safety is
+ *   enforced by OTHER layers, not by the permission prompt: the workspace is locked to
+ *   the project root, the user's raw command is screened for destructive intent
+ *   (hasDestructiveIntent → risky commands still require manual approval), the generated
+ *   prompt forbids destructive / commit / push commands, and every run is killed after
+ *   CLAUDE_RUN_TIMEOUT_MS. Change here to adjust.
  *
  * TIMEOUT: every Claude Code run is bounded by CLAUDE_RUN_TIMEOUT_MS. On timeout the
  * runner kills ONLY the process tree it started (never anything else), marks the job
  * 'timed-out', and skips verification. This is the fix for "stuck / never completes".
  */
 
-const CLAUDE_PERMISSION_MODE = 'acceptEdits'
+const CLAUDE_PERMISSION_MODE = 'bypassPermissions'
 
 /** Hard ceiling for a single Claude Code run (15 minutes). */
 const CLAUDE_RUN_TIMEOUT_MS = 15 * 60 * 1000
@@ -489,9 +494,26 @@ function log(jobId: string, line: string): void {
 export function createAutoBuildJob(request: CreateAutoBuildJobRequest): ClaudeAutoBuildJob {
   const workspaceAllowed = resolve(request.workspacePath || '') === allowedRoot()
   const safety = scanAutoBuildPrompt(request.generatedPrompt ?? '', workspaceAllowed)
-  // Safe jobs enter the QUEUE ('queued'); the queue runs one at a time.
-  const status: ClaudeAutoBuildStatus = safety.promptSafe && workspaceAllowed ? 'queued' : 'blocked'
+  // Second safety layer: scan the USER'S raw command for destructive intent that the
+  // prompt scan can't see (it only scans our generated prompt, which already contains
+  // safety rules). A risky command is still allowed to run, but it is kept OUT of the
+  // auto-run queue — created as 'ready' so a human must approve it explicitly, even
+  // when 자동 실행 모드 is on.
+  const intent = hasDestructiveIntent(request.originalUserCommand ?? '')
+  // Safe + non-risky → 'queued' (auto-runnable, one at a time). Safe + risky → 'ready'
+  // (manual approval required). Unsafe prompt / disallowed workspace → 'blocked'.
+  const status: ClaudeAutoBuildStatus = !(safety.promptSafe && workspaceAllowed)
+    ? 'blocked'
+    : intent.risky
+      ? 'ready'
+      : 'queued'
   const queueIndex = ++queueSeq
+  const createdLog =
+    status === 'blocked'
+      ? `차단됨: ${safety.blockedReason}`
+      : status === 'ready'
+        ? `자동 실행 보류 · 위험 의도 감지(${intent.matched.join(', ')}) · 수동 승인이 필요합니다`
+        : `큐에 추가됨 · 대기 순번 ${queueIndex}번`
   const job: ClaudeAutoBuildJob = {
     id: nextId(),
     title: request.title || request.originalUserCommand.slice(0, 60) || 'Claude 자동 개발',
@@ -501,10 +523,7 @@ export function createAutoBuildJob(request: CreateAutoBuildJobRequest): ClaudeAu
     workspacePath: allowedRoot(),
     status,
     safetyResult: safety,
-    logLines: [
-      `작업 생성됨 · ${nowIso()}`,
-      status === 'blocked' ? `차단됨: ${safety.blockedReason}` : `큐에 추가됨 · 대기 순번 ${queueIndex}번`
-    ],
+    logLines: [`작업 생성됨 · ${nowIso()}`, createdLog],
     stdoutPreview: '',
     stderrPreview: '',
     verification: { typecheckStatus: 'pending', buildStatus: 'pending', gitStatusShort: '' },
@@ -518,7 +537,8 @@ export function createAutoBuildJob(request: CreateAutoBuildJobRequest): ClaudeAu
   }
   jobs.set(job.id, job)
   emitJobUpdate(job)
-  // If auto-run is on and the workspace is free, start immediately.
+  // If auto-run is on and the workspace is free, start immediately. Only 'queued' jobs
+  // qualify — risky 'ready' jobs are intentionally excluded and wait for manual approval.
   if (status === 'queued' && queueAutoRun) maybeRunNext()
   return job
 }
@@ -801,7 +821,7 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
   // Observability: prove WHERE Claude runs, that edits are permitted, and that the
   // generated prompt is actually delivered (a common "exit 0, no changes" cause).
   log(jobId, `작업 폴더(cwd): ${cwd}`)
-  log(jobId, `권한 모드: ${CLAUDE_PERMISSION_MODE} (파일 생성/수정 허용) · 최대 실행 시간 ${CLAUDE_RUN_TIMEOUT_MS / 60000}분`)
+  log(jobId, `권한 모드: ${CLAUDE_PERMISSION_MODE} (모든 도구 자동 허용 · 무인 실행) · 최대 실행 시간 ${CLAUDE_RUN_TIMEOUT_MS / 60000}분`)
 
   let child: ChildProcess
   try {

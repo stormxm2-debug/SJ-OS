@@ -5,6 +5,7 @@ import {
   createCheckIn,
   createCheckOut,
   getAttendanceSummary,
+  getTodayWorkedDuration,
   listAttendanceRecords,
   listMyTodayAttendance,
   type AttendanceDataMode,
@@ -58,6 +59,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   const hasCheckIn = myToday.some((r) => r.type === 'check-in')
   const hasCheckOut = myToday.some((r) => r.type === 'check-out')
   const lastRecord = myToday[0]
+  const worked = useMemo(() => getTodayWorkedDuration(myToday), [myToday])
   const summary = useMemo(() => getAttendanceSummary(records), [records])
 
   const buildInput = (type: AttendanceInput['type']): AttendanceInput => ({
@@ -112,9 +114,10 @@ export default function SupabaseAttendanceManager(): JSX.Element {
 
       {/* My attendance card + actions */}
       <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-        <div className="mb-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
+        <div className="mb-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
           <Field label="오늘 출근" value={hasCheckIn ? '완료' : '미출근'} tone={hasCheckIn ? 'emerald' : 'amber'} />
           <Field label="오늘 퇴근" value={hasCheckOut ? '완료' : '-'} tone={hasCheckOut ? 'emerald' : 'slate'} />
+          <Field label={worked.ended ? '오늘 근무 시간' : '근무 시간 (진행)'} value={worked.label} tone={worked.started ? 'emerald' : 'slate'} />
           <Field label="마지막 기록" value={lastRecord ? `${ATTENDANCE_TYPE_LABEL[lastRecord.type]} · ${new Date(lastRecord.timestamp).toLocaleTimeString()}` : '-'} />
         </div>
         <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="메모 (선택)" className="mb-2 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] text-slate-700 focus:outline-none" />

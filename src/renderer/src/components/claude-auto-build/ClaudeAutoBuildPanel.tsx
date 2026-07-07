@@ -9,7 +9,8 @@ import {
   FileText,
   CheckCircle2,
   XCircle,
-  Loader2
+  Loader2,
+  Zap
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import type {
@@ -88,6 +89,44 @@ export default function ClaudeAutoBuildPanel({ advanced = false }: { advanced?: 
           Claude Code 실행용 프롬프트를 자동 생성하고, Electron Main에서 안전하게 실행한 뒤 typecheck / build /
           git status 검증까지 자동으로 수행합니다.
         </p>
+
+        {/* 자동 실행 모드 — 켜면 명령 입력만으로 승인 단계 없이 개발→검증→다음 작업까지 자동으로 흐른다.
+            위험 의도가 감지된 명령은 자동 실행에서 제외되어 '승인하고 실행'을 눌러야 한다(메인 프로세스 가드). */}
+        {available ? (
+          <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-indigo-500/20 bg-indigo-500/5 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-200">
+                <Zap className="h-3.5 w-3.5" />
+                자동 실행 모드
+              </div>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                {queueState?.autoRun
+                  ? '켜짐 · 명령을 입력하면 승인 없이 바로 개발 → 검증 → 다음 작업까지 자동으로 진행합니다.'
+                  : '꺼짐 · 각 작업마다 "승인하고 실행"을 눌러야 합니다. 켜면 명령만 입력하면 끝까지 자동입니다.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={!!queueState?.autoRun}
+              aria-label="자동 실행 모드"
+              onClick={() => void setQueueAutoRun(!queueState?.autoRun)}
+              className={[
+                'relative mt-0.5 h-5 w-9 shrink-0 rounded-full border transition',
+                queueState?.autoRun
+                  ? 'border-emerald-500/40 bg-emerald-500/30'
+                  : 'border-slate-700 bg-slate-800'
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-all',
+                  queueState?.autoRun ? 'left-[18px]' : 'left-0.5'
+                ].join(' ')}
+              />
+            </button>
+          </div>
+        ) : null}
 
         {!available ? (
           <div className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">

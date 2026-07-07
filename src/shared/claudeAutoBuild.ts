@@ -540,3 +540,32 @@ export function scanAutoBuildPrompt(promptText: string, workspaceAllowed: boolea
     blockedReason: blockedReasons.length > 0 ? blockedReasons.join(' / ') : undefined
   }
 }
+
+/**
+ * Destructive-intent patterns in the USER'S raw command (not our generated prompt).
+ * These express an irreversible / bulk-destructive action in natural language, which
+ * scanAutoBuildPrompt() cannot catch because it only scans the generated prompt (which
+ * already embeds safety rules). Deliberately conservative: we match only clearly
+ * destructive phrasing, so a normal feature request like "고객 삭제 버튼 추가" (which
+ * merely BUILDS a delete button) is NOT flagged, while "데이터 전부 삭제" / "초기화" is.
+ */
+const DESTRUCTIVE_INTENT_PATTERNS = [
+  // Korean — bulk / irreversible destruction
+  '전부 삭제', '모두 삭제', '전체 삭제', '싹 삭제', '다 삭제', '전부 지워', '모두 지워', '싹 지워', '다 지워',
+  '전부 날려', '다 날려', '초기화', '리셋', '밀어버', '갈아엎', '포맷',
+  // English
+  'delete all', 'delete everything', 'remove all', 'wipe', 'reset everything',
+  'drop table', 'drop database', 'factory reset', 'rm -rf', 'format c'
+]
+
+/**
+ * Detect a destructive/irreversible intent in the user's raw command. Used to keep such
+ * a job OUT of the auto-run queue: it is created as 'ready' (manual approval required)
+ * instead of 'queued', so a human must explicitly approve it even when 자동 실행 모드 is
+ * on. Returns the matched phrases so the UI can explain why approval is required.
+ */
+export function hasDestructiveIntent(command: string): { risky: boolean; matched: string[] } {
+  const t = (command ?? '').toLowerCase()
+  const matched = DESTRUCTIVE_INTENT_PATTERNS.filter((p) => t.includes(p.toLowerCase()))
+  return { risky: matched.length > 0, matched }
+}
