@@ -1,6 +1,12 @@
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 import { activeProxyUrl, detectProxyStatus, getLastWorkingUrl } from '@renderer/services/jarvis/proxyConfig'
 import { filesToImageBlobs } from './pdfToImages'
+import {
+  getFunctionsBaseUrl,
+  getSupabaseAnonKey,
+  initSupabaseClient,
+  getSupabaseClient
+} from '@renderer/services/commercial/supabaseClient'
 
 /**
  * 보험금 청구비서 (Insurance Claim Assistant) service.
@@ -220,12 +226,28 @@ export function buildClaimSummaryMessage(): string {
  */
 export const CLAIM_PROVIDER: 'openai' | 'claude' = 'openai'
 
+/** Bearer token for the Supabase Edge Function: the logged-in user's session token
+ *  (so only signed-in staff can spend OpenAI credits), falling back to the anon key. */
+async function supabaseBearer(): Promise<string | undefined> {
+  const anon = getSupabaseAnonKey()
+  try {
+    await initSupabaseClient()
+    const client = getSupabaseClient() as {
+      auth?: { getSession: () => Promise<{ data?: { session?: { access_token?: string } } }> }
+    } | null
+    const { data } = (await client?.auth?.getSession()) ?? {}
+    return data?.session?.access_token ?? anon
+  } catch {
+    return anon
+  }
+}
+
 /** POST a multipart claim request and normalize the response. Never throws. */
-async function postClaimRequest(url: string, form: FormData): Promise<ClaimEstimate> {
+async function postClaimRequest(url: string, form: FormData, headers?: Record<string, string>): Promise<ClaimEstimate> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), CLAIM_TIMEOUT_MS)
   try {
-    const res = await fetch(url, { method: 'POST', body: form, signal: controller.signal })
+    const res = await fetch(url, { method: 'POST', body: form, headers, signal: controller.signal })
     const data = (await res.json().catch(() => ({ success: false }))) as {
       success?: boolean
       answer?: string
@@ -307,5 +329,14 @@ export async function analyzeClaim(input: { files?: File[] }): Promise<ClaimEsti
   const form = new FormData()
   form.append('message', message)
   images.forEach((b, i) => form.append('images', b, `page-${i + 1}.jpg`))
+
+  // Prefer the hosted Supabase Edge Function (works on the deployed web / phone —
+  // no local proxy needed); fall back to the local proxy for local dev without Supabase.
+  const functionsBase = getFunctionsBaseUrl()
+  const anon = getSupabaseAnonKey()
+  if (functionsBase && anon) {
+    const token = (await supabaseBearer()) ?? anon
+    return postClaimRequest(`${functionsBase}/claim-vision`, form, { apikey: anon, Authorization: `Bearer ${token}` })
+  }
   return postClaimRequest(`${base}/ai/claim-vision`, form)
 }
