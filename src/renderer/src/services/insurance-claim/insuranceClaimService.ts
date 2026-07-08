@@ -190,34 +190,45 @@ export async function analyzeClaimImage(
 const CLAIM_TIMEOUT_MS = 130000
 
 /**
- * Analyze a claim with CLAUDE via the proxy's /ai/claim endpoint. Handles a text-only
- * request OR an attached document — Claude reads PDF and images natively (no OCR /
- * conversion). Never throws; proxy-off / key-missing / network errors come back as a
- * normalized ClaimEstimate (disabled → the page shows setup guidance).
+ * Build the summary-focused instruction for multi-document claim analysis. Produces:
+ * 예상 총 보험금(headline) · 해당 보장 항목 · 지급 근거(왜) · 고객 안내 요약 · 주의사항.
  */
-export async function analyzeClaim(input: {
-  insurer: string
-  policyInfo: string
-  incident: string
-  file?: File | null
-}): Promise<ClaimEstimate> {
+export function buildClaimSummaryMessage(): string {
+  return [
+    '첨부한 보험 서류들(증권·약관·진단서·영수증 등, 여러 장일 수 있음)을 모두 읽고,',
+    '이 고객이 받을 수 있는 보험금을 종합 분석해 아래 형식 그대로 한국어로 정리하세요.',
+    '',
+    '## 반드시 지킬 응답 형식 (이 순서·제목 그대로)',
+    '1) 맨 첫 줄: "예상 총 보험금: 약 OOO원 (범위 OOO원 ~ OOO원)"',
+    '2) "■ 해당 보장 항목" — 지급 가능한 담보/특약마다 [담보명 / 근거 약관 조항 / 예상 금액]을 표로 정리',
+    '3) "■ 지급 근거" — 왜 이 보험금을 받을 수 있는지, 서류에서 확인된 사실(진단명·치료·입원일수·가입담보)과 약관 근거를 연결해 설명',
+    '4) "■ 고객 안내 요약" — 고객에게 그대로 읽어줄 수 있는 3~5줄 요약(총액·핵심 담보·필요 서류·다음 절차)',
+    '5) "■ 주의·리스크" — 부지급/삭감 가능성, 면책, 자기부담금, 추가 확인이 필요한 사항',
+    '',
+    '여러 서류의 정보를 종합하고, 서류에서 확인되지 않는 값은 "추정"임을 명시하세요.',
+    '모든 금액은 한국 원(₩) 기준. 마지막 줄에 "실제 지급액은 약관 심사·손해사정 결과에 따라 달라질 수 있습니다."를 넣으세요.'
+  ].join('\n')
+}
+
+/**
+ * Analyze a claim from one or more uploaded documents (PDF/images) with CLAUDE via the
+ * proxy's /ai/claim endpoint. Claude reads PDF + images natively (no OCR). Produces a
+ * customer-ready summary (총액·해당 보장·지급 근거·요약). Never throws; proxy-off /
+ * key-missing / network errors come back as a normalized ClaimEstimate.
+ */
+export async function analyzeClaim(input: { files?: File[] }): Promise<ClaimEstimate> {
+  const files = (input.files ?? []).filter(Boolean)
+  if (files.length === 0) {
+    return { ok: false, disabled: false, canRetry: false, answer: '', error: '분석할 서류를 먼저 올려주세요.', source: 'error' }
+  }
   if (!getLastWorkingUrl()) {
     await detectProxyStatus()
   }
   const base = activeProxyUrl()
-  const hasFile = Boolean(input.file)
-  const message = hasFile
-    ? [
-        buildVisionMessage(input.insurer, input.incident),
-        input.policyInfo.trim() ? `\n## 가입/증권 정보(참고)\n${input.policyInfo.trim()}` : ''
-      ]
-        .filter(Boolean)
-        .join('\n')
-    : buildClaimPrompt(input)
 
   const form = new FormData()
-  form.append('message', message)
-  if (input.file) form.append('document', input.file)
+  form.append('message', buildClaimSummaryMessage())
+  for (const f of files) form.append('documents', f)
 
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), CLAIM_TIMEOUT_MS)

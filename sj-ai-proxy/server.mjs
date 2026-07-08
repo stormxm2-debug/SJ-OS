@@ -301,16 +301,18 @@ async function getAnthropicClient() {
   return cachedAnthropic
 }
 
+/** Max number of claim documents accepted in one analysis request. */
+const MAX_DOC_FILES = Number(process.env.MAX_DOC_FILES ?? 10)
 let cachedDocUpload = null
-/** Multipart upload for a claim document — PDF or image, memory only, never disk. */
+/** Multipart upload for claim documents — multiple PDF/images, memory only, never disk. */
 async function getDocumentUpload() {
   if (cachedDocUpload) return cachedDocUpload
   const mod = await import('multer')
   const multer = mod.default ?? mod
   cachedDocUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_DOC_UPLOAD_MB * 1024 * 1024, files: 1 }
-  }).single('document')
+    limits: { fileSize: MAX_DOC_UPLOAD_MB * 1024 * 1024, files: MAX_DOC_FILES }
+  }).array('documents', MAX_DOC_FILES)
   return cachedDocUpload
 }
 
@@ -619,11 +621,12 @@ app.post('/ai/claim', async (req, res) => {
         ? req.body.message
         : '첨부한 보험 서류를 읽고 예상 지급 보험금을 분석하세요.'
 
-    // Build the user content: an optional document/image block (Claude reads both
-    // natively) followed by the instruction text.
+    // Build the user content: one document/image block PER uploaded file (Claude
+    // reads PDF + images natively), followed by the instruction text.
     const content = []
-    const file = req.file
-    if (file && file.buffer && file.buffer.length > 0) {
+    const files = Array.isArray(req.files) ? req.files : []
+    for (const file of files) {
+      if (!file || !file.buffer || file.buffer.length === 0) continue
       const mime = file.mimetype || 'application/octet-stream'
       const b64 = file.buffer.toString('base64')
       if (mime === 'application/pdf') {
@@ -637,7 +640,7 @@ app.post('/ai/claim', async (req, res) => {
           code: 'DOC_UNSUPPORTED_TYPE',
           answer: '',
           model: ANTHROPIC_MODEL,
-          error: '지원하지 않는 파일 형식입니다. PDF 또는 이미지(JPG/PNG) 서류를 올려주세요.'
+          error: `지원하지 않는 파일 형식입니다 (${file.originalname || mime}). PDF 또는 이미지(JPG/PNG) 서류를 올려주세요.`
         })
         return
       }
