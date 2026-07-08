@@ -316,6 +316,23 @@ async function getDocumentUpload() {
   return cachedDocUpload
 }
 
+/** High-capability vision model for the OpenAI claim fallback (better on documents). */
+const CLAIM_VISION_MODEL = process.env.CLAIM_VISION_MODEL ?? 'gpt-4o'
+/** Max images per claim (PDF pages are converted to images client-side). */
+const MAX_CLAIM_IMAGES = Number(process.env.MAX_CLAIM_IMAGES ?? 20)
+let cachedClaimImagesUpload = null
+/** Multipart upload for MULTIPLE claim images, memory only, never disk. */
+async function getClaimImagesUpload() {
+  if (cachedClaimImagesUpload) return cachedClaimImagesUpload
+  const mod = await import('multer')
+  const multer = mod.default ?? mod
+  cachedClaimImagesUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_IMAGE_UPLOAD_MB * 1024 * 1024, files: MAX_CLAIM_IMAGES }
+  }).array('images', MAX_CLAIM_IMAGES)
+  return cachedClaimImagesUpload
+}
+
 app.post('/ai/chat', async (req, res) => {
   const { message, mode, context, localSnapshot, conversationId } = req.body ?? {}
 
@@ -550,9 +567,127 @@ app.post('/ai/vision', async (req, res) => {
 })
 
 /**
+ * POST /ai/claim-vision — 보험금 청구비서 (OpenAI). Analyzes MULTIPLE images together
+ * with a high-capability vision model (gpt-4o). PDFs are rendered to images on the
+ * client and sent as `images[]`. Same summary format + expert system prompt as
+ * /ai/claim. Used while Claude(ANTHROPIC) billing/key is unavailable; the renderer
+ * switches to /ai/claim automatically once CLAIM_PROVIDER='claude'. Images are held
+ * in memory (never disk, never logged); the key stays server-side.
+ */
+app.post('/ai/claim-vision', async (req, res) => {
+  if (!OPENAI_ENABLED) {
+    res.json(fallbackResponse(req.body?.mode, 'disabled'))
+    return
+  }
+  if (!API_KEY_CONFIGURED) {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'OPENAI_API_KEY_MISSING',
+      answer: '',
+      model: CLAIM_VISION_MODEL,
+      error: 'OPENAI_ENABLED=true 이지만 OPENAI_API_KEY 가 설정되지 않았습니다. 백엔드 환경변수에 API 키를 설정하세요.'
+    })
+    return
+  }
+
+  let upload
+  try {
+    upload = await getClaimImagesUpload()
+  } catch {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'IMAGE_DEPENDENCY_MISSING',
+      answer: '',
+      model: CLAIM_VISION_MODEL,
+      error: '이미지 업로드 처리를 위한 서버 의존성이 없습니다. sj-ai-proxy 에서 npm install 을 실행하세요.'
+    })
+    return
+  }
+
+  upload(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const tooLarge = uploadErr.code === 'LIMIT_FILE_SIZE'
+      res.status(tooLarge ? 413 : 400).json({
+        success: false,
+        source: 'backend',
+        code: tooLarge ? 'IMAGE_TOO_LARGE' : 'IMAGE_UPLOAD_ERROR',
+        answer: '',
+        model: CLAIM_VISION_MODEL,
+        error: tooLarge ? `이미지 파일이 너무 큽니다 (최대 ${MAX_IMAGE_UPLOAD_MB}MB).` : '이미지 업로드 처리 중 오류가 발생했습니다.'
+      })
+      return
+    }
+
+    const files = Array.isArray(req.files) ? req.files : []
+    const imgs = files.filter((f) => f && f.buffer && f.buffer.length > 0)
+    if (imgs.length === 0) {
+      res.status(400).json({
+        success: false,
+        source: 'backend',
+        code: 'IMAGE_MISSING',
+        answer: '',
+        model: CLAIM_VISION_MODEL,
+        error: '분석할 이미지가 전송되지 않았습니다.'
+      })
+      return
+    }
+
+    const message =
+      typeof req.body?.message === 'string' && req.body.message.trim()
+        ? req.body.message
+        : '첨부한 보험 서류들을 모두 읽고 예상 지급 보험금을 분석하세요.'
+    const content = [{ type: 'text', text: message }]
+    for (const f of imgs) {
+      const mime = f.mimetype && f.mimetype.startsWith('image/') ? f.mimetype : 'image/jpeg'
+      content.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${f.buffer.toString('base64')}` } })
+    }
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 130000)
+    try {
+      const client = await getOpenAiClient()
+      const completion = await client.chat.completions.create(
+        {
+          model: CLAIM_VISION_MODEL,
+          messages: [
+            { role: 'system', content: systemPromptFor('insurance-claim') },
+            { role: 'user', content }
+          ],
+          temperature: 0.3,
+          max_tokens: 4096
+        },
+        { signal: controller.signal }
+      )
+      const answer = completion.choices?.[0]?.message?.content?.trim() ?? ''
+      res.json({
+        success: true,
+        source: 'openai',
+        answer: answer || '서류에서 분석 결과를 생성하지 못했습니다.',
+        model: completion.model ?? CLAIM_VISION_MODEL,
+        usage: completion.usage ?? undefined
+      })
+    } catch (error) {
+      const aborted = error?.name === 'AbortError'
+      res.status(aborted ? 504 : 502).json({
+        success: false,
+        source: 'openai',
+        answer: '',
+        model: CLAIM_VISION_MODEL,
+        error: aborted ? '분석이 시간 내에 완료되지 않았습니다. 다시 시도해 주세요.' : '분석 중 오류가 발생했습니다.',
+        detail: error?.message ?? String(error)
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  })
+})
+
+/**
  * POST /ai/claim — 보험금 청구비서. Analyze an insurance claim with CLAUDE, which
  * reads PDF and image documents natively (no OCR/conversion). Input: multipart/
- * form-data with an OPTIONAL `document` file (PDF or image) + a `message` text
+ * form-data with OPTIONAL `documents` files (PDF or image) + a `message` text
  * field. The Anthropic key is read from the environment only and never exposed; the
  * document is held in memory (never written to disk, never logged).
  */

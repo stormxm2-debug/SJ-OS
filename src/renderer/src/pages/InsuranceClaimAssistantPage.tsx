@@ -87,7 +87,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
       <Card title="보험금 청구비서" icon={<ShieldCheck className="h-4 w-4 text-indigo-600" />}>
         <p className="text-sm leading-6 text-slate-300">
           고객 서류(<span className="font-semibold text-slate-100">증권·약관·진단서·영수증</span>)를{' '}
-          <span className="font-semibold text-slate-100">여러 장 한꺼번에</span> 올리면, Claude가 모두 읽어{' '}
+          <span className="font-semibold text-slate-100">여러 장 한꺼번에</span> 올리면, AI가 모두 읽어{' '}
           <span className="font-semibold text-indigo-600">총 얼마를 받는지 · 어떤 보장에 해당하는지 · 왜 받는지</span>를
           고객 안내용 요약으로 만들어 드립니다. 별도 입력은 필요 없습니다.
         </p>

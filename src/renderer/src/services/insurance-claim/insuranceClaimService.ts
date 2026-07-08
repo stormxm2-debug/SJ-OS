@@ -1,5 +1,6 @@
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 import { activeProxyUrl, detectProxyStatus, getLastWorkingUrl } from '@renderer/services/jarvis/proxyConfig'
+import { filesToImageBlobs } from './pdfToImages'
 
 /**
  * 보험금 청구비서 (Insurance Claim Assistant) service.
@@ -211,10 +212,68 @@ export function buildClaimSummaryMessage(): string {
 }
 
 /**
- * Analyze a claim from one or more uploaded documents (PDF/images) with CLAUDE via the
- * proxy's /ai/claim endpoint. Claude reads PDF + images natively (no OCR). Produces a
- * customer-ready summary (총액·해당 보장·지급 근거·요약). Never throws; proxy-off /
- * key-missing / network errors come back as a normalized ClaimEstimate.
+ * Provider for claim document analysis:
+ *   'openai' → gpt-4o vision; PDFs are rasterized to images client-side (/ai/claim-vision).
+ *   'claude' → Claude reads PDF + images natively (/ai/claim).
+ * Currently 'openai' while Anthropic billing/key is unavailable. Flip this ONE line to
+ * 'claude' once the ANTHROPIC key is set — everything else is already wired.
+ */
+export const CLAIM_PROVIDER: 'openai' | 'claude' = 'openai'
+
+/** POST a multipart claim request and normalize the response. Never throws. */
+async function postClaimRequest(url: string, form: FormData): Promise<ClaimEstimate> {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), CLAIM_TIMEOUT_MS)
+  try {
+    const res = await fetch(url, { method: 'POST', body: form, signal: controller.signal })
+    const data = (await res.json().catch(() => ({ success: false }))) as {
+      success?: boolean
+      answer?: string
+      error?: string
+      source?: string
+      disabled?: boolean
+      code?: string
+    }
+    if (!res.ok || !data.success) {
+      const disabled = Boolean(data.disabled) || data.code === 'ANTHROPIC_DISABLED' || data.code === 'OPENAI_DISABLED'
+      return {
+        ok: false,
+        disabled,
+        canRetry: !disabled,
+        answer: data.answer ?? '',
+        error: data.error ?? `AI 분석에 실패했습니다 (HTTP ${res.status}).`,
+        source: data.source ?? 'error'
+      }
+    }
+    return {
+      ok: true,
+      disabled: false,
+      canRetry: false,
+      answer: data.answer ?? '',
+      headline: extractHeadline(data.answer ?? ''),
+      source: data.source ?? CLAIM_PROVIDER
+    }
+  } catch (error) {
+    const aborted = error instanceof DOMException && error.name === 'AbortError'
+    return {
+      ok: false,
+      disabled: false,
+      canRetry: true,
+      answer: '',
+      error: aborted
+        ? 'AI 분석이 시간 내에 완료되지 않았습니다 (타임아웃). 다시 시도해 주세요.'
+        : 'AI 프록시에 연결할 수 없습니다. 프록시가 실행 중인지 확인해 주세요.',
+      source: 'error'
+    }
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+/**
+ * Analyze a claim from one or more uploaded documents (PDF/images). Produces a
+ * customer-ready summary (총액·해당 보장·지급 근거·요약). Routes to OpenAI gpt-4o
+ * (PDF→image) or Claude (native PDF) per CLAIM_PROVIDER. Never throws.
  */
 export async function analyzeClaim(input: { files?: File[] }): Promise<ClaimEstimate> {
   const files = (input.files ?? []).filter(Boolean)
@@ -225,55 +284,28 @@ export async function analyzeClaim(input: { files?: File[] }): Promise<ClaimEsti
     await detectProxyStatus()
   }
   const base = activeProxyUrl()
+  const message = buildClaimSummaryMessage()
 
-  const form = new FormData()
-  form.append('message', buildClaimSummaryMessage())
-  for (const f of files) form.append('documents', f)
-
-  const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), CLAIM_TIMEOUT_MS)
-  try {
-    const res = await fetch(`${base}/ai/claim`, { method: 'POST', body: form, signal: controller.signal })
-    const data = (await res.json().catch(() => ({ success: false }))) as {
-      success?: boolean
-      answer?: string
-      error?: string
-      source?: string
-      disabled?: boolean
-      code?: string
-    }
-    if (!res.ok || !data.success) {
-      const disabled = Boolean(data.disabled) || data.code === 'ANTHROPIC_DISABLED'
-      return {
-        ok: false,
-        disabled,
-        canRetry: !disabled,
-        answer: data.answer ?? '',
-        error: data.error ?? `Claude 분석에 실패했습니다 (HTTP ${res.status}).`,
-        source: data.source ?? 'error'
-      }
-    }
-    return {
-      ok: true,
-      disabled: false,
-      canRetry: false,
-      answer: data.answer ?? '',
-      headline: extractHeadline(data.answer ?? ''),
-      source: data.source ?? 'claude'
-    }
-  } catch (error) {
-    const aborted = error instanceof DOMException && error.name === 'AbortError'
-    return {
-      ok: false,
-      disabled: false,
-      canRetry: true,
-      answer: '',
-      error: aborted
-        ? 'Claude 분석이 시간 내에 완료되지 않았습니다 (타임아웃). 다시 시도해 주세요.'
-        : 'AI 프록시에 연결할 수 없습니다. 프록시가 실행 중인지 확인해 주세요.',
-      source: 'error'
-    }
-  } finally {
-    window.clearTimeout(timer)
+  // Claude path — native PDF/image documents.
+  if (CLAIM_PROVIDER === 'claude') {
+    const form = new FormData()
+    form.append('message', message)
+    for (const f of files) form.append('documents', f)
+    return postClaimRequest(`${base}/ai/claim`, form)
   }
+
+  // OpenAI path — rasterize PDFs to images, then send all images to gpt-4o vision.
+  let images: Blob[]
+  try {
+    images = await filesToImageBlobs(files)
+  } catch {
+    return { ok: false, disabled: false, canRetry: true, answer: '', error: 'PDF를 이미지로 변환하는 중 오류가 발생했습니다. 다시 시도해 주세요.', source: 'error' }
+  }
+  if (images.length === 0) {
+    return { ok: false, disabled: false, canRetry: false, answer: '', error: '분석 가능한 서류가 없습니다 (PDF·이미지만 지원).', source: 'error' }
+  }
+  const form = new FormData()
+  form.append('message', message)
+  images.forEach((b, i) => form.append('images', b, `page-${i + 1}.jpg`))
+  return postClaimRequest(`${base}/ai/claim-vision`, form)
 }
