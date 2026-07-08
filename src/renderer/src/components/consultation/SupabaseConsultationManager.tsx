@@ -25,6 +25,7 @@ import {
   type ConsultationStatus,
   type ConsultationType
 } from '@renderer/services/commercial/consultationValidation'
+import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 
 /**
  * 상담기록 (Supabase-connected). Lists/creates/updates consultations via
@@ -32,6 +33,9 @@ import {
  * enforces real access; role guidance + client filters are UX only. Never renders
  * tokens/keys, never logs summaries/PII. Inline cards only; no backdrop.
  */
+
+/** Tables whose changes should live-refresh this screen (stable ref for the hook). */
+const RT_TABLES = ['consultations']
 
 const emptyForm = (): ConsultationInput => ({ customerId: '', consultationType: 'first', status: 'planned', summary: '', nextAction: '', scheduledAt: '', completedAt: '' })
 
@@ -69,6 +73,8 @@ export default function SupabaseConsultationManager(): JSX.Element {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Live sync: re-load instantly when consultations change on any device.
+  useRealtimeSync(RT_TABLES, load)
 
   const visible = useMemo(() => {
     let v = searchConsultations(list, query, statusFilter, typeFilter)

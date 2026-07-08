@@ -15,6 +15,7 @@ import {
   validateCustomerInput,
   type CustomerInput
 } from '@renderer/services/commercial/customerValidation'
+import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 
 /**
  * 고객관리 (Supabase-connected). Lists/creates/updates customers via customerService
@@ -22,6 +23,9 @@ import {
  * the role guidance + client filter are UX only. Never renders raw tokens/keys and
  * never logs customer phone/birth/address. Inline cards only; no backdrop.
  */
+
+/** Tables whose changes should live-refresh this screen (stable ref for the hook). */
+const RT_TABLES = ['customers']
 
 const emptyForm = (): CustomerInput => ({ name: '', phone: '', birthDate: '', address: '', source: '', status: 'new', tags: [], memo: '' })
 
@@ -54,6 +58,8 @@ export default function SupabaseCustomerManager(): JSX.Element {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Live sync: re-load instantly when customers change on any device.
+  useRealtimeSync(RT_TABLES, load)
 
   const visible = useMemo(() => filterCustomers(customers, query, statusFilter), [customers, query, statusFilter])
 

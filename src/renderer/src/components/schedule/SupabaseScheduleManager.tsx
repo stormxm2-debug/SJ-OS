@@ -28,6 +28,7 @@ import {
   type ScheduleStatus,
   type ScheduleType
 } from '@renderer/services/commercial/scheduleValidation'
+import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 
 /**
  * 일정관리 (Supabase-connected). Lists/creates/updates schedule events via
@@ -36,6 +37,9 @@ import {
  * read-only 상담 예정 section from consultationService. Never renders tokens/keys,
  * never logs memos/PII. Inline cards only; no backdrop.
  */
+
+/** Tables whose changes should live-refresh this screen (stable ref for the hook). */
+const RT_TABLES = ['schedule_events']
 
 const emptyForm = (): ScheduleInput => ({ title: '', type: 'consultation', status: 'planned', customerId: '', startsAt: '', endsAt: '', memo: '' })
 
@@ -75,6 +79,8 @@ export default function SupabaseScheduleManager(): JSX.Element {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Live sync: re-load instantly when schedule events change on any device.
+  useRealtimeSync(RT_TABLES, load)
 
   const visible = useMemo(() => {
     let v = searchScheduleEvents(events, query, statusFilter, typeFilter)

@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Megaphone, AlertTriangle, ChevronRight } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { AnnouncementView } from '@shared/commercial/announcements'
 import { listVisibleAnnouncements } from '@renderer/services/commercial/announcementService'
+import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
+
+/** Tables whose changes should live-refresh this widget (stable ref for the hook). */
+const RT_TABLES = ['announcements']
 
 /**
  * 최근 공지 widget for staff home (desktop + mobile). Shows the latest 3 visible
@@ -14,19 +18,26 @@ export default function RecentAnnouncementsWidget(): JSX.Element {
   const { navigate } = useNavigation()
   const [items, setItems] = useState<AnnouncementView[]>([])
   const [unread, setUnread] = useState(0)
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  const load = useCallback(async (): Promise<void> => {
+    const res = await listVisibleAnnouncements({ role: session.role, teamId: session.teamName, teamName: session.teamName })
+    if (!mounted.current) return
+    setItems(res.announcements.slice(0, 3))
+    setUnread(res.announcements.filter((a) => !a.read).length)
+  }, [session.role, session.teamName])
 
   useEffect(() => {
-    let active = true
-    void (async () => {
-      const res = await listVisibleAnnouncements({ role: session.role, teamId: session.teamName, teamName: session.teamName })
-      if (!active) return
-      setItems(res.announcements.slice(0, 3))
-      setUnread(res.announcements.filter((a) => !a.read).length)
-    })()
-    return () => {
-      active = false
-    }
-  }, [session.role, session.teamName])
+    void load()
+  }, [load])
+  // Live sync: re-load instantly when announcements change on any device.
+  useRealtimeSync(RT_TABLES, load)
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">

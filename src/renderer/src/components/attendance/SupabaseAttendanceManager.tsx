@@ -33,6 +33,10 @@ import {
 } from '@renderer/services/commercial/attendanceValidation'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
 import AttendanceCamera, { type CapturedAttendancePhoto } from './AttendanceCamera'
+import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
+
+/** Tables whose changes should live-refresh this screen (stable ref for the hook). */
+const RT_TABLES = ['attendance_records', 'profiles']
 
 /**
  * 출퇴근 (Supabase-connected). Check-in/out saves to attendance_records (Supabase
@@ -85,6 +89,8 @@ export default function SupabaseAttendanceManager(): JSX.Element {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Live sync: re-load instantly when attendance changes on any device.
+  useRealtimeSync(RT_TABLES, load)
 
   const hasCheckIn = myToday.some((r) => r.type === 'check-in')
   const hasCheckOut = myToday.some((r) => r.type === 'check-out')

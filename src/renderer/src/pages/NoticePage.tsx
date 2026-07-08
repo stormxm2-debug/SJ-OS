@@ -4,6 +4,10 @@ import { useSession } from '@renderer/navigation/SessionContext'
 import type { AnnouncementView } from '@shared/commercial/announcements'
 import { PRIORITY_LABEL, TARGET_LABEL } from '@shared/commercial/announcements'
 import { listVisibleAnnouncements, markAnnouncementRead, type AnnDataMode } from '@renderer/services/commercial/announcementService'
+import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
+
+/** Tables whose changes should live-refresh this screen (stable ref for the hook). */
+const RT_TABLES = ['announcements']
 
 /**
  * 공지사항 (staff). Shows only published + targeted notices (RLS + client filter),
@@ -32,6 +36,8 @@ export default function NoticePage(): JSX.Element {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Live sync: re-load instantly when announcements change on any device.
+  useRealtimeSync(RT_TABLES, load)
 
   const unread = useMemo(() => items.filter((a) => !a.read).length, [items])
 
