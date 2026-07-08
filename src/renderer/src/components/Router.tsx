@@ -15,12 +15,9 @@ import WorkersPage from '@renderer/pages/WorkersPage'
 import WorkerDetailPage from '@renderer/pages/WorkerDetailPage'
 import LiveCompanyPage from '@renderer/pages/LiveCompanyPage'
 import FcOsPage from '@renderer/pages/FcOsPage'
-import CustomerWorkspacePage from '@renderer/pages/CustomerWorkspacePage'
 import SalesActivityWorkspacePage from '@renderer/pages/SalesActivityWorkspacePage'
-import SchedulePage from '@renderer/pages/SchedulePage'
 import PerformancePage from '@renderer/pages/PerformancePage'
 import TeamLeaderPage from '@renderer/pages/TeamLeaderPage'
-import ConsultationPage from '@renderer/pages/ConsultationPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
@@ -73,32 +70,17 @@ export default function Router(): JSX.Element {
     case 'fcos':
       return <FcOsPage />
     case 'customer':
-      return (
-        <div className="space-y-6">
-          <SupabaseCustomerManager />
-          <CustomerWorkspacePage />
-        </div>
-      )
+      return <SupabaseCustomerManager />
     case 'sales-activity':
       return <SalesActivityWorkspacePage />
     case 'schedule':
-      return (
-        <div className="space-y-6">
-          <SupabaseScheduleManager />
-          <SchedulePage />
-        </div>
-      )
+      return <SupabaseScheduleManager />
     case 'performance':
       return <PerformancePage />
     case 'team-leader':
       return <TeamLeaderPage />
     case 'consultation':
-      return (
-        <div className="space-y-6">
-          <SupabaseConsultationManager />
-          <ConsultationPage />
-        </div>
-      )
+      return <SupabaseConsultationManager />
     case 'insurance-analysis':
       return <InsuranceAnalysisPage />
     case 'claim-assistant':
