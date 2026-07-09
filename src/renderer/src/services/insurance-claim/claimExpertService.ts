@@ -482,6 +482,38 @@ function normalizeResult(raw: Record<string, unknown>, docs: ExtractedDoc[]): Cl
   }
 }
 
+/**
+ * 회사별 분할 종합의 부분 결과들을 하나로 합친다. 합계는 reconcile로 재검산하고,
+ * 고객 안내문은 합쳐진 총액 기준으로 새로 조립한다 (부분 안내문은 자기 회사 총액만 알므로).
+ */
+function mergeResults(parts: ClaimExpertResult[]): ClaimExpertResult {
+  const dedupe = (xs: string[]): string[] => [...new Set(xs.filter(Boolean))]
+  const { companies, grandTotal } = reconcile(parts.flatMap((p) => p.companies))
+  const seenHidden = new Set<string>()
+  const hiddenClaims = parts
+    .flatMap((p) => p.hiddenClaims)
+    .filter((h) => (seenHidden.has(h.desc) ? false : (seenHidden.add(h.desc), true)))
+  const perCompany = companies.map((c) => `${c.name} ${won(c.subtotal)}`).join(', ')
+  const customerMessage = [
+    `안녕하세요, 보험금 청구 검토 결과를 안내드립니다. 예상 보험금은 총 ${won(grandTotal)}입니다.`,
+    companies.length > 1 ? `회사별로는 ${perCompany} 입니다.` : '',
+    hiddenClaims.length > 0 ? '아직 청구되지 않은 것으로 보이는 건도 함께 확인해 드리겠습니다.' : '',
+    '청구에 필요한 서류와 절차는 제가 도와드릴게요. 궁금한 점은 편하게 문의 주세요!'
+  ]
+    .filter(Boolean)
+    .join(' ')
+  return {
+    companies,
+    grandTotal,
+    excluded: parts.flatMap((p) => p.excluded),
+    hiddenClaims,
+    cautions: dedupe(parts.flatMap((p) => p.cautions)),
+    customerMessage,
+    neededDocs: dedupe(parts.flatMap((p) => p.neededDocs)),
+    docs: parts[0]?.docs ?? []
+  }
+}
+
 // ── 공개 API ─────────────────────────────────────────────────────────────────
 
 /**
@@ -591,38 +623,65 @@ export async function analyzeClaimExpert(args: {
     statusCount += 1
     args.onProgress?.({ stage: 'synthesize', batch: statusCount, totalBatches: 0, fileNames: [text] })
   }
-  const synthBody = {
-    mode: 'synthesize',
-    stream: true,
-    docs: allDocs.map(({ fileName: _fileName, ...rest }) => rest),
-    customerName: args.customerName ?? '',
-    termsSummaries: matched.map((t) => t.summary),
-    surgeryClasses
+
+  // 잘림 원천 차단 — 증권상 보험사가 많으면(3곳 이상) 회사별로 나눠 종합한다.
+  // 한 번의 거대한 JSON 생성이 max_tokens에 잘려 마지막 회사가 유실되는 것을 막고,
+  // 합계·안내문은 클라이언트가 합치며 재검산한다. 보험사 표기가 없는 의료 서류는
+  // 어느 회사 계산에도 필요하므로 모든 그룹에 포함한다.
+  const insurerOf = (d: ExtractedDoc): string => normName(String(d.insurer ?? ''))
+  const policyInsurers = [...new Set(allDocs.filter((d) => d.docType === '증권' && insurerOf(d)).map(insurerOf))]
+  const groups: { label: string; docs: ExtractedDoc[] }[] =
+    policyInsurers.length >= 3
+      ? policyInsurers.map((ins, i) => ({
+          label: `회사 ${i + 1}/${policyInsurers.length}`,
+          docs: allDocs.filter((d) => !insurerOf(d) || insurerOf(d) === ins)
+        }))
+      : [{ label: '', docs: allDocs }]
+
+  const parts: ClaimExpertResult[] = []
+  let totalDropped = 0
+  let anyTruncated = false
+  const webTerms: unknown[] = []
+  for (const g of groups) {
+    const prefix = g.label ? `${g.label} — ` : ''
+    const groupStatus = (text: string): void => onStatus(`${prefix}${text}`)
+    if (g.label) groupStatus('보험금 계산 시작')
+    const synthBody = {
+      mode: 'synthesize',
+      stream: true,
+      docs: g.docs.map(({ fileName: _fileName, ...rest }) => rest),
+      customerName: args.customerName ?? '',
+      termsSummaries: matched.map((t) => t.summary),
+      surgeryClasses
+    }
+    let synth = await postSynthesizeStream(synthBody, 170000, groupStatus)
+    if (!synth.ok && !synth.disabled) {
+      // 종합만 자동 1회 재시도 — 판독(배치) 결과는 재사용하므로 처음부터 다시 할 필요 없음.
+      synth = await postSynthesizeStream(synthBody, 170000, groupStatus)
+    }
+    if (!synth.ok) {
+      return { ok: false, error: g.label ? `${synth.error} (${g.label})` : synth.error, disabled: synth.disabled }
+    }
+    const raw = (synth.data?.result ?? null) as Record<string, unknown> | null
+    if (!raw) return { ok: false, error: '종합 결과가 비어 있습니다. 다시 시도해 주세요.' }
+    parts.push(normalizeResult(raw, allDocs))
+    totalDropped += Number((synth.data as { droppedDocs?: unknown })?.droppedDocs ?? 0)
+    anyTruncated = anyTruncated || Boolean((synth.data as { truncated?: unknown })?.truncated)
+    if (Array.isArray((raw as { webTerms?: unknown }).webTerms)) webTerms.push(...((raw as { webTerms: unknown[] }).webTerms))
   }
-  let synth = await postSynthesizeStream(synthBody, 170000, onStatus)
-  if (!synth.ok && !synth.disabled) {
-    // 종합만 자동 1회 재시도 — 판독(배치) 결과는 재사용하므로 처음부터 다시 할 필요 없음.
-    args.onProgress?.({ stage: 'synthesize', batch: 0, totalBatches: 0 })
-    synth = await postSynthesizeStream(synthBody, 170000, onStatus)
-  }
-  if (!synth.ok) return { ok: false, error: synth.error, disabled: synth.disabled }
-  const raw = (synth.data?.result ?? null) as Record<string, unknown> | null
-  if (!raw) return { ok: false, error: '종합 결과가 비어 있습니다. 다시 시도해 주세요.' }
-  const result = normalizeResult(raw, allDocs)
+
+  const result = parts.length === 1 ? parts[0] : mergeResults(parts)
   // 서버가 용량 한도로 뒤쪽 문서를 계산에서 제외했다면 반드시 겉으로 알린다.
-  const dropped = Number((synth.data as { droppedDocs?: unknown })?.droppedDocs ?? 0)
-  if (dropped > 0) {
+  if (totalDropped > 0) {
     result.cautions = [
-      `⚠️ 서류가 너무 많아 마지막 ${dropped}건은 이번 금액 계산에 포함되지 못했습니다. 남은 서류는 나눠서 한 번 더 분석해 주세요.`,
+      `⚠️ 서류가 너무 많아 ${totalDropped}건은 이번 금액 계산에 포함되지 못했습니다. 남은 서류는 나눠서 한 번 더 분석해 주세요.`,
       ...result.cautions
     ]
   }
   // AI 응답이 길이 한도에 걸려 복구된 경우 — 마지막 일부 항목이 빠졌을 수 있음을 알린다.
-  if ((synth.data as { truncated?: unknown })?.truncated) {
+  if (anyTruncated) {
     result.cautions = ['⚠️ 결과가 매우 길어 마지막 일부 항목이 생략됐을 수 있습니다. 서류를 나눠 다시 분석하면 전체를 확인할 수 있습니다.', ...result.cautions]
   }
-  // 웹에서 확인한 약관 조항 — 호출부(페이지)가 보관함에 자동 저장해 다음 분석부터 재사용
-  const webTerms = Array.isArray((raw as { webTerms?: unknown }).webTerms) ? ((raw as { webTerms: unknown[] }).webTerms) : []
   return { ok: true, result, usedTerms: matched.map((t) => t.id), webTerms }
 }
 

@@ -515,7 +515,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     ]
     // 스트리밍 모드: 진행 상태(웹 검색/작성량)를 NDJSON으로 흘려보내 종합 단계의
     // 긴 침묵을 없앤다. 마지막 줄이 기존 JSON 응답과 동일한 result 이벤트.
-    if (body.stream === true) {
+    if ((body as { stream?: unknown }).stream === true) {
       return streamSynthesize(apiKey, content, dropped)
     }
     const res = await callClaude(apiKey, SYNTH_SYSTEM, content, 16000, true)
