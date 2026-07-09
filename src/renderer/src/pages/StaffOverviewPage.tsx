@@ -10,7 +10,8 @@ import {
   Clock,
   MapPin,
   Phone,
-  RefreshCw
+  RefreshCw,
+  ChevronLeft
 } from 'lucide-react'
 import {
   listOverviewStaff,
@@ -88,8 +89,13 @@ export default function StaffOverviewPage(): JSX.Element {
 
   return (
     <div className="flex h-full min-h-[70vh] gap-4">
-      {/* 왼쪽: 직원 목록 */}
-      <div className="flex w-64 shrink-0 flex-col rounded-2xl border border-slate-800 bg-white shadow-sm">
+      {/* 직원 목록 — 모바일: 전체 폭, 직원 선택 시 숨김(2단계) / 데스크톱: 왼쪽 고정 열 */}
+      <div
+        className={[
+          'w-full shrink-0 flex-col rounded-2xl border border-slate-800 bg-white shadow-sm lg:flex lg:w-64',
+          selected ? 'hidden' : 'flex'
+        ].join(' ')}
+      >
         <div className="border-b border-slate-800 p-3">
           <div className="mb-2 flex items-center gap-2">
             <Users className="h-4 w-4 text-[#b0821f]" />
@@ -137,8 +143,8 @@ export default function StaffOverviewPage(): JSX.Element {
         </div>
       </div>
 
-      {/* 오른쪽: 선택 직원 상세 */}
-      <div className="min-w-0 flex-1">
+      {/* 선택 직원 상세 — 모바일: 선택 시 전체 화면(2단계) / 데스크톱: 오른쪽 열 */}
+      <div className={['min-w-0 flex-1', selected ? '' : 'hidden lg:block'].join(' ')}>
         {!selected ? (
           <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-950/50">
             <div className="text-center">
@@ -150,8 +156,19 @@ export default function StaffOverviewPage(): JSX.Element {
           <div className="space-y-4">
             {/* 헤더 */}
             <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-[#0e1e3a] px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#c6982f] text-sm font-black text-[#0e1e3a]">
+              <div className="flex min-w-0 items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelected(null)
+                    setOverview(null)
+                  }}
+                  aria-label="직원 목록으로"
+                  className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/80 active:bg-white/10 lg:hidden"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#c6982f] text-sm font-black text-[#0e1e3a]">
                   {selected.name.slice(0, 1)}
                 </span>
                 <div>
@@ -201,7 +218,7 @@ export default function StaffOverviewPage(): JSX.Element {
                           type="button"
                           onClick={() => setTab(t.key)}
                           className={[
-                            'flex flex-1 items-center justify-center gap-1.5 px-2 py-2.5 text-[12px] font-bold transition',
+                            'flex flex-1 items-center justify-center gap-1 whitespace-nowrap px-1 py-2.5 text-[12px] font-bold transition sm:gap-1.5 sm:px-2',
                             tab === t.key ? 'border-b-2 border-[#c6982f] text-[#b0821f]' : 'text-slate-500 hover:text-slate-300'
                           ].join(' ')}
                         >
@@ -210,7 +227,7 @@ export default function StaffOverviewPage(): JSX.Element {
                       )
                     })}
                   </div>
-                  <div className="max-h-[52vh] overflow-y-auto p-3">
+                  <div className="max-h-[52vh] overflow-y-auto overflow-x-auto p-3">
                     {tab === 'customer' ? (
                       overview.customers.length === 0 ? (
                         <Empty text="등록된 고객이 없습니다." />
