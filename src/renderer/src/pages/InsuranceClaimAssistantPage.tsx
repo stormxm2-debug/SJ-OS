@@ -934,7 +934,7 @@ function AnalyzingPanel({ progress, fileCount }: { progress: ClaimProgress | nul
       ? Math.round((progress.batch / Math.max(progress.totalBatches, 1)) * 12) + 3
       : stage === 'extract'
         ? Math.round((Math.max(progress.batch - 1, 0) / Math.max(progress.totalBatches, 1)) * 65) + 15
-        : 85
+        : Math.min(97, 85 + (progress?.batch ?? 0)) // 종합: 서버 상태 이벤트마다 조금씩 전진
   const title = stage === 'prepare' ? '서류 압축·준비 중…' : stage === 'extract' ? '서류 정밀 판독 중…' : '회사별 보험금 계산 · 약관 대조 중…'
   const detail =
     stage === 'prepare' && progress
@@ -942,7 +942,7 @@ function AnalyzingPanel({ progress, fileCount }: { progress: ClaimProgress | nul
       : stage === 'extract' && progress
         ? `배치 ${progress.batch}/${progress.totalBatches} — ${(progress.fileNames ?? []).join(', ')}`
         : stage === 'synthesize'
-          ? '담보별 금액 · 근거 조항 · 숨은 청구 · 고객 안내문 작성'
+          ? (progress?.fileNames?.[0] ?? '담보별 금액 · 근거 조항 · 숨은 청구 · 고객 안내문 작성')
           : `서류 ${fileCount}개 준비 중`
   return (
     <div className="rounded-2xl border border-slate-800 bg-white p-6 shadow-sm">

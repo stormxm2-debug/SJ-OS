@@ -153,6 +153,86 @@ export async function postJson(
   }
 }
 
+/**
+ * 종합(synthesize) 스트리밍 호출 — 서버가 NDJSON으로 진행 상태를 흘려보내면
+ * onStatus로 전달하고, 마지막 result 이벤트를 postJson과 동일한 형태로 반환한다.
+ * 구버전 서버(스트림 미지원)가 일반 JSON을 돌려주면 자동으로 그대로 처리한다.
+ */
+async function postSynthesizeStream(
+  body: unknown,
+  timeoutMs: number,
+  onStatus: (text: string) => void
+): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string; disabled?: boolean }> {
+  const ep = endpoint()
+  if (!ep) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  const controller = new AbortController()
+  let timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  // 스트림이 살아 있는 동안은 청크마다 타이머를 연장한다 (침묵 60초 = 이상).
+  const touch = (): void => {
+    window.clearTimeout(timer)
+    timer = window.setTimeout(() => controller.abort(), 60000)
+  }
+  const asResult = (data: Record<string, unknown> | null, status: number): { ok: boolean; data?: Record<string, unknown>; error?: string; disabled?: boolean } => {
+    if (!data?.success) {
+      const disabled = data?.code === 'ANTHROPIC_API_KEY_MISSING'
+      return { ok: false, error: String(data?.error ?? `분석 요청 실패 (HTTP ${status})`), disabled }
+    }
+    return { ok: true, data }
+  }
+  try {
+    const token = (await bearer()) ?? ep.anon
+    const res = await fetch(ep.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: ep.anon, Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    })
+    const ct = res.headers.get('content-type') ?? ''
+    if (!res.body || !ct.includes('ndjson')) {
+      // 구버전 함수 또는 즉시 오류 — 일반 JSON 경로
+      const data = (await res.json().catch(() => null)) as Record<string, unknown> | null
+      return asResult(data, res.status)
+    }
+    const reader = res.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    let final: Record<string, unknown> | null = null
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      touch()
+      buf += dec.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.trim()) continue
+        let ev: Record<string, unknown>
+        try {
+          ev = JSON.parse(line) as Record<string, unknown>
+        } catch {
+          continue
+        }
+        if (ev.type === 'status' && typeof ev.text === 'string') onStatus(ev.text)
+        else if (ev.type === 'result') final = ev
+      }
+    }
+    if (buf.trim() && !final) {
+      try {
+        const ev = JSON.parse(buf) as Record<string, unknown>
+        if (ev.type === 'result') final = ev
+      } catch {
+        /* ignore */
+      }
+    }
+    return asResult(final, res.status)
+  } catch (e) {
+    const aborted = e instanceof DOMException && e.name === 'AbortError'
+    return { ok: false, error: aborted ? '분석 시간이 초과되었습니다. 다시 시도해 주세요.' : '서버에 연결할 수 없습니다.' }
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
 // ── 1) prepare: 압축 + 인코딩 (전부 클라이언트에서) ──────────────────────────
 
 /** 인코딩 완료된 서류 한 건 — 서버에 그대로 전달되는 형태. */
@@ -505,18 +585,25 @@ export async function analyzeClaimExpert(args: {
   }
 
   args.onProgress?.({ stage: 'synthesize', batch: 0, totalBatches: 0 })
+  // 서버가 흘려보내는 실시간 상태(웹 검색·작성량)를 진행 패널로 전달.
+  let statusCount = 0
+  const onStatus = (text: string): void => {
+    statusCount += 1
+    args.onProgress?.({ stage: 'synthesize', batch: statusCount, totalBatches: 0, fileNames: [text] })
+  }
   const synthBody = {
     mode: 'synthesize',
+    stream: true,
     docs: allDocs.map(({ fileName: _fileName, ...rest }) => rest),
     customerName: args.customerName ?? '',
     termsSummaries: matched.map((t) => t.summary),
     surgeryClasses
   }
-  let synth = await postJson(synthBody, 170000)
+  let synth = await postSynthesizeStream(synthBody, 170000, onStatus)
   if (!synth.ok && !synth.disabled) {
     // 종합만 자동 1회 재시도 — 판독(배치) 결과는 재사용하므로 처음부터 다시 할 필요 없음.
     args.onProgress?.({ stage: 'synthesize', batch: 0, totalBatches: 0 })
-    synth = await postJson(synthBody, 170000)
+    synth = await postSynthesizeStream(synthBody, 170000, onStatus)
   }
   if (!synth.ok) return { ok: false, error: synth.error, disabled: synth.disabled }
   const raw = (synth.data?.result ?? null) as Record<string, unknown> | null

@@ -142,6 +142,107 @@ async function callClaude(apiKey: string, system: string, content: any[], maxTok
   }
 }
 
+/**
+ * 종합(synthesize)을 Anthropic 스트리밍으로 실행하고, 진행 상태를 NDJSON으로 흘려보낸다.
+ *  {"type":"status","text":"웹에서 약관 검색 중…"}    ← 실제 이벤트 기반 (가짜 아님)
+ *  {"type":"result","success":true,...}               ← 마지막 줄 = 기존 JSON 응답과 동일 형태
+ * 클라이언트가 스트림을 못 읽어도(구버전) 전체 본문을 JSON 여러 줄로 받게 되므로 마지막
+ * 줄만 파싱하면 된다. 오류도 {"type":"result","success":false,...}로 내보낸다.
+ */
+function streamSynthesize(apiKey: string, content: unknown[], dropped: number): Response {
+  const enc = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown): void => controller.enqueue(enc.encode(JSON.stringify(obj) + '\n'))
+      const finish = (obj: unknown): void => {
+        send(obj)
+        controller.close()
+      }
+      const abort = new AbortController()
+      // 스트리밍은 첫 바이트가 빨라 함수 idle 종료를 피하지만, 전체 상한은 유지한다.
+      const timer = setTimeout(() => abort.abort(), 145000)
+      try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: Deno.env.get('CLAIM_EXPERT_MODEL') || 'claude-opus-4-8',
+            max_tokens: 16000,
+            system: SYNTH_SYSTEM,
+            tools: WEB_TOOLS,
+            stream: true,
+            messages: [{ role: 'user', content }]
+          }),
+          signal: abort.signal
+        })
+        if (!r.ok || !r.body) {
+          const data = await r.json().catch(() => ({}))
+          const msg = (data as { error?: { message?: string } })?.error?.message || `Claude 오류 (HTTP ${r.status})`
+          finish({ type: 'result', success: false, error: friendlyClaudeError(msg) })
+          return
+        }
+        const reader = r.body.getReader()
+        const dec = new TextDecoder()
+        let buf = ''
+        let text = ''
+        let truncated = false
+        let lastStatusAt = 0
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += dec.decode(value, { stream: true })
+          const lines = buf.split('\n')
+          buf = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            let ev: Record<string, unknown>
+            try {
+              ev = JSON.parse(line.slice(6)) as Record<string, unknown>
+            } catch {
+              continue
+            }
+            const t = String(ev.type ?? '')
+            if (t === 'content_block_start') {
+              const block = ev.content_block as { type?: string; name?: string } | undefined
+              if (block?.type === 'server_tool_use' && block.name === 'web_search') send({ type: 'status', text: '웹에서 약관 조항 검색 중…' })
+              else if (block?.type === 'server_tool_use' && block.name === 'web_fetch') send({ type: 'status', text: '약관 원문 페이지 확인 중…' })
+              else if (block?.type === 'web_search_tool_result') send({ type: 'status', text: '검색 결과 검토 중…' })
+            } else if (t === 'content_block_delta') {
+              const delta = ev.delta as { type?: string; text?: string } | undefined
+              if (delta?.type === 'text_delta' && delta.text) {
+                text += delta.text
+                if (text.length - lastStatusAt > 1500) {
+                  lastStatusAt = text.length
+                  send({ type: 'status', text: `담보별 산정 내역 작성 중… (${Math.round(text.length / 1000)}천자)` })
+                }
+              }
+            } else if (t === 'message_delta') {
+              const d = ev.delta as { stop_reason?: string } | undefined
+              if (d?.stop_reason === 'max_tokens') truncated = true
+            }
+          }
+        }
+        const parsed = parseJson(text)
+        if (!parsed || !Array.isArray(parsed.companies)) {
+          finish({ type: 'result', success: false, error: '종합 결과 형식 오류 — 다시 시도해 주세요.' })
+          return
+        }
+        finish({ type: 'result', success: true, mode: 'synthesize', result: parsed, droppedDocs: dropped, truncated })
+      } catch (e) {
+        const aborted = e instanceof DOMException && e.name === 'AbortError'
+        finish({
+          type: 'result',
+          success: false,
+          error: aborted ? '분석 시간이 초과되었습니다. 서류 수를 나눠 다시 시도해 주세요.' : '분석 중 오류가 발생했습니다.'
+        })
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+  })
+  return new Response(stream, { headers: { ...CORS, 'Content-Type': 'application/x-ndjson' } })
+}
+
 const EXTRACT_SYSTEM = [
   '당신은 대한민국 보험 서류 판독 전문가입니다. 첨부된 각 문서를 정밀 판독해 아래 JSON으로만 답하세요 (다른 텍스트 금지).',
   '고객이 자신의 보험금 청구를 위해 제출한 서류이며, 당신은 판독을 허가받았습니다. 절대 판독을 거부하지 마세요.',
@@ -412,6 +513,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .join('\n')
       }
     ]
+    // 스트리밍 모드: 진행 상태(웹 검색/작성량)를 NDJSON으로 흘려보내 종합 단계의
+    // 긴 침묵을 없앤다. 마지막 줄이 기존 JSON 응답과 동일한 result 이벤트.
+    if (body.stream === true) {
+      return streamSynthesize(apiKey, content, dropped)
+    }
     const res = await callClaude(apiKey, SYNTH_SYSTEM, content, 16000, true)
     if (!res.ok) return json({ success: false, error: res.error }, 502)
     const parsed = parseJson(res.text ?? '')
