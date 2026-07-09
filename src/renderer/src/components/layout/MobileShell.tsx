@@ -1,19 +1,24 @@
 import { useEffect, useState } from 'react'
-import { Home, Clock, UserRound, CalendarDays, Menu, ClipboardList, BarChart3, Megaphone, Bot, LogOut, ShieldAlert, X, BookOpen, RefreshCw } from 'lucide-react'
+import { Home, Clock, UserRound, CalendarDays, Menu, ShieldAlert, RefreshCw } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useSession } from '@renderer/navigation/SessionContext'
 import BrandLogo from '@renderer/components/brand/BrandLogo'
-import { ROLE_LABEL, routeCategory } from '@renderer/navigation/roleAccess'
+import { ROLE_LABEL, routeCategory, isAdminRole, type UserRole } from '@renderer/navigation/roleAccess'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
 import MobileHome from '@renderer/components/mobile/MobileHome'
 import MobilePerformance from '@renderer/components/mobile/MobilePerformance'
+import MobileMenuPage from '@renderer/components/mobile/MobileMenuPage'
 import SupabaseCustomerManager from '@renderer/components/customer/SupabaseCustomerManager'
 import SupabaseConsultationManager from '@renderer/components/consultation/SupabaseConsultationManager'
 import SupabaseScheduleManager from '@renderer/components/schedule/SupabaseScheduleManager'
 import SupabaseAttendanceManager from '@renderer/components/attendance/SupabaseAttendanceManager'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
+import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
+import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
+import StaffTablePage from '@renderer/pages/StaffTablePage'
+import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
 import NoticePage from '@renderer/pages/NoticePage'
@@ -77,23 +82,23 @@ export default function MobileShell(): JSX.Element {
 
       {/* Content — wakeKey 리마운트로 복귀 시 모든 화면 재조회 */}
       <main key={wakeKey} className="flex-1 overflow-y-auto overflow-x-hidden p-3 pb-24">
-        <MobileContent routeName={route.name} />
+        <MobileContent routeName={route.name} role={session.role} />
       </main>
 
-      {/* 더보기 sheet (non-modal, above tab bar) */}
+      {/* 전체 메뉴 — 더보기를 누르면 새 창처럼 전체 화면으로 열린다 */}
       {moreOpen ? (
-        <div className="fixed inset-x-0 bottom-16 z-20 mx-2 rounded-2xl border border-slate-800 bg-white p-2 shadow-xl">
-          <div className="mb-1 flex items-center justify-between px-2">
-            <span className="text-xs font-semibold text-slate-500">더보기</span>
-            <button type="button" onClick={() => setMoreOpen(false)} className="text-slate-400"><X className="h-4 w-4" /></button>
-          </div>
-          <MoreItem icon={<ClipboardList className="h-4 w-4" />} label="상담기록" onClick={() => go({ name: 'consultation' })} />
-          <MoreItem icon={<BarChart3 className="h-4 w-4" />} label="실적관리" onClick={() => go({ name: 'performance' })} />
-          <MoreItem icon={<BookOpen className="h-4 w-4" />} label="보험 백과사전" onClick={() => go({ name: 'wiki' })} />
-          <MoreItem icon={<Megaphone className="h-4 w-4" />} label="공지사항" onClick={() => go({ name: 'notice' })} />
-          <MoreItem icon={<Bot className="h-4 w-4" />} label="자비스" onClick={() => { setMoreOpen(false); jarvisService.open() }} />
-          <MoreItem icon={<LogOut className="h-4 w-4" />} label="로그아웃" onClick={() => { setMoreOpen(false); logout() }} danger />
-        </div>
+        <MobileMenuPage
+          onClose={() => setMoreOpen(false)}
+          onNavigate={go}
+          onJarvis={() => {
+            setMoreOpen(false)
+            jarvisService.open()
+          }}
+          onLogout={() => {
+            setMoreOpen(false)
+            logout()
+          }}
+        />
       ) : null}
 
       {/* Bottom tab nav */}
@@ -122,10 +127,16 @@ export default function MobileShell(): JSX.Element {
   )
 }
 
+/** 모바일에서 관리자에게만 열어주는 관리자 라우트 (개발/배포 도구는 계속 차단). */
+const MOBILE_ADMIN_ROUTES: ViewName[] = ['staff-overview', 'staff-table', 'registration-admin']
+
 /** Mobile router: staff routes only; admin/dev routes → mobile access-denied card. */
-function MobileContent({ routeName }: { routeName: ViewName }): JSX.Element {
-  // Hide developer/release/deployment tools on mobile for EVERY role.
-  if (routeCategory(routeName) === 'admin') return <MobileAccessDenied />
+function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRole }): JSX.Element {
+  // Hide developer/release/deployment tools on mobile for EVERY role — except the
+  // three admin pages above, which admins may open from the 전체 메뉴.
+  if (routeCategory(routeName) === 'admin') {
+    if (!(MOBILE_ADMIN_ROUTES.includes(routeName) && isAdminRole(role))) return <MobileAccessDenied />
+  }
   switch (routeName) {
     case 'staff-home':
       return <MobileHome />
@@ -139,10 +150,18 @@ function MobileContent({ routeName }: { routeName: ViewName }): JSX.Element {
       return <SupabaseScheduleManager />
     case 'performance':
       return <MobilePerformance />
+    case 'claim-assistant':
+      return <InsuranceClaimAssistantPage />
     case 'wiki':
       return <InsuranceWikiPage />
     case 'notice':
       return <NoticePage />
+    case 'staff-overview':
+      return <StaffOverviewPage />
+    case 'staff-table':
+      return <StaffTablePage />
+    case 'registration-admin':
+      return <RegistrationAdminPage />
     default:
       return <MobileHome />
   }
@@ -159,14 +178,5 @@ function MobileAccessDenied(): JSX.Element {
       <p className="mt-1.5 text-sm text-slate-500">모바일에서는 사용할 수 없는 관리자 기능입니다.</p>
       <button type="button" onClick={() => navigate({ name: 'staff-home' })} className="mt-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white">홈으로 이동</button>
     </div>
-  )
-}
-
-function MoreItem({ icon, label, onClick, danger }: { icon: JSX.Element; label: string; onClick: () => void; danger?: boolean }): JSX.Element {
-  return (
-    <button type="button" onClick={onClick} className={['flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition active:bg-slate-950', danger ? 'text-rose-600' : 'text-slate-300'].join(' ')}>
-      <span className={danger ? 'text-rose-500' : 'text-indigo-500'}>{icon}</span>
-      {label}
-    </button>
   )
 }

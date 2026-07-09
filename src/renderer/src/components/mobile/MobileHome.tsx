@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Clock, UserPlus, ClipboardList, CalendarDays, Bot, Users, UserRound } from 'lucide-react'
+import { Clock, UserPlus, ClipboardList, CalendarDays, Bot, Users, UserRound, Star, Sparkles } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { ROLE_LABEL, isAdminRole } from '@renderer/navigation/roleAccess'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
+import { findMenuItem, listFavorites, subscribeFavorites } from './mobileMenu'
 import {
   getAttendanceSummary,
   listAttendanceRecords,
@@ -25,6 +26,8 @@ interface HomeSummary {
   todaySchedules: number
   todayConsultations: number
   customers: number
+  /** 오늘 출근 기록의 다짐(memo) — 출근 전/미작성이면 null */
+  resolution: string | null
 }
 
 const EMPTY: HomeSummary = {
@@ -33,7 +36,8 @@ const EMPTY: HomeSummary = {
   attendanceRatio: '-',
   todaySchedules: 0,
   todayConsultations: 0,
-  customers: 0
+  customers: 0,
+  resolution: null
 }
 
 /**
@@ -57,7 +61,8 @@ export default function MobileHome(): JSX.Element {
       listConsultations(),
       listScheduleEvents()
     ])
-    const hasIn = my.records.some((r) => r.type === 'check-in')
+    const checkIn = my.records.find((r) => r.type === 'check-in')
+    const hasIn = Boolean(checkIn)
     const hasOut = my.records.some((r) => r.type === 'check-out')
     const att = getAttendanceSummary(all.records)
     setSum({
@@ -66,7 +71,8 @@ export default function MobileHome(): JSX.Element {
       attendanceRatio: att.total > 0 ? `${att.checkedIn}/${att.total}` : '-',
       todaySchedules: todaySchedules(sched.events).length,
       todayConsultations: todayConsultations(cons.consultations).length,
-      customers: cust.customers.length
+      customers: cust.customers.length,
+      resolution: checkIn?.memo?.trim() || null
     })
   }
   useEffect(() => {
@@ -74,6 +80,14 @@ export default function MobileHome(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useRealtimeSync(RT_TABLES, load)
+
+  // 즐겨찾기 — 전체 메뉴에서 ⭐를 누르면 즉시 반영된다. 관리자 전용 항목은
+  // 관리자가 아닌 계정에서 걸러낸다 (기기 공유 등으로 저장돼 있어도 숨김).
+  const [favKeys, setFavKeys] = useState<string[]>(() => listFavorites())
+  useEffect(() => subscribeFavorites(() => setFavKeys(listFavorites())), [])
+  const favItems = favKeys
+    .map((k) => findMenuItem(k))
+    .filter((i): i is NonNullable<typeof i> => Boolean(i && (!i.adminOnly || isAdminRole(role))))
 
   const quick = [
     { label: '출퇴근', icon: <Clock className="h-5 w-5" />, onClick: () => navigate({ name: 'attendance' }) },
@@ -102,6 +116,20 @@ export default function MobileHome(): JSX.Element {
         </div>
       </div>
 
+      {/* 오늘 다짐 — 출근 보고 때 적은 다짐을 딥네이비+골드 카드로 강조 */}
+      <div className="rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: '#0e1e3a', borderColor: '#c6982f' }}>
+        <div className="flex items-center gap-1.5 text-[11px] font-bold" style={{ color: '#e6c877' }}>
+          <Sparkles className="h-3.5 w-3.5" /> 오늘 다짐
+        </div>
+        {sum.resolution ? (
+          <p className="mt-1.5 text-sm font-semibold leading-relaxed text-white">“{sum.resolution}”</p>
+        ) : (
+          <p className="mt-1.5 text-xs" style={{ color: '#9db1d1' }}>
+            아직 오늘 다짐이 없어요 — 출근 보고 후 다짐을 적으면 여기에 표시됩니다.
+          </p>
+        )}
+      </div>
+
       {/* Quick actions */}
       <div className="grid grid-cols-4 gap-2">
         {quick.map((q) => (
@@ -111,6 +139,38 @@ export default function MobileHome(): JSX.Element {
           </button>
         ))}
       </div>
+
+      {/* 즐겨찾기 — 전체 메뉴에서 ⭐한 항목이 여기 나타난다 */}
+      {favItems.length > 0 ? (
+        <div className="rounded-2xl border border-slate-800 bg-white p-3">
+          <div className="mb-2 flex items-center gap-1 text-[11px] font-bold text-slate-500">
+            <Star className="h-3.5 w-3.5 fill-[#e6c877] text-[#c6982f]" /> 즐겨찾기
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {favItems.map((item) => {
+              const Icon = item.icon
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    if (item.action === 'jarvis') jarvisService.open()
+                    else if (item.view) navigate(item.view)
+                  }}
+                  className="flex flex-col items-center gap-1 rounded-2xl border border-slate-800 bg-slate-950 py-3 text-slate-300 transition active:bg-white"
+                >
+                  <Icon className="h-5 w-5 text-indigo-500" />
+                  <span className="w-full truncate px-1 text-center text-[10px] font-medium">{item.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-700 bg-white/50 px-3 py-2.5 text-center text-[11px] text-slate-500">
+          더보기(전체 메뉴)에서 <Star className="inline h-3 w-3 fill-[#e6c877] text-[#c6982f]" />를 누르면 즐겨찾기가 여기에 생겨요
+        </div>
+      )}
 
       {/* Role-scoped summary (RLS already narrows each list to the viewer). */}
       <div className="grid grid-cols-2 gap-2">
