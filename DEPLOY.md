@@ -28,21 +28,24 @@ npm run dist
 
 ## 2. 모바일 웹 PWA (직원 폰)
 
-### 웹 빌드 만들기
+**실제 운영 주소: https://sj-invest.pages.dev (Cloudflare Pages, 직접 업로드 방식)**
+
+### 한 번에 배포 (권장)
 ```bash
-npm run build:web
+scripts\deploy-web.bat        # 빌드 + Cloudflare Pages 배포까지 자동
 ```
-- 결과물: **`dist/`** 폴더 (정적 파일: index.html + assets + manifest)
+- 바탕화면의 "SJ OS 웹 배포" 런처가 이 스크립트를 실행합니다.
+- 최초 1회만 이 PC에서 `npx wrangler login` 으로 Cloudflare 인증이 필요합니다.
+- 프로젝트 루트의 `.env.web`(커밋 안 됨)에 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
+  두 줄이 있으면 Supabase 연동 빌드가 됩니다.
+- 배포되면 직원 폰의 앱이 다음에 열릴 때 자동으로 새 버전으로 업데이트됩니다
+  (빌드마다 생성되는 `version.json`을 앱이 폴링).
 
-### 호스팅 (둘 중 하나 — 계정은 직접 만드셔야 함)
-
-**A. Netlify (가장 쉬움, 드래그&드롭)**
-1. https://app.netlify.com 로그인 → **Add new site → Deploy manually**
-2. `dist/` 폴더를 통째로 드래그&드롭 → 끝. `https://<이름>.netlify.app` 주소 발급.
-
-**B. Vercel**
-1. https://vercel.com → New Project → 이 저장소 연결
-2. 빌드 명령 `npm run build:web`, 출력 디렉터리 `dist` 로 설정 → Deploy.
+### 수동 배포
+```bash
+npm run build:web                                              # dist/ 생성
+npx wrangler pages deploy dist --project-name=sj-invest --branch=main
+```
 
 ### 직원 사용법
 - 발급된 **https 주소**를 직원 폰 브라우저(크롬/사파리)로 열기
