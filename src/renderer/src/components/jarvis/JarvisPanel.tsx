@@ -1023,12 +1023,13 @@ export default function JarvisPanel(): JSX.Element | null {
     // 장식 레이어는 전부 pointer-events-none.
     <div
       className="fixed inset-0 z-50 flex flex-col overflow-hidden"
-      style={{ background: 'radial-gradient(1100px 700px at 50% -12%, #0d2547 0%, #071228 46%, #03070f 100%)' }}
+      style={{ background: 'radial-gradient(1100px 700px at 50% -12%, #0b2144 0%, #060f22 46%, #02060e 100%)' }}
     >
       {/* ── 홀로그램 배경 (장식 전용 — 클릭 통과) ─────────────────── */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
+        {/* 정밀 그리드 */}
         <div
-          className="absolute inset-0 opacity-[0.08]"
+          className="absolute inset-0 opacity-[0.06]"
           style={{
             backgroundImage:
               'linear-gradient(rgba(103,232,249,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(103,232,249,0.7) 1px, transparent 1px)',
@@ -1037,15 +1038,44 @@ export default function JarvisPanel(): JSX.Element | null {
             maskImage: 'radial-gradient(ellipse 75% 65% at 50% 38%, black 18%, transparent 78%)'
           }}
         />
+        {/* 스타필드 — 미세 입자 */}
+        <div
+          className="absolute h-px w-px rounded-full"
+          style={{
+            boxShadow: [
+              '12vw 18vh 0 1px rgba(219,231,245,0.4)', '28vw 9vh 0 0 rgba(219,231,245,0.3)', '44vw 6vh 0 1px rgba(230,200,119,0.35)',
+              '63vw 12vh 0 0 rgba(219,231,245,0.35)', '81vw 20vh 0 1px rgba(219,231,245,0.3)', '90vw 38vh 0 0 rgba(230,200,119,0.3)',
+              '7vw 42vh 0 0 rgba(219,231,245,0.3)', '19vw 60vh 0 1px rgba(219,231,245,0.35)', '35vw 74vh 0 0 rgba(219,231,245,0.25)',
+              '52vw 82vh 0 1px rgba(230,200,119,0.3)', '68vw 70vh 0 0 rgba(219,231,245,0.3)', '86vw 62vh 0 1px rgba(219,231,245,0.35)',
+              '94vw 84vh 0 0 rgba(219,231,245,0.25)', '4vw 78vh 0 1px rgba(230,200,119,0.25)', '58vw 30vh 0 0 rgba(219,231,245,0.28)',
+              '74vw 46vh 0 0 rgba(219,231,245,0.3)', '23vw 33vh 0 0 rgba(219,231,245,0.25)', '39vw 50vh 0 0 rgba(230,200,119,0.22)'
+            ].join(', ')
+          }}
+        />
+        {/* 대형 동심원 링 필드 — 오브를 중심으로 겹겹이 */}
+        {[
+          { s: '34vmin', style: { border: '1px solid rgba(230,200,119,0.14)' } },
+          { s: '52vmin', style: { border: '1px dashed rgba(103,232,249,0.12)', animation: 'jarvis-holo-rotate 140s linear infinite' } },
+          { s: '72vmin', style: { border: '1px solid rgba(219,231,245,0.08)' } },
+          { s: '94vmin', style: { border: '1px dotted rgba(230,200,119,0.12)', animation: 'jarvis-holo-rotate-rev 110s linear infinite' } },
+          { s: '120vmin', style: { border: '1px solid rgba(103,232,249,0.06)' } }
+        ].map((r) => (
+          <div
+            key={r.s}
+            className="absolute left-1/2 top-[38%] -translate-x-1/2 -translate-y-1/2 rounded-full"
+            style={{ width: r.s, height: r.s, ...r.style }}
+          />
+        ))}
+        {/* 오로라 스윕 — 골드·아이스 */}
         <div
           className="jarvis-holo-rotate absolute left-1/2 top-[36%] h-[150vmax] w-[150vmax] -translate-x-1/2 -translate-y-1/2"
           style={{
-            opacity: 0.15,
+            opacity: 0.14,
             background:
-              'conic-gradient(from 0deg, transparent 0deg, rgba(56,189,248,0.35) 40deg, transparent 95deg, rgba(230,200,119,0.22) 190deg, transparent 250deg, rgba(34,211,238,0.3) 320deg, transparent 360deg)'
+              'conic-gradient(from 0deg, transparent 0deg, rgba(56,189,248,0.32) 40deg, transparent 95deg, rgba(230,200,119,0.3) 185deg, transparent 250deg, rgba(34,211,238,0.26) 320deg, transparent 360deg)'
           }}
         />
-        <div className="absolute inset-x-0 bottom-0 h-52" style={{ background: 'linear-gradient(to top, rgba(56,189,248,0.10), transparent)' }} />
+        <div className="absolute inset-x-0 bottom-0 h-52" style={{ background: 'linear-gradient(to top, rgba(230,200,119,0.06), transparent)' }} />
       </div>
 
       {/* ── 헤더 ──────────────────────────────────────────────────── */}
@@ -1059,8 +1089,11 @@ export default function JarvisPanel(): JSX.Element | null {
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="bg-gradient-to-r from-[#9be8ff] via-[#eaf6ff] to-[#e6c877] bg-clip-text text-sm font-black tracking-[0.24em] text-transparent">
+              <span className="bg-gradient-to-r from-[#dbe7f5] via-[#f4ecd7] to-[#e6c877] bg-clip-text text-sm font-black tracking-[0.32em] text-transparent">
                 SJ JARVIS
+              </span>
+              <span className="hidden text-[8px] font-bold tracking-[0.3em] sm:inline" style={{ color: 'rgba(230,200,119,0.55)' }}>
+                EXECUTIVE AI
               </span>
               <span className="rounded-full border px-2 py-0.5 text-[9px] font-bold" style={{ borderColor: 'rgba(230,200,119,0.45)', color: '#e6c877', background: 'rgba(230,200,119,0.08)' }}>
                 {mode === 'staff' ? '직원 모드' : '대표 모드'}

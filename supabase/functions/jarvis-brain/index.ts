@@ -124,7 +124,7 @@ function buildSystem(mode: 'staff' | 'ceo'): string {
     `이동 가능한 화면 (navigate에 키만 사용): ${navList}`,
     '',
     '규칙:',
-    '1) 모르는 것은 모른다고 말하고 확인 방법을 안내. 사내 실시간 데이터(오늘 일정·실적 수치 등)는 직접 조회할 수 없으므로, 해당 질문이면 정확한 화면으로 navigate를 제안하며 안내.',
+    '1) 모르는 것은 모른다고 말하고 확인 방법을 안내. 사내 데이터 질문은 "사내 실시간 데이터 스냅샷"이 제공된 범위에서만 답하고, 스냅샷이 없거나 범위 밖이면 정확한 화면으로 navigate를 제안하며 안내.',
     '2) 보험 관련 답변은 일반론임을 필요시 명시 (상품·심사는 보험사별로 다름).',
     '3) 답변은 간결하게 — 핵심 먼저, 불필요한 서론 금지.',
     '4) navigate는 사용자가 이동/실행을 원할 때만. 단순 질문에는 null.'
@@ -145,7 +145,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ success: false, code: 'ANTHROPIC_API_KEY_MISSING', error: 'ANTHROPIC_API_KEY 시크릿이 설정되지 않았습니다.' }, 503)
   }
 
-  let body: { messages?: unknown; mode?: unknown }
+  let body: { messages?: unknown; mode?: unknown; context?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -153,6 +153,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const mode: 'staff' | 'ceo' = body.mode === 'ceo' ? 'ceo' : 'staff'
+  // 사내 실시간 데이터 스냅샷 (클라이언트가 RLS 권한 범위에서 조회해 전달).
+  const context = String(body.context ?? '').slice(0, 4000)
   const raw = Array.isArray(body.messages) ? body.messages : []
   const messages: ChatMessage[] = raw
     .map((m) => {
@@ -183,7 +185,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         // 대화형은 응답 속도가 생명 — 판단형(opus)이 아닌 고속 모델 기본.
         model: Deno.env.get('JARVIS_BRAIN_MODEL') || 'claude-sonnet-5',
         max_tokens: 1500,
-        system: buildSystem(mode),
+        system: context
+          ? `${buildSystem(mode)}\n\n--- 사내 실시간 데이터 스냅샷 (아래 범위의 질문은 이 데이터로 정확히 답하고, 조회 시각을 함께 언급. 스냅샷에 없는 세부는 지어내지 말고 해당 화면 이동을 안내) ---\n${context}`
+          : buildSystem(mode),
         messages
       }),
       signal: controller.signal

@@ -59,7 +59,7 @@ export class JarvisBrainService {
    * 최근 대화(현재 명령 포함)를 브레인에 보낸다. 어떤 실패에서도 throw하지
    * 않는다 — 미배포(404)/미설정은 disabled로 표시해 폴백 체인이 이어지게 한다.
    */
-  async chat(history: ConversationEntry[], mode: 'staff' | 'ceo'): Promise<JarvisBrainReply> {
+  async chat(history: ConversationEntry[], mode: 'staff' | 'ceo', context = ''): Promise<JarvisBrainReply> {
     const base = getFunctionsBaseUrl()
     const anon = getSupabaseAnonKey()
     if (!base || !anon) return { ok: false, disabled: true, error: '서버 미설정' }
@@ -76,7 +76,7 @@ export class JarvisBrainService {
       const res = await fetch(`${base}/jarvis-brain`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ messages, mode }),
+        body: JSON.stringify({ messages, mode, context: context.slice(0, 4000) }),
         signal: controller.signal
       })
       const data = (await res.json().catch(() => null)) as Record<string, unknown> | null

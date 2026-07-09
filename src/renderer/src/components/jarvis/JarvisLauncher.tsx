@@ -50,10 +50,15 @@ export default function JarvisLauncher(): JSX.Element | null {
       <style>{`
         @keyframes jarvis-launcher-ping { 0% { transform: scale(1); opacity: .5; } 100% { transform: scale(1.55); opacity: 0; } }
       `}</style>
-      {/* 호흡 글로우 링 */}
+      {/* 호흡 글로우 링 — 아이스 + 골드 이중 */}
       <span
         className="pointer-events-none absolute inset-0 rounded-full"
         style={{ border: '1px solid rgba(103,232,249,0.5)', animation: 'jarvis-launcher-ping 2.4s ease-out infinite' }}
+        aria-hidden
+      />
+      <span
+        className="pointer-events-none absolute inset-0 rounded-full"
+        style={{ border: '1px solid rgba(230,200,119,0.55)', animation: 'jarvis-launcher-ping 2.4s ease-out 1.2s infinite' }}
         aria-hidden
       />
       <span

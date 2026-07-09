@@ -10,6 +10,7 @@ import ExternalActionService from './ExternalActionService'
 import { jarvisGptBrainService } from './JarvisGptBrainService'
 import type { GptMode } from './JarvisGptBrainService'
 import { jarvisBrainService } from './JarvisBrainService'
+import { buildJarvisContext } from './JarvisContextService'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import { generateImplementationPrompt } from '@renderer/services/developer-prompt/implementationPromptGenerator'
 import { categoryFor, startSession, finalizeSession, failSession } from './commandSession'
@@ -683,7 +684,10 @@ export class JarvisService {
    * 미배포/미설정이면 null을 반환해 다음 폴백으로 넘어간다.
    */
   private async handleBrain(command: string): Promise<JarvisExecutionResult | null> {
-    const brain = await this.brain.chat(this.history.getEntries(), this.appMode)
+    // 사내 실시간 스냅샷(오늘 일정·실적·고객·출근)을 모아 함께 보낸다 — 실패해도
+    // 빈 문자열로 진행 (스냅샷은 보조 정보, 대화를 막지 않는다).
+    const context = await buildJarvisContext()
+    const brain = await this.brain.chat(this.history.getEntries(), this.appMode, context)
     if (!brain.ok) {
       if (brain.disabled) return null
       return {
