@@ -9,6 +9,7 @@ import UniversalBuildIntake from './UniversalBuildIntake'
 import ExternalActionService from './ExternalActionService'
 import { jarvisGptBrainService } from './JarvisGptBrainService'
 import type { GptMode } from './JarvisGptBrainService'
+import { jarvisBrainService } from './JarvisBrainService'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
 import { generateImplementationPrompt } from '@renderer/services/developer-prompt/implementationPromptGenerator'
 import { categoryFor, startSession, finalizeSession, failSession } from './commandSession'
@@ -100,6 +101,9 @@ export class JarvisService {
   private universalBuild = new UniversalBuildIntake()
   private externals = new ExternalActionService()
   private gpt = jarvisGptBrainService
+  private brain = jarvisBrainService
+  /** 패널이 동기화해 주는 현재 앱 모드 — 브레인 프롬프트·이동 화이트리스트에 사용. */
+  private appMode: 'staff' | 'ceo' = 'staff'
 
   private state: JarvisState = {
     isOpen: false,
@@ -132,6 +136,11 @@ export class JarvisService {
   open(): void {
     this.state.isOpen = true
     this.emit()
+  }
+
+  /** 현재 앱 모드(직원/대표) 동기화 — 패널이 mount/모드 변경 시 호출. */
+  setAppMode(mode: 'staff' | 'ceo'): void {
+    this.appMode = mode
   }
 
   /**
@@ -256,9 +265,8 @@ export class JarvisService {
           result = await this.handleGpt(command, classification)
           break
         default:
-          // Local-first: if the command is not a deterministic local intent and
-          // the GPT brain is enabled, fall back to the proxy-backed GPT brain.
-          result = this.gpt.isEnabled() ? await this.askGpt(command) : this.handleUnknown(command)
+          // 로컬 우선 → Claude 자비스 브레인(자유 대화+실행) → GPT 프록시 → 로컬 안내.
+          result = await this.handleFreeform(command)
       }
 
       this.state.status = result.status
@@ -625,6 +633,12 @@ export class JarvisService {
       return this.askGpt(command, mode)
     }
 
+    // GPT 프록시가 꺼져 있으면 Claude 자비스 브레인이 대신 답한다 (전략·분석 질문).
+    if (this.brain.isConfigured()) {
+      const brainResult = await this.handleBrain(command)
+      if (brainResult) return brainResult
+    }
+
     // Disabled: business-briefing degrades to the local briefing (real numbers).
     if (mode === 'business-briefing') {
       const briefing = this.answers.briefing()
@@ -645,6 +659,54 @@ export class JarvisService {
 
     // Other GPT modes: return the labeled disabled-fallback guidance.
     return this.askGpt(command, mode)
+  }
+
+  /**
+   * 규칙 라우터가 못 알아들은 명령의 폴백 체인:
+   * ① 결정적 레거시 파서(무료·로컬) → ② Claude 자비스 브레인(자유 대화+실행)
+   * → ③ GPT 프록시(선택 설정) → ④ 로컬 예시 안내. 어떤 단계도 throw하지 않는다.
+   */
+  private async handleFreeform(command: string): Promise<JarvisExecutionResult> {
+    const parsed = this.parser.parse(command)
+    if (parsed.intent !== 'unknown') return this.handleUnknown(command)
+    if (this.brain.isConfigured()) {
+      const result = await this.handleBrain(command)
+      if (result) return result
+    }
+    if (this.gpt.isEnabled()) return this.askGpt(command)
+    return this.handleUnknown(command)
+  }
+
+  /**
+   * Claude 자비스 브레인 — 챗GPT처럼 자유 대화하고 화면 이동 액션·후속 추천을
+   * 함께 돌려준다. 최근 대화 맥락(현재 명령 포함)을 전달해 대화가 이어진다.
+   * 미배포/미설정이면 null을 반환해 다음 폴백으로 넘어간다.
+   */
+  private async handleBrain(command: string): Promise<JarvisExecutionResult | null> {
+    const brain = await this.brain.chat(this.history.getEntries(), this.appMode)
+    if (!brain.ok) {
+      if (brain.disabled) return null
+      return {
+        mode: 'brain',
+        intent: 'free-chat',
+        response: `자비스 브레인 연결에 실패했습니다: ${brain.error ?? '알 수 없는 오류'} 잠시 후 다시 시도해 주세요.`,
+        toolCalls: [],
+        status: 'error',
+        source: 'brain',
+        error: brain.error,
+        suggestedCommands: [command]
+      }
+    }
+    return {
+      mode: 'brain',
+      intent: 'free-chat',
+      response: brain.reply ?? '',
+      toolCalls: [this.tool('callJarvisBrain', `Claude 자유 대화 · ${this.appMode === 'ceo' ? '대표' : '직원'} 모드`)],
+      status: 'completed',
+      source: 'brain',
+      navigationTarget: brain.navigate ?? null,
+      suggestedCommands: brain.suggested ?? []
+    }
   }
 
   private handleUnknown(command: string): JarvisExecutionResult {

@@ -23,6 +23,7 @@ const STATUS_TEXT: Record<AiCoreStatus, string> = {
   planning: '업무 자동화를 설계하는 중…',
   prompting: '개발 프롬프트를 생성하는 중…',
   executing: '실행하는 중…',
+  speaking: '말하는 중…',
   completed: '완료되었습니다',
   failed: '문제가 발생했습니다'
 }
@@ -49,11 +50,12 @@ const TONES: Record<AiCoreStatus, Tone> = {
   planning: { core: 'radial-gradient(circle at 32% 28%, #e6d9ff 0%, #a78bfa 40%, #4c1d95 100%)', glow: 'rgba(167,139,250,0.75)', ring: 'rgba(196,181,253,0.9)', text: '#ddd6fe', speed: 0.35 },
   prompting: { core: 'radial-gradient(circle at 32% 28%, #ffefc2 0%, #fbbf24 40%, #92400e 100%)', glow: 'rgba(251,191,36,0.75)', ring: 'rgba(252,211,77,0.9)', text: '#fde68a', speed: 0.35 },
   executing: { core: 'radial-gradient(circle at 32% 28%, #fff2cc 0%, #e6c877 40%, #8a6a1c 100%)', glow: 'rgba(230,200,119,0.8)', ring: 'rgba(230,200,119,0.95)', text: '#e6c877', speed: 0.3 },
+  speaking: { core: 'radial-gradient(circle at 32% 28%, #fff7dd 0%, #ecd28a 38%, #206b9e 100%)', glow: 'rgba(230,200,119,0.75)', ring: 'rgba(240,217,152,0.95)', text: '#f0d998', speed: 0.5 },
   completed: { core: 'radial-gradient(circle at 32% 28%, #fff7dd 0%, #e6c877 42%, #7a5c14 100%)', glow: 'rgba(230,200,119,0.85)', ring: 'rgba(230,200,119,0.95)', text: '#f0d998', speed: 1.4 },
   failed: { core: 'radial-gradient(circle at 32% 28%, #ffd0d6 0%, #f43f5e 42%, #5f1020 100%)', glow: 'rgba(244,63,94,0.75)', ring: 'rgba(251,113,133,0.9)', text: '#fda4af', speed: 1.2 }
 }
 
-const ACTIVE: AiCoreStatus[] = ['wake', 'listening', 'transcribing', 'analyzing', 'planning', 'prompting', 'executing']
+const ACTIVE: AiCoreStatus[] = ['wake', 'listening', 'transcribing', 'analyzing', 'planning', 'prompting', 'executing', 'speaking']
 
 /** 궤도 파티클 정의 — 반지름(%), 크기(px), 주기(s), 시작 각도(deg). */
 const PARTICLES = [

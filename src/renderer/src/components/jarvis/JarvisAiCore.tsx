@@ -14,6 +14,7 @@ export type AiCoreStatus =
   | 'planning'
   | 'prompting'
   | 'executing'
+  | 'speaking'
   | 'completed'
   | 'failed'
 
@@ -26,6 +27,7 @@ const STATUS_TEXT: Record<AiCoreStatus, string> = {
   planning: '업무 자동화 설계 중',
   prompting: '개발 프롬프트 생성 중',
   executing: '실행 중',
+  speaking: '말하는 중',
   completed: '완료',
   failed: '오류 발생'
 }
@@ -82,6 +84,12 @@ const TONES: Record<AiCoreStatus, Tone> = {
   },
   executing: {
     core: 'from-amber-400 to-yellow-500',
+    glow: 'shadow-[0_0_46px_-2px_rgba(212,167,44,0.8)]',
+    ring: 'border-amber-400/50',
+    text: 'text-amber-300'
+  },
+  speaking: {
+    core: 'from-amber-300 to-yellow-500',
     glow: 'shadow-[0_0_46px_-2px_rgba(212,167,44,0.8)]',
     ring: 'border-amber-400/50',
     text: 'text-amber-300'

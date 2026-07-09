@@ -81,7 +81,10 @@ const NAV_VIEWS = new Set([
   'assistant', 'company', 'dashboard', 'fcos', 'customer', 'sales-activity', 'schedule',
   'performance', 'team-leader', 'consultation', 'insurance-analysis', 'cto', 'qa', 'release',
   'devops', 'autopilot', 'devos', 'pm', 'backlog', 'workers', 'projects', 'approvals',
-  'app-builder', 'devprompt', 'activity', 'settings'
+  'app-builder', 'devprompt', 'activity', 'settings',
+  // 직원 업무 화면 + 자비스 브레인 이동 대상
+  'staff-home', 'attendance', 'shared-schedule', 'claim-assistant', 'wiki', 'underwriting',
+  'pre-underwriting', 'contacts', 'notice', 'staff-overview', 'staff-table', 'registration-admin'
 ])
 
 function toView(target: string | null | undefined): View | null {
@@ -167,6 +170,7 @@ const MODE_META: Record<JarvisMode, { label: string; classes: string }> = {
   navigation: { label: '이동', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
   'external-action': { label: '외부', classes: 'border-sky-500/30 bg-sky-500/10 text-sky-300' },
   gpt: { label: 'GPT 브레인', classes: 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300' },
+  brain: { label: 'AI 대화', classes: 'border-[#67e8f9]/30 bg-[#38bdf8]/10 text-[#9adcff]' },
   unknown: { label: '미확인', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
 }
 
@@ -234,7 +238,10 @@ export default function JarvisPanel(): JSX.Element | null {
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle')
   const [interimTranscript, setInterimTranscript] = useState('')
   const [voiceError, setVoiceError] = useState<string | null>(null)
-  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false)
+  // 음성 출력 기본 ON — 서비스가 진실의 원천 (미지원 환경은 자동 false).
+  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(() => voiceService.isVoiceOutputEnabled())
+  // TTS로 말하는 중 — 오브 '말하는 중' 연출.
+  const [speaking, setSpeaking] = useState(false)
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics>(() => voice.getDiagnostics())
   const [lastCommand, setLastCommand] = useState('')
   const [promptCopied, setPromptCopied] = useState(false)
@@ -288,6 +295,14 @@ export default function JarvisPanel(): JSX.Element | null {
   const { navigate } = useNavigation()
   const { mode } = useAppMode()
   const commandChips = mode === 'staff' ? STAFF_COMMAND_CHIPS : CEO_COMMAND_CHIPS
+
+  // 자비스 브레인이 모드별 프롬프트·이동 화이트리스트를 쓰도록 동기화.
+  useEffect(() => {
+    service.setAppMode(mode)
+  }, [service, mode])
+
+  // TTS 말하기 상태 구독 — 오브가 말할 때 골드 파동으로 진동.
+  useEffect(() => voice.onSpeakingChange(setSpeaking), [voice])
 
   // Jarvis → Claude Code Auto Builder. Dev commands create an auto-build job.
   // Auto mode (default OFF) auto-runs a safe job right after creation.
@@ -958,6 +973,8 @@ export default function JarvisPanel(): JSX.Element | null {
   const coreStatus = useMemo<AiCoreStatus>(() => {
     if (recording || voiceStatus === 'listening') return 'listening'
     if (transcribing) return 'transcribing'
+    // 답변을 소리 내어 읽는 중 — 실행 연출보다 우선해 오브가 '말하는 중'으로 진동.
+    if (speaking && state.status !== 'thinking' && state.status !== 'running') return 'speaking'
     if (displayedSession) {
       const total = displayedSession.steps.length
       if (revealed >= total) return displayedSession.status === 'failed' ? 'failed' : 'completed'
@@ -973,7 +990,7 @@ export default function JarvisPanel(): JSX.Element | null {
     if (state.status === 'thinking' || state.status === 'running') return 'analyzing'
     if (wakeEnabled) return 'wake'
     return 'idle'
-  }, [displayedSession, revealed, state.status, recording, voiceStatus, transcribing, wakeEnabled])
+  }, [displayedSession, revealed, state.status, recording, voiceStatus, transcribing, wakeEnabled, speaking])
 
   if (!state.isOpen) {
     return null
@@ -1188,6 +1205,20 @@ export default function JarvisPanel(): JSX.Element | null {
                   )}
                 </div>
               </div>
+            </div>
+          ) : null}
+
+          {/* 브레인 실행 액션 — 자비스가 제안한 화면 이동 (골드 버튼) */}
+          {state.mode === 'brain' && state.navigationTarget && toView(state.navigationTarget) ? (
+            <div className="mt-2 pl-9">
+              <button
+                type="button"
+                onClick={() => goToTarget(state.navigationTarget)}
+                className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition hover:brightness-110"
+                style={{ background: 'linear-gradient(135deg, #e6c877, #c6982f)', color: '#0e1e3a', boxShadow: '0 0 18px -4px rgba(230,200,119,0.7)' }}
+              >
+                <ArrowRight className="h-3.5 w-3.5" /> 화면 열기
+              </button>
             </div>
           ) : null}
 
@@ -1813,7 +1844,7 @@ export default function JarvisPanel(): JSX.Element | null {
                 </span>
                 {state.source ? (
                   <span className="rounded-full border px-2.5 py-1 text-[11px]" style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff' }}>
-                    응답 출처: {state.source === 'gpt' ? 'GPT' : state.source === 'fallback' ? '폴백' : '로컬'}
+                    응답 출처: {state.source === 'brain' ? '자비스 AI (Claude)' : state.source === 'gpt' ? 'GPT' : state.source === 'fallback' ? '폴백' : '로컬'}
                   </span>
                 ) : null}
               </div>

@@ -155,8 +155,12 @@ function classifyError(raw: string): VoiceErrorCode {
 export class VoiceService {
   private recognition: SpeechRecognitionLike | null = null
   private listening = false
-  private outputEnabled = false
+  // 자비스 음성 출력 기본 ON (대표 승인) — 미지원 환경에서는 speak()가 조용히 무시.
+  private outputEnabled = true
   private callbacks: VoiceListenCallbacks = {}
+  // 말하는 중 상태 구독 (오브 연출용) — 리스너 오류가 음성을 깨지 않게 격리.
+  private speaking = false
+  private speakingListeners = new Set<(speaking: boolean) => void>()
 
   // Diagnostics state.
   private webSpeechFailed = false
@@ -192,6 +196,31 @@ export class VoiceService {
 
   isVoiceOutputEnabled(): boolean {
     return this.outputEnabled
+  }
+
+  /** 현재 TTS로 말하는 중인지. */
+  isSpeaking(): boolean {
+    return this.speaking
+  }
+
+  /** 말하기 시작/종료 구독 (오브 연출용). 반환값은 구독 해제 함수. */
+  onSpeakingChange(listener: (speaking: boolean) => void): () => void {
+    this.speakingListeners.add(listener)
+    return () => {
+      this.speakingListeners.delete(listener)
+    }
+  }
+
+  private setSpeaking(speaking: boolean): void {
+    if (this.speaking === speaking) return
+    this.speaking = speaking
+    this.speakingListeners.forEach((fn) => {
+      try {
+        fn(speaking)
+      } catch {
+        /* 리스너 오류가 음성 파이프라인을 깨지 않게 */
+      }
+    })
   }
 
   /** Toggle text-to-speech output. Returns the new state. */
@@ -384,6 +413,11 @@ export class VoiceService {
     utterance.lang = LANG_KO
     const koVoice = synth.getVoices().find((voice) => voice.lang?.toLowerCase().startsWith('ko'))
     if (koVoice) utterance.voice = koVoice
+    // 오브 '말하는 중' 연출용 상태 — onstart가 안 오는 브라우저 대비 즉시 true.
+    utterance.onstart = () => this.setSpeaking(true)
+    utterance.onend = () => this.setSpeaking(false)
+    utterance.onerror = () => this.setSpeaking(false)
+    this.setSpeaking(true)
     synth.speak(utterance)
   }
 
@@ -391,6 +425,7 @@ export class VoiceService {
   stopSpeaking(): void {
     if (!this.isSynthesisSupported()) return
     window.speechSynthesis.cancel()
+    this.setSpeaking(false)
   }
 }
 

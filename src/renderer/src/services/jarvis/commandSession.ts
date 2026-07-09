@@ -42,6 +42,7 @@ export function categoryFor(mode: JarvisMode): JarvisCommandCategory {
     case 'briefing':
       return 'local-command'
     case 'gpt':
+    case 'brain':
       return 'ai-needed'
     default:
       return 'unknown'

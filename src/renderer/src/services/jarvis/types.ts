@@ -11,10 +11,11 @@ export type JarvisMode =
   | 'briefing'
   | 'external-action'
   | 'gpt'
+  | 'brain'
   | 'unknown'
 
 /** Where a Jarvis answer came from. */
-export type JarvisSource = 'local' | 'gpt' | 'fallback'
+export type JarvisSource = 'local' | 'gpt' | 'brain' | 'fallback'
 
 export interface ParsedCommand {
   raw: string
