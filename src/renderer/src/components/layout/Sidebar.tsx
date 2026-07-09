@@ -33,7 +33,8 @@ import {
   LogOut,
   ChevronDown,
   ChevronRight,
-  ReceiptText
+  ReceiptText,
+  Share2
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -173,6 +174,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
+  { key: 'shared-schedule', label: '공유 일정', icon: Share2, view: { name: 'shared-schedule' }, match: ['shared-schedule'] },
   { key: 'performance', label: '실적관리', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }
 ]

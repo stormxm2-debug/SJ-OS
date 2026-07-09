@@ -11,7 +11,8 @@ import {
   Megaphone,
   UsersRound,
   LayoutList,
-  ClipboardCheck
+  ClipboardCheck,
+  Share2
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -44,6 +45,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     items: [
       { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' } },
       { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' } },
+      { key: 'shared-schedule', label: '공유 일정', icon: Share2, view: { name: 'shared-schedule' } },
       { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' } },
       { key: 'consultation', label: '상담기록', icon: ClipboardList, view: { name: 'consultation' } }
     ]

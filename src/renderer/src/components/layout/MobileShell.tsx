@@ -13,6 +13,7 @@ import MobileMenuPage from '@renderer/components/mobile/MobileMenuPage'
 import SupabaseCustomerManager from '@renderer/components/customer/SupabaseCustomerManager'
 import SupabaseConsultationManager from '@renderer/components/consultation/SupabaseConsultationManager'
 import SupabaseScheduleManager from '@renderer/components/schedule/SupabaseScheduleManager'
+import SharedSchedulePage from '@renderer/pages/SharedSchedulePage'
 import SupabaseAttendanceManager from '@renderer/components/attendance/SupabaseAttendanceManager'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
@@ -148,6 +149,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <SupabaseConsultationManager />
     case 'schedule':
       return <SupabaseScheduleManager />
+    case 'shared-schedule':
+      return <SharedSchedulePage />
     case 'performance':
       return <MobilePerformance />
     case 'claim-assistant':

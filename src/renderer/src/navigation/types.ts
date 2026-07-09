@@ -12,6 +12,7 @@ export type View =
   | { name: 'customer' }
   | { name: 'sales-activity' }
   | { name: 'schedule' }
+  | { name: 'shared-schedule' }
   | { name: 'performance' }
   | { name: 'team-leader' }
   | { name: 'consultation' }

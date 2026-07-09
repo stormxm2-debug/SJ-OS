@@ -41,6 +41,7 @@ import AnnouncementAdminPage from '@renderer/pages/AnnouncementAdminPage'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
+import SharedSchedulePage from '@renderer/pages/SharedSchedulePage'
 
 /** Renders the active view chosen by the navigation state. */
 export default function Router(): JSX.Element {
@@ -79,6 +80,8 @@ export default function Router(): JSX.Element {
       return <SalesActivityWorkspacePage />
     case 'schedule':
       return <SupabaseScheduleManager />
+    case 'shared-schedule':
+      return <SharedSchedulePage />
     case 'performance':
       return <PerformancePage />
     case 'team-leader':

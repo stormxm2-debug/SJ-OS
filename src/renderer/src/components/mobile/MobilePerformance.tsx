@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BarChart3, ChevronLeft, ChevronRight, Plus, Trash2, Loader2, Crown, X, AlertTriangle } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
-import { isAdminRole } from '@renderer/navigation/roleAccess'
 import {
   addEntry,
   deleteEntry,
@@ -52,7 +51,6 @@ function moveMonth(m: string, delta: number): string {
 
 export default function MobilePerformance(): JSX.Element {
   const { session } = useSession()
-  const admin = isAdminRole(session.role)
   const [month, setMonth] = useState(currentMonth())
   const [entries, setEntries] = useState<ContractEntry[]>([])
   const [excel, setExcel] = useState<PerformanceEntry[]>([])
@@ -209,8 +207,8 @@ export default function MobilePerformance(): JSX.Element {
         </div>
       </div>
 
-      {/* ─── 관리자 순위 보드 ─── */}
-      {admin && ranked.length > 0 ? (
+      {/* ─── 직원 순위 보드 — 전 직원 상호 공개 (대표 지시) ─── */}
+      {ranked.length > 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-white p-3 shadow-sm">
           <div className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-slate-100">
             <Crown className="h-4 w-4 text-[#c6982f]" /> {monthLabel(month)} 직원 순위

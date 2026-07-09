@@ -209,8 +209,12 @@ export default function SupabaseScheduleManager(): JSX.Element {
   }, [])
   useRealtimeSync(RT_TABLES, load)
 
+  // 일반 뷰(주간 띠·달력·일별 목록)는 관리자여도 "내 일정"만 표시한다 (대표 지시:
+  // 자기 것만 보이게 — 직원들 일정은 직원별 보기로 따로). RLS도 본인+관리자로 좁혀짐.
+  const myEvents = useMemo(() => events.filter((ev) => ev.staffId === session.id), [events, session.id])
+
   const eventsOf = (d: Date): ScheduleWithCustomer[] =>
-    events
+    myEvents
       .filter((ev) => {
         const t = Date.parse(ev.startsAt)
         return !Number.isNaN(t) && sameDay(new Date(t), d)
