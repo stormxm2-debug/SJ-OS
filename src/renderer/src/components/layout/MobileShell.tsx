@@ -16,6 +16,8 @@ import SupabaseScheduleManager from '@renderer/components/schedule/SupabaseSched
 import SharedSchedulePage from '@renderer/pages/SharedSchedulePage'
 import SupabaseAttendanceManager from '@renderer/components/attendance/SupabaseAttendanceManager'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
+import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
+import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
@@ -158,6 +160,10 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <InsuranceClaimAssistantPage />
     case 'wiki':
       return <InsuranceWikiPage />
+    case 'underwriting':
+      return <UnderwritingGuidePage />
+    case 'pre-underwriting':
+      return <PreUnderwritingPage />
     case 'contacts':
       return <ManagerContactsPage />
     case 'notice':

@@ -24,6 +24,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "preview:web"],
       "port": 4173
+    },
+    {
+      "name": "web-dev-5180",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:web", "--", "--port", "5180", "--strictPort"],
+      "port": 5180
+    },
+    {
+      "name": "web-dev-5181",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:web", "--", "--port", "5181", "--strictPort"],
+      "port": 5181
     }
   ]
 }

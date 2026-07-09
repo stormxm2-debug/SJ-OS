@@ -43,7 +43,10 @@ import {
 } from '@renderer/services/commercial/customerFilesStorage'
 import { createRegistration, INSURERS } from '@renderer/services/commercial/registrationService'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
-import { Send, ShieldCheck } from 'lucide-react'
+import { Send, ShieldCheck, ShieldQuestion } from 'lucide-react'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
+import CustomerUnderwritingHint from './CustomerUnderwritingHint'
+import { setUnderwritingPrefill } from '@renderer/services/underwriting-ai/underwritingPrefill'
 
 /**
  * 고객관리 v2 — 승인 시안 반영.
@@ -107,6 +110,7 @@ function numOr(v: string): number | undefined {
 }
 
 export default function SupabaseCustomerManager(): JSX.Element {
+  const { navigate } = useNavigation()
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
@@ -537,6 +541,9 @@ export default function SupabaseCustomerManager(): JSX.Element {
             </Field>
           </div>
 
+          {/* 병력 → 인수 가능 보험사 자동 매칭 (매칭 없으면 렌더링 안 함) */}
+          <CustomerUnderwritingHint medicalHistory={form.medicalHistory} />
+
           {/* 첨부 */}
           <div className="mb-3">
             <Field label={`사진 / 서류 첨부 (${form.attachments.length}/${MAX_CUSTOMER_ATTACHMENTS})`}>
@@ -759,6 +766,16 @@ export default function SupabaseCustomerManager(): JSX.Element {
                           <UsersRound className="h-3.5 w-3.5" /> 가족 {members.length + 1}명
                         </span>
                       ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUnderwritingPrefill(head)
+                          navigate({ name: 'pre-underwriting' })
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full border border-[#c6982f]/40 bg-[#c6982f]/5 px-2.5 py-1 text-[10px] font-bold text-[#b0821f] transition hover:bg-[#c6982f]/15"
+                      >
+                        <ShieldQuestion className="h-3 w-3" /> AI 심사
+                      </button>
                       <button
                         type="button"
                         onClick={() => openAddFamily(head)}

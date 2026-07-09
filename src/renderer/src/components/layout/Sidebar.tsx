@@ -35,6 +35,8 @@ import {
   ChevronRight,
   ReceiptText,
   Share2,
+  Stethoscope,
+  ShieldQuestion,
   Phone
 } from 'lucide-react'
 import { useState } from 'react'
@@ -85,6 +87,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
+      { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
+      { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
       { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] }
     ]
   },
@@ -159,6 +163,8 @@ const STAFF_NAV: NavItem[] = [
   { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
+  { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
+  { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'fcos', label: '내 업무', icon: Briefcase, view: { name: 'fcos' }, match: ['fcos'] }
 ]
@@ -176,6 +182,8 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'consultation', label: '상담기록', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
+  { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
+  { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
   { key: 'shared-schedule', label: '공유 일정', icon: Share2, view: { name: 'shared-schedule' }, match: ['shared-schedule'] },

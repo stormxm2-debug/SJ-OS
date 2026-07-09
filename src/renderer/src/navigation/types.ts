@@ -19,6 +19,8 @@ export type View =
   | { name: 'insurance-analysis' }
   | { name: 'claim-assistant' }
   | { name: 'wiki' }
+  | { name: 'underwriting'; q?: string }
+  | { name: 'pre-underwriting' }
   | { name: 'contacts' }
   | { name: 'app-builder' }
   | { name: 'devprompt' }
