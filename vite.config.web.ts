@@ -1,6 +1,25 @@
 import { resolve } from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+
+/**
+ * Emits `version.json` with a unique id per build. The running app polls this file
+ * (src/renderer/src/services/system/appUpdate.ts) and reloads itself when a new
+ * deploy lands — this is how phones auto-update without a service worker.
+ */
+function buildVersionPlugin(): Plugin {
+  return {
+    name: 'sj-build-version',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ buildId: `${Date.now()}`, builtAt: new Date().toISOString() })
+      })
+    }
+  }
+}
 
 /**
  * Standalone WEB build config for the SJ OS mobile PWA / staff web app.
@@ -20,7 +39,7 @@ export default defineConfig({
       '@shared': resolve(__dirname, 'src/shared')
     }
   },
-  plugins: [react()],
+  plugins: [react(), buildVersionPlugin()],
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,

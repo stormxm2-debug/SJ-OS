@@ -51,9 +51,9 @@ export default function MobileShell(): JSX.Element {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-800">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-950 text-slate-200">
       {/* Top bar */}
-      <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+      <header className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-white px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <BrandLogo markClassName="h-7" wordmarkClassName="text-base" />
           <span className="truncate text-[10px] text-slate-500">{session.name || '직원'} · {ROLE_LABEL[session.role]}</span>
@@ -68,7 +68,7 @@ export default function MobileShell(): JSX.Element {
 
       {/* 더보기 sheet (non-modal, above tab bar) */}
       {moreOpen ? (
-        <div className="fixed inset-x-0 bottom-16 z-20 mx-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+        <div className="fixed inset-x-0 bottom-16 z-20 mx-2 rounded-2xl border border-slate-800 bg-white p-2 shadow-xl">
           <div className="mb-1 flex items-center justify-between px-2">
             <span className="text-xs font-semibold text-slate-500">더보기</span>
             <button type="button" onClick={() => setMoreOpen(false)} className="text-slate-400"><X className="h-4 w-4" /></button>
@@ -82,7 +82,7 @@ export default function MobileShell(): JSX.Element {
       ) : null}
 
       {/* Bottom tab nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-10 flex h-16 items-stretch border-t border-slate-200 bg-white">
+      <nav className="fixed inset-x-0 bottom-0 z-10 flex h-16 items-stretch border-t border-slate-800 bg-white">
         {TABS.map((t) => {
           const active = t.match.includes(route.name)
           const Icon = t.icon
@@ -131,7 +131,7 @@ function MobileContent({ routeName }: { routeName: ViewName }): JSX.Element {
 function MobileAccessDenied(): JSX.Element {
   const { navigate } = useNavigation()
   return (
-    <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+    <div className="mt-8 rounded-2xl border border-slate-800 bg-white p-6 text-center shadow-sm">
       <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100">
         <ShieldAlert className="h-6 w-6 text-amber-600" />
       </div>
@@ -144,7 +144,7 @@ function MobileAccessDenied(): JSX.Element {
 
 function MoreItem({ icon, label, onClick, danger }: { icon: JSX.Element; label: string; onClick: () => void; danger?: boolean }): JSX.Element {
   return (
-    <button type="button" onClick={onClick} className={['flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition active:bg-slate-50', danger ? 'text-rose-600' : 'text-slate-300'].join(' ')}>
+    <button type="button" onClick={onClick} className={['flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition active:bg-slate-950', danger ? 'text-rose-600' : 'text-slate-300'].join(' ')}>
       <span className={danger ? 'text-rose-500' : 'text-indigo-500'}>{icon}</span>
       {label}
     </button>
