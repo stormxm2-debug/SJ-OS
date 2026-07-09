@@ -1,6 +1,6 @@
 {
   "name": "sj-ai-company",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "private": true,
   "description": "SJ AI Company — a desktop AI engineering organization. The CEO gives one instruction; the AI company executes. (MVP shell)",
   "author": "SJ AI Company",
