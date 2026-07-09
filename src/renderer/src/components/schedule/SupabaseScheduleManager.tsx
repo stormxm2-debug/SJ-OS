@@ -16,7 +16,9 @@ import {
   MapPin,
   Navigation,
   Pencil,
-  Trash2
+  Trash2,
+  UsersRound,
+  ChevronDown
 } from 'lucide-react'
 import type { CustomerRecord, ScheduleAiBrief } from '@shared/commercial/models'
 import { listCustomers } from '@renderer/services/commercial/customerService'
@@ -40,6 +42,9 @@ import {
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import { takeSchedulePrefill } from '@renderer/services/commercial/schedulePrefillStore'
 import { deleteScheduleRecord } from '@renderer/services/commercial/recordDeleteService'
+import { useSession } from '@renderer/navigation/SessionContext'
+import { isAdminRole } from '@renderer/navigation/roleAccess'
+import { listOverviewStaff, type OverviewStaff } from '@renderer/services/commercial/staffOverviewService'
 
 /**
  * 일정관리 v3 — 주간 중심 + AI 한줄 등록.
@@ -157,6 +162,8 @@ function defaultForm(day: Date): FormState {
 }
 
 export default function SupabaseScheduleManager(): JSX.Element {
+  const { session } = useSession()
+  const admin = isAdminRole(session.role)
   const [events, setEvents] = useState<ScheduleWithCustomer[]>([])
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -165,6 +172,10 @@ export default function SupabaseScheduleManager(): JSX.Element {
   const [weekOffset, setWeekOffset] = useState(0)
   const [selectedDay, setSelectedDay] = useState<Date>(startOfDay(new Date()))
   const [showMonth, setShowMonth] = useState(false)
+  // 관리자 전용 — 직원별 보기 (이번 주 일정을 직원 이름별 접이식 섹션으로)
+  const [byStaff, setByStaff] = useState(false)
+  const [staffList, setStaffList] = useState<OverviewStaff[]>([])
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<FormState>(() => defaultForm(startOfDay(new Date())))
@@ -182,9 +193,10 @@ export default function SupabaseScheduleManager(): JSX.Element {
   const today = startOfDay(new Date())
 
   const load = async (): Promise<void> => {
-    const [sRes, cRes] = await Promise.all([listScheduleEvents(), listCustomers()])
+    const [sRes, cRes, staff] = await Promise.all([listScheduleEvents(), listCustomers(), admin ? listOverviewStaff() : Promise.resolve([])])
     setEvents(sRes.events)
     setCustomers(cRes.customers)
+    if (admin) setStaffList(staff.filter((s) => s.role === 'fc' || s.role === 'team-leader'))
     setError(sRes.ok ? undefined : sRes.error)
     setLoading(false)
   }
@@ -207,6 +219,38 @@ export default function SupabaseScheduleManager(): JSX.Element {
 
   const dayEvents = eventsOf(selectedDay)
   const monthLabel = `${selectedDay.getFullYear()}년 ${selectedDay.getMonth() + 1}월`
+
+  // ─── 직원별 보기 (관리자) — 이번 주 일정을 직원 이름별로 그룹 ────────────
+  const staffGroups = useMemo(() => {
+    if (!byStaff) return []
+    const from = weekStart.getTime()
+    const to = addDays(weekStart, 7).getTime()
+    const week = events
+      .filter((ev) => {
+        const t = Date.parse(ev.startsAt)
+        return !Number.isNaN(t) && t >= from && t < to
+      })
+      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+    const byId = new Map<string, ScheduleWithCustomer[]>()
+    for (const ev of week) {
+      const arr = byId.get(ev.staffId) ?? []
+      arr.push(ev)
+      byId.set(ev.staffId, arr)
+    }
+    const groups = staffList.map((s) => ({ id: s.id, name: s.name, events: byId.get(s.id) ?? [] }))
+    // 직원 목록에 없는 작성자(대표 본인 등)도 일정이 있으면 뒤에 표시
+    const known = new Set(staffList.map((s) => s.id))
+    for (const [id, evs] of byId) {
+      if (!known.has(id)) groups.push({ id, name: evs[0]?.staffName || '(이름없음)', events: evs })
+    }
+    return groups.sort((a, b) => b.events.length - a.events.length || a.name.localeCompare(b.name, 'ko'))
+  }, [byStaff, events, staffList, weekStart])
+
+  // 직원별 보기 켜질 때/주 이동 시: 일정 있는 직원은 펼쳐서 시작
+  useEffect(() => {
+    if (byStaff) setExpanded(new Set(staffGroups.filter((g) => g.events.length > 0).map((g) => g.id)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [byStaff, weekStart, staffList.length])
 
   const pickDay = (d: Date): void => {
     setSelectedDay(d)
@@ -351,6 +395,18 @@ export default function SupabaseScheduleManager(): JSX.Element {
             >
               <CalendarSearch className="h-3.5 w-3.5" /> 달력
             </button>
+            {admin ? (
+              <button
+                type="button"
+                onClick={() => setByStaff((v) => !v)}
+                className={[
+                  'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition',
+                  byStaff ? 'border-[#c6982f] bg-[#c6982f]/10 text-[#b0821f]' : 'border-slate-800 bg-white text-slate-400 hover:text-slate-200'
+                ].join(' ')}
+              >
+                <UsersRound className="h-3.5 w-3.5" /> 직원별
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => (showForm ? setShowForm(false) : openCreate())}
@@ -649,37 +705,119 @@ export default function SupabaseScheduleManager(): JSX.Element {
         </div>
       ) : null}
 
-      {/* 선택한 날의 일정 카드 */}
-      <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-sm font-bold text-slate-100">
-            {selectedDay.getMonth() + 1}월 {selectedDay.getDate()}일 ({DAY_NAMES[selectedDay.getDay()]}) · {dayEvents.length}건
+      {byStaff && admin ? (
+        /* ─── 직원별 보기 (관리자) — 이번 주 일정을 이름별 접이식 섹션으로 ─── */
+        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-bold text-slate-100">
+              직원별 일정{' '}
+              <span className="font-medium text-slate-500">
+                ({weekStart.getMonth() + 1}/{weekStart.getDate()} ~ {addDays(weekStart, 6).getMonth() + 1}/{addDays(weekStart, 6).getDate()} · 위 주간 띠로 주 이동)
+              </span>
+            </div>
+            <span className="rounded-full border border-[#c6982f]/40 bg-[#c6982f]/10 px-2 py-0.5 text-[10px] font-bold text-[#b0821f]">관리자 보기</span>
           </div>
-          {sameDay(selectedDay, today) ? <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">오늘</span> : null}
+          {loading ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> 일정을 불러오는 중…
+            </div>
+          ) : staffGroups.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-700 py-8 text-center text-[12px] text-slate-500">표시할 직원이 없습니다.</div>
+          ) : (
+            <div className="space-y-2">
+              {staffGroups.map((g) => {
+                const open = expanded.has(g.id)
+                return (
+                  <div key={g.id} className="overflow-hidden rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpanded((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(g.id)) next.delete(g.id)
+                          else next.add(g.id)
+                          return next
+                        })
+                      }
+                      className="flex w-full items-center gap-2 bg-slate-950 px-3 py-2.5 text-left transition active:bg-white"
+                    >
+                      <UserRound className="h-4 w-4 shrink-0 text-indigo-500" />
+                      <span className="font-semibold text-slate-100">{g.name}</span>
+                      <span
+                        className={[
+                          'rounded-full px-2 py-0.5 text-[10px] font-bold',
+                          g.events.length > 0 ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-950 text-slate-500 border border-slate-800'
+                        ].join(' ')}
+                      >
+                        {g.events.length > 0 ? `${g.events.length}건` : '일정 없음'}
+                      </span>
+                      <ChevronDown className={['ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform', open ? 'rotate-180' : ''].join(' ')} />
+                    </button>
+                    {open ? (
+                      g.events.length === 0 ? (
+                        <div className="bg-white px-3 py-3 text-[11px] text-slate-500">이번 주 등록된 일정이 없습니다.</div>
+                      ) : (
+                        <div className="space-y-1 bg-white p-2">
+                          {g.events.map((ev) => {
+                            const d = new Date(Date.parse(ev.startsAt))
+                            return (
+                              <div key={ev.id} className="flex items-center gap-2 rounded-lg bg-slate-950 px-2.5 py-1.5 text-[12px]">
+                                <span className="w-20 shrink-0 tabular-nums text-slate-500">
+                                  {d.getMonth() + 1}/{d.getDate()}({DAY_NAMES[d.getDay()]}) {String(d.getHours()).padStart(2, '0')}:{String(d.getMinutes()).padStart(2, '0')}
+                                </span>
+                                <span className={['shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold', typeBadgeClass(ev.type)].join(' ')}>{typeLabel(ev.type)}</span>
+                                <span className="min-w-0 truncate font-semibold text-slate-100">{ev.customerName || ev.title}</span>
+                                {ev.location ? (
+                                  <span className="ml-auto inline-flex min-w-0 shrink items-center gap-0.5 truncate text-[11px] text-slate-500">
+                                    <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{ev.location}</span>
+                                  </span>
+                                ) : null}
+                                {ev.status === 'done' ? <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600">완료</span> : null}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
-        {loading ? (
-          <div className="flex items-center gap-2 py-8 text-sm text-slate-500">
-            <Loader2 className="h-4 w-4 animate-spin" /> 일정을 불러오는 중…
+      ) : (
+        /* ─── 선택한 날의 일정 카드 ─── */
+        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-bold text-slate-100">
+              {selectedDay.getMonth() + 1}월 {selectedDay.getDate()}일 ({DAY_NAMES[selectedDay.getDay()]}) · {dayEvents.length}건
+            </div>
+            {sameDay(selectedDay, today) ? <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">오늘</span> : null}
           </div>
-        ) : dayEvents.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-700 py-8 text-center text-[12px] text-slate-500">
-            이 날의 일정이 없습니다. 위의 <b className="text-slate-300">AI 등록</b>이나 <b className="text-slate-300">일정 등록</b>으로 추가하세요.
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {dayEvents.map((ev) => (
-              <EventCard
-                key={ev.id}
-                event={ev}
-                today={today}
-                onChanged={load}
-                onEdit={openEdit}
-                onRegisterNext={(type, customerId, hint) => openCreate(type, { customerId, hint })}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+          {loading ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> 일정을 불러오는 중…
+            </div>
+          ) : dayEvents.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-700 py-8 text-center text-[12px] text-slate-500">
+              이 날의 일정이 없습니다. 위의 <b className="text-slate-300">AI 등록</b>이나 <b className="text-slate-300">일정 등록</b>으로 추가하세요.
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {dayEvents.map((ev) => (
+                <EventCard
+                  key={ev.id}
+                  event={ev}
+                  today={today}
+                  onChanged={load}
+                  onEdit={openEdit}
+                  onRegisterNext={(type, customerId, hint) => openCreate(type, { customerId, hint })}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

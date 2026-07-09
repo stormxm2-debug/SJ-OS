@@ -12,7 +12,8 @@ import {
   MapPin,
   CalendarDays,
   Timer,
-  ImageOff
+  ImageOff,
+  Phone
 } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import {
@@ -43,6 +44,7 @@ interface StaffLite {
   id: string
   name: string
   teamId?: string
+  phone?: string
 }
 async function listActiveStaff(): Promise<StaffLite[]> {
   try {
@@ -50,11 +52,12 @@ async function listActiveStaff(): Promise<StaffLite[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const client = getSupabaseClient() as any
     if (!client) return []
-    const { data } = await client.from('profiles').select('id, name, team_id, role, status').eq('status', 'active').in('role', ['fc', 'team-leader'])
-    return ((data as { id: string; name: string; team_id: string | null }[]) ?? []).map((p) => ({
+    const { data } = await client.from('profiles').select('id, name, team_id, role, status, phone').eq('status', 'active').in('role', ['fc', 'team-leader'])
+    return ((data as { id: string; name: string; team_id: string | null; phone: string | null }[]) ?? []).map((p) => ({
       id: p.id,
       name: p.name,
-      teamId: p.team_id ?? undefined
+      teamId: p.team_id ?? undefined,
+      phone: p.phone ?? undefined
     }))
   } catch {
     return []
@@ -139,6 +142,25 @@ export default function SupabaseAttendanceManager(): JSX.Element {
     const scope = session.role === 'team-leader' ? staffList.filter((s) => s.teamId && s.teamId === session.teamName) : staffList
     return scope.filter((s) => !checked.has(s.id))
   }, [todayCheckIns, staffList, session.role, session.teamName])
+
+  // ─── 오늘 출근 현황 명단 (자동 체크: 미출근→지각→근무중→퇴근 순 정렬) ────
+  type RosterState = 'absent' | 'late' | 'in' | 'out'
+  const roster = useMemo(() => {
+    const scope = session.role === 'team-leader' ? staffList.filter((s) => s.teamId && s.teamId === session.teamName) : staffList
+    const inBy = new Map(todayCheckIns.map((r) => [r.staffId, r]))
+    const outBy = new Map(
+      records.filter((r) => r.type === 'check-out' && new Date(r.timestamp).toDateString() === todayKey).map((r) => [r.staffId, r])
+    )
+    const order: Record<RosterState, number> = { absent: 0, late: 1, in: 2, out: 3 }
+    return scope
+      .map((s) => {
+        const rin = inBy.get(s.id)
+        const rout = outBy.get(s.id)
+        const state: RosterState = !rin ? 'absent' : rout ? 'out' : (rin.lateFee ?? 0) > 0 ? 'late' : 'in'
+        return { staff: s, rin, rout, state }
+      })
+      .sort((a, b) => order[a.state] - order[b.state] || a.staff.name.localeCompare(b.staff.name, 'ko'))
+  }, [staffList, todayCheckIns, records, todayKey, session.role, session.teamName])
   const monthlyFines = useMemo(() => {
     const map = new Map<string, { name: string; count: number; sum: number }>()
     for (const r of records) {
@@ -379,27 +401,56 @@ export default function SupabaseAttendanceManager(): JSX.Element {
               </div>
             </div>
 
-            {todayLate.length > 0 ? (
-              <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-3">
-                <div className="mb-1.5 text-[12px] font-bold text-rose-700">오늘 지각자 (9시 기준 자동 판정)</div>
-                <div className="space-y-1">
-                  {todayLate.map((r) => (
-                    <div key={r.id} className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-[12px]">
-                      <span className="font-semibold text-slate-100">{r.staffName || '(이름없음)'}</span>
-                      <span className="text-slate-500">
-                        {new Date(r.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 출근
-                      </span>
-                      <span className="ml-auto font-bold text-rose-600">벌금 {feeLabel(r.lateFee ?? 0)}</span>
-                    </div>
-                  ))}
+            {/* 오늘 출근 현황 명단 — 전 직원 자동 대조 (미출근이 맨 위) */}
+            {roster.length > 0 ? (
+              <div className="rounded-xl border border-slate-800 bg-white p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
+                  <div className="text-[12px] font-bold text-slate-100">
+                    오늘 출근 현황 <span className="font-medium text-slate-500">(자동 체크 · {roster.length}명)</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 text-[10px] font-bold">
+                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-600">미출근 {roster.filter((r) => r.state === 'absent').length}</span>
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-600">지각 {roster.filter((r) => r.state === 'late').length}</span>
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">근무중 {roster.filter((r) => r.state === 'in').length}</span>
+                    <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-600">퇴근 {roster.filter((r) => r.state === 'out').length}</span>
+                  </div>
                 </div>
-              </div>
-            ) : null}
-
-            {absentToday.length > 0 ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-[12px] text-amber-800">
-                <b>아직 미출근:</b> {absentToday.map((s) => s.name).join(', ')}
-                <span className="ml-1 text-[11px] text-amber-600">(평일 09:05 공지로도 자동 보고됩니다)</span>
+                <div className="space-y-1">
+                  {roster.map(({ staff, rin, rout, state }) => {
+                    const t = (r?: AttendanceWithStaff): string =>
+                      r ? new Date(r.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : ''
+                    const rowTone =
+                      state === 'absent' ? 'border-rose-200 bg-rose-50/70' : state === 'late' ? 'border-amber-200 bg-amber-50/60' : 'border-slate-800 bg-slate-950'
+                    return (
+                      <div key={staff.id} className={['flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px]', rowTone].join(' ')}>
+                        <span
+                          className={[
+                            'inline-flex w-14 shrink-0 justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white',
+                            state === 'absent' ? 'bg-rose-500' : state === 'late' ? 'bg-amber-500' : state === 'in' ? 'bg-emerald-500' : 'bg-sky-500'
+                          ].join(' ')}
+                        >
+                          {state === 'absent' ? '미출근' : state === 'late' ? '지각' : state === 'in' ? '근무중' : '퇴근'}
+                        </span>
+                        <span className="min-w-0 truncate font-semibold text-slate-100">{staff.name}</span>
+                        {rin ? (
+                          <span className="text-slate-500">
+                            {t(rin)} 출근{rout ? ` → ${t(rout)} 퇴근` : ''}
+                          </span>
+                        ) : null}
+                        {state === 'late' ? <span className="ml-auto shrink-0 font-bold text-rose-600">벌금 {feeLabel(rin?.lateFee ?? 0)}</span> : null}
+                        {state === 'absent' && staff.phone ? (
+                          <a
+                            href={`tel:${staff.phone}`}
+                            className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-500 px-2.5 py-1 text-[10px] font-bold text-white active:brightness-110"
+                          >
+                            <Phone className="h-3 w-3" /> 전화
+                          </a>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="mt-1.5 text-[10px] text-slate-500">평일 09:05 미출근자는 공지로도 자동 보고됩니다.</div>
               </div>
             ) : null}
 
