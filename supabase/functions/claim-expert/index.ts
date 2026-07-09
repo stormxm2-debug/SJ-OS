@@ -529,12 +529,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const analysis = body.analysis
     const rejection = String((body.rejection as string) ?? '').trim()
     if (!analysis || !rejection) return json({ success: false, error: '분석 결과와 거절 사유가 필요합니다.' }, 400)
-    const content = [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const content: any[] = [
       {
         type: 'text',
         text: ['--- 기존 분석 결과 ---', JSON.stringify(analysis).slice(0, 200000), '', '--- 보상팀 거절/삭감 통보 내용 ---', rejection.slice(0, 3000)].join('\n')
       }
     ]
+    // 원본 서류 재첨부(선택) — 거절 사유가 서류 내용을 다툴 때 원본을 직접 재판독해 반박 강화.
+    const rawFiles = Array.isArray((body as { files?: unknown }).files) ? ((body as { files: unknown[] }).files as Record<string, unknown>[]).slice(0, 4) : []
+    let attached = 0
+    for (const f of rawFiles) {
+      const data = typeof f.data === 'string' ? f.data : ''
+      if (!data) continue
+      const mime = String(f.mediaType ?? 'image/jpeg')
+      if (mime !== 'application/pdf' && !ALLOWED_IMAGE_TYPES.has(mime)) continue
+      attached += 1
+      content.push({ type: 'text', text: `[재첨부 원본 ${attached}] 파일명: ${String(f.name ?? `문서${attached}`).slice(0, 120)}` })
+      content.push(
+        mime === 'application/pdf'
+          ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
+          : { type: 'image', source: { type: 'base64', media_type: mime, data } }
+      )
+    }
+    if (attached > 0) {
+      content.push({
+        type: 'text',
+        text: `위 ${attached}개 재첨부 원본 서류를 직접 다시 판독하세요. 거절 사유가 다투는 내용(진단명·수술명·약관 조항 등)을 원본에서 원문 그대로 인용해 반박 근거로 사용하세요.`
+      })
+    }
     const res = await callClaude(apiKey, APPEAL_SYSTEM, content, 6000, true)
     if (!res.ok) return json({ success: false, error: res.error }, 502)
     const parsed = parseJson(res.text ?? '')

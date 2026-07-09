@@ -91,6 +91,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
 
   const [rejection, setRejection] = useState('')
   const [appealLoading, setAppealLoading] = useState(false)
+  const [appealFiles, setAppealFiles] = useState<File[]>([])
   const [appeal, setAppeal] = useState<ClaimAppeal | null>(null)
   const [appealError, setAppealError] = useState('')
   const [copiedAppeal, setCopiedAppeal] = useState(false)
@@ -203,6 +204,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setResult(null)
     setAppeal(null)
     setRejection('')
+    setAppealFiles([])
     setSaveState('idle')
     const res = await analyzeClaimExpert({
       files,
@@ -246,6 +248,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setMessage(item.result.customerMessage ?? '')
     setAppeal(null)
     setRejection('')
+    setAppealFiles([])
     setSaveState('idle')
     setPhase('result')
     setPastOpen(false)
@@ -256,7 +259,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setAppealLoading(true)
     setAppealError('')
     setAppeal(null)
-    const res = await generateAppeal({ result, rejection })
+    const res = await generateAppeal({ result, rejection, files: appealFiles })
     setAppealLoading(false)
     if (!res.ok || !res.appeal) {
       setAppealError(res.error ?? '요청서 생성에 실패했습니다.')
@@ -272,6 +275,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setError('')
     setAppeal(null)
     setRejection('')
+    setAppealFiles([])
     setSaveState('idle')
   }
 
@@ -871,6 +875,31 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
               placeholder='예: "상해수술비는 약관상 수술 정의에 해당하지 않아 부지급 처리되었습니다" (문자/통화 내용 그대로)'
               className="mt-3 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-[13px] leading-6 text-slate-100 outline-none placeholder:text-slate-500 focus:border-[#c6982f]"
             />
+            {/* 원본 서류 재첨부 (선택) — 거절 사유가 서류 내용을 다툴 때 원본을 재판독해 반박 강화 */}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-800 bg-white px-3 py-2 text-[12px] font-bold text-slate-300 transition hover:border-[#c6982f]">
+                📎 관련 원본 서류 재첨부 (선택, 최대 4개)
+                <input
+                  type="file"
+                  multiple
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    setAppealFiles(Array.from(e.target.files ?? []).slice(0, 4))
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {appealFiles.map((f) => (
+                <span key={f.name} className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-600">
+                  {f.name}
+                  <button type="button" onClick={() => setAppealFiles((xs) => xs.filter((x) => x !== f))} className="font-bold">×</button>
+                </span>
+              ))}
+            </div>
+            {appealFiles.length > 0 ? (
+              <p className="mt-1 text-[11px] text-slate-500">첨부한 원본을 AI가 다시 판독해, 거절 사유가 다투는 내용을 원문 인용으로 반박합니다.</p>
+            ) : null}
             <button
               type="button"
               onClick={() => void runAppeal()}

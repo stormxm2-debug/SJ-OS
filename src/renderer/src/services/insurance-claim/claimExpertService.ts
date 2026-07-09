@@ -685,16 +685,34 @@ export async function analyzeClaimExpert(args: {
   return { ok: true, result, usedTerms: matched.map((t) => t.id), webTerms }
 }
 
-/** 부지급/삭감 통보 → 약관 조항 근거 재검토 요청서 생성. */
+/**
+ * 부지급/삭감 통보 → 약관 조항 근거 재검토 요청서 생성.
+ * 거절 사유가 특정 서류 내용을 다투는 경우(예: "수술 정의에 해당하지 않음") 관련 원본
+ * 서류를 files로 재첨부하면 AI가 원본을 직접 재판독해 인용을 강화한다 (선택).
+ */
 export async function generateAppeal(args: {
   result: ClaimExpertResult
   rejection: string
+  files?: File[]
 }): Promise<{ ok: boolean; appeal?: ClaimAppeal; error?: string }> {
   if (!args.rejection.trim()) return { ok: false, error: '보상팀의 거절/삭감 사유를 입력해 주세요.' }
   const analysis = { companies: args.result.companies, grandTotal: args.result.grandTotal, docs: args.result.docs.map(({ fileName: _f, ...rest }) => rest) }
-  const body = { mode: 'appeal', analysis, rejection: args.rejection }
-  let res = await postJson(body, 120000)
-  if (!res.ok && !res.disabled) res = await postJson(body, 120000) // 자동 1회 재시도
+  // 재첨부 원본 준비 (압축·인코딩 — 분석 업로드와 동일 파이프라인, 최대 4개)
+  let attach: PreparedDoc[] = []
+  const files = (args.files ?? []).slice(0, 4)
+  if (files.length > 0) {
+    for (const f of files) {
+      const issue = fileSizeIssue(f)
+      if (issue) return { ok: false, error: issue }
+    }
+    const prep = await prepareFiles(files)
+    if (!prep.ok) return { ok: false, error: prep.error }
+    attach = prep.docs
+  }
+  const timeout = attach.length > 0 ? 170000 : 120000
+  const body = { mode: 'appeal', analysis, rejection: args.rejection, files: attach }
+  let res = await postJson(body, timeout)
+  if (!res.ok && !res.disabled) res = await postJson(body, timeout) // 자동 1회 재시도
   if (!res.ok) return { ok: false, error: res.error }
   const raw = (res.data?.appeal ?? null) as { appealLetter?: unknown; keyPoints?: unknown } | null
   if (!raw?.appealLetter) return { ok: false, error: '요청서 생성에 실패했습니다. 다시 시도해 주세요.' }
