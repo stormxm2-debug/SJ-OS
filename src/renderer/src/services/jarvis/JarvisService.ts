@@ -668,6 +668,9 @@ export class JarvisService {
    * → ③ GPT 프록시(선택 설정) → ④ 로컬 예시 안내. 어떤 단계도 throw하지 않는다.
    */
   private async handleFreeform(command: string): Promise<JarvisExecutionResult> {
+    // 0) 인사·잡담·자기소개·도움말 — 백엔드 없이도 항상 즉시 응답 (배포와 무관).
+    const small = this.smalltalkReply(command)
+    if (small) return small
     const parsed = this.parser.parse(command)
     if (parsed.intent !== 'unknown') return this.handleUnknown(command)
     if (this.brain.isConfigured()) {
@@ -676,6 +679,63 @@ export class JarvisService {
     }
     if (this.gpt.isEnabled()) return this.askGpt(command)
     return this.handleUnknown(command)
+  }
+
+  /** 스몰토크 응답 헬퍼 — 대화 버블 + 후속 추천 (로컬, 출처 표기 없음). */
+  private smalltalk(response: string, suggested: string[]): JarvisExecutionResult {
+    return { mode: 'brain', intent: 'smalltalk', response, toolCalls: [], status: 'completed', suggestedCommands: suggested }
+  }
+
+  /**
+   * 인사·감사·자기소개·안부·도움말을 로컬 규칙으로 즉시 응답한다. 자비스가
+   * "인사도 안 받는" 문제를 브레인 배포와 무관하게 해결한다. 해당 없으면 null.
+   */
+  private smalltalkReply(command: string): JarvisExecutionResult | null {
+    const t = command.toLowerCase().replace(/\s+/g, '')
+    if (!t) return null
+    const has = (arr: string[]): boolean => arr.some((k) => t.includes(k.replace(/\s+/g, '')))
+    const isCeo = this.appMode === 'ceo'
+    const addr = isCeo ? '대표님' : ''
+    const sugg = isCeo
+      ? ['오늘 조직 상황 브리핑 해줘', '오늘 일정', '이번 달 실적', '우리 회사 앱 다음 기능 추천해줘']
+      : ['오늘 일정', '이번 달 실적', '클로징 예정 고객', '보험 백과사전 열어줘']
+
+    // 감사 — '고마워/감사'가 인사보다 먼저 (감사합니다에 '안'이 없지만 우선순위 명확화).
+    if (has(['고마워', '고맙', '감사', 'thank', 'thx', '수고'])) {
+      return this.smalltalk(`${addr ? addr + ', ' : ''}천만에요. 필요하시면 언제든 다시 불러 주세요. 무엇을 도와드릴까요?`, sugg)
+    }
+    // 자기소개 / 정체
+    if (has(['누구야', '누구니', '누구세요', '네가누구', '너뭐야', '넌뭐', '정체', '자기소개', '이름이뭐', 'whoareyou', '뭐하는'])) {
+      return this.smalltalk(
+        `저는 SJ INVEST의 AI 업무 어시스턴트 "자비스"입니다. ${addr ? addr + '의 ' : ''}일정·실적·고객 조회, 보험 실무 상담, 화면 이동, 개발 요청까지 도와드립니다. 편하게 말씀만 하세요.`,
+        sugg
+      )
+    }
+    // 도움말 / 기능
+    if (has(['뭐할수있', '무엇을할수', '기능이뭐', '도움말', '사용법', '어떻게써', '뭐해줄', 'help', '메뉴얼', '매뉴얼'])) {
+      return this.smalltalk(
+        [
+          '이렇게 도와드릴 수 있어요:',
+          '• 업무 조회 — "오늘 일정", "이번 달 실적", "클로징 예정 고객"',
+          '• 보험 실무 — "갱신 고객 화법 알려줘", "갑상선 결절 고객 어떤 보험" (AI 대화)',
+          '• 화면 이동 — "고객관리 열어줘", "사전심사 열어줘"',
+          '• 음성 — 마이크 버튼을 누르고 말씀하세요.'
+        ].join('\n'),
+        sugg
+      )
+    }
+    // 안부
+    if (has(['잘지내', '잘있었', '어떻게지내', '뭐하고있', '뭐해', '심심', '바빠'])) {
+      return this.smalltalk(`${addr ? addr + ', ' : ''}저는 언제나 대기 중입니다. 오늘 업무부터 챙겨 드릴까요? 일정이나 실적을 바로 확인해 드릴 수 있어요.`, sugg)
+    }
+    // 인사 (마지막 — 가장 광범위)
+    if (has(['안녕', '하이', '헬로', '반가', '좋은아침', '굿모닝', '굿애프터', '굿이브닝', 'hello', 'hihi', 'ㅎㅇ', '방가'])) {
+      return this.smalltalk(
+        `${addr ? addr + ', ' : ''}안녕하세요! 자비스입니다. 오늘도 힘차게 시작해 볼까요? 일정·실적·고객 조회부터 보험 실무 질문까지 무엇이든 말씀해 주세요.`,
+        sugg
+      )
+    }
+    return null
   }
 
   /**
@@ -727,11 +787,13 @@ export class JarvisService {
         status: legacy.status
       }
     }
+    const isCeo = this.appMode === 'ceo'
+    const addr = isCeo ? '대표님, ' : ''
     return {
       mode: 'unknown',
       intent: 'unknown',
       response: [
-        '아직 이해하지 못한 명령입니다. 아래 예시를 사용해 보세요.',
+        `${addr}방금 말씀은 아직 정확히 이해하지 못했어요. 아래처럼 말씀해 주시면 바로 처리할게요 — 자연스러운 대화형 답변은 자비스 AI(브레인)가 켜지면 더 풍부해집니다.`,
         '• 업무 질문: "오늘 브리핑", "오늘 FC 출근 현황", "이번 달 실적", "미완료 활동", "클로징 예정 고객"',
         '• 화면 이동: "FC OS", "고객 워크스페이스", "오토파일럿 열어줘", "라이브 컴퍼니", "승인센터"',
         '• 회사 운영: "회사 시작", "운영 루프 시작"',

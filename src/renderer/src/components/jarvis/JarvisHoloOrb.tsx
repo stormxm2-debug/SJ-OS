@@ -1,19 +1,117 @@
+import { useEffect, useRef } from 'react'
 import type { AiCoreStatus } from './JarvisAiCore'
 
 /**
- * 자비스 홀로그램 코어 오브 v2 — "이그제큐티브" 럭셔리 에디션.
+ * 자비스 홀로그램 코어 오브 v3 — "이그제큐티브" 럭셔리 + 파티클 성운.
  *
- * 3D 자이로스코프 링 3개(서로 다른 축·방향·속도) + 평면 정밀 링 6개(대시·헤어라인·
- * 이중 아크·골드 아크) + 궤도 파티클 6개 + 회전 광택 코어. 상태에 따라 색·속도가
- * 바뀐다: 대기(아이스 블루 호흡) → 듣는 중(로즈 파동) → 분석(가속 회전) →
- * 실행(샴페인 골드) → 말하는 중(골드 진동) → 완료(골드 버스트) → 오류(플리커).
+ * 캔버스 파티클 스웜 수천 개(소용돌이 은하 디스크) + 3D 자이로스코프 링 3개 +
+ * 평면 정밀 링 6종 + 회전 광택 코어. 상태에 따라 색·속도가 바뀌고, 답변 타이핑/
+ * 발화 중에는 pulsing으로 코어·파티클이 심장처럼 맥동한다.
  *
  * ⚠️ 이 앱은 Tailwind 토큰(slate + 액센트 100~400)이 밝은 테마로 리매핑되어
  * 있으므로, 다크 오버레이 위 색은 전부 명시적 hex/rgba로만 쓴다.
  *
- * CSS-only(키프레임 + transform, GPU 합성) — JS 애니메이션 루프·타이머 없음.
- * 장식 전용이라 pointer-events-none (클릭 먹통 사고 방지 원칙 유지).
+ * 파티클만 canvas(rAF) — 나머지는 CSS transform. 장식 전용이라 전부
+ * pointer-events-none (클릭 먹통 사고 방지 원칙 유지). 언마운트 시 rAF 정리.
  */
+
+/** 파티클 팔레트 — 골드/아이스/플래티넘 (additive 합성으로 성운 글로우). */
+const PARTICLE_COLORS = ['rgba(230,200,119,', 'rgba(155,232,255,', 'rgba(219,231,245,']
+
+/**
+ * 캔버스 파티클 성운을 그린다. 반환값은 정리 함수. 성능: additive 합성 +
+ * 색상 3패스(패스당 fillStyle 1회)로 수천 개도 60fps 유지. 트윙클은 크기 변조로
+ * (문자열 alloc 회피). pulsing이 true면 energyRef가 상승해 스웜이 맥동한다.
+ */
+function runNebula(
+  canvas: HTMLCanvasElement,
+  count: number,
+  pulsingRef: { current: boolean }
+): () => void {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return () => {}
+  const dpr = Math.min(2, typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)
+  const cssW = canvas.clientWidth || 260
+  const cssH = canvas.clientHeight || 260
+  canvas.width = Math.round(cssW * dpr)
+  canvas.height = Math.round(cssH * dpr)
+  ctx.scale(dpr, dpr)
+  const cx = cssW / 2
+  const cy = cssH / 2
+  const maxR = Math.min(cx, cy) * 0.98
+
+  // 사전 계산 — 프레임마다 각도만 전진시켜 그린다.
+  const N = count
+  const rad = new Float32Array(N)
+  const ang = new Float32Array(N)
+  const spd = new Float32Array(N)
+  const siz = new Float32Array(N)
+  const twk = new Float32Array(N)
+  const col = new Uint8Array(N)
+  for (let i = 0; i < N; i += 1) {
+    // 중간 반경에 밀집(은하 디스크 느낌) — sqrt 분포 + 코어 근처 공백.
+    const t = Math.sqrt((i + 1) / N)
+    rad[i] = maxR * (0.16 + 0.84 * t) * (0.85 + 0.3 * fract(i * 0.61803398875))
+    ang[i] = fract(i * 0.7548776662) * Math.PI * 2
+    // 안쪽이 빠르게(케플러식 느낌) — 방향은 동일.
+    spd[i] = (0.14 + 0.5 * (1 - t)) * (0.7 + 0.6 * fract(i * 0.9))
+    siz[i] = 0.6 + 1.7 * fract(i * 0.312) * (1 - 0.4 * t)
+    twk[i] = fract(i * 0.271) * Math.PI * 2
+    col[i] = i % 7 === 0 ? 2 : i % 3 === 0 ? 0 : 1 // 골드/플래티넘 소수, 대부분 아이스
+  }
+
+  let energy = 0 // 0..1, pulsing에 따라 완만히 추종
+  let raf = 0
+  let running = true
+  const start = performance.now()
+  let last = start
+
+  const frame = (now: number): void => {
+    if (!running) return
+    const t = (now - start) / 1000
+    const dt = Math.min(0.05, (now - last) / 1000)
+    last = now
+    // energy: pulsing이면 1로, 아니면 0으로 완만히 이동.
+    const target = pulsingRef.current ? 1 : 0
+    energy += (target - energy) * Math.min(1, dt * 6)
+    // 맥동(하트비트) — pulsing 중 강한 이중 박동, 평시 은은한 호흡.
+    const beat = energy > 0.02 ? Math.pow(Math.max(0, Math.sin(t * 5.4)), 3) : 0
+    const breathe = 0.5 + 0.5 * Math.sin(t * 0.8)
+    const swell = 1 + energy * (0.12 + 0.16 * beat) + (1 - energy) * 0.02 * breathe
+    const bright = 0.55 + energy * (0.25 + 0.45 * beat) + (1 - energy) * 0.08 * breathe
+
+    ctx.clearRect(0, 0, cssW, cssH)
+    ctx.globalCompositeOperation = 'lighter'
+    // 색상 3패스 — 패스당 fillStyle 1회.
+    for (let c = 0; c < 3; c += 1) {
+      // 골드를 조금 더 밝게(럭셔리 강조), 아이스/플래티넘은 표준.
+      const mul = c === 0 ? 0.72 : 0.6
+      ctx.fillStyle = `${PARTICLE_COLORS[c]}${(mul * bright).toFixed(3)})`
+      for (let i = 0; i < N; i += 1) {
+        if (col[i] !== c) continue
+        const a = ang[i] + t * spd[i]
+        const r = rad[i] * swell
+        const x = cx + Math.cos(a) * r
+        // 디스크를 살짝 눕혀 3D 느낌 (y 압축).
+        const y = cy + Math.sin(a) * r * 0.5
+        const s = siz[i] * (0.75 + 0.25 * Math.sin(t * 2.4 + twk[i])) * (0.9 + 0.3 * energy * beat)
+        ctx.fillRect(x - s / 2, y - s / 2, s, s)
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over'
+    raf = requestAnimationFrame(frame)
+  }
+  raf = requestAnimationFrame(frame)
+  return () => {
+    running = false
+    cancelAnimationFrame(raf)
+  }
+}
+
+/** 결정적 유사난수 — 시드 재현성(랜덤 API 불필요). */
+function fract(x: number): number {
+  return x - Math.floor(x)
+}
 
 const STATUS_TEXT: Record<AiCoreStatus, string> = {
   idle: '무엇이든 말씀하세요',
@@ -77,16 +175,6 @@ const FLAT_RINGS: { inset: number; kind: 'dash' | 'hair' | 'arc' | 'goldarc' | '
   { inset: 25, kind: 'goldarc', dur: 6 }
 ]
 
-/** 궤도 파티클 — 반지름(%), 크기(px), 주기(s), 시작 각도(deg), 골드 여부. */
-const PARTICLES = [
-  { r: 47, s: 5, d: 8, a: 0, gold: false },
-  { r: 53, s: 3, d: 12, a: 70, gold: true },
-  { r: 58, s: 4, d: 10, a: 140, gold: false },
-  { r: 44, s: 3, d: 14, a: 210, gold: true },
-  { r: 50, s: 2.5, d: 9, a: 280, gold: false },
-  { r: 61, s: 2.5, d: 16, a: 330, gold: true }
-]
-
 /** 3D 자이로 링 — 고정 축 회전 + 지속 스핀 (키프레임 이름과 1:1). */
 const GYRO_RINGS: { anim: string; dur: number; color: string; width: number }[] = [
   { anim: 'jarvis-gyro-a', dur: 7, color: `${GOLD_SOFT}0.75)`, width: 1.5 },
@@ -97,18 +185,35 @@ const GYRO_RINGS: { anim: string; dur: number; color: string; width: number }[] 
 export default function JarvisHoloOrb({
   status,
   compact = false,
-  statusLine
+  statusLine,
+  pulsing = false
 }: {
   status: AiCoreStatus
   /** true면 대화 진행 중 — 오브를 작게 접어 스트림 공간을 확보. */
   compact?: boolean
   /** 상태 문구 오버라이드 (예: '녹음 중 3.2초'). */
   statusLine?: string
+  /** 답변 타이핑/발화 중 — 코어·파티클이 심장처럼 맥동. */
+  pulsing?: boolean
 }): JSX.Element {
   const tone = TONES[status]
   const active = ACTIVE.includes(status)
   const size = compact ? 108 : 230
   const box = size + (compact ? 70 : 120)
+
+  // 파티클 성운 (canvas). pulsing은 ref로 전달해 rAF 재시작 없이 맥동만 반영.
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const pulsingRef = useRef(pulsing)
+  useEffect(() => {
+    pulsingRef.current = pulsing
+  }, [pulsing])
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const count = reduce ? (compact ? 400 : 900) : compact ? 2000 : 4600
+    return runNebula(canvas, count, pulsingRef)
+  }, [compact])
 
   const flatRingStyle = (kind: string, dur: number, rev?: boolean): React.CSSProperties => {
     const spin = dur > 0 ? { animation: `${rev ? 'jarvis-holo-rotate-rev' : 'jarvis-holo-rotate'} ${dur * tone.speed}s linear infinite` } : {}
@@ -146,6 +251,7 @@ export default function JarvisHoloOrb({
         @keyframes jarvis-holo-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes jarvis-holo-rotate-rev { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
         @keyframes jarvis-holo-breathe { 0%,100% { transform: scale(1); opacity: .92; } 50% { transform: scale(1.05); opacity: 1; } }
+        @keyframes jarvis-holo-heartbeat { 0% { transform: scale(1); } 14% { transform: scale(1.13); } 28% { transform: scale(1.02); } 42% { transform: scale(1.1); } 60%,100% { transform: scale(1); } }
         @keyframes jarvis-holo-wave { 0% { transform: scale(.55); opacity: .7; } 100% { transform: scale(1.9); opacity: 0; } }
         @keyframes jarvis-holo-burst { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(2.6); opacity: 0; } }
         @keyframes jarvis-holo-flicker { 0%,100% { opacity: 1; } 42% { opacity: .55; } 46% { opacity: .95; } 74% { opacity: .5; } 78% { opacity: 1; } }
@@ -164,8 +270,11 @@ export default function JarvisHoloOrb({
         {/* 뒤 글로우 */}
         <span
           className="absolute rounded-full blur-3xl transition-all duration-700"
-          style={{ inset: compact ? 6 : -10, background: tone.glow, opacity: active ? 0.42 : 0.25 }}
+          style={{ inset: compact ? 6 : -10, background: tone.glow, opacity: active || pulsing ? 0.42 : 0.25 }}
         />
+
+        {/* 파티클 성운 (canvas 수천 개 소용돌이) — 링·코어 뒤 레이어 */}
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" style={{ mixBlendMode: 'screen' }} />
 
         {/* 파동 링 — 활성 상태에서 방사 */}
         {active ? (
@@ -200,39 +309,20 @@ export default function JarvisHoloOrb({
           ))}
         </span>
 
-        {/* 궤도 파티클 6개 (골드·아이스 교차) */}
-        {PARTICLES.map((p, i) => (
-          <span
-            key={i}
-            className="absolute inset-0"
-            style={{ animation: `jarvis-holo-orbit ${p.d * tone.speed}s linear infinite`, transform: `rotate(${p.a}deg)` }}
-          >
-            <span
-              className="absolute rounded-full"
-              style={{
-                width: p.s,
-                height: p.s,
-                left: '50%',
-                top: `${50 - p.r / 2}%`,
-                background: p.gold ? GOLD : '#9be8ff',
-                boxShadow: `0 0 ${p.s * 3}px ${p.gold ? `${GOLD_SOFT}0.95)` : `${ICE}0.95)`}`
-              }}
-            />
-          </span>
-        ))}
-
-        {/* 코어 구체 */}
+        {/* 코어 구체 — pulsing 중엔 하트비트로 맥동 (답변 타이핑·발화 동기) */}
         <span
           className="relative rounded-full transition-all duration-700"
           style={{
             width: size * 0.46,
             height: size * 0.46,
             background: tone.core,
-            boxShadow: `0 0 ${active ? 70 : 44}px -6px ${tone.glow}, inset 0 0 26px rgba(255,255,255,0.18)`,
+            boxShadow: `0 0 ${active || pulsing ? 74 : 44}px -6px ${tone.glow}, inset 0 0 26px rgba(255,255,255,0.18)`,
             animation:
               status === 'failed'
                 ? 'jarvis-holo-flicker 1.6s linear infinite'
-                : `jarvis-holo-breathe ${active ? 1.5 : 4.4}s ease-in-out infinite`
+                : pulsing
+                  ? 'jarvis-holo-heartbeat 1.15s ease-in-out infinite'
+                  : `jarvis-holo-breathe ${active ? 1.5 : 4.4}s ease-in-out infinite`
           }}
         >
           {/* 회전 광택 시트 */}

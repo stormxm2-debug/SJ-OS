@@ -242,6 +242,8 @@ export default function JarvisPanel(): JSX.Element | null {
   const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(() => voiceService.isVoiceOutputEnabled())
   // TTS로 말하는 중 — 오브 '말하는 중' 연출.
   const [speaking, setSpeaking] = useState(false)
+  // 답변을 한 글자씩 흘리는 중 — 오브 맥동(하트비트) 동기화.
+  const [typing, setTyping] = useState(false)
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics>(() => voice.getDiagnostics())
   const [lastCommand, setLastCommand] = useState('')
   const [promptCopied, setPromptCopied] = useState(false)
@@ -405,25 +407,32 @@ export default function JarvisPanel(): JSX.Element | null {
     field?.focus()
   }, [state.pendingDraft, service])
 
+  // 응답 타이프라이터 — 최종 답변까지 한 글자씩 흘린다. 길이에 따라 스텝을
+  // 조절해 어떤 길이든 대략 1.2~2.4초에 완료(챗봇 톤). typing 상태가 오브 맥동을
+  // 구동한다 ("답변 타이핑에 맞춰 오브 맥동").
   useEffect(() => {
-    if (state.status === 'thinking' || state.status === 'running') {
-      setStreamedResponse('')
-      const response = state.response
-      let index = 0
-      const timer = window.setInterval(() => {
-        setStreamedResponse(response.slice(0, index))
-        index += 1
-        if (index > response.length) {
-          window.clearInterval(timer)
-          setStreamedResponse(response)
-        }
-      }, 18)
-
-      return () => window.clearInterval(timer)
+    const full = state.response ?? ''
+    if (!full || state.status === 'idle') {
+      setStreamedResponse(full)
+      setTyping(false)
+      return undefined
     }
-
-    setStreamedResponse(state.response)
-    return undefined
+    setStreamedResponse('')
+    setTyping(true)
+    const step = Math.max(1, Math.ceil(full.length / 140))
+    let index = 0
+    const timer = window.setInterval(() => {
+      index = Math.min(full.length, index + step)
+      setStreamedResponse(full.slice(0, index))
+      if (index >= full.length) {
+        window.clearInterval(timer)
+        setTyping(false)
+      }
+    }, 16)
+    return () => {
+      window.clearInterval(timer)
+      setTyping(false)
+    }
   }, [state.response, state.status])
 
   // Progressive timeline reveal: advance one step at a time so the command
@@ -869,6 +878,7 @@ export default function JarvisPanel(): JSX.Element | null {
     setTranscribing(false)
     setRecording(false)
     setStreamedResponse('')
+    setTyping(false)
     setWakeStatus('standby')
     setStopReason(null)
     setVoiceState('대기')
@@ -1142,7 +1152,7 @@ export default function JarvisPanel(): JSX.Element | null {
       <main className="relative z-10 flex-1 overflow-y-auto px-4 sm:px-6">
         <div className="mx-auto flex w-full max-w-3xl flex-col pb-6">
           <div className={hasConversation ? 'flex flex-col items-center pt-0' : 'flex flex-col items-center pt-[4vh]'}>
-            <JarvisHoloOrb status={coreStatus} compact={hasConversation} statusLine={orbStatusLine} />
+            <JarvisHoloOrb status={coreStatus} compact={hasConversation} statusLine={orbStatusLine} pulsing={typing || speaking} />
           </div>
 
           {/* 음성 라이브 알림 */}
