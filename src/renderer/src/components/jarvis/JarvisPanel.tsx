@@ -2,7 +2,6 @@ import {
   Bot,
   SendHorizontal,
   Sparkles,
-  Wrench,
   History,
   X,
   CheckCircle2,
@@ -13,7 +12,6 @@ import {
   ArrowRight,
   ShieldAlert,
   GitBranch,
-  ExternalLink,
   XCircle,
   Mic,
   MicOff,
@@ -24,7 +22,6 @@ import {
   Cpu,
   RefreshCw,
   CloudOff,
-  Activity,
   AudioLines,
   Server,
   Loader2,
@@ -65,7 +62,6 @@ import type {
 } from '@renderer/services/jarvis/types'
 import type { AiCoreStatus } from './JarvisAiCore'
 import JarvisHoloOrb from './JarvisHoloOrb'
-import JarvisCommandTimeline from './JarvisCommandTimeline'
 import { useClaudeAutoBuild } from '@renderer/services/claude-auto-build/useClaudeAutoBuild'
 import {
   isDevelopmentCommand,
@@ -1327,52 +1323,35 @@ export default function JarvisPanel(): JSX.Element | null {
             </div>
           ) : null}
 
-          {/* 실행 타임라인 + 도구 호출 */}
-          {displayedSession ? (
-            <HoloCard title="실행 타임라인" icon={<Activity className="h-3.5 w-3.5" />}>
-              <JarvisCommandTimeline session={displayedSession} />
-              {state.toolCalls.length > 0 ? (
-                <div className="mt-3 space-y-1.5 border-t pt-2.5" style={{ borderColor: 'rgba(103,232,249,0.15)' }}>
-                  {state.toolCalls.map((tool) => (
-                    <div key={tool.id} className="flex items-start gap-2 text-[12px]">
-                      <Wrench className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: '#7dd3fc' }} />
-                      <div>
-                        <span style={{ color: 'rgba(224,240,255,0.92)' }}>{tool.name}</span>
-                        <span style={{ color: 'rgba(150,190,235,0.6)' }}> — {tool.detail}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {displayedSession.promptPacketId ? (
-                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: 'rgba(110,231,183,0.3)', background: 'rgba(16,185,129,0.07)' }}>
-                  <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: '#6ee7b7' }}>
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    개발 프롬프트 생성 완료
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => goToTarget('devprompt')}
-                    className="ml-auto inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition hover:brightness-150"
-                    style={{ borderColor: 'rgba(230,200,119,0.4)', color: '#e6c877', background: 'rgba(230,200,119,0.08)' }}
-                  >
-                    <ArrowRight className="h-3 w-3" />
-                    프롬프트 센터로 이동
-                  </button>
-                </div>
-              ) : null}
-              {displayedSession.status === 'failed' ? (
-                <button
-                  type="button"
-                  onClick={() => runCommand(displayedSession.command)}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150"
-                  style={{ borderColor: 'rgba(251,113,133,0.4)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' }}
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  다시 시도
-                </button>
-              ) : null}
-            </HoloCard>
+          {/* 실행 타임라인은 표시하지 않음 (대표 지시: 하단 답변만). 개발 프롬프트가
+              생성된 경우에만 이동 링크를 조용히 노출, 실패 시 재시도 버튼만. */}
+          {displayedSession?.promptPacketId ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: 'rgba(110,231,183,0.3)', background: 'rgba(16,185,129,0.07)' }}>
+              <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: '#6ee7b7' }}>
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                개발 프롬프트 생성 완료
+              </span>
+              <button
+                type="button"
+                onClick={() => goToTarget('devprompt')}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition hover:brightness-150"
+                style={{ borderColor: 'rgba(230,200,119,0.4)', color: '#e6c877', background: 'rgba(230,200,119,0.08)' }}
+              >
+                <ArrowRight className="h-3 w-3" />
+                프롬프트 센터로 이동
+              </button>
+            </div>
+          ) : null}
+          {displayedSession?.status === 'failed' ? (
+            <button
+              type="button"
+              onClick={() => runCommand(displayedSession.command)}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150"
+              style={{ borderColor: 'rgba(251,113,133,0.4)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' }}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              다시 시도
+            </button>
           ) : null}
 
           {/* Claude 자동 개발 — 개발 명령이 감지된 경우에만 등장 */}
@@ -1525,27 +1504,12 @@ export default function JarvisPanel(): JSX.Element | null {
             </HoloCard>
           ) : null}
 
-          {/* 외부 작업 결과 */}
-          {external ? (
-            <HoloCard title="외부 작업" icon={<ExternalLink className="h-3.5 w-3.5" />}>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Field label="명령 이해" value={external.commandUnderstood} />
-                <Field label="대상" value={external.target} />
-                <Field label="동작" value={external.action} />
-                <Field label="상태" value={external.ok ? 'completed' : 'failed'} tone={external.ok ? '#6ee7b7' : '#fda4af'} />
-              </div>
-              {external.ok ? (
-                <div className="mt-2.5 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(110,231,183,0.3)', background: 'rgba(16,185,129,0.07)', color: '#a7f3d0' }}>
-                  <CheckCircle2 className="h-4 w-4" />
-                  승인된 외부 URL을 시스템 브라우저에서 열었습니다{external.url ? ` · ${external.url}` : ''}
-                </div>
-              ) : (
-                <div className="mt-2.5 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(251,113,133,0.35)', background: 'rgba(244,63,94,0.08)', color: '#fecdd3' }}>
-                  <XCircle className="h-4 w-4" />
-                  {external.error ?? '외부 링크를 열지 못했습니다.'}
-                </div>
-              )}
-            </HoloCard>
+          {/* 외부 작업 — 성공은 답변 버블로 충분(답변만 원칙), 실패 시에만 사유 표시 */}
+          {external && !external.ok ? (
+            <div className="mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(251,113,133,0.35)', background: 'rgba(244,63,94,0.08)', color: '#fecdd3' }}>
+              <XCircle className="h-4 w-4 shrink-0" />
+              {external.error ?? '외부 링크를 열지 못했습니다.'}
+            </div>
           ) : null}
 
           {/* GPT 브레인 결과 */}

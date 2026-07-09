@@ -170,13 +170,15 @@ const ACTIVE: AiCoreStatus[] = ['wake', 'listening', 'transcribing', 'analyzing'
  * kind: dash(눈금 대시) · hair(헤어라인) · arc(이중 시안 아크) · goldarc(골드 아크)
  *      · dot(미세 점선) · halo(외곽 광륜)
  */
+// 링을 더 역동적으로 (대표 지시: 동그라미 선이 움직였으면). 모든 링이 회전,
+// 인접 링은 방향을 번갈아 반대로 돌려 살아있는 자이로 느낌.
 const FLAT_RINGS: { inset: number; kind: 'dash' | 'hair' | 'arc' | 'goldarc' | 'dot' | 'halo'; dur: number; rev?: boolean }[] = [
-  { inset: 0, kind: 'halo', dur: 90 },
-  { inset: 4, kind: 'dash', dur: 26 },
-  { inset: 9, kind: 'dot', dur: 34, rev: true },
-  { inset: 14, kind: 'arc', dur: 9, rev: true },
-  { inset: 20, kind: 'hair', dur: 0 },
-  { inset: 25, kind: 'goldarc', dur: 6 }
+  { inset: 0, kind: 'halo', dur: 48 },
+  { inset: 4, kind: 'dash', dur: 15, rev: true },
+  { inset: 9, kind: 'dot', dur: 20 },
+  { inset: 14, kind: 'arc', dur: 6, rev: true },
+  { inset: 20, kind: 'hair', dur: 26 },
+  { inset: 25, kind: 'goldarc', dur: 4 }
 ]
 
 /** 3D 자이로 링 — 고정 축 회전 + 지속 스핀 (키프레임 이름과 1:1). */
@@ -336,14 +338,14 @@ export default function JarvisHoloOrb({
         ))}
       </span>
 
-      {/* 코어 구체 — pulsing 중엔 하트비트로 맥동 (답변 타이핑·발화 동기) */}
+      {/* 아크 리액터 코어 — 하우징 링 + 회전 세그먼트 코일 + 골드 링 +
+          트라이스포크 + 화이트핫 허브. pulsing 중엔 하트비트로 맥동. */}
       <span
         className="relative rounded-full transition-all duration-700"
         style={{
           width: coreDim,
           height: coreDim,
-          background: tone.core,
-          boxShadow: `0 0 ${active || pulsing ? 74 : 44}px -6px ${tone.glow}, inset 0 0 26px rgba(255,255,255,0.18)`,
+          boxShadow: `0 0 ${active || pulsing ? 60 : 36}px -8px ${tone.glow}`,
           animation:
             status === 'failed'
               ? 'jarvis-holo-flicker 1.6s linear infinite'
@@ -352,16 +354,59 @@ export default function JarvisHoloOrb({
                 : `jarvis-holo-breathe ${active ? 1.5 : 4.4}s ease-in-out infinite`
         }}
       >
-        <span className="absolute inset-0 overflow-hidden rounded-full" style={{ animation: `jarvis-holo-rotate ${11 * tone.speed}s linear infinite` }}>
-          <span className="absolute inset-0" style={{ background: `conic-gradient(from 0deg, transparent 0deg, rgba(255,255,255,0.16) 40deg, transparent 90deg)` }} />
+        {/* 하우징 링 (리액터 외벽) */}
+        <span
+          className="absolute inset-0 rounded-full"
+          style={{
+            border: '2px solid rgba(219,231,245,0.55)',
+            background: 'radial-gradient(circle at 50% 50%, rgba(8,20,42,0.35) 60%, rgba(6,14,30,0.75) 100%)',
+            boxShadow: `inset 0 0 26px -6px ${tone.glow}, 0 0 20px -8px ${tone.glow}`
+          }}
+        />
+        {/* 회전 세그먼트 코일 밴드 (아크 리액터 코일) */}
+        <span
+          className="absolute rounded-full"
+          style={{
+            inset: '11%',
+            background: `repeating-conic-gradient(from 0deg, ${tone.ring} 0deg 6deg, rgba(255,255,255,0.05) 6deg 20deg)`,
+            WebkitMask: 'radial-gradient(farthest-side, transparent 58%, black 60%, black 90%, transparent 92%)',
+            mask: 'radial-gradient(farthest-side, transparent 58%, black 60%, black 90%, transparent 92%)',
+            animation: `jarvis-holo-rotate ${8 * tone.speed}s linear infinite`
+          }}
+        />
+        {/* 골드 정밀 링 */}
+        <span
+          className="absolute rounded-full"
+          style={{ inset: '30%', border: '1px solid rgba(230,200,119,0.75)', boxShadow: 'inset 0 0 12px -2px rgba(230,200,119,0.4)' }}
+        />
+        {/* 트라이스포크 (삼각 코일 지지대) — 천천히 회전 */}
+        <span className="absolute inset-0" style={{ animation: `jarvis-holo-rotate-rev ${14 * tone.speed}s linear infinite` }}>
+          {[0, 120, 240].map((a) => (
+            <span
+              key={a}
+              className="absolute"
+              style={{
+                left: '50%',
+                top: 'calc(50% - 1px)',
+                width: '38%',
+                height: 2,
+                transformOrigin: 'left center',
+                transform: `rotate(${a}deg)`,
+                background: 'linear-gradient(90deg, rgba(255,255,255,0.1), rgba(219,231,245,0.7))'
+              }}
+            />
+          ))}
         </span>
-        <span className="absolute rounded-full" style={{ left: '22%', top: '15%', width: '26%', height: '26%', background: 'rgba(255,255,255,0.68)', filter: 'blur(4px)' }} />
-        <span className="absolute inset-0 overflow-hidden rounded-full">
-          <span
-            className="absolute inset-x-0 h-1/3"
-            style={{ background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.22), transparent)', animation: `jarvis-holo-scan ${2.6 * tone.speed}s ease-in-out infinite` }}
-          />
-        </span>
+        {/* 화이트핫 허브 (중심 발광) */}
+        <span
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{
+            width: '32%',
+            height: '32%',
+            background: `radial-gradient(circle at 50% 42%, #ffffff 0%, ${tone.text} 52%, rgba(6,14,30,0.6) 100%)`,
+            boxShadow: `0 0 26px -2px ${tone.glow}, 0 0 10px rgba(255,255,255,0.5)`
+          }}
+        />
       </span>
     </>
   )

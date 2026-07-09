@@ -549,9 +549,10 @@ export class JarvisService {
       ok: outcome.ok,
       error: outcome.error
     }
+    // 크리스프한 확인 문구 — TTS로 자연스럽게 읽히도록 '을(를)' 등 표기 회피.
     const response = outcome.ok
-      ? `${target}을(를) 시스템 브라우저에서 열었습니다.`
-      : `${target}을(를) 열지 못했습니다. ${outcome.error ?? '알 수 없는 오류입니다.'}`
+      ? `네, ${target} 열었습니다.`
+      : `${target}를 열지 못했습니다. ${outcome.error ?? '다시 시도해 주세요.'}`
     return {
       mode: 'external-action',
       intent: 'external-open',
