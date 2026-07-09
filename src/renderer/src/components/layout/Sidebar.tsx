@@ -175,7 +175,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
   { key: 'shared-schedule', label: '공유 일정', icon: Share2, view: { name: 'shared-schedule' }, match: ['shared-schedule'] },
-  { key: 'performance', label: '실적관리', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
+  { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }
 ]
 const TEAM_LEADER_EXTRA: NavItem = { key: 'team-leader', label: '팀 현황', icon: UsersRound, view: { name: 'team-leader' }, match: ['team-leader'] }

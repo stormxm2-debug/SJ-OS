@@ -134,7 +134,7 @@ export default function MobilePerformance(): JSX.Element {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <BarChart3 className="h-5 w-5 text-[#b0821f]" />
-        <h1 className="text-base font-extrabold text-slate-100">실적관리</h1>
+        <h1 className="text-base font-extrabold text-slate-100">매출현황</h1>
       </div>
 
       {notice ? (
@@ -210,6 +210,16 @@ export default function MobilePerformance(): JSX.Element {
       {/* ─── 직원 순위 보드 — 전 직원 상호 공개 (대표 지시) ─── */}
       {ranked.length > 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-white p-3 shadow-sm">
+          {/* 회사 전체 총매출 (대표 지시: 순위 보드 상단, 전 직원 공개) */}
+          <div
+            className="mb-2 flex items-center justify-between rounded-xl border px-3 py-2"
+            style={{ backgroundColor: '#0e1e3a', borderColor: '#c6982f' }}
+          >
+            <span className="text-[11px] font-bold" style={{ color: '#e6c877' }}>
+              {monthLabel(month)} 회사 총매출
+            </span>
+            <span className="text-[15px] font-black tabular-nums text-white">{comma(ranked.reduce((s, e) => s + weightedTotal(e), 0))}원</span>
+          </div>
           <div className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-slate-100">
             <Crown className="h-4 w-4 text-[#c6982f]" /> {monthLabel(month)} 직원 순위
             <span className="font-medium text-slate-500">({ranked.length}명)</span>

@@ -61,7 +61,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
   {
     title: '실적·공지',
     items: [
-      { key: 'performance', label: '실적관리', icon: BarChart3, view: { name: 'performance' } },
+      { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } }
     ]
   },

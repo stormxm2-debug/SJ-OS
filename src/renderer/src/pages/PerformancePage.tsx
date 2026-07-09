@@ -114,7 +114,7 @@ export default function PerformancePage(): JSX.Element {
     <div className="space-y-5">
       {/* 헤더: 월 선택 + 요약 */}
       <Card
-        title="실적 현황 (전체)"
+        title="매출현황 (전체)"
         icon={<BarChart3 className="h-4 w-4 text-indigo-600" />}
         action={
           <input
