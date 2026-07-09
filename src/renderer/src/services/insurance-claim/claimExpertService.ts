@@ -686,8 +686,18 @@ export async function analyzeClaimExpert(args: {
       if (c.verdict !== 'wrong') continue
       const amt = typeof c.correctAmount === 'number' && Number.isFinite(c.correctAmount) ? Math.round(c.correctAmount) : null
       if (amt == null || amt < 0) continue
-      const comp = result.companies.find((x) => x.name === String(c.company ?? ''))
-      const item = comp?.items.find((x) => x.coverage === String(c.coverage ?? ''))
+      // 검산 모델이 담보명을 다르게 표기할 수 있어(예: "질병입원일당" vs "입원일당특약") 느슨 매칭.
+      const norm = (s: string): string => s.replace(/[\s()특약]/g, '').toLowerCase()
+      const cName = norm(String(c.company ?? ''))
+      const cCov = norm(String(c.coverage ?? ''))
+      const comp = result.companies.find((x) => {
+        const n = norm(x.name)
+        return n === cName || n.includes(cName) || cName.includes(n)
+      })
+      const item = comp?.items.find((x) => {
+        const n = norm(x.coverage)
+        return n === cCov || n.includes(cCov) || cCov.includes(n)
+      })
       if (!comp || !item || item.amount === amt) continue
       fixedNotes.push(`${item.coverage}: ${won(item.amount)} → ${won(amt)}`)
       item.amount = amt
