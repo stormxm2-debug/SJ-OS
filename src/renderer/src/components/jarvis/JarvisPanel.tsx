@@ -33,11 +33,13 @@ import {
   Check,
   Layers,
   Radar,
-  RotateCcw
+  RotateCcw,
+  Settings,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import Card from '@renderer/components/ui/Card'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import { voiceService } from '@renderer/services/jarvis/VoiceService'
 import type {
@@ -61,7 +63,8 @@ import type {
   JarvisStatus,
   JarvisTimelineStepStatus
 } from '@renderer/services/jarvis/types'
-import JarvisAiCore, { type AiCoreStatus } from './JarvisAiCore'
+import type { AiCoreStatus } from './JarvisAiCore'
+import JarvisHoloOrb from './JarvisHoloOrb'
 import JarvisCommandTimeline from './JarvisCommandTimeline'
 import { useClaudeAutoBuild } from '@renderer/services/claude-auto-build/useClaudeAutoBuild'
 import {
@@ -139,18 +142,20 @@ function statusLabel(status: JarvisStatus): string {
   }
 }
 
+// 다크 홀로 오버레이 전용 — 이 앱의 Tailwind 토큰(slate + 액센트 100~400)은 밝은
+// 테마로 리매핑되어 있어, 오버레이 위 색은 전부 명시적 hex/rgba 임의값만 쓴다.
 function statusClasses(status: JarvisStatus): string {
   switch (status) {
     case 'thinking':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+      return 'border-[#fcd34d]/40 bg-[#fbbf24]/10 text-[#fde68a]'
     case 'running':
-      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+      return 'border-[#7dd3fc]/40 bg-[#38bdf8]/10 text-[#a5e3ff]'
     case 'completed':
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+      return 'border-[#6ee7b7]/40 bg-[#10b981]/10 text-[#6ee7b7]'
     case 'error':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+      return 'border-[#fda4af]/40 bg-[#f43f5e]/10 text-[#fda4af]'
     default:
-      return 'border-slate-700 bg-slate-800/70 text-slate-300'
+      return 'border-[#67e8f9]/25 bg-[#38bdf8]/5 text-[#9adcff]'
   }
 }
 
@@ -165,19 +170,20 @@ const MODE_META: Record<JarvisMode, { label: string; classes: string }> = {
   unknown: { label: '미확인', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
 }
 
+/** 위험도 → 값 텍스트 색 (다크 홀로 Field의 tone hex). */
 const RISK_TONE: Record<string, string> = {
-  low: 'text-slate-300',
-  medium: 'text-amber-300',
-  high: 'text-rose-300',
-  critical: 'text-rose-400'
+  low: 'rgba(214,233,255,0.9)',
+  medium: '#fde68a',
+  high: '#fda4af',
+  critical: '#fb7185'
 }
 
 /** Korean label + tone for the current voice engine mode. */
 const ENGINE_META: Record<VoiceEngineMode, { label: string; classes: string }> = {
-  'web-speech': { label: 'Web Speech (로컬 브라우저)', classes: 'text-emerald-300' },
-  'stt-proxy-ready': { label: 'STT 프록시 (준비됨)', classes: 'text-emerald-300' },
-  'stt-proxy-disabled': { label: 'STT 프록시 권장 (비활성화)', classes: 'text-amber-300' },
-  unavailable: { label: '사용 불가', classes: 'text-rose-300' }
+  'web-speech': { label: 'Web Speech (로컬 브라우저)', classes: 'text-[#6ee7b7]' },
+  'stt-proxy-ready': { label: 'STT 프록시 (준비됨)', classes: 'text-[#6ee7b7]' },
+  'stt-proxy-disabled': { label: 'STT 프록시 권장 (비활성화)', classes: 'text-[#fde68a]' },
+  unavailable: { label: '사용 불가', classes: 'text-[#fda4af]' }
 }
 
 const MIC_PERMISSION_LABEL: Record<string, string> = {
@@ -197,26 +203,26 @@ type VoiceEngineChoice = 'electron-gateway' | 'stt-proxy' | 'web-speech'
 
 /** Korean label + tone for the Electron AI Gateway readiness status. */
 const GATEWAY_STATUS_META: Record<string, { label: string; classes: string }> = {
-  'Gateway Ready': { label: 'OpenAI 준비됨', classes: 'text-emerald-300' },
-  'Gateway Disabled': { label: 'OPENAI_ENABLED=false', classes: 'text-amber-300' },
-  'Key Missing': { label: 'API 키 없음 (루트 .env)', classes: 'text-amber-300' },
-  'Gateway Unavailable': { label: '게이트웨이 사용 불가', classes: 'text-rose-300' }
+  'Gateway Ready': { label: 'OpenAI 준비됨', classes: 'text-[#6ee7b7]' },
+  'Gateway Disabled': { label: 'OPENAI_ENABLED=false', classes: 'text-[#fde68a]' },
+  'Key Missing': { label: 'API 키 없음 (루트 .env)', classes: 'text-[#fde68a]' },
+  'Gateway Unavailable': { label: '게이트웨이 사용 불가', classes: 'text-[#fda4af]' }
 }
 
 /** Segmented-control tab classes for the voice engine selector. */
 function engineTabClasses(active: boolean): string {
   return [
     'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition',
-    active ? 'bg-indigo-500/15 text-indigo-200' : 'bg-slate-900/40 text-slate-400 hover:text-slate-200'
+    active ? 'bg-[#38bdf8]/15 text-[#9adcff]' : 'bg-transparent text-[rgba(150,190,235,0.6)] hover:text-[#cfeaff]'
   ].join(' ')
 }
 
 /** Korean label + tone for the backend STT readiness status. */
 const STT_STATUS_META: Record<string, { label: string; classes: string }> = {
-  'STT Ready': { label: 'STT 프록시 준비됨', classes: 'text-emerald-300' },
-  'STT Disabled': { label: 'STT 프록시 비활성화', classes: 'text-amber-300' },
-  'Key Missing': { label: 'API 키 없음 (백엔드)', classes: 'text-amber-300' },
-  'Proxy Offline': { label: '프록시 오프라인', classes: 'text-rose-300' }
+  'STT Ready': { label: 'STT 프록시 준비됨', classes: 'text-[#6ee7b7]' },
+  'STT Disabled': { label: 'STT 프록시 비활성화', classes: 'text-[#fde68a]' },
+  'Key Missing': { label: 'API 키 없음 (백엔드)', classes: 'text-[#fde68a]' },
+  'Proxy Offline': { label: '프록시 오프라인', classes: 'text-[#fda4af]' }
 }
 
 export default function JarvisPanel(): JSX.Element | null {
@@ -292,6 +298,9 @@ export default function JarvisPanel(): JSX.Element | null {
   // silently fails to appear even before the async job is created.
   const [devPreview, setDevPreview] = useState<{ command: string; prompt: string } | null>(null)
   const [showDevPrompt, setShowDevPrompt] = useState(false)
+  // 홀로 UI: 설정·진단 시트 + 대화 기록 접기.
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const lastAutoBuildJob = lastAutoBuildJobId
     ? autoBuild.jobs.find((j) => j.id === lastAutoBuildJobId) ?? null
     : null
@@ -317,18 +326,18 @@ export default function JarvisPanel(): JSX.Element | null {
   // Persistent GPT status badge: Ready / Disabled / Proxy Error / Local Only.
   const gptStatus = ((): { label: string; classes: string } => {
     if (!gptConfig.enabled) {
-      return { label: 'GPT 비활성화', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
+      return { label: 'GPT 비활성화', classes: 'border-[#67e8f9]/20 bg-[#38bdf8]/5 text-[rgba(150,190,235,0.75)]' }
     }
     if (state.gpt?.source === 'backend') {
-      return { label: 'API 키 없음', classes: 'border-amber-500/30 bg-amber-500/10 text-amber-300' }
+      return { label: 'API 키 없음', classes: 'border-[#fcd34d]/40 bg-[#fbbf24]/10 text-[#fde68a]' }
     }
     if (state.gpt?.source === 'error') {
-      return { label: '프록시 오류', classes: 'border-rose-500/30 bg-rose-500/10 text-rose-300' }
+      return { label: '프록시 오류', classes: 'border-[#fda4af]/40 bg-[#f43f5e]/10 text-[#fda4af]' }
     }
     if (state.source === 'local') {
-      return { label: '로컬 전용', classes: 'border-slate-700 bg-slate-800/70 text-slate-300' }
+      return { label: '로컬 전용', classes: 'border-[#67e8f9]/20 bg-[#38bdf8]/5 text-[rgba(150,190,235,0.75)]' }
     }
-    return { label: 'GPT 준비됨', classes: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' }
+    return { label: 'GPT 준비됨', classes: 'border-[#6ee7b7]/40 bg-[#10b981]/10 text-[#6ee7b7]' }
   })()
 
   // Subscribe to the Jarvis singleton so any state change (Topbar "자비스" button,
@@ -877,6 +886,8 @@ export default function JarvisPanel(): JSX.Element | null {
       setInterimTranscript('')
       setRecording(false)
       setVoiceStatus('idle')
+      // 다음에 열 때 설정 시트가 그대로 떠 있지 않도록 접어둔다.
+      setSettingsOpen(false)
       return
     }
     // On open, refresh mic permission + capability diagnostics (best-effort).
@@ -974,1350 +985,1185 @@ export default function JarvisPanel(): JSX.Element | null {
   const external = state.external
   const gpt = state.gpt
 
-  return (
-    // STABILIZATION: Jarvis is a docked side panel, NOT a full-screen modal.
-    // There is no full-screen backdrop/overlay, so the sidebar and main content
-    // are always clickable while Jarvis is open. Closing unmounts this entirely.
-    <div className="fixed bottom-3 right-3 top-3 z-50 flex w-[min(94vw,640px)]">
-      <div className="flex w-full flex-col overflow-hidden rounded-3xl border border-indigo-500/20 bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl shadow-indigo-900/40 ring-1 ring-indigo-400/20">
-        <header className="relative flex items-center justify-between overflow-hidden border-b border-indigo-500/20 bg-gradient-to-r from-indigo-950 via-slate-900 to-violet-950 px-5 py-4">
-          <div className="relative flex items-center gap-3">
-            <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-500/60 ring-1 ring-white/20">
-              <span className="pointer-events-none absolute inset-0 rounded-2xl bg-indigo-400/30 blur-md" aria-hidden />
-              <Bot className="relative h-5 w-5" />
-            </div>
-            <div>
-              <p className="flex items-center gap-2 text-sm font-bold text-slate-100">
-                SJ 자비스 코어
-                <span className="rounded-full bg-gradient-to-r from-blue-600 to-violet-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
-                  AI Core
-                </span>
-                <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[9px] font-bold text-indigo-300">
-                  {mode === 'staff' ? '직원 모드' : '대표 모드'}
-                </span>
-                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-600">
-                  안전 시각화 모드
-                </span>
-              </p>
-              <p className="text-xs text-slate-500">
-                {mode === 'staff'
-                  ? '직원 업무 어시스턴트 · 일정 · 고객 · 실적 · 상담'
-                  : 'AI 업무 어시스턴트 · 명령 · 분석 · 실행'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {voiceStatus === 'listening' ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-300">
-                <Mic className="h-3 w-3 animate-pulse" />
-                Voice
-              </span>
-            ) : voiceOutputEnabled ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-300">
-                <Volume2 className="h-3 w-3" />
-                Voice
-              </span>
-            ) : null}
-            {state.source ? (
-              <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-                  state.source === 'gpt'
-                    ? 'border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-300'
-                    : state.source === 'fallback'
-                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                      : 'border-slate-700 bg-slate-800/70 text-slate-300'
-                }`}
-              >
-                {state.source === 'gpt' ? (
-                  <Cpu className="h-3 w-3" />
-                ) : state.source === 'fallback' ? (
-                  <CloudOff className="h-3 w-3" />
-                ) : (
-                  <Bot className="h-3 w-3" />
-                )}
-                {state.source === 'gpt' ? 'GPT' : state.source === 'fallback' ? '폴백' : '로컬'}
-              </span>
-            ) : null}
-            <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${gptStatus.classes}`}
-              title="OpenAI 프록시 상태"
-            >
-              <Brain className="h-3 w-3" />
-              {gptStatus.label}
-            </span>
-            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${MODE_META[state.mode].classes}`}>
-              {MODE_META[state.mode].label}
-            </span>
-            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusClasses(state.status)}`}>
-              {statusLabel(state.status)}
-            </span>
-            <button
-              type="button"
-              onClick={resetJarvis}
-              title="상태 초기화 · 명령/타임라인/음성/오류/로딩 상태 초기화"
-              aria-label="상태 초기화"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-2 text-[11px] font-medium text-slate-400 transition hover:border-indigo-500/40 hover:text-indigo-300"
-            >
-              <RotateCcw className="h-4 w-4" />
-              상태 초기화
-            </button>
-            <button
-              type="button"
-              onClick={refreshApp}
-              title="앱 새로고침"
-              aria-label="앱 새로고침"
-              className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:border-indigo-500/40 hover:text-indigo-300"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                service.close()
-                setState(service.getState())
-              }}
-              className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
-              aria-label="Close Jarvis"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </header>
+  // 대화가 시작되면 오브를 접어 스트림 공간을 확보한다.
+  const hasConversation = Boolean(
+    lastCommand || displayedSession || answer || impl || build || external || gpt || streamedResponse || state.history.length > 0
+  )
 
-        <div className="grid gap-4 overflow-y-auto p-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="space-y-4">
-            <Card title="명령 입력" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
-              <form onSubmit={submitCommand} className="space-y-3">
-                <label htmlFor="jarvis-command-input" className="text-sm text-slate-400">
-                  SJ 자비스에 명령 보내기
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    id="jarvis-command-input"
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    placeholder="예: 오늘 브리핑 · FC OS에 팀별 필터 추가해"
-                    className="flex-1 rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2.5 text-sm text-slate-100 outline-none ring-0 placeholder:text-slate-500"
-                  />
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
-                  >
-                    <SendHorizontal className="h-4 w-4" />
-                    실행
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => askGpt(draft)}
-                    title={gptConfig.enabled ? 'GPT 브레인에 질의' : 'GPT 브레인이 비활성화됨 (설정 안내 표시)'}
-                    className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-2.5 text-sm font-medium text-fuchsia-300 transition hover:bg-fuchsia-500/20"
-                  >
-                    <Brain className="h-4 w-4" />
-                    GPT
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {commandChips.map((chip) => (
-                    <button
-                      key={chip}
-                      type="button"
-                      onClick={() => runCommand(chip)}
-                      className="rounded-full border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-[11px] text-slate-300 transition hover:border-indigo-500/40 hover:text-indigo-200"
-                    >
-                      {chip}
-                    </button>
+  // 오브 아래 상태 문구 — 음성 단계가 최우선.
+  const orbStatusLine = recording
+    ? `녹음 중 ${recordingElapsed.toFixed(1)}초 · 마이크를 다시 누르면 전송`
+    : transcribing
+      ? '음성을 해석하는 중…'
+      : undefined
+
+  // 하단 칩: 최근 명령 2개 + 모드별 추천 명령 (중복 제거).
+  const barChips = [...state.recentCommands.slice(0, 2), ...commandChips.filter((c) => !state.recentCommands.slice(0, 2).includes(c))].slice(0, 9)
+
+  return (
+    // 풀스크린 자비스 월드 (대표님 승인). 과거 클릭 먹통 사고 방지책 유지:
+    // ESC(전역 핸들러) + 상시 노출 닫기 버튼 + 마운트 시 포인터락 해제 + 배경
+    // 장식 레이어는 전부 pointer-events-none.
+    <div
+      className="fixed inset-0 z-50 flex flex-col overflow-hidden"
+      style={{ background: 'radial-gradient(1100px 700px at 50% -12%, #0d2547 0%, #071228 46%, #03070f 100%)' }}
+    >
+      {/* ── 홀로그램 배경 (장식 전용 — 클릭 통과) ─────────────────── */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <div
+          className="absolute inset-0 opacity-[0.08]"
+          style={{
+            backgroundImage:
+              'linear-gradient(rgba(103,232,249,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(103,232,249,0.7) 1px, transparent 1px)',
+            backgroundSize: '46px 46px',
+            WebkitMaskImage: 'radial-gradient(ellipse 75% 65% at 50% 38%, black 18%, transparent 78%)',
+            maskImage: 'radial-gradient(ellipse 75% 65% at 50% 38%, black 18%, transparent 78%)'
+          }}
+        />
+        <div
+          className="jarvis-holo-rotate absolute left-1/2 top-[36%] h-[150vmax] w-[150vmax] -translate-x-1/2 -translate-y-1/2"
+          style={{
+            opacity: 0.15,
+            background:
+              'conic-gradient(from 0deg, transparent 0deg, rgba(56,189,248,0.35) 40deg, transparent 95deg, rgba(230,200,119,0.22) 190deg, transparent 250deg, rgba(34,211,238,0.3) 320deg, transparent 360deg)'
+          }}
+        />
+        <div className="absolute inset-x-0 bottom-0 h-52" style={{ background: 'linear-gradient(to top, rgba(56,189,248,0.10), transparent)' }} />
+      </div>
+
+      {/* ── 헤더 ──────────────────────────────────────────────────── */}
+      <header className="relative z-10 flex items-center justify-between gap-2 px-4 py-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+            style={{ background: 'radial-gradient(circle at 32% 28%, #9be8ff, #38bdf8 45%, #0b3f74)', boxShadow: '0 0 18px rgba(56,189,248,0.7)' }}
+          >
+            <Bot className="h-4 w-4 text-white" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="bg-gradient-to-r from-[#9be8ff] via-[#eaf6ff] to-[#e6c877] bg-clip-text text-sm font-black tracking-[0.24em] text-transparent">
+                SJ JARVIS
+              </span>
+              <span className="rounded-full border px-2 py-0.5 text-[9px] font-bold" style={{ borderColor: 'rgba(230,200,119,0.45)', color: '#e6c877', background: 'rgba(230,200,119,0.08)' }}>
+                {mode === 'staff' ? '직원 모드' : '대표 모드'}
+              </span>
+            </div>
+            <div className="hidden text-[10px] sm:block" style={{ color: 'rgba(150,190,235,0.6)' }}>
+              {mode === 'staff' ? 'AI 업무 어시스턴트 · 일정 · 고객 · 실적 · 상담' : 'AI 업무 어시스턴트 · 명령 · 분석 · 실행'}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className={`hidden items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:inline-flex ${statusClasses(state.status)}`}>
+            {MODE_META[state.mode].label} · {statusLabel(state.status)}
+          </span>
+          {voiceOutputEnabled ? (
+            <span className="hidden items-center gap-1 rounded-full border px-2 py-1 text-[11px] sm:inline-flex" style={{ borderColor: 'rgba(103,232,249,0.35)', color: '#7dd3fc', background: 'rgba(56,189,248,0.1)' }}>
+              <Volume2 className="h-3 w-3" /> 음성
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            title="자비스 설정 · 진단"
+            aria-label="자비스 설정 · 진단"
+            className="rounded-xl border p-2 transition hover:brightness-150"
+            style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#7dd3fc', background: 'rgba(56,189,248,0.07)' }}
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              service.close()
+              setState(service.getState())
+            }}
+            aria-label="자비스 닫기"
+            className="rounded-xl border p-2 transition hover:brightness-150"
+            style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff', background: 'rgba(56,189,248,0.07)' }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </header>
+
+      {/* ── 메인: 오브 + 대화 스트림 ──────────────────────────────── */}
+      <main className="relative z-10 flex-1 overflow-y-auto px-4 sm:px-6">
+        <div className="mx-auto flex w-full max-w-3xl flex-col pb-6">
+          <div className={hasConversation ? 'flex flex-col items-center pt-0' : 'flex flex-col items-center pt-[4vh]'}>
+            <JarvisHoloOrb status={coreStatus} compact={hasConversation} statusLine={orbStatusLine} />
+          </div>
+
+          {/* 음성 라이브 알림 */}
+          <div className="flex flex-col items-center gap-1.5">
+            {wakeEnabled ? (
+              <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px]" style={{ borderColor: 'rgba(103,232,249,0.35)', color: '#a5f3fc', background: 'rgba(34,211,238,0.08)' }}>
+                <Radar className="h-3 w-3 animate-pulse" />
+                {wakeStatus === 'detected' ? '자비스 호출 감지' : wakeStatus === 'awaiting' ? '명령을 말씀하세요' : "호출 대기 중 · '자비스'라고 불러주세요"}
+              </span>
+            ) : null}
+            {interimTranscript ? (
+              <span className="rounded-full border px-3 py-1 text-[12px]" style={{ borderColor: 'rgba(103,232,249,0.3)', color: '#cfeaff', background: 'rgba(56,189,248,0.08)' }}>
+                인식 중… {interimTranscript}
+              </span>
+            ) : null}
+            {lastTranscript && !voiceActive && !interimTranscript && !hasConversation ? (
+              <span className="rounded-full border px-3 py-1 text-[12px]" style={{ borderColor: 'rgba(103,232,249,0.3)', color: '#cfeaff', background: 'rgba(56,189,248,0.08)' }}>
+                인식된 명령: {lastTranscript}
+              </span>
+            ) : null}
+            {voiceNotice ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px]" style={{ borderColor: 'rgba(252,211,77,0.35)', color: '#fde68a', background: 'rgba(251,191,36,0.08)' }}>
+                <AlertCircle className="h-3 w-3" /> {voiceNotice}
+              </span>
+            ) : null}
+            {voiceError ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px]" style={{ borderColor: 'rgba(251,113,133,0.4)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' }}>
+                <AlertCircle className="h-3 w-3" /> {voiceError}
+              </span>
+            ) : null}
+          </div>
+
+          {/* 대화 기록 (접힘) */}
+          {state.history.length > 0 ? (
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setHistoryOpen((v) => !v)}
+                className="mx-auto flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] transition hover:brightness-150"
+                style={{ borderColor: 'rgba(103,232,249,0.2)', color: 'rgba(150,190,235,0.75)', background: 'rgba(56,189,248,0.05)' }}
+              >
+                <History className="h-3 w-3" /> 대화 기록 {state.history.length}
+                {historyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </button>
+              {historyOpen ? (
+                <div className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                  {state.history.map((entry) => (
+                    <div key={entry.id} className={entry.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+                      <div
+                        className="max-w-[85%] rounded-2xl border px-3 py-2 text-[12px] leading-5"
+                        style={
+                          entry.role === 'user'
+                            ? { borderColor: 'rgba(230,200,119,0.3)', background: 'rgba(230,200,119,0.08)', color: '#f3e3b5' }
+                            : { borderColor: 'rgba(103,232,249,0.2)', background: 'rgba(13,30,58,0.6)', color: 'rgba(214,233,255,0.9)' }
+                        }
+                      >
+                        <div className="mb-0.5 text-[9px] uppercase tracking-[0.2em]" style={{ color: 'rgba(150,190,235,0.55)' }}>
+                          {entry.role === 'user' ? '대표님' : '자비스'} · {entry.timestamp}
+                        </div>
+                        {entry.content}
+                      </div>
+                    </div>
                   ))}
                 </div>
-                <p className="text-xs text-slate-500">단축키: Ctrl + Space · 로컬 데이터 전용 · 외부 AI/API 없음</p>
-                {/* Subtle interaction diagnostic — confirms no command leaves the
-                    UI stuck: '실행 중' returns to 아니오 after every command. */}
-                <p className="font-mono text-[10px] text-slate-600">
-                  UI 안정 상태 · 실행 중: {state.status === 'thinking' || state.status === 'running' ? 'true' : 'false'} · 녹음:{' '}
-                  {recording ? 'true' : 'false'} · 전사: {transcribing ? 'true' : 'false'} · 호출대기:{' '}
-                  {wakeEnabled ? 'true' : 'false'} · 마지막 상태 초기화: {lastReset}
-                </p>
-              </form>
-            </Card>
+              ) : null}
+            </div>
+          ) : null}
 
-            {/* Jarvis → Claude 자동개발: dev commands create a Claude Code job. */}
-            <Card title="Claude 자동 개발" icon={<Bot className="h-4 w-4 text-indigo-300" />}
-              action={<span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600">자비스 → Claude 자동개발 MVP</span>}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-slate-500">
-                  개발 명령(예: “직원 출퇴근 기능 만들어줘”)을 입력하면 Claude Code 작업을 자동 생성합니다.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setAutoRunDev((v) => !v)}
-                  className={[
-                    'shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition',
-                    autoRunDev
-                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                      : 'border-slate-700 bg-slate-800/50 text-slate-400'
-                  ].join(' ')}
-                >
-                  개발 명령 자동 실행: {autoRunDev ? 'ON' : 'OFF'}
-                </button>
+          {/* 현재 명령 (사용자 버블) */}
+          {lastCommand ? (
+            <div className="mt-3 flex justify-end">
+              <div className="max-w-[85%] rounded-2xl rounded-br-md border px-4 py-2.5 text-sm" style={{ borderColor: 'rgba(230,200,119,0.4)', background: 'linear-gradient(135deg, rgba(230,200,119,0.16), rgba(198,152,47,0.1))', color: '#f6e9c6', boxShadow: '0 0 20px -8px rgba(230,200,119,0.5)' }}>
+                {lastCommand}
               </div>
+            </div>
+          ) : null}
 
-              {devPreview ? (
-                <div className="mt-3 rounded-xl border border-slate-800 bg-white p-3 shadow-sm">
-                  {/* Title + status */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-100">
-                        {lastAutoBuildJob?.status === 'queued'
-                          ? `개발 작업 큐에 추가했습니다. 대기 순번 ${lastAutoBuildJob.queueIndex}번`
-                          : 'Claude 자동 개발 작업을 생성했습니다.'}
-                      </div>
-                      <div className="mt-0.5 truncate text-[11px] text-slate-500">
-                        {(lastAutoBuildJob?.title ?? devPreview.command)}
+          {/* 자비스 응답 버블 (스트리밍) */}
+          {streamedResponse || state.response || state.status === 'thinking' || state.status === 'running' ? (
+            <div className="mt-3 flex justify-start">
+              <div className="flex max-w-[92%] items-start gap-2.5">
+                <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: 'radial-gradient(circle at 32% 28%, #9be8ff, #38bdf8 45%, #0b3f74)', boxShadow: '0 0 12px rgba(56,189,248,0.6)' }}>
+                  <Bot className="h-3.5 w-3.5 text-white" />
+                </span>
+                <div className="rounded-2xl rounded-tl-md border px-4 py-3 text-sm leading-7 backdrop-blur-md" style={{ borderColor: 'rgba(103,232,249,0.25)', background: 'linear-gradient(180deg, rgba(13,30,58,0.75), rgba(6,14,30,0.75))', color: 'rgba(224,240,255,0.95)', boxShadow: '0 0 26px -10px rgba(56,189,248,0.5)' }}>
+                  {state.status === 'thinking' || state.status === 'running' ? (
+                    <span className="flex items-center gap-2" style={{ color: 'rgba(160,205,255,0.85)' }}>
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                      <span className="whitespace-pre-line">{streamedResponse || '분석 중입니다…'}</span>
+                    </span>
+                  ) : (
+                    <span className="whitespace-pre-line">{streamedResponse || state.response}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* 추천 명령 — 응답 바로 아래 글로우 캡슐 */}
+          {state.suggestedCommands.length > 0 ? (
+            <div className="mt-2.5 flex flex-wrap gap-1.5 pl-9">
+              {state.suggestedCommands.map((cmd) => (
+                <button
+                  key={cmd}
+                  type="button"
+                  onClick={() => runCommand(cmd)}
+                  className="rounded-full border px-3 py-1 text-[11px] transition hover:brightness-150"
+                  style={{ borderColor: 'rgba(230,200,119,0.35)', color: '#e6c877', background: 'rgba(230,200,119,0.07)' }}
+                >
+                  <Sparkles className="mr-1 inline h-3 w-3" />
+                  {cmd}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {/* 실행 오류 */}
+          {state.lastError ? (
+            <div className="mt-3 flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm" style={{ borderColor: 'rgba(251,113,133,0.4)', background: 'rgba(244,63,94,0.08)', color: '#fecdd3' }}>
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              {state.lastError}
+            </div>
+          ) : null}
+
+          {/* 실행 타임라인 + 도구 호출 */}
+          {displayedSession ? (
+            <HoloCard title="실행 타임라인" icon={<Activity className="h-3.5 w-3.5" />}>
+              <JarvisCommandTimeline session={displayedSession} />
+              {state.toolCalls.length > 0 ? (
+                <div className="mt-3 space-y-1.5 border-t pt-2.5" style={{ borderColor: 'rgba(103,232,249,0.15)' }}>
+                  {state.toolCalls.map((tool) => (
+                    <div key={tool.id} className="flex items-start gap-2 text-[12px]">
+                      <Wrench className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: '#7dd3fc' }} />
+                      <div>
+                        <span style={{ color: 'rgba(224,240,255,0.92)' }}>{tool.name}</span>
+                        <span style={{ color: 'rgba(150,190,235,0.6)' }}> — {tool.detail}</span>
                       </div>
                     </div>
-                    <span className="shrink-0 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-300">
-                      {lastAutoBuildJob
-                        ? autoBuildStatusLabel(lastAutoBuildJob.status)
-                        : autoBuild.available
-                          ? '작업 생성 중'
-                          : '실행 대기'}
-                    </span>
-                  </div>
-
-                  {/* 3. Original command */}
-                  <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/40 px-2.5 py-1.5 text-[11px] text-slate-400">
-                    <span className="text-slate-500">명령:</span> {devPreview.command}
-                  </div>
-
-                  {/* 5. Safety scan result */}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                      <ShieldCheck className="h-3 w-3" /> 작업 폴더 허용
-                    </span>
-                    {devSafety?.promptSafe ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                        <ShieldCheck className="h-3 w-3" />{' '}
-                        {devSafety.allowedSafetyMentions.length > 0 ? '금지 명령 안전 규칙 확인됨' : '안전 검사 통과 · 실행 차단 없음'}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-300">
-                        <ShieldAlert className="h-3 w-3" /> 위험 명령 실행 지시 감지
-                      </span>
-                    )}
-                  </div>
-                  {devSafety && !devSafety.promptSafe && devSafety.blockedReason ? (
-                    <div className="mt-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-200">
-                      {devSafety.blockedReason}
-                    </div>
-                  ) : null}
-
-                  {/* 4. Generated prompt preview (expandable) */}
-                  <div className="mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowDevPrompt((s) => !s)}
-                      className="text-[11px] font-medium text-indigo-300 hover:text-indigo-200"
-                    >
-                      {showDevPrompt ? '프롬프트 미리보기 숨기기' : '생성된 Claude Code 프롬프트 미리보기'}
-                    </button>
-                    {showDevPrompt ? (
-                      <pre className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70 p-2 font-mono text-[10px] leading-5 text-slate-400">
-                        {devPreview.prompt}
-                      </pre>
-                    ) : (
-                      <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">
-                        {devPreview.prompt.slice(0, 160)}…
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 7 + 8. Actions */}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => lastAutoBuildJob && void autoBuild.runJob(lastAutoBuildJob.id)}
-                      disabled={
-                        !lastAutoBuildJob ||
-                        !autoBuild.envReady ||
-                        !(
-                          lastAutoBuildJob.status === 'ready' ||
-                          lastAutoBuildJob.status === 'queued' ||
-                          lastAutoBuildJob.status === 'failed' ||
-                          lastAutoBuildJob.status === 'needs-review'
-                        )
-                      }
-                      className={[
-                        'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition',
-                        lastAutoBuildJob &&
-                        autoBuild.envReady &&
-                        (lastAutoBuildJob.status === 'ready' ||
-                          lastAutoBuildJob.status === 'queued' ||
-                          lastAutoBuildJob.status === 'failed' ||
-                          lastAutoBuildJob.status === 'needs-review')
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                          : 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
-                      ].join(' ')}
-                    >
-                      <Hammer className="h-3 w-3" />
-                      {lastAutoBuildJob && (lastAutoBuildJob.status === 'failed' || lastAutoBuildJob.status === 'needs-review')
-                        ? '다시 시도'
-                        : 'Claude Code 실행'}
-                    </button>
-                    {lastAutoBuildJob &&
-                    (lastAutoBuildJob.status === 'running' || lastAutoBuildJob.status === 'verifying') ? (
-                      <button
-                        type="button"
-                        onClick={() => void autoBuild.cancelJob(lastAutoBuildJob.id)}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-300 transition hover:bg-rose-500/20"
-                      >
-                        <XCircle className="h-3 w-3" />
-                        작업 중지
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => navigate({ name: 'devprompt' })}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-slate-700/60"
-                    >
-                      <History className="h-3 w-3" />
-                      로그 보기
-                    </button>
-                  </div>
-
-                  {!autoBuild.available ? (
-                    <p className="mt-2 text-[11px] text-amber-300">
-                      실행은 데스크톱 앱(npm run dev)에서만 가능합니다. 프롬프트는 위에서 미리 볼 수 있습니다.
-                    </p>
-                  ) : !autoBuild.envReady ? (
-                    <p className="mt-2 text-[11px] text-amber-300">
-                      Claude Code 실행 환경을 먼저 확인해주세요. “로그 보기 → Claude Code 실행 환경”에서 점검할 수 있습니다.
-                    </p>
-                  ) : autoBuild.jobs.filter((j) => j.status === 'queued').length >= 2 ? (
-                    <p className="mt-2 text-[11px] text-slate-500">
-                      이 작업들은 병렬 후보입니다. 같은 폴더에서 동시에 수정하지 않고, 개발 센터의 “병렬 Claude 개발”에서
-                      별도 worktree로 분리해 실행할 수 있습니다. (순차 실행 / 병렬 준비 / 나중에 선택)
-                    </p>
-                  ) : null}
+                  ))}
                 </div>
               ) : null}
-            </Card>
+              {displayedSession.promptPacketId ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: 'rgba(110,231,183,0.3)', background: 'rgba(16,185,129,0.07)' }}>
+                  <span className="flex items-center gap-1.5 text-xs font-medium" style={{ color: '#6ee7b7' }}>
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    개발 프롬프트 생성 완료
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => goToTarget('devprompt')}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition hover:brightness-150"
+                    style={{ borderColor: 'rgba(230,200,119,0.4)', color: '#e6c877', background: 'rgba(230,200,119,0.08)' }}
+                  >
+                    <ArrowRight className="h-3 w-3" />
+                    프롬프트 센터로 이동
+                  </button>
+                </div>
+              ) : null}
+              {displayedSession.status === 'failed' ? (
+                <button
+                  type="button"
+                  onClick={() => runCommand(displayedSession.command)}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150"
+                  style={{ borderColor: 'rgba(251,113,133,0.4)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  다시 시도
+                </button>
+              ) : null}
+            </HoloCard>
+          ) : null}
 
-            {/* AI Core + command execution timeline (fast UX). Placed directly
-                under the command input so the timeline + response are visible
-                immediately on submit — never buried below the Voice mode card. */}
-            <Card
-              className="border-indigo-500/20 bg-gradient-to-b from-indigo-50/60 to-white ring-1 ring-indigo-500/10"
-              title="AI 코어"
-              icon={<Cpu className="h-4 w-4 text-indigo-300" />}
+          {/* Claude 자동 개발 — 개발 명령이 감지된 경우에만 등장 */}
+          {devPreview ? (
+            <HoloCard
+              title="Claude 자동 개발"
+              icon={<Hammer className="h-3.5 w-3.5" />}
+              accent="gold"
               action={
-                <span className="rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-medium text-indigo-300">
-                  Fast Command UX 활성화됨
+                <span className="rounded-full border px-2 py-0.5 text-[10px] font-bold" style={{ borderColor: 'rgba(230,200,119,0.4)', color: '#e6c877', background: 'rgba(230,200,119,0.08)' }}>
+                  {lastAutoBuildJob ? autoBuildStatusLabel(lastAutoBuildJob.status) : autoBuild.available ? '작업 생성 중' : '실행 대기'}
                 </span>
               }
             >
-              <JarvisAiCore status={coreStatus} />
+              <div className="text-sm font-semibold" style={{ color: '#f6e9c6' }}>
+                {lastAutoBuildJob?.status === 'queued'
+                  ? `개발 작업 큐에 추가했습니다. 대기 순번 ${lastAutoBuildJob.queueIndex}번`
+                  : 'Claude 자동 개발 작업을 생성했습니다.'}
+              </div>
+              <div className="mt-0.5 truncate text-[11px]" style={{ color: 'rgba(150,190,235,0.65)' }}>
+                {lastAutoBuildJob?.title ?? devPreview.command}
+              </div>
 
-              {/* Immediate response text — visible without scrolling. */}
-              <div className="mt-3 min-h-[44px] whitespace-pre-line rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs leading-6 text-slate-300">
-                {state.status === 'thinking' || state.status === 'running' ? (
-                  <span className="flex items-center gap-2 text-slate-400">
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                    {streamedResponse || '분석 중입니다…'}
+              <div className="mt-2 rounded-lg border px-2.5 py-1.5 text-[11px]" style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(6,14,30,0.5)', color: 'rgba(180,215,255,0.8)' }}>
+                <span style={{ color: 'rgba(150,190,235,0.55)' }}>명령: </span>
+                {devPreview.command}
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold" style={{ borderColor: 'rgba(110,231,183,0.35)', color: '#6ee7b7', background: 'rgba(16,185,129,0.08)' }}>
+                  <ShieldCheck className="h-3 w-3" /> 작업 폴더 허용
+                </span>
+                {devSafety?.promptSafe ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold" style={{ borderColor: 'rgba(110,231,183,0.35)', color: '#6ee7b7', background: 'rgba(16,185,129,0.08)' }}>
+                    <ShieldCheck className="h-3 w-3" />{' '}
+                    {devSafety.allowedSafetyMentions.length > 0 ? '금지 명령 안전 규칙 확인됨' : '안전 검사 통과 · 실행 차단 없음'}
                   </span>
                 ) : (
-                  streamedResponse || state.response
+                  <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold" style={{ borderColor: 'rgba(251,113,133,0.4)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' }}>
+                    <ShieldAlert className="h-3 w-3" /> 위험 명령 실행 지시 감지
+                  </span>
                 )}
               </div>
-
-              {displayedSession ? (
-                <div className="mt-3 space-y-3 border-t border-slate-800 pt-3">
-                  <JarvisCommandTimeline session={displayedSession} />
-                  {displayedSession.promptPacketId ? (
-                    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-300">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        개발 프롬프트 생성 완료
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => goToTarget('devprompt')}
-                        className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/20"
-                      >
-                        <ArrowRight className="h-3 w-3" />
-                        프롬프트 센터로 이동
-                      </button>
-                    </div>
-                  ) : null}
-                  {displayedSession.status === 'failed' ? (
-                    <button
-                      type="button"
-                      onClick={() => runCommand(displayedSession.command)}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      다시 시도
-                    </button>
-                  ) : null}
+              {devSafety && !devSafety.promptSafe && devSafety.blockedReason ? (
+                <div className="mt-2 rounded-lg border px-2.5 py-1.5 text-[11px]" style={{ borderColor: 'rgba(251,113,133,0.35)', background: 'rgba(244,63,94,0.08)', color: '#fecdd3' }}>
+                  {devSafety.blockedReason}
                 </div>
-              ) : (
-                <p className="mt-2 text-center text-xs text-slate-500">
-                  명령을 입력하면 실행 타임라인이 여기에 표시됩니다.
-                </p>
-              )}
-            </Card>
+              ) : null}
 
-            <Card title="Voice mode" icon={<Mic className="h-4 w-4 text-indigo-300" />}>
-              <div className="space-y-3">
-                {/* Voice engine selection, in preference order:
-                    Electron AI Gateway (default) → STT Proxy (legacy) → Web Speech. */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex overflow-hidden rounded-xl border border-slate-700">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!voiceActive) {
-                          setVoiceEngine('electron-gateway')
-                          refreshGatewayStatus()
-                        }
-                      }}
-                      className={engineTabClasses(voiceEngine === 'electron-gateway')}
-                    >
-                      <Cpu className="h-3.5 w-3.5" />
-                      Electron AI Gateway
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!voiceActive) setVoiceEngine('web-speech')
-                      }}
-                      className={engineTabClasses(voiceEngine === 'web-speech')}
-                    >
-                      <Mic className="h-3.5 w-3.5" />
-                      Web Speech
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!voiceActive) {
-                          setVoiceEngine('stt-proxy')
-                          refreshSttStatus()
-                        }
-                      }}
-                      title="Legacy Proxy / optional deployment path"
-                      className={engineTabClasses(voiceEngine === 'stt-proxy')}
-                    >
-                      <Server className="h-3.5 w-3.5" />
-                      Legacy Proxy
-                    </button>
-                  </div>
-
-                  {/* Engine status label */}
-                  {voiceEngine === 'electron-gateway' ? (
-                    gatewayStatus ? (
-                      <span
-                        className={`text-[11px] ${GATEWAY_STATUS_META[gatewayStatus.label]?.classes ?? 'text-slate-400'}`}
-                      >
-                        {GATEWAY_STATUS_META[gatewayStatus.label]?.label ?? gatewayStatus.label}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-slate-500">상태 확인 중…</span>
-                    )
-                  ) : voiceEngine === 'web-speech' ? (
-                    <span className={recognitionSupported ? 'text-[11px] text-emerald-300' : 'text-[11px] text-rose-300'}>
-                      {recognitionSupported ? 'Web Speech 사용 가능' : 'Web Speech 미지원'}
-                    </span>
-                  ) : sttStatus ? (
-                    <span className={`text-[11px] ${STT_STATUS_META[sttStatus.label]?.classes ?? 'text-slate-400'}`}>
-                      {STT_STATUS_META[sttStatus.label]?.label ?? sttStatus.label}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-slate-500">상태 확인 중…</span>
-                  )}
-                </div>
-
-                {/* Controls: engine-aware mic/stop button + voice output toggle. */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {canStartVoice ? (
-                    usesRecorder ? (
-                      // Click-to-toggle: click to start recording, click again to
-                      // stop + send. Never cuts off from pointer jitter.
-                      <button
-                        type="button"
-                        onClick={handleMicClick}
-                        disabled={transcribing}
-                        className={[
-                          'inline-flex select-none items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
-                          transcribing
-                            ? 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
-                            : voiceActive
-                              ? 'border-rose-500/40 bg-rose-500/15 text-rose-200'
-                              : 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20'
-                        ].join(' ')}
-                      >
-                        {voiceActive ? <MicOff className="h-4 w-4" /> : <AudioLines className="h-4 w-4" />}
-                        {voiceActive
-                          ? `녹음 중 ${recordingElapsed.toFixed(1)}초 · 클릭하면 종료`
-                          : '마이크 · 클릭하여 녹음'}
-                      </button>
-                    ) : voiceActive ? (
-                      <button
-                        type="button"
-                        onClick={stopVoice}
-                        className="inline-flex items-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/15 px-3 py-2.5 text-sm font-medium text-rose-200 transition hover:bg-rose-500/25"
-                      >
-                        <MicOff className="h-4 w-4" />
-                        듣기 중지
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={startVoice}
-                        className="inline-flex items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-300 transition hover:bg-indigo-500/20"
-                      >
-                        <Mic className="h-4 w-4" />
-                        마이크 (눌러서 말하기)
-                      </button>
-                    )
-                  ) : (
-                    <span className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2.5 text-sm text-slate-400">
-                      <MicOff className="h-4 w-4" />
-                      {usesRecorder ? '오디오 녹음 미지원' : '음성 인식 미지원'}
-                    </span>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={toggleVoiceOutput}
-                    disabled={!synthesisSupported}
-                    className={[
-                      'inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
-                      !synthesisSupported
-                        ? 'cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600'
-                        : voiceOutputEnabled
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                          : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-500'
-                    ].join(' ')}
-                  >
-                    {voiceOutputEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                    음성 출력 {voiceOutputEnabled ? 'ON' : 'OFF'}
-                  </button>
-
-                  {/* Optional wake mode — OFF by default, opt-in only. */}
-                  <button
-                    type="button"
-                    onClick={toggleWake}
-                    title="켜져 있을 때 '자비스'라고 부르면 짧은 명령을 들을 준비를 합니다."
-                    className={[
-                      'inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition',
-                      wakeEnabled
-                        ? 'border-sky-500/40 bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
-                        : 'border-slate-700 bg-slate-800/50 text-slate-300 hover:border-slate-500'
-                    ].join(' ')}
-                  >
-                    <Radar className="h-4 w-4" />
-                    자비스 호출 대기 {wakeEnabled ? 'ON' : 'OFF'}
-                  </button>
-                </div>
-
-                {/* Wake-mode indicator — always visible while wake mode is enabled. */}
-                {wakeEnabled ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2 text-sm text-sky-200">
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-sky-400" />
-                    </span>
-                    {wakeStatus === 'detected'
-                      ? '자비스 호출 감지'
-                      : wakeStatus === 'awaiting'
-                        ? '명령을 말씀하세요'
-                        : "호출 대기 중 · '자비스'라고 불러주세요"}
-                  </div>
-                ) : null}
-
-                {voiceActive ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-400" />
-                    </span>
-                    {usesRecorder
-                      ? `녹음 중… ${recordingElapsed.toFixed(1)}초 · 다시 클릭하면 종료 (최대 ${recorder.getMaxSeconds()}초)`
-                      : '자비스가 듣고 있습니다…'}
-                  </div>
-                ) : null}
-
-                {voiceNotice ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                    {voiceNotice}
-                  </div>
-                ) : null}
-
-                {transcribing ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-sm text-sky-200">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    전사 중… 잠시만 기다려 주세요.
-                  </div>
-                ) : null}
-
-                {voiceTiming ? (
-                  <p className="font-mono text-[10px] text-slate-500">
-                    음성 처리 {(voiceTiming.totalMs / 1000).toFixed(1)}초 · 녹음{' '}
-                    {(voiceTiming.recordingMs / 1000).toFixed(1)}초 · 전사{' '}
-                    {(voiceTiming.transcriptionMs / 1000).toFixed(1)}초 · 실행{' '}
-                    {(voiceTiming.routingMs / 1000).toFixed(1)}초
-                  </p>
-                ) : null}
-
-                {/* Voice pipeline diagnostics — report these if voice still fails. */}
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 font-mono text-[10px] leading-5 text-slate-500">
-                  <div className="mb-0.5 font-sans text-[10px] font-semibold text-slate-400">
-                    음성 파이프라인 진단 빌드
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-3">
-                    <span>상태: {voiceState}</span>
-                    <span>정지 사유: {stopReason ?? '—'}</span>
-                    <span>녹음 시간: {recordingElapsed.toFixed(1)}초</span>
-                    <span>전사 시간: {voiceTiming ? (voiceTiming.transcriptionMs / 1000).toFixed(1) + '초' : '—'}</span>
-                    <span>오디오 청크: {audioChunks}개</span>
-                    <span>오디오 크기: {(audioBytes / 1024).toFixed(1)}KB</span>
-                  </div>
-                  <div className="mt-0.5 truncate text-slate-600">마지막 오류: {voiceError ?? '—'}</div>
-                  <div className="mt-0.5 text-slate-600">클릭하면 녹음 시작 / 다시 클릭하면 종료 · 최대 {recorder.getMaxSeconds()}초</div>
-                </div>
-
-                {interimTranscript ? (
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">
-                    <span className="text-slate-500">인식 중: </span>
-                    {interimTranscript}
-                  </div>
-                ) : null}
-
-                {lastTranscript && !voiceActive && !interimTranscript ? (
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">
-                    <span className="text-slate-500">인식된 명령: </span>
-                    {lastTranscript}
-                  </div>
-                ) : null}
-
-                {voiceError ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {voiceError}
-                  </div>
-                ) : null}
-
-                {voiceEngine === 'electron-gateway' ? (
-                  <p className="text-xs text-slate-500">
-                    Electron AI Gateway: 녹음을 Main Process로 전송해 OpenAI로 전사합니다. API 키는 Main
-                    Process에만 존재 · 별도 프록시 서버 필요 없음 · npm run dev만 필요 · 오디오는 저장되지 않습니다.
-                  </p>
-                ) : voiceEngine === 'stt-proxy' ? (
-                  <p className="text-xs text-slate-500">
-                    Legacy Proxy(선택): 녹음을 sj-ai-proxy로 전송해 전사합니다. API 키는 백엔드에만 있습니다 ·
-                    오디오는 저장되지 않습니다.
-                  </p>
-                ) : !recognitionSupported ? (
-                  <p className="text-xs text-slate-500">이 환경에서는 음성 인식을 사용할 수 없습니다.</p>
-                ) : null}
-
-                {/* Electron AI Gateway diagnostics — the default desktop path. */}
-                {voiceEngine === 'electron-gateway' ? (
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-                        <Cpu className="h-3.5 w-3.5 text-indigo-400" />
-                        Electron AI Gateway
-                      </div>
-                      <button
-                        type="button"
-                        onClick={refreshGatewayStatus}
-                        className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
-                      >
-                        <RefreshCw className="h-3 w-3" />
-                        상태 새로고침
-                      </button>
-                    </div>
-                    {gatewayStatus ? (
-                      <>
-                        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                          <DiagBool label="게이트웨이 사용 가능" value={gatewayStatus.available} />
-                          <DiagBool label="OpenAI 활성화" value={gatewayStatus.enabled} />
-                          <DiagBool label="API 키 설정" value={gatewayStatus.apiKeyConfigured} />
-                          <DiagBool label="준비됨(ready)" value={gatewayStatus.ready} />
-                        </div>
-                        <div className="mt-1.5 grid grid-cols-1 gap-y-1 text-[11px]">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-slate-500">STT 모델</span>
-                            <span className="font-mono text-slate-300">{gatewayStatus.sttModel ?? '—'}</span>
-                          </div>
-                        </div>
-                        {!gatewayStatus.available ? (
-                          <p className="mt-1.5 text-[11px] text-rose-300">
-                            Electron AI Gateway를 사용할 수 없습니다. 데스크톱 앱(npm run dev)에서 실행해 주세요.
-                          </p>
-                        ) : !gatewayStatus.enabled ? (
-                          <p className="mt-1.5 text-[11px] text-amber-300">
-                            OPENAI_ENABLED=false 상태입니다. SJ OS 루트 .env 에서 OPENAI_ENABLED=true 로 설정하세요.
-                          </p>
-                        ) : !gatewayStatus.apiKeyConfigured ? (
-                          <p className="mt-1.5 text-[11px] text-amber-300">
-                            OpenAI API 키가 설정되지 않았습니다. SJ OS 루트 .env 에만 직접 입력하세요.
-                          </p>
-                        ) : (
-                          <p className="mt-1.5 text-[11px] text-emerald-300">
-                            OpenAI 준비됨 — API 키는 Main Process에만 존재 · 별도 프록시 서버 필요 없음 · npm run dev만
-                            필요.
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="mt-1.5 text-[11px] text-slate-500">게이트웨이 상태 확인 중…</p>
-                    )}
-                  </div>
-                ) : null}
-
-                {/* Legacy proxy diagnostics — optional/advanced deployment path only. */}
-                {voiceEngine === 'stt-proxy' ? (
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-                        <Server className="h-3.5 w-3.5 text-sky-400" />
-                        Legacy Proxy diagnostics
-                      </div>
-                      <button
-                        type="button"
-                        onClick={refreshSttStatus}
-                        className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
-                      >
-                        <RefreshCw className="h-3 w-3" />
-                        프록시 상태 새로고침
-                      </button>
-                    </div>
-                    {sttStatus ? (
-                      <>
-                        <div className="mt-1.5 grid grid-cols-1 gap-y-1 text-[11px]">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-slate-500">현재 프록시 URL</span>
-                            <span className="font-mono text-slate-300">{sttStatus.proxyUrl ?? '—'}</span>
-                          </div>
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="shrink-0 text-slate-500">시도한 URL</span>
-                            <span className="text-right font-mono text-[10px] text-slate-400">
-                              {sttStatus.triedUrls.length > 0 ? sttStatus.triedUrls.join(', ') : '—'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                          <DiagBool label="프록시 연결" value={sttStatus.reachable} />
-                          <DiagBool label="OpenAI 활성화" value={sttStatus.enabled} />
-                          <DiagBool label="API 키 설정" value={sttStatus.apiKeyConfigured} />
-                          <DiagBool label="준비됨(ready)" value={sttStatus.ready} />
-                        </div>
-                        {sttStatus.lastError ? (
-                          <p className="mt-1.5 font-mono text-[10px] text-slate-500">
-                            마지막 오류: {sttStatus.lastError}
-                          </p>
-                        ) : null}
-                        {!sttStatus.reachable ? (
-                          <p className="mt-1.5 text-[11px] text-rose-300">
-                            프록시에 연결할 수 없습니다. sj-ai-proxy 서버가 실행 중인지 확인하세요.
-                          </p>
-                        ) : !sttStatus.ready ? (
-                          <p className="mt-1.5 text-[11px] text-amber-300">
-                            프록시는 연결됐지만 OpenAI 설정이 준비되지 않았습니다.
-                          </p>
-                        ) : (
-                          <p className="mt-1.5 text-[11px] text-emerald-300">
-                            프록시 준비 완료 — 녹음/전사를 사용할 수 있습니다.
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="mt-1.5 text-[11px] text-slate-500">프록시 상태 확인 중…</p>
-                    )}
-                  </div>
-                ) : null}
-
-                {/* Compact voice diagnostics — honest capability + last error report. */}
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-                      <Activity className="h-3.5 w-3.5 text-sky-400" />
-                      Voice diagnostics
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void voice.refreshMicPermission().then(() => setDiagnostics(voice.getDiagnostics()))
-                      }
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-1.5 py-0.5 text-[10px] text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      새로고침
-                    </button>
-                  </div>
-                  <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                    <DiagBool label="SpeechRecognition" value={diagnostics.speechRecognitionSupported} />
-                    <DiagBool label="webkitSpeechRecognition" value={diagnostics.webkitSpeechRecognitionSupported} />
-                    <DiagBool label="speechSynthesis" value={diagnostics.speechSynthesisSupported} />
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-slate-500">마이크 권한</span>
-                      <span className="text-slate-300">
-                        {MIC_PERMISSION_LABEL[diagnostics.microphonePermission]}
-                      </span>
-                    </div>
-                    <div className="col-span-2 flex items-center justify-between gap-2">
-                      <span className="text-slate-500">음성 엔진</span>
-                      <span className={ENGINE_META[diagnostics.engine].classes}>
-                        {ENGINE_META[diagnostics.engine].label}
-                      </span>
-                    </div>
-                    <div className="col-span-2 flex items-center justify-between gap-2">
-                      <span className="text-slate-500">마지막 오류 코드</span>
-                      <span className="font-mono text-slate-300">{diagnostics.lastErrorCode ?? '—'}</span>
-                    </div>
-                  </div>
-                  {diagnostics.lastErrorMessage ? (
-                    <p className="mt-1.5 text-[11px] text-slate-400">{diagnostics.lastErrorMessage}</p>
-                  ) : null}
-                  {diagnostics.recommendedFix ? (
-                    <p className="mt-1 text-[11px] text-sky-300">권장 조치: {diagnostics.recommendedFix}</p>
-                  ) : null}
-                </div>
-
-                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2">
-                  <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-                    Voice safety
-                  </div>
-                  <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-500">
-                    <li>· 눌러서 말하기(push-to-talk) 전용 · 상시 청취 없음 · 웨이크워드 없음</li>
-                    <li>· 오디오 파일 저장 없음 (메모리에서만 처리)</li>
-                    {voiceEngine === 'electron-gateway' ? (
-                      <>
-                        <li>· Electron AI Gateway: 녹음을 Main Process로만 전송해 OpenAI로 전사</li>
-                        <li>· OpenAI API 키는 Main Process에만 존재 · 렌더러/프리로드에는 없음</li>
-                      </>
-                    ) : voiceEngine === 'stt-proxy' ? (
-                      <>
-                        <li>· Legacy Proxy: 녹음을 백엔드 프록시로만 전송해 전사</li>
-                        <li>· OpenAI API 키는 백엔드에만 존재 · 프론트엔드에는 없음</li>
-                      </>
-                    ) : (
-                      <>
-                        <li>· 로컬 브라우저 음성 인식만 사용 · 외부로 오디오 전송 없음</li>
-                        <li>· 외부 AI/API 사용 없음</li>
-                      </>
-                    )}
-                  </ul>
-                </div>
-              </div>
-            </Card>
-
-            <Card title="자비스 응답" icon={<Bot className="h-4 w-4 text-indigo-300" />}>
-              <div className="min-h-[110px] whitespace-pre-line rounded-xl border border-slate-800 bg-slate-950/70 p-4 text-sm leading-7 text-slate-300">
-                {state.status === 'thinking' || state.status === 'running' ? (
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                    {streamedResponse || '분석 중입니다…'}
-                  </div>
+              <div className="mt-2">
+                <button type="button" onClick={() => setShowDevPrompt((s) => !s)} className="text-[11px] font-medium transition hover:brightness-150" style={{ color: '#7dd3fc' }}>
+                  {showDevPrompt ? '프롬프트 미리보기 숨기기' : '생성된 Claude Code 프롬프트 미리보기'}
+                </button>
+                {showDevPrompt ? (
+                  <pre className="mt-1 max-h-40 overflow-y-auto rounded-lg border p-2 font-mono text-[10px] leading-5" style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(3,7,15,0.7)', color: 'rgba(180,215,255,0.75)' }}>
+                    {devPreview.prompt}
+                  </pre>
                 ) : (
-                  <div>{streamedResponse || state.response}</div>
+                  <p className="mt-1 line-clamp-2 text-[11px]" style={{ color: 'rgba(150,190,235,0.55)' }}>{devPreview.prompt.slice(0, 160)}…</p>
                 )}
               </div>
-            </Card>
 
-            {/* Answer / Briefing result */}
-            {answer ? (
-              <Card title="응답" icon={<Compass className="h-4 w-4 text-sky-300" />}>
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                    <span className="rounded-full border border-slate-700 bg-slate-800/60 px-2 py-0.5">{answer.commandUnderstood}</span>
-                    <span>· 출처</span>
-                    <span className="text-slate-300">{answer.sourceWorkspace}</span>
-                  </div>
-                  {answer.cards.length > 0 ? (
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      {answer.cards.map((c) => (
-                        <div key={c.label} className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
-                          <div className="text-[11px] text-slate-500">{c.label}</div>
-                          <div className={['mt-0.5 text-sm font-medium', c.tone ?? 'text-slate-200'].join(' ')}>{c.value}</div>
-                        </div>
-                      ))}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => lastAutoBuildJob && void autoBuild.runJob(lastAutoBuildJob.id)}
+                  disabled={
+                    !lastAutoBuildJob ||
+                    !autoBuild.envReady ||
+                    !(
+                      lastAutoBuildJob.status === 'ready' ||
+                      lastAutoBuildJob.status === 'queued' ||
+                      lastAutoBuildJob.status === 'failed' ||
+                      lastAutoBuildJob.status === 'needs-review'
+                    )
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition hover:brightness-150 disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ borderColor: 'rgba(110,231,183,0.4)', color: '#6ee7b7', background: 'rgba(16,185,129,0.08)' }}
+                >
+                  <Hammer className="h-3 w-3" />
+                  {lastAutoBuildJob && (lastAutoBuildJob.status === 'failed' || lastAutoBuildJob.status === 'needs-review') ? '다시 시도' : 'Claude Code 실행'}
+                </button>
+                {lastAutoBuildJob && (lastAutoBuildJob.status === 'running' || lastAutoBuildJob.status === 'verifying') ? (
+                  <button
+                    type="button"
+                    onClick={() => void autoBuild.cancelJob(lastAutoBuildJob.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition hover:brightness-150"
+                    style={{ borderColor: 'rgba(251,113,133,0.4)', color: '#fda4af', background: 'rgba(244,63,94,0.08)' }}
+                  >
+                    <XCircle className="h-3 w-3" />
+                    작업 중지
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => navigate({ name: 'devprompt' })}
+                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition hover:brightness-150"
+                  style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff', background: 'rgba(56,189,248,0.06)' }}
+                >
+                  <History className="h-3 w-3" />
+                  로그 보기
+                </button>
+              </div>
+
+              {!autoBuild.available ? (
+                <p className="mt-2 text-[11px]" style={{ color: '#fde68a' }}>실행은 데스크톱 앱(npm run dev)에서만 가능합니다. 프롬프트는 위에서 미리 볼 수 있습니다.</p>
+              ) : !autoBuild.envReady ? (
+                <p className="mt-2 text-[11px]" style={{ color: '#fde68a' }}>Claude Code 실행 환경을 먼저 확인해주세요. “로그 보기 → Claude Code 실행 환경”에서 점검할 수 있습니다.</p>
+              ) : autoBuild.jobs.filter((j) => j.status === 'queued').length >= 2 ? (
+                <p className="mt-2 text-[11px]" style={{ color: 'rgba(150,190,235,0.6)' }}>
+                  이 작업들은 병렬 후보입니다. 같은 폴더에서 동시에 수정하지 않고, 개발 센터의 “병렬 Claude 개발”에서 별도 worktree로 분리해 실행할 수 있습니다.
+                </p>
+              ) : null}
+            </HoloCard>
+          ) : null}
+
+          {/* 응답 데이터 카드 */}
+          {answer ? (
+            <HoloCard title="브리핑 데이터" icon={<Compass className="h-3.5 w-3.5" />}>
+              <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: 'rgba(150,190,235,0.65)' }}>
+                <span className="rounded-full border px-2 py-0.5" style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff' }}>{answer.commandUnderstood}</span>
+                <span>· 출처</span>
+                <span style={{ color: 'rgba(214,233,255,0.9)' }}>{answer.sourceWorkspace}</span>
+              </div>
+              {answer.cards.length > 0 ? (
+                <div className="mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {answer.cards.map((c) => (
+                    <div key={c.label} className="rounded-xl border px-3 py-2" style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(6,14,30,0.5)' }}>
+                      <div className="text-[11px]" style={{ color: 'rgba(150,190,235,0.6)' }}>{c.label}</div>
+                      <div className="mt-0.5 text-sm font-semibold" style={{ color: '#eaf6ff' }}>{c.value}</div>
                     </div>
-                  ) : null}
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-                    <span className="text-slate-500">추천 액션: </span>
-                    {answer.recommendedNextAction}
-                  </div>
-                  {toView(answer.navigationTarget) ? (
-                    <button
-                      type="button"
-                      onClick={() => goToTarget(answer.navigationTarget)}
-                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20"
-                    >
-                      <ArrowRight className="h-3.5 w-3.5" />
-                      해당 워크스페이스로 이동
-                    </button>
-                  ) : null}
-                </div>
-              </Card>
-            ) : null}
-
-            {/* External action result */}
-            {external ? (
-              <Card title="외부 작업" icon={<ExternalLink className="h-4 w-4 text-sky-300" />}>
-                <div className="space-y-3">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Field label="명령 이해" value={external.commandUnderstood} />
-                    <Field label="대상" value={external.target} />
-                    <Field label="동작" value={external.action} />
-                    <Field
-                      label="상태"
-                      value={external.ok ? 'completed' : 'failed'}
-                      tone={external.ok ? 'text-emerald-300' : 'text-rose-300'}
-                    />
-                  </div>
-                  {external.ok ? (
-                    <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-                      <CheckCircle2 className="h-4 w-4" />
-                      승인된 외부 URL을 시스템 브라우저에서 열었습니다{external.url ? ` · ${external.url}` : ''}
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-                      <XCircle className="h-4 w-4" />
-                      {external.error ?? '외부 링크를 열지 못했습니다.'}
-                    </div>
-                  )}
-                </div>
-              </Card>
-            ) : null}
-
-            {/* GPT brain result */}
-            {gpt ? (
-              <Card title="GPT 브레인" icon={<Brain className="h-4 w-4 text-fuchsia-300" />}>
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-0.5 text-fuchsia-300">
-                      <Cpu className="h-3 w-3" /> {gpt.source}
-                    </span>
-                    <span className="rounded-full border border-slate-700 bg-slate-800/60 px-2 py-0.5">{gpt.mode}</span>
-                    {gpt.model ? <span>· {gpt.model}</span> : null}
-                  </div>
-
-                  {gpt.disabled ? (
-                    <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-                      <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />
-                      <div>
-                        GPT 브레인이 비활성화되어 있습니다. 설정 → “AI · GPT Brain” 안내와
-                        docs/OPENAI_PROXY_SETUP.md 를 참고해 프록시를 설정하세요. API 키는 프론트엔드에
-                        넣지 마세요.
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {gpt.error ? (
-                    <div className="flex items-start gap-2 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                      <div>{gpt.error}</div>
-                    </div>
-                  ) : null}
-
-                  {gpt.canRetry && lastCommand ? (
-                    <button
-                      type="button"
-                      onClick={() => askGpt(lastCommand)}
-                      className="inline-flex items-center gap-2 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1.5 text-xs font-medium text-fuchsia-300 transition hover:bg-fuchsia-500/20"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      다시 시도
-                    </button>
-                  ) : null}
-                </div>
-              </Card>
-            ) : null}
-
-            {/* Implementation result */}
-            {impl ? (
-              <Card title="구현 요청 생성됨" icon={<Hammer className="h-4 w-4 text-amber-300" />}>
-                <div className="space-y-3">
-                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-slate-200">
-                    <div className="font-medium text-slate-100">{impl.title}</div>
-                    <div className="mt-0.5 text-[11px] text-slate-500">요청 ID {impl.requestId}</div>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    <Field label="대상 워크스페이스" value={impl.targetWorkspace} />
-                    <Field label="우선순위" value={impl.priority} />
-                    <Field label="상태" value={impl.status} />
-                    <Field label="위험도" value={impl.riskLevel} tone={RISK_TONE[impl.riskLevel]} />
-                    <Field label="승인 필요" value={impl.approvalRequired ? '필요' : '불필요'} tone={impl.approvalRequired ? 'text-amber-300' : 'text-emerald-300'} />
-                    <Field label="PM 계획" value={impl.pmPlanId ?? '—'} />
-                  </div>
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-                    <span className="text-slate-500">해석된 목표: </span>{impl.interpretedGoal}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="inline-flex items-center gap-1 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-indigo-300">
-                      <GitBranch className="h-3 w-3" /> 경로: {impl.routeTarget}
-                    </span>
-                    {impl.approvalRequired ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-300">
-                        <ShieldAlert className="h-3 w-3" /> 승인 대기
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-                    <span className="text-slate-500">다음 액션: </span>{impl.nextAction}
-                  </div>
-                  {impl.routingLog.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">라우팅</div>
-                      <ul className="space-y-1">
-                        {impl.routingLog.map((line) => (
-                          <li key={line} className="flex items-start gap-2 text-xs text-slate-400">
-                            <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
-                            {line}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {/* Generated developer prompt */}
-                  {impl.generatedDeveloperPrompt ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Claude Code 개발자 프롬프트</div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            copyPrompt(impl.generatedDeveloperPrompt, {
-                              packetId: impl.promptPacketId,
-                              fallbackId: 'jarvis-impl-prompt'
-                            })
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/20"
-                        >
-                          {promptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                          {promptCopied ? '복사됨' : '프롬프트 복사'}
-                        </button>
-                      </div>
-                      <textarea
-                        id="jarvis-impl-prompt"
-                        readOnly
-                        value={impl.generatedDeveloperPrompt}
-                        onFocus={(e) => e.currentTarget.select()}
-                        className="h-40 w-full resize-y rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-[11px] leading-5 text-slate-300 outline-none"
-                      />
-                    </div>
-                  ) : null}
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => goToTarget('pm')}
-                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20"
-                    >
-                      <ArrowRight className="h-3.5 w-3.5" />
-                      PM Planner에서 확인
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => goToTarget('devprompt')}
-                      className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20"
-                    >
-                      <ArrowRight className="h-3.5 w-3.5" />
-                      개발 프롬프트 센터에서 관리
-                    </button>
-                  </div>
-                </div>
-              </Card>
-            ) : null}
-
-            {/* Universal App Builder result */}
-            {build ? (
-              <Card title="범용 앱 빌더" icon={<Boxes className="h-4 w-4 text-violet-300" />}>
-                <div className="space-y-3">
-                  <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-sm text-slate-200">
-                    <div className="font-medium text-slate-100">{build.projectName}</div>
-                    <div className="mt-0.5 text-[11px] text-slate-500">프로젝트 ID {build.projectId}</div>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    <Field label="앱 타입" value={build.appType} />
-                    <Field label="산업" value={build.industry} />
-                    <Field label="대상 사용자" value={build.targetUsers} />
-                    <Field label="상태" value={build.status} />
-                    <Field label="위험도" value={build.riskLevel} tone={RISK_TONE[build.riskLevel]} />
-                    <Field
-                      label="승인 필요"
-                      value={build.approvalRequired ? '필요' : '불필요'}
-                      tone={build.approvalRequired ? 'text-amber-300' : 'text-emerald-300'}
-                    />
-                  </div>
-
-                  <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
-                    <span className="text-slate-500">해석된 목표: </span>{build.interpretedGoal}
-                  </div>
-
-                  {build.assumptions.length > 0 ? (
-                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200">
-                      <div className="mb-1 font-medium">가정 (custom/unknown — 확인 필요)</div>
-                      <ul className="space-y-0.5">
-                        {build.assumptions.map((a) => (
-                          <li key={a}>· {a}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <TagList label="필요 모듈" icon={<Layers className="h-3.5 w-3.5 text-violet-300" />} items={build.requiredModules} />
-                    <TagList label="추천 화면" icon={<Compass className="h-3.5 w-3.5 text-sky-300" />} items={build.suggestedScreens} />
-                    <TagList label="데이터 모델" icon={<Boxes className="h-3.5 w-3.5 text-emerald-300" />} items={build.suggestedDataModels} />
-                    <TagList label="추천 연동" icon={<GitBranch className="h-3.5 w-3.5 text-indigo-300" />} items={build.suggestedIntegrations} />
-                  </div>
-
-                  {/* AI tool orchestration plan */}
-                  {build.aiToolPlan.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">AI 도구 계획</div>
-                      <ul className="space-y-1">
-                        {build.aiToolPlan.map((t) => (
-                          <li key={t.toolId} className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs">
-                            <span className="mt-0.5 inline-flex shrink-0 items-center rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 font-medium text-violet-300">
-                              {t.toolName}
-                            </span>
-                            <span className="flex-1 text-slate-400">{t.role}</span>
-                            <span className="shrink-0 text-[10px] text-slate-500">{t.officialApiStatus} API · {t.status}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {/* Sprint plan */}
-                  {build.sprintPlan.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">스프린트 계획</div>
-                      <ul className="space-y-1">
-                        {build.sprintPlan.map((s) => (
-                          <li key={s.id} className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs text-slate-300">
-                            <span className="font-medium text-slate-200">{s.name}</span>
-                            <span className="text-slate-500"> — {s.goal}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  {/* Generated developer prompt */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Claude Code 개발자 프롬프트</div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          copyPrompt(build.generatedDeveloperPrompt, {
-                            packetId: build.promptPacketId,
-                            fallbackId: 'jarvis-build-prompt'
-                          })
-                        }
-                        className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium text-violet-300 transition hover:bg-violet-500/20"
-                      >
-                        {promptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                        {promptCopied ? '복사됨' : '프롬프트 복사'}
-                      </button>
-                    </div>
-                    <textarea
-                      id="jarvis-build-prompt"
-                      readOnly
-                      value={build.generatedDeveloperPrompt}
-                      onFocus={(e) => e.currentTarget.select()}
-                      className="h-40 w-full resize-y rounded-lg border border-slate-800 bg-slate-950/70 p-3 font-mono text-[11px] leading-5 text-slate-300 outline-none"
-                    />
-                  </div>
-
-                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200">
-                    다음 액션: {build.nextAction}
-                  </div>
-
-                  {build.routingLog.length > 0 ? (
-                    <div className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">라우팅</div>
-                      <ul className="space-y-1">
-                        {build.routingLog.map((line) => (
-                          <li key={line} className="flex items-start gap-2 text-xs text-slate-400">
-                            <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
-                            {line}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => goToTarget('app-builder')}
-                      className="inline-flex items-center gap-2 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 transition hover:bg-violet-500/20"
-                    >
-                      <ArrowRight className="h-3.5 w-3.5" />
-                      App Builder에서 확인
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => goToTarget('pm')}
-                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20"
-                    >
-                      <ArrowRight className="h-3.5 w-3.5" />
-                      PM Planner에서 확인
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => goToTarget('devprompt')}
-                      className="inline-flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:bg-amber-500/20"
-                    >
-                      <ArrowRight className="h-3.5 w-3.5" />
-                      개발 프롬프트 센터에서 관리
-                    </button>
-                  </div>
-                </div>
-              </Card>
-            ) : null}
-
-            {/* Suggested next commands */}
-            {state.suggestedCommands.length > 0 ? (
-              <Card title="추천 명령" icon={<Sparkles className="h-4 w-4 text-indigo-300" />}>
-                <div className="flex flex-wrap gap-1.5">
-                  {state.suggestedCommands.map((cmd) => (
-                    <button
-                      key={cmd}
-                      type="button"
-                      onClick={() => runCommand(cmd)}
-                      className="rounded-full border border-slate-700 bg-slate-800/50 px-2.5 py-1 text-[11px] text-slate-300 transition hover:border-indigo-500/40 hover:text-indigo-200"
-                    >
-                      {cmd}
-                    </button>
                   ))}
                 </div>
-              </Card>
-            ) : null}
+              ) : null}
+              <div className="mt-2.5 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(230,200,119,0.25)', background: 'rgba(230,200,119,0.05)', color: 'rgba(224,240,255,0.9)' }}>
+                <span style={{ color: '#e6c877' }}>추천 액션: </span>
+                {answer.recommendedNextAction}
+              </div>
+              {toView(answer.navigationTarget) ? (
+                <button
+                  type="button"
+                  onClick={() => goToTarget(answer.navigationTarget)}
+                  className="mt-2.5 inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150"
+                  style={{ borderColor: 'rgba(110,231,183,0.4)', color: '#6ee7b7', background: 'rgba(16,185,129,0.08)' }}
+                >
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  해당 워크스페이스로 이동
+                </button>
+              ) : null}
+            </HoloCard>
+          ) : null}
+
+          {/* 외부 작업 결과 */}
+          {external ? (
+            <HoloCard title="외부 작업" icon={<ExternalLink className="h-3.5 w-3.5" />}>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Field label="명령 이해" value={external.commandUnderstood} />
+                <Field label="대상" value={external.target} />
+                <Field label="동작" value={external.action} />
+                <Field label="상태" value={external.ok ? 'completed' : 'failed'} tone={external.ok ? '#6ee7b7' : '#fda4af'} />
+              </div>
+              {external.ok ? (
+                <div className="mt-2.5 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(110,231,183,0.3)', background: 'rgba(16,185,129,0.07)', color: '#a7f3d0' }}>
+                  <CheckCircle2 className="h-4 w-4" />
+                  승인된 외부 URL을 시스템 브라우저에서 열었습니다{external.url ? ` · ${external.url}` : ''}
+                </div>
+              ) : (
+                <div className="mt-2.5 flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(251,113,133,0.35)', background: 'rgba(244,63,94,0.08)', color: '#fecdd3' }}>
+                  <XCircle className="h-4 w-4" />
+                  {external.error ?? '외부 링크를 열지 못했습니다.'}
+                </div>
+              )}
+            </HoloCard>
+          ) : null}
+
+          {/* GPT 브레인 결과 */}
+          {gpt ? (
+            <HoloCard title="GPT 브레인" icon={<Brain className="h-3.5 w-3.5" />}>
+              <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: 'rgba(150,190,235,0.65)' }}>
+                <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5" style={{ borderColor: 'rgba(103,232,249,0.3)', color: '#9adcff' }}>
+                  <Cpu className="h-3 w-3" /> {gpt.source}
+                </span>
+                <span className="rounded-full border px-2 py-0.5" style={{ borderColor: 'rgba(103,232,249,0.2)' }}>{gpt.mode}</span>
+                {gpt.model ? <span>· {gpt.model}</span> : null}
+              </div>
+              {gpt.disabled ? (
+                <div className="mt-2.5 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(252,211,77,0.3)', background: 'rgba(251,191,36,0.07)', color: '#fde68a' }}>
+                  <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>GPT 브레인이 비활성화되어 있습니다. 설정 → “AI · GPT Brain” 안내와 docs/OPENAI_PROXY_SETUP.md 를 참고해 프록시를 설정하세요. API 키는 프론트엔드에 넣지 마세요.</div>
+                </div>
+              ) : null}
+              {gpt.error ? (
+                <div className="mt-2.5 flex items-start gap-2 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(251,113,133,0.35)', background: 'rgba(244,63,94,0.08)', color: '#fecdd3' }}>
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>{gpt.error}</div>
+                </div>
+              ) : null}
+              {gpt.canRetry && lastCommand ? (
+                <button
+                  type="button"
+                  onClick={() => askGpt(lastCommand)}
+                  className="mt-2.5 inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150"
+                  style={{ borderColor: 'rgba(103,232,249,0.3)', color: '#9adcff', background: 'rgba(56,189,248,0.07)' }}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  다시 시도
+                </button>
+              ) : null}
+            </HoloCard>
+          ) : null}
+
+          {/* 구현 요청 결과 */}
+          {impl ? (
+            <HoloCard title="구현 요청 생성됨" icon={<Hammer className="h-3.5 w-3.5" />} accent="gold">
+              <div className="rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(230,200,119,0.3)', background: 'rgba(230,200,119,0.06)' }}>
+                <div className="font-semibold" style={{ color: '#f6e9c6' }}>{impl.title}</div>
+                <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(150,190,235,0.6)' }}>요청 ID {impl.requestId}</div>
+              </div>
+              <div className="mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label="대상 워크스페이스" value={impl.targetWorkspace} />
+                <Field label="우선순위" value={impl.priority} />
+                <Field label="상태" value={impl.status} />
+                <Field label="위험도" value={impl.riskLevel} tone={RISK_TONE[impl.riskLevel]} />
+                <Field label="승인 필요" value={impl.approvalRequired ? '필요' : '불필요'} tone={impl.approvalRequired ? '#fde68a' : '#6ee7b7'} />
+                <Field label="PM 계획" value={impl.pmPlanId ?? '—'} />
+              </div>
+              <div className="mt-2.5 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(6,14,30,0.5)', color: 'rgba(214,233,255,0.9)' }}>
+                <span style={{ color: 'rgba(150,190,235,0.6)' }}>해석된 목표: </span>
+                {impl.interpretedGoal}
+              </div>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
+                <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5" style={{ borderColor: 'rgba(103,232,249,0.3)', color: '#9adcff' }}>
+                  <GitBranch className="h-3 w-3" /> 경로: {impl.routeTarget}
+                </span>
+                {impl.approvalRequired ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5" style={{ borderColor: 'rgba(251,113,133,0.4)', color: '#fda4af' }}>
+                    <ShieldAlert className="h-3 w-3" /> 승인 대기
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-2.5 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(6,14,30,0.5)', color: 'rgba(214,233,255,0.9)' }}>
+                <span style={{ color: 'rgba(150,190,235,0.6)' }}>다음 액션: </span>
+                {impl.nextAction}
+              </div>
+              {impl.routingLog.length > 0 ? (
+                <div className="mt-2.5 space-y-1">
+                  <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: 'rgba(150,190,235,0.55)' }}>라우팅</div>
+                  <ul className="space-y-1">
+                    {impl.routingLog.map((line) => (
+                      <li key={line} className="flex items-start gap-2 text-xs" style={{ color: 'rgba(180,215,255,0.75)' }}>
+                        <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" style={{ color: '#6ee7b7' }} />
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {impl.generatedDeveloperPrompt ? (
+                <div className="mt-2.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: 'rgba(150,190,235,0.55)' }}>Claude Code 개발자 프롬프트</div>
+                    <button
+                      type="button"
+                      onClick={() => copyPrompt(impl.generatedDeveloperPrompt, { packetId: impl.promptPacketId, fallbackId: 'jarvis-impl-prompt' })}
+                      className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition hover:brightness-150"
+                      style={{ borderColor: 'rgba(230,200,119,0.4)', color: '#e6c877', background: 'rgba(230,200,119,0.08)' }}
+                    >
+                      {promptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      {promptCopied ? '복사됨' : '프롬프트 복사'}
+                    </button>
+                  </div>
+                  <textarea
+                    id="jarvis-impl-prompt"
+                    readOnly
+                    value={impl.generatedDeveloperPrompt}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="h-40 w-full resize-y rounded-xl border p-3 font-mono text-[11px] leading-5 outline-none"
+                    style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(3,7,15,0.7)', color: 'rgba(180,215,255,0.8)' }}
+                  />
+                </div>
+              ) : null}
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <button type="button" onClick={() => goToTarget('pm')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150" style={{ borderColor: 'rgba(110,231,183,0.4)', color: '#6ee7b7', background: 'rgba(16,185,129,0.08)' }}>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  PM Planner에서 확인
+                </button>
+                <button type="button" onClick={() => goToTarget('devprompt')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150" style={{ borderColor: 'rgba(230,200,119,0.4)', color: '#e6c877', background: 'rgba(230,200,119,0.08)' }}>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  개발 프롬프트 센터에서 관리
+                </button>
+              </div>
+            </HoloCard>
+          ) : null}
+
+          {/* 범용 앱 빌더 결과 */}
+          {build ? (
+            <HoloCard title="범용 앱 빌더" icon={<Boxes className="h-3.5 w-3.5" />}>
+              <div className="rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(103,232,249,0.25)', background: 'rgba(56,189,248,0.06)' }}>
+                <div className="font-semibold" style={{ color: '#eaf6ff' }}>{build.projectName}</div>
+                <div className="mt-0.5 text-[11px]" style={{ color: 'rgba(150,190,235,0.6)' }}>프로젝트 ID {build.projectId}</div>
+              </div>
+              <div className="mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label="앱 타입" value={build.appType} />
+                <Field label="산업" value={build.industry} />
+                <Field label="대상 사용자" value={build.targetUsers} />
+                <Field label="상태" value={build.status} />
+                <Field label="위험도" value={build.riskLevel} tone={RISK_TONE[build.riskLevel]} />
+                <Field label="승인 필요" value={build.approvalRequired ? '필요' : '불필요'} tone={build.approvalRequired ? '#fde68a' : '#6ee7b7'} />
+              </div>
+              <div className="mt-2.5 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(6,14,30,0.5)', color: 'rgba(214,233,255,0.9)' }}>
+                <span style={{ color: 'rgba(150,190,235,0.6)' }}>해석된 목표: </span>
+                {build.interpretedGoal}
+              </div>
+              {build.assumptions.length > 0 ? (
+                <div className="mt-2.5 rounded-xl border px-3 py-2 text-xs" style={{ borderColor: 'rgba(252,211,77,0.3)', background: 'rgba(251,191,36,0.06)', color: '#fde68a' }}>
+                  <div className="mb-1 font-medium">가정 (custom/unknown — 확인 필요)</div>
+                  <ul className="space-y-0.5">
+                    {build.assumptions.map((a) => (
+                      <li key={a}>· {a}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="mt-2.5 grid gap-3 sm:grid-cols-2">
+                <TagList label="필요 모듈" icon={<Layers className="h-3.5 w-3.5" style={{ color: '#9adcff' }} />} items={build.requiredModules} />
+                <TagList label="추천 화면" icon={<Compass className="h-3.5 w-3.5" style={{ color: '#9adcff' }} />} items={build.suggestedScreens} />
+                <TagList label="데이터 모델" icon={<Boxes className="h-3.5 w-3.5" style={{ color: '#6ee7b7' }} />} items={build.suggestedDataModels} />
+                <TagList label="추천 연동" icon={<GitBranch className="h-3.5 w-3.5" style={{ color: '#e6c877' }} />} items={build.suggestedIntegrations} />
+              </div>
+              {build.aiToolPlan.length > 0 ? (
+                <div className="mt-2.5 space-y-1">
+                  <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: 'rgba(150,190,235,0.55)' }}>AI 도구 계획</div>
+                  <ul className="space-y-1">
+                    {build.aiToolPlan.map((t) => (
+                      <li key={t.toolId} className="flex items-start gap-2 rounded-xl border px-3 py-1.5 text-xs" style={{ borderColor: 'rgba(103,232,249,0.15)', background: 'rgba(6,14,30,0.5)' }}>
+                        <span className="mt-0.5 inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 font-medium" style={{ borderColor: 'rgba(103,232,249,0.3)', color: '#9adcff' }}>
+                          {t.toolName}
+                        </span>
+                        <span className="flex-1" style={{ color: 'rgba(180,215,255,0.75)' }}>{t.role}</span>
+                        <span className="shrink-0 text-[10px]" style={{ color: 'rgba(150,190,235,0.55)' }}>{t.officialApiStatus} API · {t.status}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {build.sprintPlan.length > 0 ? (
+                <div className="mt-2.5 space-y-1">
+                  <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: 'rgba(150,190,235,0.55)' }}>스프린트 계획</div>
+                  <ul className="space-y-1">
+                    {build.sprintPlan.map((s) => (
+                      <li key={s.id} className="rounded-xl border px-3 py-1.5 text-xs" style={{ borderColor: 'rgba(103,232,249,0.15)', background: 'rgba(6,14,30,0.5)', color: 'rgba(214,233,255,0.85)' }}>
+                        <span className="font-medium" style={{ color: '#eaf6ff' }}>{s.name}</span>
+                        <span style={{ color: 'rgba(150,190,235,0.6)' }}> — {s.goal}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="mt-2.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: 'rgba(150,190,235,0.55)' }}>Claude Code 개발자 프롬프트</div>
+                  <button
+                    type="button"
+                    onClick={() => copyPrompt(build.generatedDeveloperPrompt, { packetId: build.promptPacketId, fallbackId: 'jarvis-build-prompt' })}
+                    className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition hover:brightness-150"
+                    style={{ borderColor: 'rgba(103,232,249,0.3)', color: '#9adcff', background: 'rgba(56,189,248,0.07)' }}
+                  >
+                    {promptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    {promptCopied ? '복사됨' : '프롬프트 복사'}
+                  </button>
+                </div>
+                <textarea
+                  id="jarvis-build-prompt"
+                  readOnly
+                  value={build.generatedDeveloperPrompt}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="h-40 w-full resize-y rounded-xl border p-3 font-mono text-[11px] leading-5 outline-none"
+                  style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(3,7,15,0.7)', color: 'rgba(180,215,255,0.8)' }}
+                />
+              </div>
+              <div className="mt-2.5 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: 'rgba(110,231,183,0.3)', background: 'rgba(16,185,129,0.06)', color: '#a7f3d0' }}>
+                다음 액션: {build.nextAction}
+              </div>
+              {build.routingLog.length > 0 ? (
+                <div className="mt-2.5 space-y-1">
+                  <div className="text-[10px] uppercase tracking-[0.2em]" style={{ color: 'rgba(150,190,235,0.55)' }}>라우팅</div>
+                  <ul className="space-y-1">
+                    {build.routingLog.map((line) => (
+                      <li key={line} className="flex items-start gap-2 text-xs" style={{ color: 'rgba(180,215,255,0.75)' }}>
+                        <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" style={{ color: '#6ee7b7' }} />
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <button type="button" onClick={() => goToTarget('app-builder')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150" style={{ borderColor: 'rgba(103,232,249,0.3)', color: '#9adcff', background: 'rgba(56,189,248,0.07)' }}>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  App Builder에서 확인
+                </button>
+                <button type="button" onClick={() => goToTarget('pm')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150" style={{ borderColor: 'rgba(110,231,183,0.4)', color: '#6ee7b7', background: 'rgba(16,185,129,0.08)' }}>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  PM Planner에서 확인
+                </button>
+                <button type="button" onClick={() => goToTarget('devprompt')} className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition hover:brightness-150" style={{ borderColor: 'rgba(230,200,119,0.4)', color: '#e6c877', background: 'rgba(230,200,119,0.08)' }}>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  개발 프롬프트 센터에서 관리
+                </button>
+              </div>
+            </HoloCard>
+          ) : null}
+        </div>
+      </main>
+
+      {/* ── 하단 글로우 명령바 ─────────────────────────────────────── */}
+      <footer className="relative z-10 px-4 pt-1 sm:px-6" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+        <div className="mx-auto w-full max-w-3xl">
+          <div className="mb-2 flex gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {barChips.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => runCommand(chip)}
+                className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-[11px] transition hover:brightness-150"
+                style={{ borderColor: 'rgba(103,232,249,0.25)', color: 'rgba(180,220,255,0.85)', background: 'rgba(13,30,58,0.55)' }}
+              >
+                {state.recentCommands.slice(0, 2).includes(chip) ? <History className="mr-1 inline h-3 w-3" style={{ color: '#e6c877' }} /> : null}
+                {chip}
+              </button>
+            ))}
           </div>
 
-          <div className="space-y-4">
-            <Card title="실행 상태" icon={<CheckCircle2 className="h-4 w-4 text-indigo-300" />}>
-              <div className="space-y-3">
-                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">
-                  <div className="font-medium text-slate-200">모드 · 상태</div>
-                  <div className="mt-1 text-slate-400">{MODE_META[state.mode].label} · {statusLabel(state.status)}</div>
-                </div>
-                {state.lastError ? (
-                  <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-300">
-                    <div className="flex items-center gap-2 font-medium">
-                      <AlertCircle className="h-4 w-4" />
-                      Error
-                    </div>
-                    <p className="mt-1 text-rose-200">{state.lastError}</p>
-                  </div>
+          <form
+            onSubmit={submitCommand}
+            className="flex items-center gap-2 rounded-2xl border p-2 backdrop-blur-xl"
+            style={{
+              borderColor: voiceActive ? 'rgba(251,113,133,0.5)' : 'rgba(103,232,249,0.3)',
+              background: 'rgba(8,18,38,0.85)',
+              boxShadow: voiceActive ? '0 0 34px -6px rgba(251,113,133,0.55)' : '0 0 30px -8px rgba(56,189,248,0.5)'
+            }}
+          >
+            {/* 마이크 — 클릭으로 녹음 시작/종료 */}
+            <button
+              type="button"
+              onClick={() => {
+                if (usesRecorder) handleMicClick()
+                else if (voiceActive) stopVoice()
+                else startVoice()
+              }}
+              disabled={!canStartVoice}
+              title={canStartVoice ? (voiceActive ? '클릭하면 녹음 종료 · 전송' : '클릭하여 말하기') : '이 환경에서는 음성을 사용할 수 없습니다'}
+              aria-label="음성 명령"
+              className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-40"
+              style={
+                voiceActive
+                  ? { background: 'radial-gradient(circle at 32% 28%, #ffd7dd, #fb7185 45%, #7f1d3a)', boxShadow: '0 0 22px rgba(251,113,133,0.8)', color: '#fff' }
+                  : transcribing
+                    ? { background: 'rgba(34,211,238,0.15)', border: '1px solid rgba(103,232,249,0.4)', color: '#a5f3fc' }
+                    : { background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(103,232,249,0.35)', color: '#7dd3fc' }
+              }
+            >
+              {voiceActive ? (
+                <>
+                  <span className="absolute inset-0 animate-ping rounded-xl" style={{ background: 'rgba(251,113,133,0.35)' }} />
+                  <MicOff className="relative h-5 w-5" />
+                </>
+              ) : transcribing ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <AudioLines className="h-5 w-5" />
+              )}
+            </button>
+
+            <input
+              id="jarvis-command-input"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder={mode === 'staff' ? '자비스에게 말하듯 입력하세요 — 예: 오늘 일정' : '자비스에게 말하듯 입력하세요 — 예: 오늘 조직 브리핑'}
+              className="min-w-0 flex-1 bg-transparent px-1 text-sm outline-none"
+              style={{ color: '#eaf6ff', caretColor: '#e6c877' }}
+            />
+
+            <button
+              type="button"
+              onClick={() => askGpt(draft)}
+              title={gptConfig.enabled ? 'GPT 브레인에 질의' : 'GPT 브레인이 비활성화됨 (설정 안내 표시)'}
+              className="hidden shrink-0 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-semibold transition hover:brightness-150 sm:inline-flex"
+              style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff', background: 'rgba(56,189,248,0.07)' }}
+            >
+              <Brain className="h-3.5 w-3.5" />
+              GPT
+            </button>
+
+            <button
+              type="submit"
+              aria-label="명령 실행"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-bold transition hover:brightness-110"
+              style={{ background: 'linear-gradient(135deg, #e6c877, #c6982f)', color: '#0e1e3a', boxShadow: '0 0 22px -4px rgba(230,200,119,0.8)' }}
+            >
+              <SendHorizontal className="h-5 w-5" />
+            </button>
+          </form>
+
+          <p className="mt-1.5 text-center text-[10px]" style={{ color: 'rgba(150,190,235,0.45)' }}>
+            Ctrl + Space 열기/닫기 · ESC 닫기 · 음성은 마이크 버튼 (누르고 말하기)
+          </p>
+        </div>
+      </footer>
+
+      {/* ── 설정 · 진단 시트 (기어) ────────────────────────────────── */}
+      {settingsOpen ? (
+        <div className="absolute inset-0 z-30 flex justify-end" style={{ background: 'rgba(2,6,14,0.55)' }} onClick={() => setSettingsOpen(false)}>
+          <div
+            className="h-full w-[min(94vw,440px)] overflow-y-auto border-l p-4"
+            style={{ background: 'rgba(6,14,30,0.97)', borderColor: 'rgba(103,232,249,0.22)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-bold" style={{ color: '#eaf6ff' }}>
+                <Settings className="h-4 w-4" style={{ color: '#7dd3fc' }} />
+                자비스 설정 · 진단
+              </div>
+              <button type="button" onClick={() => setSettingsOpen(false)} aria-label="설정 닫기" className="rounded-lg border p-1.5 transition hover:brightness-150" style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff' }}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* 빠른 제어 */}
+            <SheetSection title="빠른 제어">
+              <div className="flex flex-wrap gap-1.5">
+                <SheetToggle onClick={toggleVoiceOutput} active={voiceOutputEnabled} disabled={!synthesisSupported} icon={voiceOutputEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}>
+                  음성 출력 {voiceOutputEnabled ? 'ON' : 'OFF'}
+                </SheetToggle>
+                <SheetToggle onClick={toggleWake} active={wakeEnabled} icon={<Radar className="h-3.5 w-3.5" />}>
+                  호출 대기 {wakeEnabled ? 'ON' : 'OFF'}
+                </SheetToggle>
+                <SheetToggle onClick={() => setAutoRunDev((v) => !v)} active={autoRunDev} icon={<Hammer className="h-3.5 w-3.5" />}>
+                  개발 명령 자동 실행 {autoRunDev ? 'ON' : 'OFF'}
+                </SheetToggle>
+                <SheetToggle onClick={resetJarvis} icon={<RotateCcw className="h-3.5 w-3.5" />}>상태 초기화</SheetToggle>
+                <SheetToggle onClick={refreshApp} icon={<RefreshCw className="h-3.5 w-3.5" />}>앱 새로고침</SheetToggle>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${gptStatus.classes}`}>
+                  <Brain className="h-3 w-3" />
+                  {gptStatus.label}
+                </span>
+                {state.source ? (
+                  <span className="rounded-full border px-2.5 py-1 text-[11px]" style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff' }}>
+                    응답 출처: {state.source === 'gpt' ? 'GPT' : state.source === 'fallback' ? '폴백' : '로컬'}
+                  </span>
                 ) : null}
-                <div className="space-y-2">
-                  <div className="text-xs uppercase tracking-[0.25em] text-slate-500">도구 호출</div>
-                  {state.toolCalls.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-slate-800 p-3 text-sm text-slate-500">
-                      아직 도구 호출이 없습니다.
-                    </div>
+              </div>
+            </SheetSection>
+
+            {/* 음성 엔진 */}
+            <SheetSection title="음성 엔진">
+              <div className="inline-flex overflow-hidden rounded-xl border" style={{ borderColor: 'rgba(103,232,249,0.25)' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!voiceActive) {
+                      setVoiceEngine('electron-gateway')
+                      refreshGatewayStatus()
+                    }
+                  }}
+                  className={engineTabClasses(voiceEngine === 'electron-gateway')}
+                >
+                  <Cpu className="h-3.5 w-3.5" />
+                  AI Gateway
+                </button>
+                <button type="button" onClick={() => { if (!voiceActive) setVoiceEngine('web-speech') }} className={engineTabClasses(voiceEngine === 'web-speech')}>
+                  <Mic className="h-3.5 w-3.5" />
+                  Web Speech
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!voiceActive) {
+                      setVoiceEngine('stt-proxy')
+                      refreshSttStatus()
+                    }
+                  }}
+                  title="Legacy Proxy / optional deployment path"
+                  className={engineTabClasses(voiceEngine === 'stt-proxy')}
+                >
+                  <Server className="h-3.5 w-3.5" />
+                  Legacy
+                </button>
+              </div>
+              <div className="mt-1.5 text-[11px]">
+                {voiceEngine === 'electron-gateway' ? (
+                  gatewayStatus ? (
+                    <span className={GATEWAY_STATUS_META[gatewayStatus.label]?.classes ?? ''} style={{ color: undefined }}>
+                      {GATEWAY_STATUS_META[gatewayStatus.label]?.label ?? gatewayStatus.label}
+                    </span>
                   ) : (
-                    state.toolCalls.map((tool) => (
-                      <div key={tool.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">
-                        <div className="flex items-center gap-2 font-medium text-slate-200">
-                          <Wrench className="h-3.5 w-3.5 text-indigo-300" />
-                          {tool.name}
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500">{tool.detail}</div>
+                    <span style={{ color: 'rgba(150,190,235,0.6)' }}>상태 확인 중…</span>
+                  )
+                ) : voiceEngine === 'web-speech' ? (
+                  <span style={{ color: recognitionSupported ? '#6ee7b7' : '#fda4af' }}>{recognitionSupported ? 'Web Speech 사용 가능' : 'Web Speech 미지원'}</span>
+                ) : sttStatus ? (
+                  <span className={STT_STATUS_META[sttStatus.label]?.classes ?? ''}>{STT_STATUS_META[sttStatus.label]?.label ?? sttStatus.label}</span>
+                ) : (
+                  <span style={{ color: 'rgba(150,190,235,0.6)' }}>상태 확인 중…</span>
+                )}
+              </div>
+              <p className="mt-1.5 text-[11px]" style={{ color: 'rgba(150,190,235,0.55)' }}>
+                {voiceEngine === 'electron-gateway'
+                  ? 'Electron AI Gateway: 녹음을 Main Process로 전송해 OpenAI로 전사합니다. API 키는 Main Process에만 존재 · 오디오는 저장되지 않습니다.'
+                  : voiceEngine === 'stt-proxy'
+                    ? 'Legacy Proxy(선택): 녹음을 sj-ai-proxy로 전송해 전사합니다. API 키는 백엔드에만 있습니다 · 오디오는 저장되지 않습니다.'
+                    : '로컬 브라우저 음성 인식만 사용 · 외부로 오디오 전송 없음.'}
+              </p>
+            </SheetSection>
+
+            {/* Electron AI Gateway 진단 */}
+            {voiceEngine === 'electron-gateway' ? (
+              <SheetSection
+                title="Electron AI Gateway"
+                action={
+                  <button type="button" onClick={refreshGatewayStatus} className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] transition hover:brightness-150" style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff' }}>
+                    <RefreshCw className="h-3 w-3" />
+                    새로고침
+                  </button>
+                }
+              >
+                {gatewayStatus ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                      <DiagBool label="게이트웨이 사용 가능" value={gatewayStatus.available} />
+                      <DiagBool label="OpenAI 활성화" value={gatewayStatus.enabled} />
+                      <DiagBool label="API 키 설정" value={gatewayStatus.apiKeyConfigured} />
+                      <DiagBool label="준비됨(ready)" value={gatewayStatus.ready} />
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px]">
+                      <span style={{ color: 'rgba(150,190,235,0.6)' }}>STT 모델</span>
+                      <span className="font-mono" style={{ color: 'rgba(214,233,255,0.85)' }}>{gatewayStatus.sttModel ?? '—'}</span>
+                    </div>
+                    {!gatewayStatus.available ? (
+                      <p className="mt-1.5 text-[11px]" style={{ color: '#fda4af' }}>Electron AI Gateway를 사용할 수 없습니다. 데스크톱 앱(npm run dev)에서 실행해 주세요.</p>
+                    ) : !gatewayStatus.enabled ? (
+                      <p className="mt-1.5 text-[11px]" style={{ color: '#fde68a' }}>OPENAI_ENABLED=false 상태입니다. SJ OS 루트 .env 에서 OPENAI_ENABLED=true 로 설정하세요.</p>
+                    ) : !gatewayStatus.apiKeyConfigured ? (
+                      <p className="mt-1.5 text-[11px]" style={{ color: '#fde68a' }}>OpenAI API 키가 설정되지 않았습니다. SJ OS 루트 .env 에만 직접 입력하세요.</p>
+                    ) : (
+                      <p className="mt-1.5 text-[11px]" style={{ color: '#6ee7b7' }}>OpenAI 준비됨 — API 키는 Main Process에만 존재 · 별도 프록시 서버 필요 없음.</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[11px]" style={{ color: 'rgba(150,190,235,0.6)' }}>게이트웨이 상태 확인 중…</p>
+                )}
+              </SheetSection>
+            ) : null}
+
+            {/* Legacy Proxy 진단 */}
+            {voiceEngine === 'stt-proxy' ? (
+              <SheetSection
+                title="Legacy Proxy 진단"
+                action={
+                  <button type="button" onClick={refreshSttStatus} className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] transition hover:brightness-150" style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff' }}>
+                    <RefreshCw className="h-3 w-3" />
+                    새로고침
+                  </button>
+                }
+              >
+                {sttStatus ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-y-1 text-[11px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span style={{ color: 'rgba(150,190,235,0.6)' }}>현재 프록시 URL</span>
+                        <span className="font-mono" style={{ color: 'rgba(214,233,255,0.85)' }}>{sttStatus.proxyUrl ?? '—'}</span>
                       </div>
-                    ))
-                  )}
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="shrink-0" style={{ color: 'rgba(150,190,235,0.6)' }}>시도한 URL</span>
+                        <span className="text-right font-mono text-[10px]" style={{ color: 'rgba(180,215,255,0.7)' }}>
+                          {sttStatus.triedUrls.length > 0 ? sttStatus.triedUrls.join(', ') : '—'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                      <DiagBool label="프록시 연결" value={sttStatus.reachable} />
+                      <DiagBool label="OpenAI 활성화" value={sttStatus.enabled} />
+                      <DiagBool label="API 키 설정" value={sttStatus.apiKeyConfigured} />
+                      <DiagBool label="준비됨(ready)" value={sttStatus.ready} />
+                    </div>
+                    {sttStatus.lastError ? (
+                      <p className="mt-1.5 font-mono text-[10px]" style={{ color: 'rgba(150,190,235,0.6)' }}>마지막 오류: {sttStatus.lastError}</p>
+                    ) : null}
+                    {!sttStatus.reachable ? (
+                      <p className="mt-1.5 text-[11px]" style={{ color: '#fda4af' }}>프록시에 연결할 수 없습니다. sj-ai-proxy 서버가 실행 중인지 확인하세요.</p>
+                    ) : !sttStatus.ready ? (
+                      <p className="mt-1.5 text-[11px]" style={{ color: '#fde68a' }}>프록시는 연결됐지만 OpenAI 설정이 준비되지 않았습니다.</p>
+                    ) : (
+                      <p className="mt-1.5 text-[11px]" style={{ color: '#6ee7b7' }}>프록시 준비 완료 — 녹음/전사를 사용할 수 있습니다.</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[11px]" style={{ color: 'rgba(150,190,235,0.6)' }}>프록시 상태 확인 중…</p>
+                )}
+              </SheetSection>
+            ) : null}
+
+            {/* Voice 진단 */}
+            <SheetSection
+              title="Voice 진단"
+              action={
+                <button
+                  type="button"
+                  onClick={() => void voice.refreshMicPermission().then(() => setDiagnostics(voice.getDiagnostics()))}
+                  className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] transition hover:brightness-150"
+                  style={{ borderColor: 'rgba(103,232,249,0.25)', color: '#9adcff' }}
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  새로고침
+                </button>
+              }
+            >
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                <DiagBool label="SpeechRecognition" value={diagnostics.speechRecognitionSupported} />
+                <DiagBool label="webkitSpeechRecognition" value={diagnostics.webkitSpeechRecognitionSupported} />
+                <DiagBool label="speechSynthesis" value={diagnostics.speechSynthesisSupported} />
+                <div className="flex items-center justify-between gap-2">
+                  <span style={{ color: 'rgba(150,190,235,0.6)' }}>마이크 권한</span>
+                  <span style={{ color: 'rgba(214,233,255,0.85)' }}>{MIC_PERMISSION_LABEL[diagnostics.microphonePermission]}</span>
+                </div>
+                <div className="col-span-2 flex items-center justify-between gap-2">
+                  <span style={{ color: 'rgba(150,190,235,0.6)' }}>음성 엔진</span>
+                  <span className={ENGINE_META[diagnostics.engine].classes}>{ENGINE_META[diagnostics.engine].label}</span>
+                </div>
+                <div className="col-span-2 flex items-center justify-between gap-2">
+                  <span style={{ color: 'rgba(150,190,235,0.6)' }}>마지막 오류 코드</span>
+                  <span className="font-mono" style={{ color: 'rgba(214,233,255,0.85)' }}>{diagnostics.lastErrorCode ?? '—'}</span>
                 </div>
               </div>
-            </Card>
+              {diagnostics.lastErrorMessage ? <p className="mt-1.5 text-[11px]" style={{ color: 'rgba(180,215,255,0.75)' }}>{diagnostics.lastErrorMessage}</p> : null}
+              {diagnostics.recommendedFix ? <p className="mt-1 text-[11px]" style={{ color: '#7dd3fc' }}>권장 조치: {diagnostics.recommendedFix}</p> : null}
+            </SheetSection>
 
-            <Card title="최근 명령" icon={<History className="h-4 w-4 text-indigo-300" />}>
-              <div className="space-y-2">
-                {state.recentCommands.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-800 p-3 text-sm text-slate-500">
-                    최근 명령이 없습니다.
-                  </div>
-                ) : (
-                  state.recentCommands.map((command) => (
-                    <button
-                      key={command}
-                      type="button"
-                      onClick={() => runCommand(command)}
-                      className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-left text-sm text-slate-300 transition hover:border-slate-600"
-                    >
-                      {command}
-                    </button>
-                  ))
-                )}
+            {/* 음성 파이프라인 진단 */}
+            <SheetSection title="음성 파이프라인 진단">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[10px] leading-5" style={{ color: 'rgba(150,190,235,0.7)' }}>
+                <span>상태: {voiceState}</span>
+                <span>정지 사유: {stopReason ?? '—'}</span>
+                <span>녹음 시간: {recordingElapsed.toFixed(1)}초</span>
+                <span>전사 시간: {voiceTiming ? (voiceTiming.transcriptionMs / 1000).toFixed(1) + '초' : '—'}</span>
+                <span>오디오 청크: {audioChunks}개</span>
+                <span>오디오 크기: {(audioBytes / 1024).toFixed(1)}KB</span>
               </div>
-            </Card>
+              {voiceTiming ? (
+                <p className="mt-1 font-mono text-[10px]" style={{ color: 'rgba(150,190,235,0.6)' }}>
+                  음성 처리 {(voiceTiming.totalMs / 1000).toFixed(1)}초 · 녹음 {(voiceTiming.recordingMs / 1000).toFixed(1)}초 · 전사{' '}
+                  {(voiceTiming.transcriptionMs / 1000).toFixed(1)}초 · 실행 {(voiceTiming.routingMs / 1000).toFixed(1)}초
+                </p>
+              ) : null}
+              <div className="mt-1 truncate font-mono text-[10px]" style={{ color: 'rgba(150,190,235,0.55)' }}>마지막 오류: {voiceError ?? '—'}</div>
+              {lastTranscript ? (
+                <div className="mt-1 font-mono text-[10px]" style={{ color: 'rgba(150,190,235,0.55)' }}>인식된 명령: {lastTranscript}</div>
+              ) : null}
+              <div className="mt-1 font-mono text-[10px]" style={{ color: 'rgba(150,190,235,0.5)' }}>
+                최대 녹음 {recorder.getMaxSeconds()}초 · UI 안정: 실행 {state.status === 'thinking' || state.status === 'running' ? 'true' : 'false'} · 녹음{' '}
+                {recording ? 'true' : 'false'} · 전사 {transcribing ? 'true' : 'false'} · 마지막 초기화 {lastReset}
+              </div>
+            </SheetSection>
 
-            <Card title="대화 기록" icon={<History className="h-4 w-4 text-indigo-300" />}>
-              <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {state.history.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-800 p-3 text-sm text-slate-500">
-                    대화 내역이 없습니다.
-                  </div>
-                ) : (
-                  state.history.map((entry) => (
-                    <div key={entry.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
-                      <div className="mb-1 text-[11px] uppercase tracking-[0.2em] text-slate-500">
-                        {entry.role === 'user' ? '사용자' : '자비스'} · {entry.timestamp}
-                      </div>
-                      <div className="text-slate-300">{entry.content}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </Card>
+            {/* Voice 안전 */}
+            <SheetSection title="Voice 안전">
+              <ul className="space-y-0.5 text-[11px]" style={{ color: 'rgba(150,190,235,0.65)' }}>
+                <li>· 눌러서 말하기(push-to-talk) 전용 · 상시 청취 없음</li>
+                <li>· 오디오 파일 저장 없음 (메모리에서만 처리)</li>
+                <li>· API 키는 백엔드/Main Process에만 존재 · 프론트엔드에는 없음</li>
+                <li>· 로컬 데이터 전용 명령은 외부 AI/API 없이 처리</li>
+              </ul>
+            </SheetSection>
           </div>
         </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** 홀로그램 글래스 카드 — 스트림 안의 결과 컨테이너. */
+function HoloCard({
+  title,
+  icon,
+  action,
+  accent = 'cyan',
+  children
+}: {
+  title: string
+  icon: JSX.Element
+  action?: JSX.Element
+  accent?: 'cyan' | 'gold'
+  children: React.ReactNode
+}): JSX.Element {
+  const glow = accent === 'gold' ? 'rgba(230,200,119,' : 'rgba(56,189,248,'
+  return (
+    <section
+      className="mt-3 rounded-2xl border p-4 backdrop-blur-md"
+      style={{
+        borderColor: `${glow}0.28)`,
+        background: 'linear-gradient(180deg, rgba(13,30,58,0.72), rgba(6,14,30,0.72))',
+        boxShadow: `0 0 26px -10px ${glow}0.5), inset 0 1px 0 rgba(255,255,255,0.05)`
+      }}
+    >
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: accent === 'gold' ? '#e6c877' : '#7dd3fc' }}>
+          {icon}
+          {title}
+        </div>
+        {action ?? null}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/** 설정 시트 섹션. */
+function SheetSection({ title, action, children }: { title: string; action?: JSX.Element; children: React.ReactNode }): JSX.Element {
+  return (
+    <div className="mb-3 rounded-2xl border p-3" style={{ borderColor: 'rgba(103,232,249,0.16)', background: 'rgba(13,30,58,0.5)' }}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(150,190,235,0.7)' }}>{title}</div>
+        {action ?? null}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** 설정 시트 토글/액션 버튼. */
+function SheetToggle({
+  onClick,
+  active = false,
+  disabled = false,
+  icon,
+  children
+}: {
+  onClick: () => void
+  active?: boolean
+  disabled?: boolean
+  icon: JSX.Element
+  children: React.ReactNode
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-semibold transition hover:brightness-150 disabled:cursor-not-allowed disabled:opacity-40"
+      style={
+        active
+          ? { borderColor: 'rgba(230,200,119,0.5)', color: '#e6c877', background: 'rgba(230,200,119,0.1)' }
+          : { borderColor: 'rgba(103,232,249,0.25)', color: 'rgba(180,220,255,0.85)', background: 'rgba(56,189,248,0.05)' }
+      }
+    >
+      {icon}
+      {children}
+    </button>
+  )
+}
+
+/** 진단용 yes/no 행 (다크 홀로 테마). */
+function DiagBool({ label, value }: { label: string; value: boolean }): JSX.Element {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="truncate" title={label} style={{ color: 'rgba(150,190,235,0.6)' }}>
+        {label}
+      </span>
+      <span style={{ color: value ? '#6ee7b7' : '#fda4af' }}>{value ? 'yes' : 'no'}</span>
+    </div>
+  )
+}
+
+/** 라벨+값 필드 (다크 홀로 테마). tone은 값 텍스트 색 (hex). */
+function Field({ label, value, tone }: { label: string; value: string; tone?: string }): JSX.Element {
+  return (
+    <div className="rounded-xl border px-3 py-2" style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(6,14,30,0.5)' }}>
+      <div className="text-[11px]" style={{ color: 'rgba(150,190,235,0.6)' }}>{label}</div>
+      <div className="mt-0.5 truncate text-sm font-medium" title={value} style={{ color: tone ?? '#eaf6ff' }}>
+        {value}
       </div>
     </div>
   )
 }
 
-/** A compact yes/no capability row for the voice diagnostics panel. */
-function DiagBool({ label, value }: { label: string; value: boolean }): JSX.Element {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="truncate text-slate-500" title={label}>{label}</span>
-      <span className={value ? 'text-emerald-300' : 'text-rose-300'}>{value ? 'yes' : 'no'}</span>
-    </div>
-  )
-}
-
-function Field({ label, value, tone }: { label: string; value: string; tone?: string }): JSX.Element {
-  return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
-      <div className="text-[11px] text-slate-500">{label}</div>
-      <div className={['mt-0.5 truncate text-sm font-medium', tone ?? 'text-slate-200'].join(' ')} title={value}>{value}</div>
-    </div>
-  )
-}
-
-/** A labelled chip list, used for modules/screens/data models/integrations. */
+/** 라벨 칩 리스트 — 모듈/화면/데이터모델/연동 (다크 홀로 테마). */
 function TagList({ label, icon, items }: { label: string; icon: JSX.Element; items: string[] }): JSX.Element {
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2">
-      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-[0.15em] text-slate-500">
+    <div className="rounded-xl border px-3 py-2" style={{ borderColor: 'rgba(103,232,249,0.18)', background: 'rgba(6,14,30,0.5)' }}>
+      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]" style={{ color: 'rgba(150,190,235,0.6)' }}>
         {icon}
         {label}
       </div>
       {items.length === 0 ? (
-        <div className="text-xs text-slate-600">—</div>
+        <div className="text-xs" style={{ color: 'rgba(150,190,235,0.4)' }}>—</div>
       ) : (
         <div className="flex flex-wrap gap-1">
           {items.map((item) => (
-            <span key={item} className="rounded-full border border-slate-700 bg-slate-800/50 px-2 py-0.5 text-[10px] text-slate-300">
+            <span key={item} className="rounded-full border px-2 py-0.5 text-[10px]" style={{ borderColor: 'rgba(103,232,249,0.25)', color: 'rgba(200,230,255,0.85)' }}>
               {item}
             </span>
           ))}
