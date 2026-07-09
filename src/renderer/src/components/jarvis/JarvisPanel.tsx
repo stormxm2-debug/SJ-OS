@@ -1012,9 +1012,10 @@ export default function JarvisPanel(): JSX.Element | null {
   const external = state.external
   const gpt = state.gpt
 
-  // 대화가 시작되면 오브를 접어 스트림 공간을 확보한다.
+  // 실제 대화가 시작됐는지 — 초기 placeholder 응답(streamedResponse)은 제외해야
+  // 대기 히어로가 보인다. 명령을 보내면 lastCommand/history가 즉시 채워진다.
   const hasConversation = Boolean(
-    lastCommand || displayedSession || answer || impl || build || external || gpt || streamedResponse || state.history.length > 0
+    lastCommand || displayedSession || answer || impl || build || external || gpt || state.history.length > 0
   )
 
   // 오브 아래 상태 문구 — 음성 단계가 최우선.
@@ -1023,6 +1024,17 @@ export default function JarvisPanel(): JSX.Element | null {
     : transcribing
       ? '음성을 해석하는 중…'
       : undefined
+
+  // 대기 히어로 문구 (풀스크린 코어 위 중앙) — 코어 자체엔 문구가 없다.
+  const heroText =
+    orbStatusLine ??
+    (coreStatus === 'listening'
+      ? '듣고 있습니다…'
+      : coreStatus === 'wake'
+        ? "호출 대기 중 · '자비스'라고 부르세요"
+        : mode === 'staff'
+          ? '무엇이든 말씀하세요'
+          : '무엇이든 말씀하세요, 대표님')
 
   // 하단 칩: 최근 명령 2개 + 모드별 추천 명령 (중복 제거).
   const barChips = [...state.recentCommands.slice(0, 2), ...commandChips.filter((c) => !state.recentCommands.slice(0, 2).includes(c))].slice(0, 9)
@@ -1088,6 +1100,19 @@ export default function JarvisPanel(): JSX.Element | null {
         <div className="absolute inset-x-0 bottom-0 h-52" style={{ background: 'linear-gradient(to top, rgba(230,200,119,0.06), transparent)' }} />
       </div>
 
+      {/* ── 화면 전체 코어 (살아있는 배경) ─────────────────────────── */}
+      <JarvisHoloOrb fullscreen status={coreStatus} pulsing={typing || speaking} />
+
+      {/* 가독성 스크림 — 대화 중엔 중앙을 살짝 어둡게(코어는 가장자리로 은은히). */}
+      <div
+        className="pointer-events-none absolute inset-0 transition-[background] duration-700"
+        style={{
+          background: hasConversation
+            ? 'radial-gradient(125% 95% at 50% 42%, rgba(2,6,14,0.66) 0%, rgba(2,6,14,0.4) 40%, rgba(2,6,14,0.06) 72%)'
+            : 'transparent'
+        }}
+      />
+
       {/* ── 헤더 ──────────────────────────────────────────────────── */}
       <header className="relative z-10 flex items-center justify-between gap-2 px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -1148,12 +1173,23 @@ export default function JarvisPanel(): JSX.Element | null {
         </div>
       </header>
 
-      {/* ── 메인: 오브 + 대화 스트림 ──────────────────────────────── */}
+      {/* ── 메인: 대화 스트림 (코어 위에 떠 있음) ─────────────────── */}
       <main className="relative z-10 flex-1 overflow-y-auto px-4 sm:px-6">
-        <div className="mx-auto flex w-full max-w-3xl flex-col pb-6">
-          <div className={hasConversation ? 'flex flex-col items-center pt-0' : 'flex flex-col items-center pt-[4vh]'}>
-            <JarvisHoloOrb status={coreStatus} compact={hasConversation} statusLine={orbStatusLine} pulsing={typing || speaking} />
-          </div>
+        <div className={`mx-auto flex w-full max-w-3xl flex-col pb-6 ${hasConversation ? '' : 'min-h-full justify-center'}`}>
+          {/* 대기 히어로 — 코어 중앙 위에 큰 상태 문구 */}
+          {!hasConversation ? (
+            <div className="flex flex-col items-center pb-[14vh] text-center">
+              <div
+                className="font-semibold tracking-[0.14em] transition-colors duration-500"
+                style={{ color: '#eaf6ff', fontSize: 'clamp(18px, 3.2vw, 28px)', textShadow: '0 0 28px rgba(56,189,248,0.55)' }}
+              >
+                {heroText}
+              </div>
+              <p className="mt-3 text-[13px]" style={{ color: 'rgba(160,200,240,0.7)' }}>
+                아래에 입력하거나 마이크를 눌러 말씀하세요.
+              </p>
+            </div>
+          ) : null}
 
           {/* 음성 라이브 알림 */}
           <div className="flex flex-col items-center gap-1.5">
@@ -1230,8 +1266,8 @@ export default function JarvisPanel(): JSX.Element | null {
             </div>
           ) : null}
 
-          {/* 자비스 응답 버블 (스트리밍) */}
-          {streamedResponse || state.response || state.status === 'thinking' || state.status === 'running' ? (
+          {/* 자비스 응답 버블 (스트리밍) — 대기 placeholder는 히어로로 대체하므로 제외 */}
+          {hasConversation && (streamedResponse || state.response || state.status === 'thinking' || state.status === 'running') ? (
             <div className="mt-3 flex justify-start">
               <div className="flex max-w-[92%] items-start gap-2.5">
                 <span className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: 'radial-gradient(circle at 32% 28%, #9be8ff, #38bdf8 45%, #0b3f74)', boxShadow: '0 0 12px rgba(56,189,248,0.6)' }}>

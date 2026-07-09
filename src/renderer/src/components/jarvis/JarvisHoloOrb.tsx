@@ -26,7 +26,8 @@ const PARTICLE_COLORS = ['rgba(230,200,119,', 'rgba(155,232,255,', 'rgba(219,231
 function runNebula(
   canvas: HTMLCanvasElement,
   count: number,
-  pulsingRef: { current: boolean }
+  pulsingRef: { current: boolean },
+  opts: { wide?: boolean } = {}
 ): () => void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return () => {}
@@ -38,7 +39,10 @@ function runNebula(
   ctx.scale(dpr, dpr)
   const cx = cssW / 2
   const cy = cssH / 2
-  const maxR = Math.min(cx, cy) * 0.98
+  // wide(풀스크린 배경): 성운이 화면 구석까지 뻗도록 대각선 기준 + 덜 눕힘.
+  const wide = Boolean(opts.wide)
+  const maxR = wide ? Math.hypot(cx, cy) * 0.82 : Math.min(cx, cy) * 0.98
+  const squash = wide ? 0.72 : 0.5
 
   // 사전 계산 — 프레임마다 각도만 전진시켜 그린다.
   const N = count
@@ -93,7 +97,7 @@ function runNebula(
         const r = rad[i] * swell
         const x = cx + Math.cos(a) * r
         // 디스크를 살짝 눕혀 3D 느낌 (y 압축).
-        const y = cy + Math.sin(a) * r * 0.5
+        const y = cy + Math.sin(a) * r * squash
         const s = siz[i] * (0.75 + 0.25 * Math.sin(t * 2.4 + twk[i])) * (0.9 + 0.3 * energy * beat)
         ctx.fillRect(x - s / 2, y - s / 2, s, s)
       }
@@ -182,11 +186,29 @@ const GYRO_RINGS: { anim: string; dur: number; color: string; width: number }[] 
   { anim: 'jarvis-gyro-c', dur: 9, color: `${PLATINUM}0.55)`, width: 1 }
 ]
 
+/** 오브 키프레임 — 일반/풀스크린 두 렌더가 공유. */
+const ORB_KEYFRAMES = `
+  @keyframes jarvis-holo-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes jarvis-holo-rotate-rev { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
+  @keyframes jarvis-holo-breathe { 0%,100% { transform: scale(1); opacity: .92; } 50% { transform: scale(1.05); opacity: 1; } }
+  @keyframes jarvis-holo-heartbeat { 0% { transform: scale(1); } 14% { transform: scale(1.13); } 28% { transform: scale(1.02); } 42% { transform: scale(1.1); } 60%,100% { transform: scale(1); } }
+  @keyframes jarvis-holo-wave { 0% { transform: scale(.55); opacity: .7; } 100% { transform: scale(1.9); opacity: 0; } }
+  @keyframes jarvis-holo-burst { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(2.6); opacity: 0; } }
+  @keyframes jarvis-holo-flicker { 0%,100% { opacity: 1; } 42% { opacity: .55; } 46% { opacity: .95; } 74% { opacity: .5; } 78% { opacity: 1; } }
+  @keyframes jarvis-holo-orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes jarvis-holo-scan { 0% { transform: translateY(-130%); } 100% { transform: translateY(130%); } }
+  @keyframes jarvis-gyro-a { from { transform: rotateX(72deg) rotateZ(0deg); } to { transform: rotateX(72deg) rotateZ(360deg); } }
+  @keyframes jarvis-gyro-b { from { transform: rotateX(64deg) rotateY(28deg) rotateZ(360deg); } to { transform: rotateX(64deg) rotateY(28deg) rotateZ(0deg); } }
+  @keyframes jarvis-gyro-c { from { transform: rotateY(72deg) rotateZ(0deg); } to { transform: rotateY(72deg) rotateZ(360deg); } }
+  .jarvis-holo-rotate { animation: jarvis-holo-rotate 60s linear infinite; }
+`
+
 export default function JarvisHoloOrb({
   status,
   compact = false,
   statusLine,
-  pulsing = false
+  pulsing = false,
+  fullscreen = false
 }: {
   status: AiCoreStatus
   /** true면 대화 진행 중 — 오브를 작게 접어 스트림 공간을 확보. */
@@ -195,6 +217,8 @@ export default function JarvisHoloOrb({
   statusLine?: string
   /** 답변 타이핑/발화 중 — 코어·파티클이 심장처럼 맥동. */
   pulsing?: boolean
+  /** 화면 전체 코어 배경 모드 — 뷰포트 전체 성운 + 중앙 거대 코어(상태문구 없음). */
+  fullscreen?: boolean
 }): JSX.Element {
   const tone = TONES[status]
   const active = ACTIVE.includes(status)
@@ -211,9 +235,35 @@ export default function JarvisHoloOrb({
     const canvas = canvasRef.current
     if (!canvas) return
     const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    const count = reduce ? (compact ? 400 : 900) : compact ? 2000 : 4600
-    return runNebula(canvas, count, pulsingRef)
-  }, [compact])
+    const count = fullscreen
+      ? reduce
+        ? 1600
+        : 5000
+      : reduce
+        ? compact
+          ? 400
+          : 900
+        : compact
+          ? 2000
+          : 4600
+    let cleanup = runNebula(canvas, count, pulsingRef, { wide: fullscreen })
+    if (!fullscreen) return cleanup
+    // 풀스크린은 뷰포트가 바뀌면 성운을 다시 맞춘다 (디바운스 재초기화).
+    let t = 0
+    const onResize = (): void => {
+      window.clearTimeout(t)
+      t = window.setTimeout(() => {
+        cleanup()
+        cleanup = runNebula(canvas, count, pulsingRef, { wide: true })
+      }, 200)
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.clearTimeout(t)
+      window.removeEventListener('resize', onResize)
+      cleanup()
+    }
+  }, [compact, fullscreen])
 
   const flatRingStyle = (kind: string, dur: number, rev?: boolean): React.CSSProperties => {
     const spin = dur > 0 ? { animation: `${rev ? 'jarvis-holo-rotate-rev' : 'jarvis-holo-rotate'} ${dur * tone.speed}s linear infinite` } : {}
@@ -245,109 +295,100 @@ export default function JarvisHoloOrb({
     }
   }
 
+  // 코어 조립체 (글로우·파동·정밀 링·자이로 링·코어 구체) — coreDim만 달리해
+  // 일반/풀스크린 두 렌더가 공유한다. 캔버스는 각 렌더가 별도로 배치.
+  const coreAssembly = (coreDim: string | number, glowInset: string | number): JSX.Element => (
+    <>
+      {/* 뒤 글로우 */}
+      <span
+        className="absolute rounded-full blur-3xl transition-all duration-700"
+        style={{ inset: glowInset, background: tone.glow, opacity: active || pulsing ? 0.42 : 0.25 }}
+      />
+      {/* 파동 링 — 활성 상태에서 방사 */}
+      {active ? (
+        <>
+          <span className="absolute rounded-full border-2" style={{ inset: '12%', borderColor: tone.ring, animation: 'jarvis-holo-wave 1.8s ease-out infinite' }} />
+          <span className="absolute rounded-full border" style={{ inset: '12%', borderColor: tone.ring, animation: 'jarvis-holo-wave 1.8s ease-out .6s infinite' }} />
+        </>
+      ) : null}
+      {status === 'completed' ? (
+        <span className="absolute rounded-full border-2" style={{ inset: '12%', borderColor: tone.ring, animation: 'jarvis-holo-burst 1.1s ease-out 2' }} />
+      ) : null}
+
+      {/* 평면 정밀 링 6종 */}
+      {FLAT_RINGS.map((r) => (
+        <span key={r.kind + r.inset} className="absolute rounded-full" style={{ inset: `${r.inset}%`, ...flatRingStyle(r.kind, r.dur, r.rev) }} />
+      ))}
+
+      {/* 3D 자이로스코프 링 3개 */}
+      <span className="absolute inset-0" style={{ transformStyle: 'preserve-3d' }}>
+        {GYRO_RINGS.map((g) => (
+          <span
+            key={g.anim}
+            className="absolute rounded-full"
+            style={{
+              inset: '16%',
+              border: `${g.width}px solid ${g.color}`,
+              boxShadow: `0 0 12px -4px ${g.color}`,
+              animation: `${g.anim} ${g.dur * tone.speed}s linear infinite`
+            }}
+          />
+        ))}
+      </span>
+
+      {/* 코어 구체 — pulsing 중엔 하트비트로 맥동 (답변 타이핑·발화 동기) */}
+      <span
+        className="relative rounded-full transition-all duration-700"
+        style={{
+          width: coreDim,
+          height: coreDim,
+          background: tone.core,
+          boxShadow: `0 0 ${active || pulsing ? 74 : 44}px -6px ${tone.glow}, inset 0 0 26px rgba(255,255,255,0.18)`,
+          animation:
+            status === 'failed'
+              ? 'jarvis-holo-flicker 1.6s linear infinite'
+              : pulsing
+                ? 'jarvis-holo-heartbeat 1.15s ease-in-out infinite'
+                : `jarvis-holo-breathe ${active ? 1.5 : 4.4}s ease-in-out infinite`
+        }}
+      >
+        <span className="absolute inset-0 overflow-hidden rounded-full" style={{ animation: `jarvis-holo-rotate ${11 * tone.speed}s linear infinite` }}>
+          <span className="absolute inset-0" style={{ background: `conic-gradient(from 0deg, transparent 0deg, rgba(255,255,255,0.16) 40deg, transparent 90deg)` }} />
+        </span>
+        <span className="absolute rounded-full" style={{ left: '22%', top: '15%', width: '26%', height: '26%', background: 'rgba(255,255,255,0.68)', filter: 'blur(4px)' }} />
+        <span className="absolute inset-0 overflow-hidden rounded-full">
+          <span
+            className="absolute inset-x-0 h-1/3"
+            style={{ background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.22), transparent)', animation: `jarvis-holo-scan ${2.6 * tone.speed}s ease-in-out infinite` }}
+          />
+        </span>
+      </span>
+    </>
+  )
+
+  // 풀스크린: 뷰포트 전체 성운 + 중앙 거대 코어 (상태문구는 패널이 표시).
+  if (fullscreen) {
+    return (
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <style>{ORB_KEYFRAMES}</style>
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" style={{ mixBlendMode: 'screen' }} />
+        <div
+          className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+          style={{ width: 'min(94vmin, 1040px)', height: 'min(94vmin, 1040px)', perspective: 1600 }}
+        >
+          {coreAssembly('min(30vmin, 340px)', '18%')}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="pointer-events-none relative flex flex-col items-center" aria-hidden>
-      <style>{`
-        @keyframes jarvis-holo-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes jarvis-holo-rotate-rev { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
-        @keyframes jarvis-holo-breathe { 0%,100% { transform: scale(1); opacity: .92; } 50% { transform: scale(1.05); opacity: 1; } }
-        @keyframes jarvis-holo-heartbeat { 0% { transform: scale(1); } 14% { transform: scale(1.13); } 28% { transform: scale(1.02); } 42% { transform: scale(1.1); } 60%,100% { transform: scale(1); } }
-        @keyframes jarvis-holo-wave { 0% { transform: scale(.55); opacity: .7; } 100% { transform: scale(1.9); opacity: 0; } }
-        @keyframes jarvis-holo-burst { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(2.6); opacity: 0; } }
-        @keyframes jarvis-holo-flicker { 0%,100% { opacity: 1; } 42% { opacity: .55; } 46% { opacity: .95; } 74% { opacity: .5; } 78% { opacity: 1; } }
-        @keyframes jarvis-holo-orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes jarvis-holo-scan { 0% { transform: translateY(-130%); } 100% { transform: translateY(130%); } }
-        @keyframes jarvis-gyro-a { from { transform: rotateX(72deg) rotateZ(0deg); } to { transform: rotateX(72deg) rotateZ(360deg); } }
-        @keyframes jarvis-gyro-b { from { transform: rotateX(64deg) rotateY(28deg) rotateZ(360deg); } to { transform: rotateX(64deg) rotateY(28deg) rotateZ(0deg); } }
-        @keyframes jarvis-gyro-c { from { transform: rotateY(72deg) rotateZ(0deg); } to { transform: rotateY(72deg) rotateZ(360deg); } }
-        .jarvis-holo-rotate { animation: jarvis-holo-rotate 60s linear infinite; }
-      `}</style>
-
-      <div
-        className="relative flex items-center justify-center transition-all duration-700 ease-out"
-        style={{ width: box, height: box, perspective: 900 }}
-      >
-        {/* 뒤 글로우 */}
-        <span
-          className="absolute rounded-full blur-3xl transition-all duration-700"
-          style={{ inset: compact ? 6 : -10, background: tone.glow, opacity: active || pulsing ? 0.42 : 0.25 }}
-        />
-
+      <style>{ORB_KEYFRAMES}</style>
+      <div className="relative flex items-center justify-center transition-all duration-700 ease-out" style={{ width: box, height: box, perspective: 900 }}>
         {/* 파티클 성운 (canvas 수천 개 소용돌이) — 링·코어 뒤 레이어 */}
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" style={{ mixBlendMode: 'screen' }} />
-
-        {/* 파동 링 — 활성 상태에서 방사 */}
-        {active ? (
-          <>
-            <span className="absolute rounded-full border-2" style={{ inset: '12%', borderColor: tone.ring, animation: 'jarvis-holo-wave 1.8s ease-out infinite' }} />
-            <span className="absolute rounded-full border" style={{ inset: '12%', borderColor: tone.ring, animation: 'jarvis-holo-wave 1.8s ease-out .6s infinite' }} />
-          </>
-        ) : null}
-        {/* 완료 골드 버스트 */}
-        {status === 'completed' ? (
-          <span className="absolute rounded-full border-2" style={{ inset: '12%', borderColor: tone.ring, animation: 'jarvis-holo-burst 1.1s ease-out 2' }} />
-        ) : null}
-
-        {/* 평면 정밀 링 6종 */}
-        {FLAT_RINGS.map((r) => (
-          <span key={r.kind + r.inset} className="absolute rounded-full" style={{ inset: `${r.inset}%`, ...flatRingStyle(r.kind, r.dur, r.rev) }} />
-        ))}
-
-        {/* 3D 자이로스코프 링 3개 — 서로 다른 축으로 입체 회전 */}
-        <span className="absolute inset-0" style={{ transformStyle: 'preserve-3d' }}>
-          {GYRO_RINGS.map((g) => (
-            <span
-              key={g.anim}
-              className="absolute rounded-full"
-              style={{
-                inset: '16%',
-                border: `${g.width}px solid ${g.color}`,
-                boxShadow: `0 0 12px -4px ${g.color}`,
-                animation: `${g.anim} ${g.dur * tone.speed}s linear infinite`
-              }}
-            />
-          ))}
-        </span>
-
-        {/* 코어 구체 — pulsing 중엔 하트비트로 맥동 (답변 타이핑·발화 동기) */}
-        <span
-          className="relative rounded-full transition-all duration-700"
-          style={{
-            width: size * 0.46,
-            height: size * 0.46,
-            background: tone.core,
-            boxShadow: `0 0 ${active || pulsing ? 74 : 44}px -6px ${tone.glow}, inset 0 0 26px rgba(255,255,255,0.18)`,
-            animation:
-              status === 'failed'
-                ? 'jarvis-holo-flicker 1.6s linear infinite'
-                : pulsing
-                  ? 'jarvis-holo-heartbeat 1.15s ease-in-out infinite'
-                  : `jarvis-holo-breathe ${active ? 1.5 : 4.4}s ease-in-out infinite`
-          }}
-        >
-          {/* 회전 광택 시트 */}
-          <span
-            className="absolute inset-0 overflow-hidden rounded-full"
-            style={{ animation: `jarvis-holo-rotate ${11 * tone.speed}s linear infinite` }}
-          >
-            <span className="absolute inset-0" style={{ background: `conic-gradient(from 0deg, transparent 0deg, rgba(255,255,255,0.16) 40deg, transparent 90deg)` }} />
-          </span>
-          {/* 스펙큘러 하이라이트 */}
-          <span
-            className="absolute rounded-full"
-            style={{ left: '22%', top: '15%', width: '26%', height: '26%', background: 'rgba(255,255,255,0.68)', filter: 'blur(4px)' }}
-          />
-          {/* 스캔 라인 */}
-          <span className="absolute inset-0 overflow-hidden rounded-full">
-            <span
-              className="absolute inset-x-0 h-1/3"
-              style={{
-                background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.22), transparent)',
-                animation: `jarvis-holo-scan ${2.6 * tone.speed}s ease-in-out infinite`
-              }}
-            />
-          </span>
-        </span>
+        {coreAssembly(size * 0.46, compact ? 6 : -10)}
       </div>
 
       {/* 상태 문구 */}
