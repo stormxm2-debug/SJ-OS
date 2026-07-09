@@ -198,9 +198,10 @@ export default function SupabaseAttendanceManager(): JSX.Element {
     setMemo('')
     void load()
     // 속도 우선: 주소 변환(최대 6초)은 기록을 막지 않고 뒤에서 채운다.
+    // (카메라 모달에서 이미 주소를 확보했으면 다시 조회할 필요 없음)
     const recordId = res.record?.id
     const coords = photo?.coords
-    if (recordId && coords) {
+    if (recordId && coords && !photo?.address) {
       void reverseGeocode(coords.lat, coords.lng).then(async (addr) => {
         if (!addr) return
         const saved = await saveAddress(recordId, addr)
@@ -508,6 +509,12 @@ function RecordCard({ record: r }: { record: AttendanceWithStaff }): JSX.Element
         <div className="mt-0.5 text-[11px] tabular-nums text-slate-500">
           {time ? time.toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
         </div>
+        {r.address ? (
+          <div className="mt-1 flex items-start gap-1 text-[10px] text-slate-500">
+            <MapPin className="mt-0.5 h-2.5 w-2.5 shrink-0 text-emerald-600" />
+            <span className="line-clamp-2">{r.address}</span>
+          </div>
+        ) : null}
         {r.memo ? <div className="mt-1 truncate text-[10px] text-slate-400">{r.memo}</div> : null}
       </div>
     </div>
