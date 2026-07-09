@@ -82,7 +82,7 @@ export interface SavedClaimAnalysis {
 
 // ── 공통 ─────────────────────────────────────────────────────────────────────
 
-const EXTRACT_TIMEOUT_MS = 170000
+const EXTRACT_TIMEOUT_MS = 390000
 const MAX_BATCH_FILES = 4
 /** 배치당 base64 문자 수 한도 (~4.5MB 원본). 서버 JSON 파싱이 CPU 한도 안에 들도록. */
 const MAX_BATCH_CHARS = 6_000_000
@@ -167,10 +167,11 @@ async function postSynthesizeStream(
   if (!ep) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
   const controller = new AbortController()
   let timer = window.setTimeout(() => controller.abort(), timeoutMs)
-  // 스트림이 살아 있는 동안은 청크마다 타이머를 연장한다 (침묵 60초 = 이상).
+  // 스트림이 살아 있는 동안은 청크마다 타이머를 연장한다. 웹 약관 열람(큰 PDF) 중에는
+  // 이벤트 간격이 길어질 수 있어 침묵 허용치를 넉넉히 둔다.
   const touch = (): void => {
     window.clearTimeout(timer)
-    timer = window.setTimeout(() => controller.abort(), 60000)
+    timer = window.setTimeout(() => controller.abort(), 180000)
   }
   const asResult = (data: Record<string, unknown> | null, status: number): { ok: boolean; data?: Record<string, unknown>; error?: string; disabled?: boolean } => {
     if (!data?.success) {
@@ -611,7 +612,7 @@ export async function analyzeClaimExpert(args: {
     }
     if (src) {
       args.onProgress?.({ stage: 'synthesize', batch: 0, totalBatches: 0, fileNames: ['수술분류표에서 종 확인 중'] })
-      const cls = await postJson({ mode: 'classify', file: src, surgeries }, 170000)
+      const cls = await postJson({ mode: 'classify', file: src, surgeries }, 390000)
       if (cls.ok && Array.isArray(cls.data?.classifications)) surgeryClasses = cls.data.classifications as unknown[]
     }
   }
@@ -654,10 +655,10 @@ export async function analyzeClaimExpert(args: {
       termsSummaries: matched.map((t) => t.summary),
       surgeryClasses
     }
-    let synth = await postSynthesizeStream(synthBody, 170000, groupStatus)
+    let synth = await postSynthesizeStream(synthBody, 390000, groupStatus)
     if (!synth.ok && !synth.disabled) {
       // 종합만 자동 1회 재시도 — 판독(배치) 결과는 재사용하므로 처음부터 다시 할 필요 없음.
-      synth = await postSynthesizeStream(synthBody, 170000, groupStatus)
+      synth = await postSynthesizeStream(synthBody, 390000, groupStatus)
     }
     if (!synth.ok) {
       return { ok: false, error: g.label ? `${synth.error} (${g.label})` : synth.error, disabled: synth.disabled }
@@ -756,7 +757,7 @@ export async function generateAppeal(args: {
     if (!prep.ok) return { ok: false, error: prep.error }
     attach = prep.docs
   }
-  const timeout = attach.length > 0 ? 170000 : 120000
+  const timeout = attach.length > 0 ? 390000 : 240000
   const body = { mode: 'appeal', analysis, rejection: args.rejection, files: attach }
   let res = await postJson(body, timeout)
   if (!res.ok && !res.disabled) res = await postJson(body, timeout) // 자동 1회 재시도

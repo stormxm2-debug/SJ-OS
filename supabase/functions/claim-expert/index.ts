@@ -104,8 +104,8 @@ const EXTRACT_MODEL = (): string => Deno.env.get('CLAIM_EXTRACT_MODEL') || 'clau
 
 async function callClaude(apiKey: string, system: string, content: any[], maxTokens: number, useWeb = false, model?: string): Promise<{ ok: boolean; text?: string; error?: string; truncated?: boolean }> {
   const controller = new AbortController()
-  // Supabase 요청 타임아웃(150s)보다 먼저 끊어 친절한 오류가 나가게 한다.
-  const timer = setTimeout(() => controller.abort(), 135000)
+  // Supabase 함수 wall-clock 한도(400s)보다 먼저 끊어 친절한 오류가 나가게 한다.
+  const timer = setTimeout(() => controller.abort(), 370000)
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -159,8 +159,8 @@ function streamSynthesize(apiKey: string, content: unknown[], dropped: number): 
         controller.close()
       }
       const abort = new AbortController()
-      // 스트리밍은 첫 바이트가 빨라 함수 idle 종료를 피하지만, 전체 상한은 유지한다.
-      const timer = setTimeout(() => abort.abort(), 145000)
+      // 스트리밍은 첫 바이트가 빨라 idle 종료가 없다 — wall-clock 한도(400s) 직전까지 허용.
+      const timer = setTimeout(() => abort.abort(), 370000)
       try {
         const r = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
