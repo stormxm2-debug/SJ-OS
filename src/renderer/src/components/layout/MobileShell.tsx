@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Home, Clock, UserRound, CalendarDays, Menu, ClipboardList, BarChart3, Megaphone, Bot, LogOut, ShieldAlert, X } from 'lucide-react'
+import { Home, Clock, UserRound, CalendarDays, Menu, ClipboardList, BarChart3, Megaphone, Bot, LogOut, ShieldAlert, X, BookOpen, RefreshCw } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useSession } from '@renderer/navigation/SessionContext'
@@ -13,7 +13,11 @@ import SupabaseCustomerManager from '@renderer/components/customer/SupabaseCusto
 import SupabaseConsultationManager from '@renderer/components/consultation/SupabaseConsultationManager'
 import SupabaseScheduleManager from '@renderer/components/schedule/SupabaseScheduleManager'
 import SupabaseAttendanceManager from '@renderer/components/attendance/SupabaseAttendanceManager'
+import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
+import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
+import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
 import NoticePage from '@renderer/pages/NoticePage'
+import { useWakeKey } from '@renderer/services/commercial/wakeResync'
 
 /**
  * Mobile-first staff shell: top bar + scrollable content + bottom tab nav. Shows
@@ -34,6 +38,8 @@ export default function MobileShell(): JSX.Element {
   const { route, navigate } = useNavigation()
   const { session, logout } = useSession()
   const [moreOpen, setMoreOpen] = useState(false)
+  // 폰 절전/백그라운드 복귀 시 전체 재조회 (잠들었다 깨어난 화면의 옛 데이터 문제 해결)
+  const { wakeKey, lastSyncAt, refresh } = useWakeKey()
 
   // Interaction watchdog (same guarantee as desktop): never leave the app unclickable.
   useEffect(() => {
@@ -58,11 +64,19 @@ export default function MobileShell(): JSX.Element {
           <BrandLogo markClassName="h-7" wordmarkClassName="text-base" />
           <span className="truncate text-[10px] text-slate-500">{session.name || '직원'} · {ROLE_LABEL[session.role]}</span>
         </div>
-        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-600">모바일</span>
+        <button
+          type="button"
+          onClick={refresh}
+          className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 active:bg-indigo-100"
+          aria-label="새로고침"
+        >
+          <RefreshCw className="h-3 w-3" />
+          {lastSyncAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+        </button>
       </header>
 
-      {/* Content */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 pb-24">
+      {/* Content — wakeKey 리마운트로 복귀 시 모든 화면 재조회 */}
+      <main key={wakeKey} className="flex-1 overflow-y-auto overflow-x-hidden p-3 pb-24">
         <MobileContent routeName={route.name} />
       </main>
 
@@ -75,6 +89,7 @@ export default function MobileShell(): JSX.Element {
           </div>
           <MoreItem icon={<ClipboardList className="h-4 w-4" />} label="상담기록" onClick={() => go({ name: 'consultation' })} />
           <MoreItem icon={<BarChart3 className="h-4 w-4" />} label="실적관리" onClick={() => go({ name: 'performance' })} />
+          <MoreItem icon={<BookOpen className="h-4 w-4" />} label="보험 백과사전" onClick={() => go({ name: 'wiki' })} />
           <MoreItem icon={<Megaphone className="h-4 w-4" />} label="공지사항" onClick={() => go({ name: 'notice' })} />
           <MoreItem icon={<Bot className="h-4 w-4" />} label="자비스" onClick={() => { setMoreOpen(false); jarvisService.open() }} />
           <MoreItem icon={<LogOut className="h-4 w-4" />} label="로그아웃" onClick={() => { setMoreOpen(false); logout() }} danger />
@@ -100,6 +115,9 @@ export default function MobileShell(): JSX.Element {
       </nav>
 
       <JarvisPanel />
+      {/* wakeKey로 함께 리마운트 — 복귀 시 realtime 알림 구독을 새로 맺는다. */}
+      <NotificationCenter key={`nc-${wakeKey}`} />
+      <ResolutionLockGate key={`rg-${wakeKey}`} />
     </div>
   )
 }
@@ -121,6 +139,8 @@ function MobileContent({ routeName }: { routeName: ViewName }): JSX.Element {
       return <SupabaseScheduleManager />
     case 'performance':
       return <MobilePerformance />
+    case 'wiki':
+      return <InsuranceWikiPage />
     case 'notice':
       return <NoticePage />
     default:

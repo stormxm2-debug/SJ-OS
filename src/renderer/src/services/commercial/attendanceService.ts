@@ -69,6 +69,24 @@ export async function listMyTodayAttendance(): Promise<AttendanceListResult> {
   return { ok: true, mode: 'local-mock', records: items.filter((r) => isToday(r.timestamp)).map(toWithStaff) }
 }
 
+/** 오늘의 다짐 저장 (출근 후 잠금 해제용, 본인 기록만). 로컬 모드는 no-op 성공. */
+export async function saveResolution(recordId: string, memo: string): Promise<{ ok: boolean; error?: string }> {
+  if (isSupabase()) {
+    const res = await supabaseAttendanceAdapter.updateResolution(recordId, memo)
+    return res.ok ? { ok: true } : { ok: false, error: res.message }
+  }
+  return { ok: true }
+}
+
+/** GPS 주소 백그라운드 채움 — 기록 저장 직후 호출 (촬영/출근을 지연시키지 않기 위해 분리). */
+export async function saveAddress(recordId: string, address: string): Promise<{ ok: boolean; error?: string }> {
+  if (isSupabase()) {
+    const res = await supabaseAttendanceAdapter.updateAddress(recordId, address)
+    return res.ok ? { ok: true } : { ok: false, error: res.message }
+  }
+  return { ok: true }
+}
+
 async function saveLocal(input: AttendanceInput, type: AttendanceRecord['type']): Promise<AttendanceMutationResult> {
   const record: AttendanceRecord = {
     id: `a-local-${new Date().toISOString()}-${Math.floor(Math.random() * 1000)}`,

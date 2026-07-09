@@ -3,6 +3,79 @@ import type { ConsultationInput, ConsultationStatus } from './consultationValida
 import { getBackendConfig } from './backendConfig'
 import { consultationRepository, customerRepository } from './services'
 import { supabaseConsultationAdapter, type ConsultationWithCustomer } from './supabaseConsultationAdapter'
+import { getFunctionsBaseUrl, getSupabaseAnonKey, getSupabaseClient, initSupabaseClient } from './supabaseClient'
+
+/** AI 상담 코치 분석 결과 (consult-coach edge function). */
+export interface ConsultCoach {
+  needs: string
+  approach: string
+  nextAction: string
+  next?: { type: string; suggestion: string }
+}
+
+async function coachBearer(): Promise<string | undefined> {
+  const anon = getSupabaseAnonKey()
+  try {
+    await initSupabaseClient()
+    const client = getSupabaseClient() as {
+      auth?: { getSession: () => Promise<{ data?: { session?: { access_token?: string } } }> }
+    } | null
+    const { data } = (await client?.auth?.getSession()) ?? {}
+    return data?.session?.access_token ?? anon
+  } catch {
+    return anon
+  }
+}
+
+/**
+ * 상담 요약 → AI 코치 (니즈·추천 접근·다음 액션·다음 일정 제안). 고객 정보와 과거
+ * 상담 이력을 함께 보내 맞춤 조언을 받는다. 실패 시 error — 저장 흐름과는 무관.
+ */
+export async function requestConsultCoach(args: {
+  summary: string
+  typeLabel: string
+  customer?: { name: string; age?: number; gender?: string; medicalHistory?: string; familyCount?: number }
+  history?: string[]
+}): Promise<{ ok: boolean; coach?: ConsultCoach; error?: string }> {
+  const base = getFunctionsBaseUrl()
+  const anon = getSupabaseAnonKey()
+  if (!base || !anon) return { ok: false, error: 'AI 코치는 서버 연결 후 사용할 수 있습니다.' }
+  if (!args.summary.trim()) return { ok: false, error: '상담 요약을 먼저 입력해주세요.' }
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), 45000)
+  try {
+    const token = (await coachBearer()) ?? anon
+    const res = await fetch(`${base}/consult-coach`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${token}` },
+      body: JSON.stringify(args),
+      signal: controller.signal
+    })
+    const data = (await res.json().catch(() => null)) as {
+      success?: boolean
+      error?: string
+      coach?: { needs?: unknown; approach?: unknown; nextAction?: unknown; next?: { type?: unknown; suggestion?: unknown } | null }
+    } | null
+    if (!res.ok || !data?.success || !data.coach) return { ok: false, error: data?.error ?? 'AI 분석에 실패했습니다.' }
+    const c = data.coach
+    return {
+      ok: true,
+      coach: {
+        needs: String(c.needs ?? ''),
+        approach: String(c.approach ?? ''),
+        nextAction: String(c.nextAction ?? ''),
+        next:
+          c.next && String(c.next.suggestion ?? '').trim()
+            ? { type: String(c.next.type ?? 'meeting'), suggestion: String(c.next.suggestion) }
+            : undefined
+      }
+    }
+  } catch {
+    return { ok: false, error: 'AI 분석 중 오류가 발생했습니다. 다시 시도해 주세요.' }
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
 
 /**
  * Unified consultation service. Routes to Supabase when configured + logged in,

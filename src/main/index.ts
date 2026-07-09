@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
 import { join } from 'node:path'
+import { autoUpdater } from 'electron-updater'
 import { runCoding } from './coding/engine'
 import { CompanyStartupService } from './companyStartupService'
 import { openApprovedExternal } from './externalLinks'
@@ -114,6 +115,37 @@ app.commandLine.appendSwitch('disable-gpu-program-cache')
 const startupService = new CompanyStartupService()
 
 /**
+ * 자동 업데이트 (GitHub Releases: stormxm2-debug/SJ-OS — public이라 다운로드에 토큰
+ * 불필요). 배포는 `3-앱-업데이트-배포.bat`(electron-builder --publish)가 수행하고,
+ * 설치된 앱은 시작 시 + 4시간마다 새 버전을 확인해 내려받은 뒤 재시작을 제안한다.
+ * "나중에"를 고르면 앱을 완전히 종료할 때 자동 적용된다. 개발 모드에서는 no-op.
+ */
+function setupAutoUpdate(): void {
+  if (!app.isPackaged) return
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.on('update-downloaded', (info) => {
+    void dialog
+      .showMessageBox({
+        type: 'info',
+        buttons: ['지금 재시작', '나중에'],
+        defaultId: 0,
+        cancelId: 1,
+        message: `SJ INVEST 새 버전(v${info.version})이 준비되었습니다.`,
+        detail: '지금 재시작하면 바로 적용됩니다. "나중에"를 누르면 앱을 완전히 종료할 때 자동으로 적용됩니다.'
+      })
+      .then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall()
+      })
+  })
+  // 실패(오프라인, 첫 릴리즈 전 등)는 조용히 무시 — 앱 사용에 지장 없음.
+  autoUpdater.checkForUpdates().catch(() => {})
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {})
+  }, 4 * 60 * 60 * 1000)
+}
+
+/**
  * Origins allowed to request the microphone for Jarvis Voice Mode.
  *  - The packaged app loads the renderer from a local file:// origin.
  *  - `npm run dev` serves the renderer from a localhost dev port.
@@ -207,6 +239,9 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Restrict permissions (mic-only, local origins) before any window loads.
   installPermissionHandlers()
+
+  // 자동 업데이트 감시 시작 (패키지된 앱에서만 동작).
+  setupAutoUpdate()
 
   // Static app metadata.
   ipcMain.handle('app:getInfo', () => ({

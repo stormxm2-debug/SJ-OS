@@ -22,6 +22,7 @@ import {
   getTodayWorkedDuration,
   listAttendanceRecords,
   listMyTodayAttendance,
+  saveAddress,
   type AttendanceDataMode,
   type AttendanceWithStaff
 } from '@renderer/services/commercial/attendanceService'
@@ -32,8 +33,33 @@ import {
   type AttendanceInput
 } from '@renderer/services/commercial/attendanceValidation'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
-import AttendanceCamera, { type CapturedAttendancePhoto } from './AttendanceCamera'
+import AttendanceCamera, { reverseGeocode, type CapturedAttendancePhoto } from './AttendanceCamera'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
+import { feeLabel, lateFeeFor } from '@renderer/services/commercial/attendanceLate'
+import { getSupabaseClient, initSupabaseClient } from '@renderer/services/commercial/supabaseClient'
+
+/** 활성 직원(설계사·팀장) 프로필 — 미출근 계산용. 관리자/팀장 패널에서만 사용. */
+interface StaffLite {
+  id: string
+  name: string
+  teamId?: string
+}
+async function listActiveStaff(): Promise<StaffLite[]> {
+  try {
+    await initSupabaseClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = getSupabaseClient() as any
+    if (!client) return []
+    const { data } = await client.from('profiles').select('id, name, team_id, role, status').eq('status', 'active').in('role', ['fc', 'team-leader'])
+    return ((data as { id: string; name: string; team_id: string | null }[]) ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      teamId: p.team_id ?? undefined
+    }))
+  } catch {
+    return []
+  }
+}
 
 /** Tables whose changes should live-refresh this screen (stable ref for the hook). */
 const RT_TABLES = ['attendance_records', 'profiles']
@@ -62,6 +88,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   const [confirm, setConfirm] = useState<'checkin-dup' | 'checkout-none' | null>(null)
   const [cameraFor, setCameraFor] = useState<AttendanceInput['type'] | null>(null)
   const [now, setNow] = useState(() => new Date())
+  const [staffList, setStaffList] = useState<StaffLite[]>([])
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000)
@@ -78,10 +105,11 @@ export default function SupabaseAttendanceManager(): JSX.Element {
 
   const load = async (): Promise<void> => {
     setLoading(true)
-    const [allRes, myRes] = await Promise.all([listAttendanceRecords(), listMyTodayAttendance()])
+    const [allRes, myRes, staff] = await Promise.all([listAttendanceRecords(), listMyTodayAttendance(), listActiveStaff()])
     setMode(allRes.mode)
     setRecords(allRes.records)
     setMyToday(myRes.records)
+    setStaffList(staff)
     setError(allRes.ok ? undefined : allRes.error)
     setLoading(false)
   }
@@ -98,6 +126,37 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   const worked = useMemo(() => getTodayWorkedDuration(myToday), [myToday])
   const summary = useMemo(() => getAttendanceSummary(records), [records])
 
+  // ─── 지각·벌금 리포트 (오늘 + 이번 달) ─────────────────────────────────
+  const todayKey = now.toDateString()
+  const todayCheckIns = useMemo(
+    () => records.filter((r) => r.type === 'check-in' && new Date(r.timestamp).toDateString() === todayKey),
+    [records, todayKey]
+  )
+  const todayLate = useMemo(() => todayCheckIns.filter((r) => (r.lateFee ?? 0) > 0), [todayCheckIns])
+  const todayFeeSum = todayLate.reduce((s, r) => s + (r.lateFee ?? 0), 0)
+  const absentToday = useMemo(() => {
+    const checked = new Set(todayCheckIns.map((r) => r.staffId))
+    const scope = session.role === 'team-leader' ? staffList.filter((s) => s.teamId && s.teamId === session.teamName) : staffList
+    return scope.filter((s) => !checked.has(s.id))
+  }, [todayCheckIns, staffList, session.role, session.teamName])
+  const monthlyFines = useMemo(() => {
+    const map = new Map<string, { name: string; count: number; sum: number }>()
+    for (const r of records) {
+      if (r.type !== 'check-in') continue
+      const fee = r.lateFee ?? 0
+      if (fee <= 0) continue
+      const d = new Date(r.timestamp)
+      if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) continue
+      const cur = map.get(r.staffId) ?? { name: r.staffName || '(이름없음)', count: 0, sum: 0 }
+      cur.count += 1
+      cur.sum += fee
+      map.set(r.staffId, cur)
+    }
+    return [...map.values()].sort((a, b) => b.sum - a.sum)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [records, now.getFullYear(), now.getMonth()])
+  const myTodayLate = myToday.find((r) => r.type === 'check-in' && (r.lateFee ?? 0) > 0)
+
   const workState: 'before' | 'working' | 'done' = !hasCheckIn ? 'before' : hasCheckOut ? 'done' : 'working'
   const hour = now.getHours()
   const greeting = hour < 6 ? '늦은 밤입니다' : hour < 12 ? '좋은 아침입니다' : hour < 18 ? '좋은 오후입니다' : '좋은 저녁입니다'
@@ -105,15 +164,21 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   const mm = String(now.getMinutes()).padStart(2, '0')
   const ss = String(now.getSeconds()).padStart(2, '0')
 
-  const buildInput = (type: AttendanceInput['type'], photo: CapturedAttendancePhoto | null): AttendanceInput => ({
-    type,
-    status: 'normal',
-    timestamp: photo?.timestamp ?? new Date().toISOString(),
-    photoDataUrl: photo?.dataUrl,
-    watermarkText:
-      photo?.watermarkText ?? `${session.name || '직원'} ${ATTENDANCE_TYPE_LABEL[type]} ${new Date().toLocaleString('ko-KR')}`,
-    memo: memo.trim() || undefined
-  })
+  const buildInput = (type: AttendanceInput['type'], photo: CapturedAttendancePhoto | null): AttendanceInput => {
+    const at = photo?.timestamp ? new Date(photo.timestamp) : new Date()
+    const fee = type === 'check-in' ? (photo?.lateFee ?? lateFeeFor(at)) : 0
+    return {
+      type,
+      status: type === 'check-in' && fee > 0 ? 'late' : 'normal',
+      timestamp: at.toISOString(),
+      photoDataUrl: photo?.dataUrl,
+      watermarkText:
+        photo?.watermarkText ?? `${session.name || '직원'} ${ATTENDANCE_TYPE_LABEL[type]} ${at.toLocaleString('ko-KR')}`,
+      memo: memo.trim() || undefined,
+      lateFee: fee,
+      address: photo?.address ?? undefined
+    }
+  }
 
   const doSubmit = async (type: AttendanceInput['type'], photo: CapturedAttendancePhoto | null): Promise<void> => {
     const input = buildInput(type, photo)
@@ -132,6 +197,16 @@ export default function SupabaseAttendanceManager(): JSX.Element {
     setError(undefined)
     setMemo('')
     void load()
+    // 속도 우선: 주소 변환(최대 6초)은 기록을 막지 않고 뒤에서 채운다.
+    const recordId = res.record?.id
+    const coords = photo?.coords
+    if (recordId && coords) {
+      void reverseGeocode(coords.lat, coords.lng).then(async (addr) => {
+        if (!addr) return
+        const saved = await saveAddress(recordId, addr)
+        if (saved.ok) void load()
+      })
+    }
   }
 
   const openCamera = (type: AttendanceInput['type']): void => {
@@ -140,6 +215,8 @@ export default function SupabaseAttendanceManager(): JSX.Element {
     setCameraFor(type)
   }
   const onCheckIn = (): void => {
+    // 순서 변경 (대표 지시): 사진 → 출근 보고 → 다짐. 다짐을 안 적으면 저장 후
+    // 전체 화면 잠금(ResolutionLockGate)이 떠서 적을 때까지 앱 사용 불가.
     if (hasCheckIn) setConfirm('checkin-dup')
     else openCamera('check-in')
   }
@@ -221,8 +298,13 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           </button>
         </div>
 
-        <div className="relative mt-3 flex items-center gap-1.5 text-[11px] text-white/60">
-          <MapPin className="h-3 w-3" /> 촬영한 사진에 GPS 위치와 시간이 워터마크로 자동 기록됩니다.
+        <div className="relative mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/60">
+          <span className="inline-flex items-center gap-1">
+            <MapPin className="h-3 w-3" /> 사진에 SJ INVEST 마크 · 시간 · GPS 주소가 자동으로 새겨집니다.
+          </span>
+          <span className="inline-flex items-center gap-1 text-[#e6c877]">
+            출근 기준 9시 — 초과 5만 · 11시 초과 10만 · 12시 초과 20만 (평일)
+          </span>
         </div>
       </div>
 
@@ -260,12 +342,22 @@ export default function SupabaseAttendanceManager(): JSX.Element {
             value={lastRecord ? `${ATTENDANCE_TYPE_LABEL[lastRecord.type]} · ${new Date(lastRecord.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : '-'}
           />
         </div>
-        <input
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          placeholder="메모 (선택) — 출근/퇴근 시 함께 기록됩니다."
-          className="mb-4 w-full rounded-xl border border-slate-800 bg-white px-3 py-2 text-[12px] text-slate-100 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-        />
+        {myTodayLate ? (
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[13px] font-bold text-rose-700">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            오늘 지각 · 벌금 {feeLabel(myTodayLate.lateFee ?? 0)} (
+            {new Date(myTodayLate.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 출근)
+          </div>
+        ) : null}
+        <div className="mb-4">
+          <div className="mb-1 text-[11px] font-semibold text-slate-300">오늘의 다짐</div>
+          <input
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="미리 적어도 되고, 비워두면 출근 직후 다짐 입력 화면이 뜹니다 (저장 전까지 잠금)."
+            className="w-full rounded-xl border border-slate-800 bg-white px-3 py-2.5 text-[13px] text-slate-100 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          />
+        </div>
         {confirm === 'checkin-dup' ? (
           <ConfirmBar text="오늘 이미 출근 기록이 있습니다. 계속하시겠습니까?" onYes={() => openCamera('check-in')} onNo={() => setConfirm(null)} />
         ) : null}
@@ -273,16 +365,63 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           <ConfirmBar text="오늘 출근 기록이 없습니다. 퇴근을 기록하시겠습니까?" onYes={() => openCamera('check-out')} onNo={() => setConfirm(null)} />
         ) : null}
 
-        {/* Owner/team summary */}
+        {/* 관리자/팀장 — 오늘 지각 리포트 + 월별 벌금 정산 */}
         {admin ? (
-          <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-            <Stat label="전체 대상" value={summary.total} />
-            <Stat label="출근 완료" value={summary.checkedIn} tone="emerald" />
-            <Stat label="미출근" value={summary.notCheckedIn} tone="amber" />
-            <Stat label="지각" value={summary.late} tone="amber" />
-            <Stat label="퇴근 완료" value={summary.checkedOut} tone="indigo" />
-            <Stat label="조퇴" value={summary.earlyLeave} tone="amber" />
-            <Stat label="누락" value={summary.missing} tone="rose" />
+          <div className="mb-4 space-y-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat label="오늘 출근" value={todayCheckIns.length} tone="emerald" />
+              <Stat label="오늘 지각" value={todayLate.length} tone="rose" />
+              <Stat label="미출근" value={absentToday.length} tone="amber" />
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5">
+                <div className="text-[10px] font-medium text-rose-500">오늘 벌금 합계</div>
+                <div className="text-lg font-bold tabular-nums text-rose-600">{feeLabel(todayFeeSum)}</div>
+              </div>
+            </div>
+
+            {todayLate.length > 0 ? (
+              <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-3">
+                <div className="mb-1.5 text-[12px] font-bold text-rose-700">오늘 지각자 (9시 기준 자동 판정)</div>
+                <div className="space-y-1">
+                  {todayLate.map((r) => (
+                    <div key={r.id} className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-[12px]">
+                      <span className="font-semibold text-slate-100">{r.staffName || '(이름없음)'}</span>
+                      <span className="text-slate-500">
+                        {new Date(r.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 출근
+                      </span>
+                      <span className="ml-auto font-bold text-rose-600">벌금 {feeLabel(r.lateFee ?? 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {absentToday.length > 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-[12px] text-amber-800">
+                <b>아직 미출근:</b> {absentToday.map((s) => s.name).join(', ')}
+                <span className="ml-1 text-[11px] text-amber-600">(평일 09:05 공지로도 자동 보고됩니다)</span>
+              </div>
+            ) : null}
+
+            {monthlyFines.length > 0 ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                <div className="mb-1.5 text-[12px] font-bold text-slate-200">
+                  {now.getMonth() + 1}월 벌금 정산 <span className="font-medium text-slate-500">(지각 횟수 · 누적 벌금)</span>
+                </div>
+                <div className="space-y-1">
+                  {monthlyFines.map((f) => (
+                    <div key={f.name} className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-1.5 text-[12px]">
+                      <span className="font-semibold text-slate-100">{f.name}</span>
+                      <span className="text-slate-500">{f.count}회</span>
+                      <span className="ml-auto font-bold tabular-nums text-rose-600">{feeLabel(f.sum)}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between rounded-lg bg-white px-2.5 py-1.5 text-[12px] font-bold">
+                    <span className="text-slate-200">합계</span>
+                    <span className="tabular-nums text-rose-600">{feeLabel(monthlyFines.reduce((s, f) => s + f.sum, 0))}</span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

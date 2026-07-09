@@ -122,10 +122,16 @@ const MODE_SYSTEM_PROMPTS = {
  * BASE_INSTRUCTION never forces "데이터가 없습니다" on a real domain question.
  */
 const EXPERT_MODE_INSTRUCTIONS = {
+  // NOTE: The image-reading permission below is required. Without an explicit "you may
+  // read the image, never refuse" instruction, gpt-4o treats insurance/medical document
+  // photos as sensitive and replies "이미지를 읽을 수 없다" instead of analyzing them.
   'insurance-claim':
-    '당신은 대한민국 손해보험·생명보험 보험금 청구 및 손해사정 전문가입니다. ' +
-    '사용자가 제공한 보험 가입/증권 정보와 사고/청구 내용을 바탕으로, 일반적인 약관 지식과 실무 관행에 근거해 예상 지급 보험금을 분석하세요. ' +
+    '당신은 대한민국 손해보험·생명보험 보험금 청구 및 손해사정 전문가이며, 첨부된 이미지를 직접 판독하는 비전 분석가입니다. ' +
+    '첨부 이미지가 있으면 그것은 고객 본인이 자신의 보험금 청구를 위해 제출한 보험 서류(증권·진단서·영수증 등)를 촬영·스캔한 것입니다. 이미지 속 글자·숫자·표를 직접 읽을 수 있고, 그렇게 하도록 허가받았습니다. ' +
+    '절대로 "이미지를 읽을 수 없다", "이미지를 분석할 수 없다", "텍스트로 다시 입력해 달라"고 답하지 마세요. 보이는 내용을 최대한 판독해 즉시 분석하세요(흐리면 "일부 판독 어려움"으로 표기). ' +
+    '제공된 보험 가입/증권 정보와 사고/청구 내용을 바탕으로, 일반적인 약관 지식과 실무 관행에 근거해 예상 지급 보험금을 분석하세요. ' +
     '반드시 한국어로 답하고, 사용자가 요청한 출력 형식을 지키세요. ' +
+    '"예상 총 보험금" 총액은 담보별 산정 금액을 정확히 합산한 값과 일치해야 하며, 답하기 전에 합계를 검산하세요. ' +
     '불확실한 값은 "추정"임을 명시하고, 실제 지급은 약관 심사·손해사정 결과에 따라 달라질 수 있음을 마지막에 안내하세요. ' +
     '확실하지 않은 구체적 약관 조항 번호나 판례 번호를 사실인 것처럼 지어내지 말고, 일반적 담보 유형·관행 수준에서 설명하세요.'
 }
@@ -301,17 +307,36 @@ async function getAnthropicClient() {
   return cachedAnthropic
 }
 
+/** Max number of claim documents accepted in one analysis request. */
+const MAX_DOC_FILES = Number(process.env.MAX_DOC_FILES ?? 10)
 let cachedDocUpload = null
-/** Multipart upload for a claim document — PDF or image, memory only, never disk. */
+/** Multipart upload for claim documents — multiple PDF/images, memory only, never disk. */
 async function getDocumentUpload() {
   if (cachedDocUpload) return cachedDocUpload
   const mod = await import('multer')
   const multer = mod.default ?? mod
   cachedDocUpload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_DOC_UPLOAD_MB * 1024 * 1024, files: 1 }
-  }).single('document')
+    limits: { fileSize: MAX_DOC_UPLOAD_MB * 1024 * 1024, files: MAX_DOC_FILES }
+  }).array('documents', MAX_DOC_FILES)
   return cachedDocUpload
+}
+
+/** High-capability vision model for the OpenAI claim fallback (better on documents). */
+const CLAIM_VISION_MODEL = process.env.CLAIM_VISION_MODEL ?? 'gpt-4o'
+/** Max images per claim (PDF pages are converted to images client-side). */
+const MAX_CLAIM_IMAGES = Number(process.env.MAX_CLAIM_IMAGES ?? 20)
+let cachedClaimImagesUpload = null
+/** Multipart upload for MULTIPLE claim images, memory only, never disk. */
+async function getClaimImagesUpload() {
+  if (cachedClaimImagesUpload) return cachedClaimImagesUpload
+  const mod = await import('multer')
+  const multer = mod.default ?? mod
+  cachedClaimImagesUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_IMAGE_UPLOAD_MB * 1024 * 1024, files: MAX_CLAIM_IMAGES }
+  }).array('images', MAX_CLAIM_IMAGES)
+  return cachedClaimImagesUpload
 }
 
 app.post('/ai/chat', async (req, res) => {
@@ -548,9 +573,127 @@ app.post('/ai/vision', async (req, res) => {
 })
 
 /**
+ * POST /ai/claim-vision — 보험금 청구비서 (OpenAI). Analyzes MULTIPLE images together
+ * with a high-capability vision model (gpt-4o). PDFs are rendered to images on the
+ * client and sent as `images[]`. Same summary format + expert system prompt as
+ * /ai/claim. Used while Claude(ANTHROPIC) billing/key is unavailable; the renderer
+ * switches to /ai/claim automatically once CLAIM_PROVIDER='claude'. Images are held
+ * in memory (never disk, never logged); the key stays server-side.
+ */
+app.post('/ai/claim-vision', async (req, res) => {
+  if (!OPENAI_ENABLED) {
+    res.json(fallbackResponse(req.body?.mode, 'disabled'))
+    return
+  }
+  if (!API_KEY_CONFIGURED) {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'OPENAI_API_KEY_MISSING',
+      answer: '',
+      model: CLAIM_VISION_MODEL,
+      error: 'OPENAI_ENABLED=true 이지만 OPENAI_API_KEY 가 설정되지 않았습니다. 백엔드 환경변수에 API 키를 설정하세요.'
+    })
+    return
+  }
+
+  let upload
+  try {
+    upload = await getClaimImagesUpload()
+  } catch {
+    res.status(503).json({
+      success: false,
+      source: 'backend',
+      code: 'IMAGE_DEPENDENCY_MISSING',
+      answer: '',
+      model: CLAIM_VISION_MODEL,
+      error: '이미지 업로드 처리를 위한 서버 의존성이 없습니다. sj-ai-proxy 에서 npm install 을 실행하세요.'
+    })
+    return
+  }
+
+  upload(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const tooLarge = uploadErr.code === 'LIMIT_FILE_SIZE'
+      res.status(tooLarge ? 413 : 400).json({
+        success: false,
+        source: 'backend',
+        code: tooLarge ? 'IMAGE_TOO_LARGE' : 'IMAGE_UPLOAD_ERROR',
+        answer: '',
+        model: CLAIM_VISION_MODEL,
+        error: tooLarge ? `이미지 파일이 너무 큽니다 (최대 ${MAX_IMAGE_UPLOAD_MB}MB).` : '이미지 업로드 처리 중 오류가 발생했습니다.'
+      })
+      return
+    }
+
+    const files = Array.isArray(req.files) ? req.files : []
+    const imgs = files.filter((f) => f && f.buffer && f.buffer.length > 0)
+    if (imgs.length === 0) {
+      res.status(400).json({
+        success: false,
+        source: 'backend',
+        code: 'IMAGE_MISSING',
+        answer: '',
+        model: CLAIM_VISION_MODEL,
+        error: '분석할 이미지가 전송되지 않았습니다.'
+      })
+      return
+    }
+
+    const message =
+      typeof req.body?.message === 'string' && req.body.message.trim()
+        ? req.body.message
+        : '첨부한 보험 서류들을 모두 읽고 예상 지급 보험금을 분석하세요.'
+    const content = [{ type: 'text', text: message }]
+    for (const f of imgs) {
+      const mime = f.mimetype && f.mimetype.startsWith('image/') ? f.mimetype : 'image/jpeg'
+      content.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${f.buffer.toString('base64')}` } })
+    }
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 130000)
+    try {
+      const client = await getOpenAiClient()
+      const completion = await client.chat.completions.create(
+        {
+          model: CLAIM_VISION_MODEL,
+          messages: [
+            { role: 'system', content: systemPromptFor('insurance-claim') },
+            { role: 'user', content }
+          ],
+          temperature: 0.3,
+          max_tokens: 4096
+        },
+        { signal: controller.signal }
+      )
+      const answer = completion.choices?.[0]?.message?.content?.trim() ?? ''
+      res.json({
+        success: true,
+        source: 'openai',
+        answer: answer || '서류에서 분석 결과를 생성하지 못했습니다.',
+        model: completion.model ?? CLAIM_VISION_MODEL,
+        usage: completion.usage ?? undefined
+      })
+    } catch (error) {
+      const aborted = error?.name === 'AbortError'
+      res.status(aborted ? 504 : 502).json({
+        success: false,
+        source: 'openai',
+        answer: '',
+        model: CLAIM_VISION_MODEL,
+        error: aborted ? '분석이 시간 내에 완료되지 않았습니다. 다시 시도해 주세요.' : '분석 중 오류가 발생했습니다.',
+        detail: error?.message ?? String(error)
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  })
+})
+
+/**
  * POST /ai/claim — 보험금 청구비서. Analyze an insurance claim with CLAUDE, which
  * reads PDF and image documents natively (no OCR/conversion). Input: multipart/
- * form-data with an OPTIONAL `document` file (PDF or image) + a `message` text
+ * form-data with OPTIONAL `documents` files (PDF or image) + a `message` text
  * field. The Anthropic key is read from the environment only and never exposed; the
  * document is held in memory (never written to disk, never logged).
  */
@@ -619,11 +762,12 @@ app.post('/ai/claim', async (req, res) => {
         ? req.body.message
         : '첨부한 보험 서류를 읽고 예상 지급 보험금을 분석하세요.'
 
-    // Build the user content: an optional document/image block (Claude reads both
-    // natively) followed by the instruction text.
+    // Build the user content: one document/image block PER uploaded file (Claude
+    // reads PDF + images natively), followed by the instruction text.
     const content = []
-    const file = req.file
-    if (file && file.buffer && file.buffer.length > 0) {
+    const files = Array.isArray(req.files) ? req.files : []
+    for (const file of files) {
+      if (!file || !file.buffer || file.buffer.length === 0) continue
       const mime = file.mimetype || 'application/octet-stream'
       const b64 = file.buffer.toString('base64')
       if (mime === 'application/pdf') {
@@ -637,7 +781,7 @@ app.post('/ai/claim', async (req, res) => {
           code: 'DOC_UNSUPPORTED_TYPE',
           answer: '',
           model: ANTHROPIC_MODEL,
-          error: '지원하지 않는 파일 형식입니다. PDF 또는 이미지(JPG/PNG) 서류를 올려주세요.'
+          error: `지원하지 않는 파일 형식입니다 (${file.originalname || mime}). PDF 또는 이미지(JPG/PNG) 서류를 올려주세요.`
         })
         return
       }

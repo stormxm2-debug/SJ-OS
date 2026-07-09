@@ -1,5 +1,12 @@
 import { jarvisGptBrainService } from '@renderer/services/jarvis/JarvisGptBrainService'
 import { activeProxyUrl, detectProxyStatus, getLastWorkingUrl } from '@renderer/services/jarvis/proxyConfig'
+import { filesToImageBlobs } from './pdfToImages'
+import {
+  getFunctionsBaseUrl,
+  getSupabaseAnonKey,
+  initSupabaseClient,
+  getSupabaseClient
+} from '@renderer/services/commercial/supabaseClient'
 
 /**
  * 보험금 청구비서 (Insurance Claim Assistant) service.
@@ -190,39 +197,57 @@ export async function analyzeClaimImage(
 const CLAIM_TIMEOUT_MS = 130000
 
 /**
- * Analyze a claim with CLAUDE via the proxy's /ai/claim endpoint. Handles a text-only
- * request OR an attached document — Claude reads PDF and images natively (no OCR /
- * conversion). Never throws; proxy-off / key-missing / network errors come back as a
- * normalized ClaimEstimate (disabled → the page shows setup guidance).
+ * Build the summary-focused instruction for multi-document claim analysis. Produces:
+ * 예상 총 보험금(headline) · 해당 보장 항목 · 지급 근거(왜) · 고객 안내 요약 · 주의사항.
  */
-export async function analyzeClaim(input: {
-  insurer: string
-  policyInfo: string
-  incident: string
-  file?: File | null
-}): Promise<ClaimEstimate> {
-  if (!getLastWorkingUrl()) {
-    await detectProxyStatus()
+export function buildClaimSummaryMessage(): string {
+  return [
+    '첨부한 보험 서류들(증권·약관·진단서·영수증 등, 여러 장일 수 있음)을 모두 읽고,',
+    '이 고객이 받을 수 있는 보험금을 종합 분석해 아래 형식 그대로 한국어로 정리하세요.',
+    '',
+    '## 반드시 지킬 응답 형식 (이 순서·제목 그대로)',
+    '1) 맨 첫 줄: "예상 총 보험금: 약 OOO원 (범위 OOO원 ~ OOO원)"',
+    '2) "■ 해당 보장 항목" — 지급 가능한 담보/특약마다 [담보명 / 근거 약관 조항 / 예상 금액]을 표로 정리',
+    '3) "■ 지급 근거" — 왜 이 보험금을 받을 수 있는지, 서류에서 확인된 사실(진단명·치료·입원일수·가입담보)과 약관 근거를 연결해 설명',
+    '4) "■ 고객 안내 요약" — 고객에게 그대로 읽어줄 수 있는 3~5줄 요약(총액·핵심 담보·필요 서류·다음 절차)',
+    '5) "■ 주의·리스크" — 부지급/삭감 가능성, 면책, 자기부담금, 추가 확인이 필요한 사항',
+    '',
+    '여러 서류의 정보를 종합하고, 서류에서 확인되지 않는 값은 "추정"임을 명시하세요.',
+    '모든 금액은 한국 원(₩) 기준. 마지막 줄에 "실제 지급액은 약관 심사·손해사정 결과에 따라 달라질 수 있습니다."를 넣으세요.'
+  ].join('\n')
+}
+
+/**
+ * Provider for claim document analysis:
+ *   'openai' → gpt-4o vision; PDFs are rasterized to images client-side (/ai/claim-vision).
+ *   'claude' → Claude reads PDF + images natively (/ai/claim).
+ * Currently 'openai' while Anthropic billing/key is unavailable. Flip this ONE line to
+ * 'claude' once the ANTHROPIC key is set — everything else is already wired.
+ */
+export const CLAIM_PROVIDER: 'openai' | 'claude' = 'openai'
+
+/** Bearer token for the Supabase Edge Function: the logged-in user's session token
+ *  (so only signed-in staff can spend OpenAI credits), falling back to the anon key. */
+async function supabaseBearer(): Promise<string | undefined> {
+  const anon = getSupabaseAnonKey()
+  try {
+    await initSupabaseClient()
+    const client = getSupabaseClient() as {
+      auth?: { getSession: () => Promise<{ data?: { session?: { access_token?: string } } }> }
+    } | null
+    const { data } = (await client?.auth?.getSession()) ?? {}
+    return data?.session?.access_token ?? anon
+  } catch {
+    return anon
   }
-  const base = activeProxyUrl()
-  const hasFile = Boolean(input.file)
-  const message = hasFile
-    ? [
-        buildVisionMessage(input.insurer, input.incident),
-        input.policyInfo.trim() ? `\n## 가입/증권 정보(참고)\n${input.policyInfo.trim()}` : ''
-      ]
-        .filter(Boolean)
-        .join('\n')
-    : buildClaimPrompt(input)
+}
 
-  const form = new FormData()
-  form.append('message', message)
-  if (input.file) form.append('document', input.file)
-
+/** POST a multipart claim request and normalize the response. Never throws. */
+async function postClaimRequest(url: string, form: FormData, headers?: Record<string, string>): Promise<ClaimEstimate> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), CLAIM_TIMEOUT_MS)
   try {
-    const res = await fetch(`${base}/ai/claim`, { method: 'POST', body: form, signal: controller.signal })
+    const res = await fetch(url, { method: 'POST', body: form, headers, signal: controller.signal })
     const data = (await res.json().catch(() => ({ success: false }))) as {
       success?: boolean
       answer?: string
@@ -232,13 +257,13 @@ export async function analyzeClaim(input: {
       code?: string
     }
     if (!res.ok || !data.success) {
-      const disabled = Boolean(data.disabled) || data.code === 'ANTHROPIC_DISABLED'
+      const disabled = Boolean(data.disabled) || data.code === 'ANTHROPIC_DISABLED' || data.code === 'OPENAI_DISABLED'
       return {
         ok: false,
         disabled,
         canRetry: !disabled,
         answer: data.answer ?? '',
-        error: data.error ?? `Claude 분석에 실패했습니다 (HTTP ${res.status}).`,
+        error: data.error ?? `AI 분석에 실패했습니다 (HTTP ${res.status}).`,
         source: data.source ?? 'error'
       }
     }
@@ -248,7 +273,7 @@ export async function analyzeClaim(input: {
       canRetry: false,
       answer: data.answer ?? '',
       headline: extractHeadline(data.answer ?? ''),
-      source: data.source ?? 'claude'
+      source: data.source ?? CLAIM_PROVIDER
     }
   } catch (error) {
     const aborted = error instanceof DOMException && error.name === 'AbortError'
@@ -258,11 +283,60 @@ export async function analyzeClaim(input: {
       canRetry: true,
       answer: '',
       error: aborted
-        ? 'Claude 분석이 시간 내에 완료되지 않았습니다 (타임아웃). 다시 시도해 주세요.'
+        ? 'AI 분석이 시간 내에 완료되지 않았습니다 (타임아웃). 다시 시도해 주세요.'
         : 'AI 프록시에 연결할 수 없습니다. 프록시가 실행 중인지 확인해 주세요.',
       source: 'error'
     }
   } finally {
     window.clearTimeout(timer)
   }
+}
+
+/**
+ * Analyze a claim from one or more uploaded documents (PDF/images). Produces a
+ * customer-ready summary (총액·해당 보장·지급 근거·요약). Routes to OpenAI gpt-4o
+ * (PDF→image) or Claude (native PDF) per CLAIM_PROVIDER. Never throws.
+ */
+export async function analyzeClaim(input: { files?: File[] }): Promise<ClaimEstimate> {
+  const files = (input.files ?? []).filter(Boolean)
+  if (files.length === 0) {
+    return { ok: false, disabled: false, canRetry: false, answer: '', error: '분석할 서류를 먼저 올려주세요.', source: 'error' }
+  }
+  if (!getLastWorkingUrl()) {
+    await detectProxyStatus()
+  }
+  const base = activeProxyUrl()
+  const message = buildClaimSummaryMessage()
+
+  // Claude path — native PDF/image documents.
+  if (CLAIM_PROVIDER === 'claude') {
+    const form = new FormData()
+    form.append('message', message)
+    for (const f of files) form.append('documents', f)
+    return postClaimRequest(`${base}/ai/claim`, form)
+  }
+
+  // OpenAI path — rasterize PDFs to images, then send all images to gpt-4o vision.
+  let images: Blob[]
+  try {
+    images = await filesToImageBlobs(files)
+  } catch {
+    return { ok: false, disabled: false, canRetry: true, answer: '', error: 'PDF를 이미지로 변환하는 중 오류가 발생했습니다. 다시 시도해 주세요.', source: 'error' }
+  }
+  if (images.length === 0) {
+    return { ok: false, disabled: false, canRetry: false, answer: '', error: '분석 가능한 서류가 없습니다 (PDF·이미지만 지원).', source: 'error' }
+  }
+  const form = new FormData()
+  form.append('message', message)
+  images.forEach((b, i) => form.append('images', b, `page-${i + 1}.jpg`))
+
+  // Prefer the hosted Supabase Edge Function (works on the deployed web / phone —
+  // no local proxy needed); fall back to the local proxy for local dev without Supabase.
+  const functionsBase = getFunctionsBaseUrl()
+  const anon = getSupabaseAnonKey()
+  if (functionsBase && anon) {
+    const token = (await supabaseBearer()) ?? anon
+    return postClaimRequest(`${functionsBase}/claim-vision`, form, { apikey: anon, Authorization: `Bearer ${token}` })
+  }
+  return postClaimRequest(`${base}/ai/claim-vision`, form)
 }

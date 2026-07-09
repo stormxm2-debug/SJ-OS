@@ -20,6 +20,7 @@ import PerformancePage from '@renderer/pages/PerformancePage'
 import TeamLeaderPage from '@renderer/pages/TeamLeaderPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
+import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
 import DeveloperPromptCenterPage from '@renderer/pages/DeveloperPromptCenterPage'
 import AutopilotPage from '@renderer/pages/AutopilotPage'
@@ -37,6 +38,9 @@ import CompanySettingsPage from '@renderer/pages/CompanySettingsPage'
 import StaffLoginAdminPage from '@renderer/pages/StaffLoginAdminPage'
 import StaffTeamManagementPage from '@renderer/pages/StaffTeamManagementPage'
 import AnnouncementAdminPage from '@renderer/pages/AnnouncementAdminPage'
+import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
+import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
+import StaffTablePage from '@renderer/pages/StaffTablePage'
 
 /** Renders the active view chosen by the navigation state. */
 export default function Router(): JSX.Element {
@@ -85,6 +89,8 @@ export default function Router(): JSX.Element {
       return <InsuranceAnalysisPage />
     case 'claim-assistant':
       return <InsuranceClaimAssistantPage />
+    case 'wiki':
+      return <InsuranceWikiPage />
     case 'app-builder':
       return <UniversalAppBuilderPage />
     case 'devprompt':
@@ -123,6 +129,12 @@ export default function Router(): JSX.Element {
       return <StaffTeamManagementPage />
     case 'announcements':
       return <AnnouncementAdminPage />
+    case 'registration-admin':
+      return <RegistrationAdminPage />
+    case 'staff-overview':
+      return <StaffOverviewPage />
+    case 'staff-table':
+      return <StaffTablePage />
     default:
       return <Dashboard />
   }

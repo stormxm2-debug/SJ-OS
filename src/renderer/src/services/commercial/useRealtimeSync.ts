@@ -17,8 +17,10 @@ import { initSupabaseClient, getSupabaseClient } from './supabaseClient'
  *   module-level constant — so the channel isn't torn down each render).
  * - MOBILE: phones kill the websocket when the PWA is backgrounded or the screen
  *   locks, and the channel does not always recover on its own. When the app returns
- *   to the foreground (visibilitychange) or the network comes back (online), we
- *   immediately re-fetch AND rebuild the subscription so the screen is never stale.
+ *   to the foreground (visibilitychange/pageshow) or the network comes back (online),
+ *   we immediately re-fetch AND rebuild the subscription so the screen is never stale.
+ * - BACKUP POLLING: a 45s interval re-fetch covers environments where the realtime
+ *   socket is blocked entirely (AV software, restrictive networks).
  */
 export function useRealtimeSync(tables: string[], onChange: () => void): void {
   const cb = useRef(onChange)
@@ -83,7 +85,15 @@ export function useRealtimeSync(tables: string[], onChange: () => void): void {
     const onVisibility = (): void => {
       if (document.visibilityState === 'visible') resume()
     }
+    // 폴링 백업: 실시간 소켓이 백신/네트워크에 막혀도 데이터가 따라오도록 45초 주기 재조회.
+    const poll = window.setInterval(ping, 45000)
+    const onFocus = (): void => ping()
+    // pageshow(persisted)=모바일 bfcache 복원(뒤로가기/앱 재진입 — visibilitychange가 안 오는
+    // iOS/인앱브라우저 케이스). 재조회 + 구독 재구축까지 수행한다.
+    const onPageShow = (): void => resume()
+    window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pageshow', onPageShow)
     window.addEventListener('online', resume)
 
     void subscribe()
@@ -92,7 +102,10 @@ export function useRealtimeSync(tables: string[], onChange: () => void): void {
       active = false
       generation++
       window.clearTimeout(debounce)
+      window.clearInterval(poll)
+      window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pageshow', onPageShow)
       window.removeEventListener('online', resume)
       teardown()
     }

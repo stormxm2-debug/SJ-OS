@@ -1,16 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ClipboardList, Plus, Search, RefreshCw, Loader2, AlertTriangle, Save, X, Database, HardDrive, CheckCircle2 } from 'lucide-react'
+import { ClipboardList, Plus, Search, RefreshCw, Loader2, AlertTriangle, Save, X, Database, HardDrive, CheckCircle2, Sparkles, CalendarPlus, ArrowDownToLine, Trash2 } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { CustomerRecord } from '@shared/commercial/models'
 import { listCustomers } from '@renderer/services/commercial/customerService'
+import { parseRrn } from '@renderer/services/commercial/customerValidation'
+import { setSchedulePrefill } from '@renderer/services/commercial/schedulePrefillStore'
+import { deleteConsultationRecord } from '@renderer/services/commercial/recordDeleteService'
+import type { ScheduleType } from '@renderer/services/commercial/scheduleValidation'
 import {
   createConsultation,
   filterPendingNextActions,
   filterToday,
   listConsultations,
+  requestConsultCoach,
   searchConsultations,
   updateConsultation,
+  type ConsultCoach,
   type ConsultationDataMode,
   type ConsultationWithCustomer
 } from '@renderer/services/commercial/consultationService'
@@ -59,6 +65,17 @@ export default function SupabaseConsultationManager(): JSX.Element {
   const [selected, setSelected] = useState<ConsultationWithCustomer | null>(null)
 
   const roleHint = session.role === 'fc' ? '내 상담기록만 표시됩니다.' : session.role === 'team-leader' ? '팀 상담기록이 표시됩니다.' : '전체 상담기록이 표시됩니다.'
+
+  const removeConsultation = async (id: string, who?: string): Promise<void> => {
+    if (typeof window !== 'undefined' && !window.confirm(`${who ?? '이'} 상담기록을 완전히 삭제할까요?\n삭제하면 되돌릴 수 없습니다.`)) return
+    const res = await deleteConsultationRecord(id)
+    if (!res.ok) {
+      setError(res.error)
+      return
+    }
+    setSelected(null)
+    await load()
+  }
 
   const load = async (): Promise<void> => {
     setLoading(true)
@@ -161,6 +178,18 @@ export default function SupabaseConsultationManager(): JSX.Element {
         <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
           <div className="mb-2 text-[11px] font-semibold text-slate-300">새 상담기록</div>
           <Fields input={form} onChange={setForm} customers={customers} />
+          <AiCoachBlock
+            summary={form.summary ?? ''}
+            typeLabel={CONSULTATION_TYPE_LABEL[form.consultationType]}
+            customerId={form.customerId}
+            customers={customers}
+            allConsults={list}
+            onApply={(text) => setForm((f) => ({ ...f, nextAction: text }))}
+            onSchedule={(type, customerId, hint) => {
+              setSchedulePrefill({ type, customerId, hint })
+              navigate({ name: 'schedule' })
+            }}
+          />
           {formErrors.length > 0 ? <ul className="mt-2 space-y-0.5 text-[10px] text-rose-600">{formErrors.map((e) => <li key={e}>• {e}</li>)}</ul> : null}
           <div className="mt-2 flex gap-2">
             <button type="button" onClick={() => void submitCreate()} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60">{saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} 저장</button>
@@ -184,6 +213,7 @@ export default function SupabaseConsultationManager(): JSX.Element {
               <th className="py-1.5 pr-2 font-medium">예정일</th>
               <th className="py-1.5 pr-2 font-medium">다음 액션</th>
               <th className="py-1.5 pr-2 font-medium">최근 수정</th>
+              <th className="py-1.5 pr-1 font-medium" aria-label="삭제" />
             </tr></thead>
             <tbody>
               {visible.map((c) => (
@@ -194,6 +224,19 @@ export default function SupabaseConsultationManager(): JSX.Element {
                   <td className="py-1.5 pr-2 text-slate-500">{c.scheduledAt ? new Date(c.scheduledAt).toLocaleDateString() : '-'}</td>
                   <td className="py-1.5 pr-2 text-slate-500">{c.nextAction ? '있음' : '-'}</td>
                   <td className="py-1.5 pr-2 text-slate-400">{c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : '-'}</td>
+                  <td className="py-1.5 pr-1">
+                    <button
+                      type="button"
+                      aria-label="상담기록 삭제"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void removeConsultation(c.id, c.customerName ?? custName(c.customerId))
+                      }}
+                      className="rounded p-1 text-slate-400 transition hover:text-rose-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -209,11 +252,138 @@ export default function SupabaseConsultationManager(): JSX.Element {
             <button type="button" onClick={() => { setSelected(null); setFormErrors([]) }} className="text-slate-400 hover:text-slate-600"><X className="h-3.5 w-3.5" /></button>
           </div>
           <Fields input={{ customerId: selected.customerId, consultationType: selected.consultationType, status: selected.status, summary: selected.summary, nextAction: selected.nextAction ?? '', scheduledAt: selected.scheduledAt ?? '', completedAt: selected.completedAt ?? '' }} onChange={(v) => setSelected({ ...selected, consultationType: v.consultationType, status: v.status, summary: v.summary ?? '', nextAction: v.nextAction, scheduledAt: v.scheduledAt, completedAt: v.completedAt })} customers={customers} lockCustomer />
+          <AiCoachBlock
+            summary={selected.summary ?? ''}
+            typeLabel={CONSULTATION_TYPE_LABEL[selected.consultationType]}
+            customerId={selected.customerId}
+            customers={customers}
+            allConsults={list}
+            excludeId={selected.id}
+            onApply={(text) => setSelected((s) => (s ? { ...s, nextAction: text } : s))}
+            onSchedule={(type, customerId, hint) => {
+              setSchedulePrefill({ type, customerId, hint })
+              navigate({ name: 'schedule' })
+            }}
+          />
           {formErrors.length > 0 ? <ul className="mt-2 space-y-0.5 text-[10px] text-rose-600">{formErrors.map((e) => <li key={e}>• {e}</li>)}</ul> : null}
           <div className="mt-2 flex gap-2">
             <button type="button" onClick={() => void saveEdit()} disabled={saving} className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-60">{saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} 저장</button>
             {selected.status !== 'completed' ? (
               <button type="button" onClick={() => setSelected({ ...selected, status: 'completed', completedAt: selected.completedAt || new Date().toISOString() })} className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700"><CheckCircle2 className="h-3 w-3" /> 완료 처리</button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * AI 상담 코치 — 요약을 분석해 니즈·추천 접근·다음 액션을 제안. 고객 정보(나이·성별·
+ * 병력·가족 수)와 같은 고객의 과거 상담 요약(최근 3건)을 함께 보낸다. 제안은
+ * [다음 액션에 적용] / [일정으로 등록] 원클릭.
+ */
+function AiCoachBlock({
+  summary,
+  typeLabel,
+  customerId,
+  customers,
+  allConsults,
+  excludeId,
+  onApply,
+  onSchedule
+}: {
+  summary: string
+  typeLabel: string
+  customerId: string
+  customers: CustomerRecord[]
+  allConsults: ConsultationWithCustomer[]
+  excludeId?: string
+  onApply: (nextAction: string) => void
+  onSchedule: (type: ScheduleType, customerId: string | undefined, hint: string) => void
+}): JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const [coach, setCoach] = useState<ConsultCoach | undefined>()
+  const [err, setErr] = useState<string | undefined>()
+
+  const run = async (): Promise<void> => {
+    setBusy(true)
+    setErr(undefined)
+    setCoach(undefined)
+    const cust = customers.find((c) => c.id === customerId)
+    const rrn = cust ? parseRrn(cust.rrn) : null
+    const familyCount = cust?.householdId ? customers.filter((c) => c.householdId === cust.householdId).length : undefined
+    const history = allConsults
+      .filter((c) => c.customerId === customerId && c.id !== excludeId && (c.summary ?? '').trim())
+      .sort((a, b) => Date.parse(b.updatedAt ?? '') - Date.parse(a.updatedAt ?? ''))
+      .slice(0, 3)
+      .map((c) => `${CONSULTATION_TYPE_LABEL[c.consultationType]} — ${c.summary}`)
+    const res = await requestConsultCoach({
+      summary,
+      typeLabel,
+      customer: cust
+        ? {
+            name: cust.name,
+            age: rrn?.age,
+            gender: rrn?.gender,
+            medicalHistory: cust.medicalHistory,
+            familyCount
+          }
+        : undefined,
+      history
+    })
+    setBusy(false)
+    if (!res.ok || !res.coach) {
+      setErr(res.error)
+      return
+    }
+    setCoach(res.coach)
+  }
+
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => void run()}
+        disabled={busy || !summary.trim()}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm transition hover:brightness-110 disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} AI 코치 분석
+        {!summary.trim() ? <span className="font-medium opacity-80">(요약 먼저 입력)</span> : null}
+      </button>
+      {err ? <p className="mt-1.5 text-[11px] text-rose-600">{err}</p> : null}
+      {coach ? (
+        <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
+          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-indigo-700">
+            <Sparkles className="h-3.5 w-3.5" /> AI 상담 코치
+          </div>
+          <div className="space-y-1.5 text-[12px] leading-6 text-slate-200">
+            <div>
+              <b className="text-slate-100">니즈</b> — {coach.needs}
+            </div>
+            <div>
+              <b className="text-slate-100">추천 접근</b> — {coach.approach}
+            </div>
+            <div>
+              <b className="text-slate-100">다음 액션</b> — {coach.nextAction}
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => onApply(coach.nextAction)}
+              className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-indigo-500"
+            >
+              <ArrowDownToLine className="h-3 w-3" /> 다음 액션에 적용
+            </button>
+            {coach.next ? (
+              <button
+                type="button"
+                onClick={() => onSchedule(coach.next!.type as ScheduleType, customerId || undefined, coach.next!.suggestion)}
+                className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-[11px] font-bold text-indigo-600 transition hover:bg-indigo-50"
+              >
+                <CalendarPlus className="h-3 w-3" /> {coach.next.suggestion} → 일정 등록
+              </button>
             ) : null}
           </div>
         </div>

@@ -58,6 +58,14 @@ export async function createCustomer(input: CustomerInput): Promise<CustomerMuta
     status: input.status,
     tags: input.tags,
     memo: input.memo?.trim() || undefined,
+    rrn: input.rrn?.trim() || undefined,
+    medicalHistory: input.medicalHistory?.trim() || undefined,
+    heightCm: input.heightCm,
+    weightKg: input.weightKg,
+    householdId: input.householdId,
+    relation: input.relation,
+    attachments: input.attachments ?? [],
+    registeredInsurers: [],
     createdAt: now,
     updatedAt: now
   }
@@ -80,6 +88,13 @@ export async function updateCustomer(id: string, input: Partial<CustomerInput>):
   if (input.status !== undefined) patch.status = input.status
   if (input.tags !== undefined) patch.tags = input.tags
   if (input.memo !== undefined) patch.memo = input.memo?.trim() || undefined
+  if (input.rrn !== undefined) patch.rrn = input.rrn?.trim() || undefined
+  if (input.medicalHistory !== undefined) patch.medicalHistory = input.medicalHistory?.trim() || undefined
+  if (input.heightCm !== undefined) patch.heightCm = input.heightCm
+  if (input.weightKg !== undefined) patch.weightKg = input.weightKg
+  if (input.householdId !== undefined) patch.householdId = input.householdId
+  if (input.relation !== undefined) patch.relation = input.relation
+  if (input.attachments !== undefined) patch.attachments = input.attachments
   const saved = await customerRepository.update(id, patch)
   return saved ? { ok: true, mode: 'local-mock', customer: saved } : { ok: false, mode: 'local-mock', error: '고객 저장에 실패했습니다.' }
 }

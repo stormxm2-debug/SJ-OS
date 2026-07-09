@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LogIn, Loader2, AlertTriangle, KeyRound, Smartphone, ChevronDown } from 'lucide-react'
+import { LogIn, Loader2, AlertTriangle, KeyRound, Smartphone } from 'lucide-react'
 import BrandLogo from '@renderer/components/brand/BrandLogo'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { DEMO_USERS, ROLE_LABEL } from '@renderer/navigation/roleAccess'
@@ -8,14 +8,13 @@ import { validatePassword } from '@renderer/services/commercial/phoneAuthService
 /**
  * SJ OS login — simple, admin-managed phone + password.
  *
- * Normal staff see ONLY: 휴대폰 번호 / 비밀번호 / 로그인 / 비밀번호 찾기. No Kakao, no SMS
- * OTP, no Google, no email button. First-password setup appears inline only for a
- * registered phone whose password is not set. Local-demo + email login are hidden
- * behind a small 개발자/관리자 로그인 toggle (dev/admin only). Never shows or logs
- * phone/password/tokens. Full page (no blocking backdrop).
+ * EVERYONE (staff AND admin/owner) logs in with 휴대폰 번호 / 비밀번호 — there is no
+ * email login. First-password setup appears inline only for a registered phone whose
+ * password is not set. The local-demo picker shows ONLY when Supabase is not
+ * configured (dev machines). Never shows or logs phone/password/tokens.
  */
 export default function LoginScreen(): JSX.Element {
-  const { phoneSignIn, claimPhonePassword, requestPhoneReset, login, supabaseSignIn, supabaseConfigured } = useSession()
+  const { phoneSignIn, claimPhonePassword, requestPhoneReset, login, supabaseConfigured } = useSession()
 
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
@@ -32,11 +31,6 @@ export default function LoginScreen(): JSX.Element {
   const [forgotOpen, setForgotOpen] = useState(false)
   const [forgotPhone, setForgotPhone] = useState('')
   const [forgotMsg, setForgotMsg] = useState<string | undefined>()
-
-  // dev/admin
-  const [devOpen, setDevOpen] = useState(false)
-  const [email, setEmail] = useState('')
-  const [emailPw, setEmailPw] = useState('')
 
   const onLogin = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
@@ -118,35 +112,21 @@ export default function LoginScreen(): JSX.Element {
 
         <p className="mt-4 text-center text-[11px] text-slate-400">등록된 직원만 이용할 수 있습니다.</p>
 
-        {/* Dev/admin only: local-demo + email login (hidden by default) */}
-        <div className="mt-4 border-t border-slate-100 pt-3">
-          <button type="button" onClick={() => setDevOpen((v) => !v)} className="flex w-full items-center justify-center gap-1 text-[10px] font-medium text-slate-400">
-            개발자/관리자 로그인 <ChevronDown className={['h-3 w-3 transition', devOpen ? 'rotate-180' : ''].join(' ')} />
-          </button>
-          {devOpen ? (
-            <div className="mt-2 space-y-2">
-              {supabaseConfigured ? (
-                <div className="rounded-lg border border-slate-200 bg-white p-2">
-                  <div className="mb-1 text-[10px] font-semibold text-slate-500">이메일 로그인 (관리자)</div>
-                  <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일" className="w-full rounded border border-slate-200 px-2 py-1.5 text-[12px] focus:outline-none" />
-                  <input type="password" value={emailPw} onChange={(e) => setEmailPw(e.target.value)} placeholder="비밀번호" className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5 text-[12px] focus:outline-none" />
-                  <button type="button" onClick={() => void supabaseSignIn(email, emailPw)} className="mt-1.5 w-full rounded bg-slate-700 py-1.5 text-[12px] font-semibold text-white">이메일 로그인</button>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-slate-200 bg-white p-2">
-                  <div className="mb-1 text-[10px] font-semibold text-slate-500">로컬 MVP 로그인 (개발/테스트)</div>
-                  <div className="flex flex-wrap gap-1">
-                    {DEMO_USERS.map((u) => (
-                      <button key={u.id} type="button" onClick={() => login(u)} className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50">
-                        {u.name}·{ROLE_LABEL[u.role]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+        {/* Local dev ONLY (Supabase not configured): demo-user picker. Production has no email login. */}
+        {!supabaseConfigured ? (
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <div className="rounded-lg border border-slate-200 bg-white p-2">
+              <div className="mb-1 text-[10px] font-semibold text-slate-500">로컬 MVP 로그인 (개발/테스트)</div>
+              <div className="flex flex-wrap gap-1">
+                {DEMO_USERS.map((u) => (
+                  <button key={u.id} type="button" onClick={() => login(u)} className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50">
+                    {u.name}·{ROLE_LABEL[u.role]}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )

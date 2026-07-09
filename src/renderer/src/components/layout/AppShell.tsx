@@ -3,13 +3,18 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import Router from '../Router'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
-import JarvisLauncher from '@renderer/components/jarvis/JarvisLauncher'
+import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
+import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
+import { useWakeKey } from '@renderer/services/commercial/wakeResync'
 
 /**
  * The CEO command center frame: persistent sidebar + topbar wrapping the
  * active view, which is chosen by the in-renderer Router.
  */
 export default function AppShell(): JSX.Element {
+  // 모바일/절전 복귀 시 전체 화면 재조회 — key 리마운트로 모든 화면이 최신 데이터를 다시 불러온다.
+  const { wakeKey } = useWakeKey()
+
   // Interaction watchdog (long-session stability). A single 5s interval that
   // guarantees the app can never be left unclickable: if anything ever leaves
   // global pointer-events disabled on <body>/<html>, it is cleared. Registered
@@ -30,18 +35,17 @@ export default function AppShell(): JSX.Element {
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main key={wakeKey} className="flex-1 overflow-y-auto p-6">
           <Router />
         </main>
       </div>
+      {/* 자비스 플로팅 버튼은 대표 지시로 제거 (2026-07) — 자비스는 대시보드
+          빠른 실행/단축키로 열 수 있고, 패널 자체는 유지된다. */}
       <JarvisPanel />
-      <JarvisLauncher />
-      {/* Interaction-health indicator. pointer-events-none so it can never block
-          clicks; confirms the stabilization build is running. */}
-      <div className="pointer-events-none fixed bottom-2 left-2 z-30 inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-white/90 px-2 py-0.5 text-[10px] font-medium text-emerald-600 shadow-sm">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-        밝은 UI 안전 빌드 · UI 클릭 가능
-      </div>
+      {/* 우하단 알림 (고객등록 요청/처리) + 출근 후 다짐 잠금 — wakeKey로 함께
+          리마운트해 realtime 구독도 복귀 시 새로 맺는다. */}
+      <NotificationCenter key={`nc-${wakeKey}`} />
+      <ResolutionLockGate key={`rg-${wakeKey}`} />
     </div>
   )
 }
