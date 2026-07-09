@@ -17,6 +17,7 @@ export type View =
   | { name: 'consultation' }
   | { name: 'insurance-analysis' }
   | { name: 'claim-assistant' }
+  | { name: 'wiki' }
   | { name: 'app-builder' }
   | { name: 'devprompt' }
   | { name: 'cto' }
@@ -36,5 +37,8 @@ export type View =
   | { name: 'staff-login' }
   | { name: 'staff-team' }
   | { name: 'announcements' }
+  | { name: 'registration-admin' }
+  | { name: 'staff-overview' }
+  | { name: 'staff-table' }
 
 export type ViewName = View['name']

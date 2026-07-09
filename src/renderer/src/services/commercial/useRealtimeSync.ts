@@ -45,9 +45,30 @@ export function useRealtimeSync(tables: string[], onChange: () => void): void {
       channel.subscribe()
     })()
 
+    // 폴링 백업: 실시간 소켓이 백신/네트워크에 막혀도 데이터가 따라오도록
+    // 45초 주기 + 창으로 돌아올 때(focus/visible) 즉시 재조회한다.
+    const poll = window.setInterval(ping, 45000)
+    const onFocus = (): void => ping()
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') ping()
+    }
+    // pageshow(persisted)=모바일 bfcache 복원(뒤로가기/앱 재진입 — visibilitychange가 안 오는
+    // iOS/인앱브라우저 케이스), online=네트워크 복구. 둘 다 즉시 재조회.
+    const onPageShow = (): void => ping()
+    const onOnline = (): void => ping()
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('pageshow', onPageShow)
+    window.addEventListener('online', onOnline)
+
     return () => {
       active = false
       window.clearTimeout(debounce)
+      window.clearInterval(poll)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('pageshow', onPageShow)
+      window.removeEventListener('online', onOnline)
       if (channel) {
         try {
           channel.unsubscribe()

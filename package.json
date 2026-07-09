@@ -1,6 +1,6 @@
 {
   "name": "sj-ai-company",
-  "version": "0.0.0",
+  "version": "1.0.14",
   "private": true,
   "description": "SJ AI Company — a desktop AI engineering organization. The CEO gives one instruction; the AI company executes. (MVP shell)",
   "author": "SJ AI Company",
@@ -28,6 +28,14 @@
   "build": {
     "appId": "com.sjinvest.sjos",
     "productName": "SJ INVEST",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "stormxm2-debug",
+        "repo": "SJ-OS",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "release"
     },
@@ -48,10 +56,12 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.1",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^1.22.0",
     "pdfjs-dist": "^6.1.200",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

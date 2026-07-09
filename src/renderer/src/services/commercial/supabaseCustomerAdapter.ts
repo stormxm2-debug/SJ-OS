@@ -1,4 +1,4 @@
-import type { CustomerRecord, CustomerStatus } from '@shared/commercial/models'
+import type { CustomerAttachment, CustomerRecord, CustomerStatus } from '@shared/commercial/models'
 import type { CustomerInput } from './customerValidation'
 import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
 
@@ -15,7 +15,7 @@ import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const SELECT_COLS =
-  'id, owner_staff_id, team_id, name, phone, birth_date, address, source, status, tags, memo, created_at, updated_at'
+  'id, owner_staff_id, team_id, name, phone, birth_date, address, source, status, tags, memo, rrn, medical_history, height_cm, weight_kg, household_id, relation, attachments, registered_insurers, created_at, updated_at'
 
 export type AdapterReason = 'not-configured' | 'no-session' | 'error'
 export interface AdapterOk<T> {
@@ -61,6 +61,14 @@ function mapRow(row: Record<string, unknown>): CustomerRecord {
     status: (row.status as CustomerStatus) ?? 'new',
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
     memo: (row.memo as string | null) ?? undefined,
+    rrn: (row.rrn as string | null) ?? undefined,
+    medicalHistory: (row.medical_history as string | null) ?? undefined,
+    heightCm: row.height_cm != null ? Number(row.height_cm) : undefined,
+    weightKg: row.weight_kg != null ? Number(row.weight_kg) : undefined,
+    householdId: (row.household_id as string | null) ?? undefined,
+    relation: (row.relation as string | null) ?? undefined,
+    attachments: Array.isArray(row.attachments) ? (row.attachments as CustomerAttachment[]) : [],
+    registeredInsurers: Array.isArray(row.registered_insurers) ? (row.registered_insurers as string[]) : [],
     createdAt: String(row.created_at ?? ''),
     updatedAt: String(row.updated_at ?? '')
   }
@@ -107,7 +115,14 @@ export const supabaseCustomerAdapter = {
       source: input.source?.trim() || null,
       status: input.status,
       tags: input.tags,
-      memo: input.memo?.trim() || null
+      memo: input.memo?.trim() || null,
+      rrn: input.rrn?.trim() || null,
+      medical_history: input.medicalHistory?.trim() || null,
+      height_cm: input.heightCm || null,
+      weight_kg: input.weightKg || null,
+      household_id: input.householdId || null,
+      relation: input.relation?.trim() || null,
+      attachments: input.attachments ?? []
     }
     const { data, error } = await client.from('customers').insert(row).select(SELECT_COLS).single()
     if (error) return err('error', '고객 저장에 실패했습니다.')
@@ -127,6 +142,13 @@ export const supabaseCustomerAdapter = {
     if (input.status !== undefined) patch.status = input.status
     if (input.tags !== undefined) patch.tags = input.tags
     if (input.memo !== undefined) patch.memo = input.memo?.trim() || null
+    if (input.rrn !== undefined) patch.rrn = input.rrn?.trim() || null
+    if (input.medicalHistory !== undefined) patch.medical_history = input.medicalHistory?.trim() || null
+    if (input.heightCm !== undefined) patch.height_cm = input.heightCm || null
+    if (input.weightKg !== undefined) patch.weight_kg = input.weightKg || null
+    if (input.householdId !== undefined) patch.household_id = input.householdId || null
+    if (input.relation !== undefined) patch.relation = input.relation?.trim() || null
+    if (input.attachments !== undefined) patch.attachments = input.attachments
     const { data, error } = await client.from('customers').update(patch).eq('id', id).select(SELECT_COLS).single()
     if (error) return err('error', '고객 저장에 실패했습니다.')
     return { ok: true, data: mapRow(data) }

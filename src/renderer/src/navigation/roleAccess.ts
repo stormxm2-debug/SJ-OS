@@ -30,6 +30,7 @@ export const STAFF_ROUTES: ViewName[] = [
   'sales-activity',
   'insurance-analysis',
   'claim-assistant',
+  'wiki',
   'notice',
   'fcos',
   'assistant' // 자비스 / 경영 비서 — available to all roles

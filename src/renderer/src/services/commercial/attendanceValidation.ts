@@ -34,7 +34,12 @@ export interface AttendanceInput {
    */
   photoDataUrl?: string
   watermarkText?: string
+  /** 오늘의 다짐 (출근 시 필수). */
   memo?: string
+  /** 지각 벌금(원). */
+  lateFee?: number
+  /** 역지오코딩 주소. */
+  address?: string
 }
 
 /** ~8MB cap on the inline photo data URL to bound renderer memory. */

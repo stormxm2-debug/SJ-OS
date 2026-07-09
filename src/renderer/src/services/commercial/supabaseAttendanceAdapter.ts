@@ -14,7 +14,7 @@ import { uploadAttendancePhoto, createSignedPhotoUrls, isAttendancePhotoStorageC
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const SELECT_COLS =
-  'id, staff_id, type, status, timestamp, photo_path, watermark_text, memo, created_at, staff:profiles(id, name, role, team_id)'
+  'id, staff_id, type, status, timestamp, photo_path, watermark_text, memo, late_fee, address, created_at, staff:profiles(id, name, role, team_id)'
 
 export type AdapterReason = 'not-configured' | 'no-session' | 'error'
 export interface AdapterOk<T> {
@@ -61,6 +61,8 @@ function mapRow(row: Record<string, unknown>): AttendanceWithStaff {
     photoUrl: undefined, // never expose raw photo data; only photo_path is stored
     watermarkText: (row.watermark_text as string | null) ?? undefined,
     memo: (row.memo as string | null) ?? undefined,
+    lateFee: row.late_fee != null ? Number(row.late_fee) : 0,
+    address: (row.address as string | null) ?? undefined,
     teamId: staff ? ((staff.team_id as string | null) ?? undefined) : undefined
   }
 }
@@ -80,7 +82,9 @@ function buildInsert(input: AttendanceInput, staffId: string): Record<string, un
     timestamp: input.timestamp,
     photo_path: input.photoPath?.trim() || null,
     watermark_text: input.watermarkText?.trim() || null,
-    memo: input.memo?.trim() || null
+    memo: input.memo?.trim() || null,
+    late_fee: input.lateFee ?? 0,
+    address: input.address?.trim() || null
   }
 }
 
@@ -114,6 +118,40 @@ async function attachSignedUrls(client: any, rows: any[], mapped: AttendanceWith
 }
 
 export const supabaseAttendanceAdapter = {
+  /** GPS 주소 백그라운드 채움 (본인 기록만 — RLS 강제). 촬영/기록을 지연시키지 않기 위해 저장 후 호출된다. */
+  async updateAddress(recordId: string, address: string): Promise<AdapterResult<void>> {
+    const client = await getClient()
+    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
+    try {
+      const { error } = await client
+        .from('attendance_records')
+        .update({ address: address.trim() || null })
+        .eq('id', recordId)
+      if (error) return err('error', '주소 저장에 실패했습니다.')
+      return { ok: true, data: undefined }
+    } catch {
+      return err('error', '주소 저장에 실패했습니다.')
+    }
+  },
+
+  /** 오늘의 다짐 저장 (본인 기록만 — RLS 강제). 출근 후 잠금 해제용. */
+  async updateResolution(recordId: string, memo: string): Promise<AdapterResult<void>> {
+    const client = await getClient()
+    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
+    try {
+      const { error } = await client
+        .from('attendance_records')
+        .update({ memo: memo.trim() || null })
+        .eq('id', recordId)
+      if (error) return err('error', '다짐 저장에 실패했습니다.')
+      return { ok: true, data: undefined }
+    } catch {
+      return err('error', '다짐 저장에 실패했습니다.')
+    }
+  },
+
   async listAttendanceRecords(): Promise<AdapterResult<AttendanceWithStaff[]>> {
     const client = await getClient()
     if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
