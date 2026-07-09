@@ -671,6 +671,43 @@ export async function analyzeClaimExpert(args: {
   }
 
   const result = parts.length === 1 ? parts[0] : mergeResults(parts)
+
+  // 2차 자기검증 — 고속 모델이 담보별 금액을 payRule×의료사실로 재검산한다.
+  // 명백한 계산 오류만 보정하고(불확실은 건드리지 않음), 검산 실패는 조용히 무시(보조 기능).
+  onStatus('산정 내역 자동 검산 중…')
+  const ver = await postJson(
+    { mode: 'verify', analysis: { companies: result.companies }, docs: allDocs.map(({ fileName: _f, ...rest }) => rest) },
+    120000
+  )
+  if (ver.ok) {
+    const checks = Array.isArray(ver.data?.checks) ? (ver.data.checks as Record<string, unknown>[]) : []
+    const fixedNotes: string[] = []
+    for (const c of checks) {
+      if (c.verdict !== 'wrong') continue
+      const amt = typeof c.correctAmount === 'number' && Number.isFinite(c.correctAmount) ? Math.round(c.correctAmount) : null
+      if (amt == null || amt < 0) continue
+      const comp = result.companies.find((x) => x.name === String(c.company ?? ''))
+      const item = comp?.items.find((x) => x.coverage === String(c.coverage ?? ''))
+      if (!comp || !item || item.amount === amt) continue
+      fixedNotes.push(`${item.coverage}: ${won(item.amount)} → ${won(amt)}`)
+      item.amount = amt
+      item.calc = [item.calc, '검산 보정'].filter(Boolean).join(' · ')
+    }
+    if (fixedNotes.length > 0) {
+      const re = reconcile(result.companies)
+      result.companies = re.companies
+      result.grandTotal = re.grandTotal
+      result.cautions = [`🔍 자동 검산으로 ${fixedNotes.length}개 담보 금액을 보정했습니다 — ${fixedNotes.join(' / ')}`, ...result.cautions]
+      result.customerMessage = `${result.customerMessage}\n(검산 보정 반영 — 총 예상 보험금 ${won(result.grandTotal)})`
+    }
+    const missed = Array.isArray(ver.data?.missedCoverages) ? (ver.data.missedCoverages as Record<string, unknown>[]) : []
+    for (const m of missed.slice(0, 5)) {
+      result.cautions = [
+        ...result.cautions,
+        `🔍 검산 의견: "${String(m.coverage ?? '')}" 담보(${String(m.company ?? '')})도 지급 검토 여지 — ${String(m.reason ?? '')}`
+      ]
+    }
+  }
   // 서버가 용량 한도로 뒤쪽 문서를 계산에서 제외했다면 반드시 겉으로 알린다.
   if (totalDropped > 0) {
     result.cautions = [

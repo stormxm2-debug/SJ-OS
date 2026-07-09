@@ -317,6 +317,20 @@ const SYNTH_SYSTEM = [
   '모두 한국어.'
 ].join('\n')
 
+const VERIFY_SYSTEM = [
+  '당신은 보험금 산정 검산 전문가입니다. 아래 "분석 결과"의 담보별 금액이 "문서 추출 데이터"의 사실(지급규칙·의료사실)과 일치하는지 항목별로 재검산해 아래 JSON으로만 답하세요.',
+  '응답의 첫 글자는 반드시 { 여야 합니다 — 인사말·설명·마크다운 코드펜스(```) 절대 금지.',
+  '',
+  '{"checks":[{"company":"보험사명","coverage":"담보명","verdict":"ok|wrong|uncertain","correctAmount":숫자 또는 null,"reason":"근거 (60자 이내)"}],',
+  '"missedCoverages":[{"company":"보험사명","coverage":"의료사실상 지급 가능해 보이는데 분석에서 빠진 담보","reason":"60자 이내"}]}',
+  '',
+  '규칙:',
+  '1) 각 items 항목을 payRule×의료사실로 직접 재계산. 일치하면 ok, 계산이 명백히 틀리면 wrong+correctAmount, 데이터 부족으로 판단 불가면 uncertain (correctAmount는 null).',
+  '2) wrong은 확실할 때만 — 약관 해석 차이 정도면 uncertain으로. 추측으로 금액을 바꾸지 말 것.',
+  '3) 증권 coverages 중 의료사실과 맞물려 지급 가능해 보이는데 items/excluded 어디에도 없는 담보만 missedCoverages에 (없으면 빈 배열).',
+  '4) 문서 추출 데이터에 있는 사실만 근거로. 모두 한국어.'
+].join('\n')
+
 const APPEAL_SYSTEM = [
   '당신은 고객 편에 선 보험 보상 전문가입니다. 보험사 보상팀의 부지급/삭감 통보에 대한 재검토(이의) 요청서를 작성합니다.',
   '아래 JSON으로만 답하세요: {"appealLetter":"재검토 요청서 전문","keyPoints":["핵심 반박 포인트"]}',
@@ -523,6 +537,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const parsed = parseJson(res.text ?? '')
     if (!parsed || !Array.isArray(parsed.companies)) return json({ success: false, error: '종합 결과 형식 오류 — 다시 시도해 주세요.' }, 502)
     return json({ success: true, mode: 'synthesize', result: parsed, droppedDocs: dropped, truncated: Boolean(res.truncated) })
+  }
+
+  // ── verify: 종합 결과의 담보별 금액을 고속 모델로 재검산 (2차 자기검증) ──────
+  if (mode === 'verify') {
+    const analysis = body.analysis
+    const docs = Array.isArray(body.docs) ? body.docs : []
+    if (!analysis || docs.length === 0) return json({ success: false, error: '검산할 분석 결과와 문서 데이터가 필요합니다.' }, 400)
+    const content = [
+      {
+        type: 'text',
+        text: [
+          '--- 분석 결과 (검산 대상) ---',
+          JSON.stringify(analysis).slice(0, 150000),
+          '',
+          '--- 문서 추출 데이터 (사실 근거) ---',
+          JSON.stringify(docs).slice(0, 250000)
+        ].join('\n')
+      }
+    ]
+    const res = await callClaude(apiKey, VERIFY_SYSTEM, content, 6000, false, EXTRACT_MODEL())
+    if (!res.ok) return json({ success: false, error: res.error }, 502)
+    const parsed = parseJson(res.text ?? '')
+    if (!parsed || !Array.isArray(parsed.checks)) return json({ success: false, error: '검산 결과 형식 오류.' }, 502)
+    return json({ success: true, mode: 'verify', checks: parsed.checks, missedCoverages: Array.isArray(parsed.missedCoverages) ? parsed.missedCoverages : [] })
   }
 
   if (mode === 'appeal') {
