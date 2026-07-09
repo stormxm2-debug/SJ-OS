@@ -43,6 +43,7 @@ import {
   type PolicyTerm
 } from '@renderer/services/insurance-claim/policyTermsService'
 import type { CustomerRecord } from '@shared/commercial/models'
+import ClaimFaxPanel from '@renderer/components/insurance-claim/ClaimFaxPanel'
 
 /**
  * 보험금 청구비서 완전판 — Claude 기반 보상전문가.
@@ -830,6 +831,9 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
               </div>
             ) : null}
           </div>
+
+          {/* 자동청구 · 팩스 동시 접수 (AI 라우팅으로 회사별 필요 서류만) */}
+          <ClaimFaxPanel result={result} files={files} customer={customer} />
 
           {/* 고객 발송 안내문 */}
           <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm sm:p-5">

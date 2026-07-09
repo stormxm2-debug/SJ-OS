@@ -18,7 +18,9 @@ import {
   Pencil,
   Trash2,
   UsersRound,
-  ChevronDown
+  ChevronDown,
+  Share2,
+  MessageCircle
 } from 'lucide-react'
 import type { CustomerRecord, ScheduleAiBrief } from '@shared/commercial/models'
 import { listCustomers } from '@renderer/services/commercial/customerService'
@@ -45,6 +47,8 @@ import { deleteScheduleRecord } from '@renderer/services/commercial/recordDelete
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
 import { listOverviewStaff, type OverviewStaff } from '@renderer/services/commercial/staffOverviewService'
+import { buildMeetingMessage, shareMeetingText } from '@renderer/services/share/meetingShare'
+import { sendMeetingAlimtalk } from '@renderer/services/alimtalk/alimtalkService'
 
 /**
  * 일정관리 v3 — 주간 중심 + AI 한줄 등록.
@@ -865,9 +869,14 @@ function EventCard({
   onEdit: (ev: ScheduleWithCustomer) => void
   onRegisterNext: (type: ScheduleType, customerId?: string, hint?: string) => void
 }): JSX.Element {
+  const { session } = useSession()
   const [memo, setMemo] = useState(event.memo ?? '')
   const [finishing, setFinishing] = useState(false)
   const [analysisNote, setAnalysisNote] = useState<string | undefined>()
+
+  // 카톡 공유 / 알림톡 발송
+  const [sendingTalk, setSendingTalk] = useState(false)
+  const [notifyNote, setNotifyNote] = useState<string | undefined>()
 
   // 완료 일정: 메모·주소만 수정 (승인 범위)
   const [editDone, setEditDone] = useState(false)
@@ -905,6 +914,22 @@ function EventCard({
     if (typeof window !== 'undefined' && !window.confirm('이 일정을 취소 처리할까요?')) return
     const res = await updateScheduleStatus(event.id, 'cancelled')
     if (res.ok) onChanged()
+  }
+
+  /** 미팅 안내 문구를 OS 공유창(카톡 방 선택)으로 — 미지원 환경은 클립보드 복사. */
+  const shareKakao = async (): Promise<void> => {
+    const outcome = await shareMeetingText(buildMeetingMessage(event, session.name))
+    setNotifyNote(outcome === 'copied' ? '안내 문구를 복사했어요 — 카톡에 붙여넣기 하세요.' : undefined)
+  }
+
+  /** 고객에게 알림톡 발송 (전화번호는 서버에서만 조회). */
+  const sendTalk = async (): Promise<void> => {
+    const who = event.customerName ?? '고객'
+    if (!window.confirm(`${who}님에게 미팅 안내 알림톡을 보낼까요?\n(건당 소액의 발송 요금이 발생합니다)`)) return
+    setSendingTalk(true)
+    const res = await sendMeetingAlimtalk(event.id, 'confirm')
+    setSendingTalk(false)
+    setNotifyNote(res.message)
   }
 
   const saveDoneEdit = async (): Promise<void> => {
@@ -998,6 +1023,30 @@ function EventCard({
             <MapPin className="h-3.5 w-3.5 text-slate-500" /> {event.location}
           </span>
           <NavButtons location={event.location} />
+        </div>
+      ) : null}
+
+      {/* 예정 일정: 고객에게 카톡 안내 (알림톡 자동 발송 + 무료 공유 폴백) */}
+      {isPlanned && event.type !== 'personal' && event.type !== 'internal' ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void shareKakao()}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-white px-2 py-1 text-[11px] font-medium text-slate-400 transition hover:border-amber-300 hover:text-amber-700"
+          >
+            <Share2 className="h-3 w-3" /> 카톡 공유
+          </button>
+          {event.customerId ? (
+            <button
+              type="button"
+              onClick={() => void sendTalk()}
+              disabled={sendingTalk}
+              className="inline-flex items-center gap-1 rounded-lg bg-[#fee500] px-2 py-1 text-[11px] font-semibold text-[#191919] transition hover:brightness-95 disabled:opacity-60"
+            >
+              {sendingTalk ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageCircle className="h-3 w-3" />} 고객에게 카톡 안내
+            </button>
+          ) : null}
+          {notifyNote ? <span className="text-[11px] text-slate-500">{notifyNote}</span> : null}
         </div>
       ) : null}
 
