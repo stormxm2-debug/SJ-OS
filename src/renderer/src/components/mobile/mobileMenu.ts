@@ -12,7 +12,8 @@ import {
   UsersRound,
   LayoutList,
   ClipboardCheck,
-  Share2
+  Share2,
+  Phone
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -55,6 +56,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     items: [
       { key: 'claim-assistant', label: '보험금 청구비서', icon: FileText, view: { name: 'claim-assistant' } },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' } },
+      { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' } },
       { key: 'jarvis', label: '자비스', icon: Bot, action: 'jarvis' }
     ]
   },

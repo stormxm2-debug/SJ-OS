@@ -21,6 +21,7 @@ import TeamLeaderPage from '@renderer/pages/TeamLeaderPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
+import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
 import DeveloperPromptCenterPage from '@renderer/pages/DeveloperPromptCenterPage'
 import AutopilotPage from '@renderer/pages/AutopilotPage'
@@ -94,6 +95,8 @@ export default function Router(): JSX.Element {
       return <InsuranceClaimAssistantPage />
     case 'wiki':
       return <InsuranceWikiPage />
+    case 'contacts':
+      return <ManagerContactsPage />
     case 'app-builder':
       return <UniversalAppBuilderPage />
     case 'devprompt':

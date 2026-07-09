@@ -34,7 +34,8 @@ import {
   ChevronDown,
   ChevronRight,
   ReceiptText,
-  Share2
+  Share2,
+  Phone
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -83,7 +84,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'consultation', label: '상담 관리', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
-      { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] }
+      { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
+      { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] }
     ]
   },
   {
@@ -157,6 +159,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
+  { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'fcos', label: '내 업무', icon: Briefcase, view: { name: 'fcos' }, match: ['fcos'] }
 ]
 
@@ -173,6 +176,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'consultation', label: '상담기록', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
+  { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
   { key: 'shared-schedule', label: '공유 일정', icon: Share2, view: { name: 'shared-schedule' }, match: ['shared-schedule'] },
   { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
