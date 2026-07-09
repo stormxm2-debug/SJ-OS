@@ -117,6 +117,77 @@ function fract(x: number): number {
   return x - Math.floor(x)
 }
 
+/** 음성 파형 상태 — 자비스가 말할 때(speak)/들을 때(listen) 반응. */
+export interface VoiceWaveState {
+  active: boolean
+  mode: 'speak' | 'listen' | 'idle'
+}
+
+/**
+ * 아크 리액터 중심의 라디얼 음성 파형 — 허브 주위로 방사되는 막대들이 여러 사인을
+ * 겹쳐 자연스러운 웨이브를 그린다. 말할 때 골드, 들을 때 로즈, 그 외 아이스.
+ * stateRef로 live 반영(rAF 재시작 없음). additive(screen)로 발광. 정리 함수 반환.
+ */
+function runWaveform(canvas: HTMLCanvasElement, stateRef: { current: VoiceWaveState }): () => void {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return () => {}
+  const dpr = Math.min(2, typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)
+  const w = canvas.clientWidth || 120
+  const h = canvas.clientHeight || 120
+  canvas.width = Math.round(w * dpr)
+  canvas.height = Math.round(h * dpr)
+  ctx.scale(dpr, dpr)
+  const cx = w / 2
+  const cy = h / 2
+  const rIn = Math.min(cx, cy) * 0.5
+  const rMax = Math.min(cx, cy) * 0.96
+  const BARS = 60
+  let energy = 0
+  let raf = 0
+  let running = true
+  const start = performance.now()
+  let last = start
+  ctx.lineCap = 'round'
+  const frame = (now: number): void => {
+    if (!running) return
+    const t = (now - start) / 1000
+    const dt = Math.min(0.05, (now - last) / 1000)
+    last = now
+    const st = stateRef.current
+    energy += ((st.active ? 1 : 0) - energy) * Math.min(1, dt * 8)
+    ctx.clearRect(0, 0, w, h)
+    if (energy < 0.01) {
+      raf = requestAnimationFrame(frame)
+      return
+    }
+    const rgb = st.mode === 'listen' ? '251,113,133' : st.mode === 'speak' ? '230,200,119' : '155,232,255'
+    const speed = st.mode === 'listen' ? 7 : 6
+    ctx.globalCompositeOperation = 'lighter'
+    for (let i = 0; i < BARS; i += 1) {
+      const ang = (i / BARS) * Math.PI * 2
+      // 여러 주파수를 겹쳐 자연스러운 음성 파형 느낌.
+      const raw = Math.sin(t * speed + i * 0.55) * Math.sin(t * 3.1 + i * 0.9) + 0.4 * Math.sin(t * 11 + i)
+      const amp = Math.min(1, (0.28 + 0.72 * Math.abs(raw)) * energy)
+      const len = (rMax - rIn) * amp
+      const c = Math.cos(ang)
+      const s = Math.sin(ang)
+      ctx.strokeStyle = `rgba(${rgb},${(0.28 + 0.55 * amp).toFixed(3)})`
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(cx + c * rIn, cy + s * rIn)
+      ctx.lineTo(cx + c * (rIn + len), cy + s * (rIn + len))
+      ctx.stroke()
+    }
+    ctx.globalCompositeOperation = 'source-over'
+    raf = requestAnimationFrame(frame)
+  }
+  raf = requestAnimationFrame(frame)
+  return () => {
+    running = false
+    cancelAnimationFrame(raf)
+  }
+}
+
 const STATUS_TEXT: Record<AiCoreStatus, string> = {
   idle: '무엇이든 말씀하세요',
   wake: '호출 대기 중',
@@ -233,6 +304,20 @@ export default function JarvisHoloOrb({
   useEffect(() => {
     pulsingRef.current = pulsing
   }, [pulsing])
+
+  // 음성 파형 (아크 리액터 중심). 말할 때/들을 때 반응 — ref로 live 반영.
+  const waveRef = useRef<HTMLCanvasElement | null>(null)
+  const voiceRef = useRef<VoiceWaveState>({ active: false, mode: 'idle' })
+  useEffect(() => {
+    const mode: VoiceWaveState['mode'] =
+      status === 'listening' || status === 'transcribing' ? 'listen' : status === 'speaking' || pulsing ? 'speak' : 'idle'
+    voiceRef.current = { active: mode !== 'idle', mode }
+  }, [status, pulsing])
+  useEffect(() => {
+    const c = waveRef.current
+    if (!c) return
+    return runWaveform(c, voiceRef)
+  }, [fullscreen])
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -374,6 +459,9 @@ export default function JarvisHoloOrb({
             animation: `jarvis-holo-rotate ${8 * tone.speed}s linear infinite`
           }}
         />
+        {/* 음성 파형 — 허브 주위로 방사 (말할 때 골드 / 들을 때 로즈) */}
+        <canvas ref={waveRef} className="absolute inset-0 h-full w-full" style={{ mixBlendMode: 'screen' }} />
+
         {/* 골드 정밀 링 */}
         <span
           className="absolute rounded-full"
