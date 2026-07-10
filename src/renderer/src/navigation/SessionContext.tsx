@@ -10,6 +10,7 @@ import {
   signOut as supabaseSignOut
 } from '@renderer/services/commercial/supabaseAuth'
 import { resolvePhoneLogin, claimPhoneAccount, requestPhonePasswordReset, type ServerActionResult } from '@renderer/services/commercial/phoneAuthService'
+import { clearAutoLogin } from '@renderer/services/commercial/autoLoginStore'
 
 /**
  * Session shell for both auth modes.
@@ -165,6 +166,9 @@ export function SessionProvider({ children }: { children: ReactNode }): JSX.Elem
         applyLocal({ ...user, isLoggedIn: true, lastLoginAt: nowIso() })
       },
       logout: () => {
+        // 저장된 자동 로그인 자격증명을 먼저 지운다 — 안 그러면 로그인 화면이
+        // 다시 자동 로그인해 로그아웃이 되지 않는다.
+        clearAutoLogin()
         if (supabaseConfigured) {
           void supabaseSignOut().then(() => {
             setSession(loggedOutSession())

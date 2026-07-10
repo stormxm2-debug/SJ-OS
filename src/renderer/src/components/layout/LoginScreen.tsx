@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { LogIn, Loader2, AlertTriangle, KeyRound, Smartphone } from 'lucide-react'
 import BrandLogo from '@renderer/components/brand/BrandLogo'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { DEMO_USERS, ROLE_LABEL } from '@renderer/navigation/roleAccess'
 import { validatePassword } from '@renderer/services/commercial/phoneAuthService'
+import { getAutoLogin, setAutoLogin, clearAutoLogin } from '@renderer/services/commercial/autoLoginStore'
 
 /**
  * SJ OS login — simple, admin-managed phone + password.
@@ -14,12 +15,39 @@ import { validatePassword } from '@renderer/services/commercial/phoneAuthService
  * configured (dev machines). Never shows or logs phone/password/tokens.
  */
 export default function LoginScreen(): JSX.Element {
-  const { phoneSignIn, claimPhonePassword, requestPhoneReset, login, supabaseConfigured } = useSession()
+  const { phoneSignIn, claimPhonePassword, requestPhoneReset, login, supabaseConfigured, authState } = useSession()
 
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | undefined>()
   const [busy, setBusy] = useState(false)
+  // 자동 로그인 — 이 기기에 번호·비번 저장 (대표 승인). 저장돼 있으면 기본 체크.
+  const [autoLogin, setAutoLoginOn] = useState<boolean>(() => Boolean(getAutoLogin()))
+  const autoTried = useRef(false)
+
+  // 저장된 자격증명이 있으면 자동 로그인 시도(1회). 세션 복원(로딩)과 경쟁하지
+  // 않도록 authState가 'logged-out'으로 확정됐을 때만 발동한다(유효 세션이 있으면
+  // 이 화면은 뜨지도 않음). 실패(비번 변경 등)하면 저장분을 지우고 수동 화면으로.
+  useEffect(() => {
+    if (autoTried.current || !supabaseConfigured || authState !== 'logged-out') return
+    const saved = getAutoLogin()
+    if (!saved) return
+    autoTried.current = true
+    setPhone(saved.phone)
+    setPassword(saved.password)
+    void (async () => {
+      setBusy(true)
+      const r = await phoneSignIn(saved.phone, saved.password)
+      setBusy(false)
+      if (r.kind === 'error') {
+        clearAutoLogin()
+        setAutoLoginOn(false)
+        setError('자동 로그인에 실패했습니다 (비밀번호가 변경되었을 수 있어요). 다시 로그인해 주세요.')
+      }
+      // 'ok' → AppGate가 앱으로 전환. 'needs-setup'은 저장 자격증명에선 발생하지 않음.
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authState])
 
   // first-password setup
   const [setupPhone, setSetupPhone] = useState<string | null>(null)
@@ -39,8 +67,10 @@ export default function LoginScreen(): JSX.Element {
     const r = await phoneSignIn(phone, password)
     setBusy(false)
     if (r.kind === 'needs-setup') { setSetupPhone(r.normalizedPhone); return }
-    if (r.kind === 'error') setError(r.message)
-    // 'ok' → AppGate switches to the app.
+    if (r.kind === 'error') { setError(r.message); return }
+    // 'ok' → 자동 로그인 체크 시 이 기기에 저장, 아니면 저장분 제거. AppGate가 앱으로 전환.
+    if (autoLogin) setAutoLogin({ phone, password })
+    else clearAutoLogin()
   }
 
   const onSetup = async (): Promise<void> => {
@@ -79,6 +109,22 @@ export default function LoginScreen(): JSX.Element {
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" autoComplete="current-password"
               className="w-full py-2.5 text-sm text-slate-100 focus:outline-none" />
           </div>
+          {/* 자동 로그인 — 이 기기에 번호·비번 저장 (개인 기기 전용) */}
+          <label className="flex cursor-pointer items-start gap-2 px-1 pt-0.5">
+            <input
+              type="checkbox"
+              checked={autoLogin}
+              onChange={(e) => {
+                setAutoLoginOn(e.target.checked)
+                if (!e.target.checked) clearAutoLogin()
+              }}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-indigo-600"
+            />
+            <span className="text-[12px] leading-4 text-slate-400">
+              자동 로그인
+              <span className="ml-1 text-[10px] text-slate-400">· 이 기기에 저장(개인 기기만, 공용 PC 금지)</span>
+            </span>
+          </label>
           <button type="submit" disabled={busy}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:shadow-md disabled:opacity-60">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />} 로그인
