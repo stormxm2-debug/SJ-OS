@@ -38,21 +38,47 @@ export interface ExcelMatchResult {
   unmatched: UnmatchedExcelRow[]
 }
 
-const HEADER_ALIASES: Record<keyof Omit<ParsedExcelRow, 'rowNumber' | 'input'> | keyof PerformanceInput, string[]> = {
-  name: ['이름', '성명', '직원'],
+type ColumnKey = keyof Omit<ParsedExcelRow, 'rowNumber' | 'input'> | keyof PerformanceInput
+
+const HEADER_ALIASES: Record<ColumnKey, string[]> = {
+  name: ['이름', '성명', '직원', '설계사', '사원'],
   phone: ['휴대폰', '전화', '연락처', '폰'],
-  month: ['월', '년월', '기간'],
-  life: ['생명'],
-  nonLife: ['손해'],
+  month: ['월', '년월', '기간', '귀속'],
+  life: ['생명', '생보'],
+  nonLife: ['손해', '손보'],
   shortTerm: ['단기'],
-  contractCount: ['계약']
+  contractCount: ['건수', '계약']
 }
 
-function parseAmount(v: unknown): number {
-  if (typeof v === 'number' && Number.isFinite(v)) return Math.max(0, Math.round(v))
+// 헤더에 이 단어가 있으면 해당 키로 매칭하지 않는다 — '월납보험료'가 월로,
+// '계약자'가 계약건수로 오인되는 것을 방지.
+const HEADER_EXCLUDES: Partial<Record<ColumnKey, string[]>> = {
+  month: ['보험료', '납입', '월납', '실적', '금액'],
+  contractCount: ['계약자']
+}
+
+const AMOUNT_LABEL: Record<keyof PerformanceInput, string> = {
+  life: '생명보험',
+  nonLife: '손해보험',
+  shortTerm: '단기납종신',
+  contractCount: '계약건수'
+}
+
+/**
+ * 금액 파싱 — 쉼표/원/₩ 허용, "35만"·"1,200만원" 표기 지원.
+ * unit: 헤더가 만원 단위임을 표시하면 10000 (숫자 셀에만 적용).
+ */
+function parseAmount(v: unknown, unit = 1): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.max(0, Math.round(v * unit))
   if (typeof v === 'string') {
-    const n = Number(v.replace(/[,\s원₩]/g, ''))
-    return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0
+    const s = v.trim()
+    const man = s.match(/^([\d,.\s]+)\s*만\s*원?$/)
+    if (man) {
+      const base = Number(man[1].replace(/[,\s]/g, ''))
+      return Number.isFinite(base) ? Math.max(0, Math.round(base * 10000)) : 0
+    }
+    const n = Number(s.replace(/[,\s원₩]/g, ''))
+    return Number.isFinite(n) ? Math.max(0, Math.round(n * unit)) : 0
   }
   return 0
 }
@@ -79,26 +105,49 @@ function parseMonthCell(v: unknown): string {
   return ''
 }
 
-/** 업로드된 엑셀(.xlsx/.xls/.csv) 파일 → 행 파싱. 실패 시 빈 배열 + 사유. */
-export async function parseExcelFile(file: File): Promise<{ rows: ParsedExcelRow[]; error?: string }> {
+/**
+ * 업로드된 엑셀(.xlsx/.xls/.csv) 파일 → 행 파싱. 실패 시 빈 배열 + 사유.
+ * warnings: 못 찾은 금액 열 등 — UI가 그대로 보여줘서 "조용한 0 반영"을 막는다.
+ */
+export async function parseExcelFile(file: File): Promise<{ rows: ParsedExcelRow[]; error?: string; warnings: string[] }> {
   let wb: XLSX.WorkBook
   try {
     const buf = await file.arrayBuffer()
     wb = XLSX.read(buf, { cellDates: true })
   } catch {
-    return { rows: [], error: '엑셀 파일을 읽지 못했습니다. (.xlsx 형식인지 확인하세요)' }
+    return { rows: [], warnings: [], error: '엑셀 파일을 읽지 못했습니다. (.xlsx 형식인지 확인하세요)' }
   }
   const sheetName = wb.SheetNames[0]
-  if (!sheetName) return { rows: [], error: '엑셀에 시트가 없습니다.' }
+  if (!sheetName) return { rows: [], warnings: [], error: '엑셀에 시트가 없습니다.' }
   const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName], { header: 1, defval: '' }) as unknown[][]
 
   // 헤더 행 찾기 ('이름' 계열 포함된 첫 행)
   const headerIdx = grid.findIndex((row) => row.some((c) => typeof c === 'string' && HEADER_ALIASES.name.some((a) => c.includes(a))))
-  if (headerIdx < 0) return { rows: [], error: '헤더 행(이름/휴대폰/월…)을 찾지 못했습니다. 양식 파일을 사용하세요.' }
-  const header = grid[headerIdx].map((c) => String(c ?? ''))
+  if (headerIdx < 0) return { rows: [], warnings: [], error: '헤더 행(이름/휴대폰/월…)을 찾지 못했습니다. 양식 파일을 사용하세요.' }
+  const header = grid[headerIdx].map((c) => String(c ?? '').trim())
 
-  const colOf = (key: keyof typeof HEADER_ALIASES): number =>
-    header.findIndex((h) => HEADER_ALIASES[key].some((a) => h.includes(a)))
+  const matchIn = (h: string[], key: ColumnKey): number =>
+    h.findIndex(
+      (cell) =>
+        cell !== '' &&
+        HEADER_ALIASES[key].some((a) => cell.includes(a)) &&
+        !(HEADER_EXCLUDES[key] ?? []).some((x) => cell.includes(x))
+    )
+
+  // 2행 헤더 지원: 이름 행에서 금액 열을 못 찾으면 바로 아랫줄도 헤더로 본다
+  // (예: 1행 "실적" 병합 제목, 2행 생보/손보/단기 — 단, 그 줄에 숫자가 없어야 함).
+  const next = grid[headerIdx + 1] ?? []
+  const nextStrings = next.map((c) => (typeof c === 'string' ? c.trim() : ''))
+  const nextHasNumbers = next.some((c) => typeof c === 'number' || (typeof c === 'string' && /^[\d,]+$/.test(c.trim()) && c.trim() !== ''))
+  const amountKeys: (keyof PerformanceInput)[] = ['life', 'nonLife', 'shortTerm', 'contractCount']
+  const missingOnHeader = amountKeys.some((k) => matchIn(header, k) < 0)
+  const useSecondRow = missingOnHeader && !nextHasNumbers && amountKeys.some((k) => matchIn(nextStrings, k) >= 0)
+
+  const colOf = (key: ColumnKey): number => {
+    const first = matchIn(header, key)
+    if (first >= 0) return first
+    return useSecondRow ? matchIn(nextStrings, key) : -1
+  }
   const cols = {
     name: colOf('name'),
     phone: colOf('phone'),
@@ -108,17 +157,33 @@ export async function parseExcelFile(file: File): Promise<{ rows: ParsedExcelRow
     shortTerm: colOf('shortTerm'),
     contractCount: colOf('contractCount')
   }
-  if (cols.name < 0) return { rows: [], error: "'이름' 열이 없습니다." }
+  if (cols.name < 0) return { rows: [], warnings: [], error: "'이름' 열이 없습니다." }
 
+  // 만원 단위 헤더 힌트 (예: "생보(만원)") — 숫자 셀에 ×10,000 적용
+  const headerTextOf = (col: number): string => `${header[col] ?? ''} ${nextStrings[col] ?? ''}`
+  const unitOf = (col: number): number => (col >= 0 && /만\s*원|\(만\)/.test(headerTextOf(col)) ? 10000 : 1)
+  const units = { life: unitOf(cols.life), nonLife: unitOf(cols.nonLife), shortTerm: unitOf(cols.shortTerm) }
+
+  const warnings: string[] = []
+  const missing = amountKeys.filter((k) => cols[k] < 0)
+  if (missing.length > 0) {
+    const seen = header.filter(Boolean).join(', ')
+    warnings.push(
+      `${missing.map((k) => AMOUNT_LABEL[k]).join(' · ')} 열을 찾지 못해 0으로 처리합니다. ` +
+        `(인식된 헤더: ${seen || '없음'} — 열 이름에 '생명/생보', '손해/손보', '단기', '건수'가 들어가야 합니다)`
+    )
+  }
+
+  const dataStart = headerIdx + (useSecondRow ? 2 : 1)
   const rows: ParsedExcelRow[] = []
-  for (let i = headerIdx + 1; i < grid.length; i++) {
+  for (let i = dataStart; i < grid.length; i++) {
     const r = grid[i]
     const name = String(r[cols.name] ?? '').trim()
     const phone = cols.phone >= 0 ? String(r[cols.phone] ?? '').trim() : ''
     const input: PerformanceInput = {
-      life: cols.life >= 0 ? parseAmount(r[cols.life]) : 0,
-      nonLife: cols.nonLife >= 0 ? parseAmount(r[cols.nonLife]) : 0,
-      shortTerm: cols.shortTerm >= 0 ? parseAmount(r[cols.shortTerm]) : 0,
+      life: cols.life >= 0 ? parseAmount(r[cols.life], units.life) : 0,
+      nonLife: cols.nonLife >= 0 ? parseAmount(r[cols.nonLife], units.nonLife) : 0,
+      shortTerm: cols.shortTerm >= 0 ? parseAmount(r[cols.shortTerm], units.shortTerm) : 0,
       contractCount: cols.contractCount >= 0 ? parseAmount(r[cols.contractCount]) : 0
     }
     if (!name && !phone) continue // 빈 행
@@ -131,7 +196,7 @@ export async function parseExcelFile(file: File): Promise<{ rows: ParsedExcelRow
       input
     })
   }
-  return { rows }
+  return { rows, warnings }
 }
 
 /** 파싱된 행 ↔ 직원 디렉토리 매칭 (휴대폰 우선, 이름은 유일할 때만). */

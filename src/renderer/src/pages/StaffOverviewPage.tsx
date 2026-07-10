@@ -17,7 +17,9 @@ import {
   FileText,
   Image as ImageIcon,
   ExternalLink,
-  Paperclip
+  Paperclip,
+  Pencil,
+  Save
 } from 'lucide-react'
 import {
   listOverviewStaff,
@@ -29,7 +31,7 @@ import {
 import { currentMonth, CATEGORY_LABEL } from '@renderer/services/commercial/performanceRecordsService'
 import { SCHEDULE_TYPE_LABEL } from '@renderer/services/commercial/scheduleValidation'
 import { ROLE_LABEL } from '@renderer/navigation/roleAccess'
-import { getCustomerById } from '@renderer/services/commercial/customerService'
+import { getCustomerById, updateCustomer } from '@renderer/services/commercial/customerService'
 import { signedUrlsFor } from '@renderer/services/commercial/customerFilesStorage'
 import { parseRrn, bmiOf } from '@renderer/services/commercial/customerValidation'
 import type { CustomerRecord } from '@shared/commercial/models'
@@ -343,7 +345,9 @@ export default function StaffOverviewPage(): JSX.Element {
         )}
       </div>
 
-      {detailId ? <CustomerDetailModal customerId={detailId} onClose={() => setDetailId(null)} /> : null}
+      {detailId ? (
+        <CustomerDetailModal customerId={detailId} onClose={() => setDetailId(null)} onUpdated={() => void reload()} />
+      ) : null}
     </div>
   )
 }
@@ -408,11 +412,51 @@ function ScheduleItem({ s, past }: { s: StaffOverview['schedules'][number]; past
   )
 }
 
-/** 고객 전체 정보 + 첨부서류(서명URL) 모달 — 관리자 열람 전용. */
-function CustomerDetailModal({ customerId, onClose }: { customerId: string; onClose: () => void }): JSX.Element {
+interface EditForm {
+  name: string
+  phone: string
+  rrn: string
+  address: string
+  source: string
+  relation: string
+  heightCm: string
+  weightKg: string
+  medicalHistory: string
+  memo: string
+}
+
+function formFrom(c: CustomerRecord): EditForm {
+  return {
+    name: c.name,
+    phone: c.phone ?? '',
+    rrn: c.rrn ?? '',
+    address: c.address ?? '',
+    source: c.source ?? '',
+    relation: c.relation ?? '',
+    heightCm: c.heightCm != null ? String(c.heightCm) : '',
+    weightKg: c.weightKg != null ? String(c.weightKg) : '',
+    medicalHistory: c.medicalHistory ?? '',
+    memo: c.memo ?? ''
+  }
+}
+
+/** 고객 전체 정보 + 첨부서류(서명URL) 모달 — 관리자 열람 + 수정. */
+function CustomerDetailModal({
+  customerId,
+  onClose,
+  onUpdated
+}: {
+  customerId: string
+  onClose: () => void
+  onUpdated?: () => void
+}): JSX.Element {
   const [customer, setCustomer] = useState<CustomerRecord | null>(null)
   const [urls, setUrls] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editErr, setEditErr] = useState('')
+  const [form, setForm] = useState<EditForm | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -420,6 +464,7 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
     void getCustomerById(customerId).then(async (c) => {
       if (!alive) return
       setCustomer(c)
+      if (c) setForm(formFrom(c))
       if (c && c.attachments.length > 0) {
         const map = await signedUrlsFor(c.attachments)
         if (alive) setUrls(map)
@@ -430,6 +475,52 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
       alive = false
     }
   }, [customerId])
+
+  const setField = (k: keyof EditForm, v: string): void => setForm((f) => (f ? { ...f, [k]: v } : f))
+
+  const startEdit = (): void => {
+    if (customer) setForm(formFrom(customer))
+    setEditErr('')
+    setEditing(true)
+  }
+  const cancelEdit = (): void => {
+    if (customer) setForm(formFrom(customer))
+    setEditErr('')
+    setEditing(false)
+  }
+
+  const save = async (): Promise<void> => {
+    if (!form) return
+    if (!form.name.trim()) {
+      setEditErr('고객명을 입력해주세요.')
+      return
+    }
+    const h = form.heightCm.trim()
+    const w = form.weightKg.trim()
+    setSaving(true)
+    setEditErr('')
+    const res = await updateCustomer(customerId, {
+      name: form.name.trim(),
+      phone: form.phone,
+      rrn: form.rrn,
+      address: form.address,
+      source: form.source,
+      relation: form.relation,
+      medicalHistory: form.medicalHistory,
+      memo: form.memo,
+      heightCm: h === '' ? undefined : Number.isFinite(Number(h)) ? Number(h) : undefined,
+      weightKg: w === '' ? undefined : Number.isFinite(Number(w)) ? Number(w) : undefined
+    })
+    setSaving(false)
+    if (!res.ok || !res.customer) {
+      setEditErr(res.error ?? '저장에 실패했습니다.')
+      return
+    }
+    setCustomer(res.customer)
+    setForm(formFrom(res.customer))
+    setEditing(false)
+    onUpdated?.()
+  }
 
   const rrn = parseRrn(customer?.rrn)
   const bmi = bmiOf(customer?.heightCm, customer?.weightKg)
@@ -442,11 +533,37 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
       >
         <div className="mb-3 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-sm font-extrabold text-slate-100">
-            <UserRound className="h-4 w-4 text-[#b0821f]" /> 고객 상세
+            <UserRound className="h-4 w-4 text-[#b0821f]" /> 고객 상세{editing ? ' · 수정' : ''}
           </h3>
-          <button type="button" onClick={onClose} aria-label="닫기" className="rounded-lg p-1 text-slate-400 hover:text-slate-100">
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {customer && !editing ? (
+              <button
+                type="button"
+                onClick={startEdit}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-800 px-2.5 py-1 text-[12px] font-bold text-[#b0821f] hover:bg-slate-950"
+              >
+                <Pencil className="h-3.5 w-3.5" /> 수정
+              </button>
+            ) : null}
+            {editing ? (
+              <>
+                <button type="button" onClick={cancelEdit} disabled={saving} className="rounded-lg px-2.5 py-1 text-[12px] font-semibold text-slate-500 hover:text-slate-100">
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void save()}
+                  disabled={saving}
+                  className={['inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[12px] font-bold', saving ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-[#0e1e3a] text-[#e6c877] hover:brightness-125'].join(' ')}
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} 저장
+                </button>
+              </>
+            ) : null}
+            <button type="button" onClick={onClose} aria-label="닫기" className="rounded-lg p-1 text-slate-400 hover:text-slate-100">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -455,6 +572,28 @@ function CustomerDetailModal({ customerId, onClose }: { customerId: string; onCl
           </div>
         ) : !customer ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] text-rose-700">고객 정보를 찾을 수 없습니다.</div>
+        ) : editing && form ? (
+          <div className="space-y-2.5">
+            <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-800">
+              관리자 수정입니다. 저장하면 담당 직원 화면에도 즉시 반영됩니다.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <EditField label="이름" value={form.name} onChange={(v) => setField('name', v)} />
+              <EditField label="전화" value={form.phone} onChange={(v) => setField('phone', v)} />
+              <EditField label="주민번호" value={form.rrn} onChange={(v) => setField('rrn', v)} placeholder="000000-0000000" />
+              <EditField label="유입경로" value={form.source} onChange={(v) => setField('source', v)} />
+              <EditField label="관계" value={form.relation} onChange={(v) => setField('relation', v)} />
+              <div className="grid grid-cols-2 gap-2">
+                <EditField label="키(cm)" value={form.heightCm} onChange={(v) => setField('heightCm', v)} inputMode="numeric" />
+                <EditField label="몸무게(kg)" value={form.weightKg} onChange={(v) => setField('weightKg', v)} inputMode="numeric" />
+              </div>
+            </div>
+            <EditField label="주소" value={form.address} onChange={(v) => setField('address', v)} wide />
+            <EditField label="병력" value={form.medicalHistory} onChange={(v) => setField('medicalHistory', v)} wide multiline />
+            <EditField label="메모" value={form.memo} onChange={(v) => setField('memo', v)} wide multiline />
+            {editErr ? <div className="text-[12px] font-medium text-rose-600">{editErr}</div> : null}
+            <p className="text-[11px] text-slate-500">첨부 서류는 담당 직원이 관리합니다(여기서 수정 불가).</p>
+          </div>
         ) : (
           <div className="space-y-3">
             <div className="rounded-xl bg-[#0e1e3a] px-4 py-3">
@@ -536,6 +675,47 @@ function DetailField({ label, value, wide }: { label: string; value?: string; wi
       <div className="text-[10px] font-semibold text-slate-500">{label}</div>
       <div className="mt-0.5 whitespace-pre-wrap text-[12px] font-medium text-slate-100">{value?.trim() ? value : '-'}</div>
     </div>
+  )
+}
+
+function EditField({
+  label,
+  value,
+  onChange,
+  wide,
+  multiline,
+  placeholder,
+  inputMode
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  wide?: boolean
+  multiline?: boolean
+  placeholder?: string
+  inputMode?: 'numeric' | 'tel' | 'text'
+}): JSX.Element {
+  return (
+    <label className={['block', wide ? 'col-span-2' : ''].join(' ')}>
+      <span className="mb-0.5 block text-[10px] font-semibold text-slate-500">{label}</span>
+      {multiline ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={2}
+          placeholder={placeholder}
+          className="w-full rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-[12px] leading-5 text-slate-100 outline-none placeholder:text-slate-500 focus:border-[#c6982f]"
+        />
+      ) : (
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          inputMode={inputMode}
+          className="w-full rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-[12px] text-slate-100 outline-none placeholder:text-slate-500 focus:border-[#c6982f]"
+        />
+      )}
+    </label>
   )
 }
 

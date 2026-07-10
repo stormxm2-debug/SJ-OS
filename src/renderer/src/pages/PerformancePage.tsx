@@ -505,6 +505,7 @@ function AdminExcelUpload({ month, onApplied }: { month: string; onApplied: () =
   const [dirErr, setDirErr] = useState<string | undefined>()
   const [parsing, setParsing] = useState(false)
   const [match, setMatch] = useState<ExcelMatchResult | undefined>()
+  const [parseWarnings, setParseWarnings] = useState<string[]>([])
   const [fileName, setFileName] = useState('')
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState<string | undefined>()
@@ -529,11 +530,13 @@ function AdminExcelUpload({ month, onApplied }: { month: string; onApplied: () =
   const handleFile = async (file: File): Promise<void> => {
     setParsing(true)
     setMatch(undefined)
+    setParseWarnings([])
     setApplied(undefined)
     setFileName(file.name)
     const dir = await ensureDirectory()
-    const { rows, error } = await parseExcelFile(file)
+    const { rows, error, warnings } = await parseExcelFile(file)
     setParsing(false)
+    setParseWarnings(warnings)
     if (error) {
       setMatch({ matched: [], unmatched: [{ rowNumber: 0, name: '', phone: '', reason: error }] })
       return
@@ -624,6 +627,12 @@ function AdminExcelUpload({ month, onApplied }: { month: string; onApplied: () =
           <Loader2 className="h-4 w-4 animate-spin" /> 엑셀을 읽는 중…
         </div>
       ) : null}
+
+      {parseWarnings.map((w) => (
+        <div key={w} className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {w}
+        </div>
+      ))}
 
       {match ? (
         <div className="mt-4 space-y-3">
