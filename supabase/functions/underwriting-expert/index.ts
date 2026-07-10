@@ -6,6 +6,8 @@
 // 절대 규칙: 고지 축소·은폐 유도 금지(정확 고지 전제), 단정 금지(최종 인수는 보험사).
 // 키는 ANTHROPIC_API_KEY 시크릿. 병력 등 입력은 메모리에서만 처리되고 로깅·저장되지 않는다.
 
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+
 const CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -158,6 +160,16 @@ function disclosureLine(label: string, d: Disclosure | undefined): string {
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return json({ success: false, error: 'POST 요청만 지원합니다.' }, 405)
+
+  // (보안 H1) 호출자 인증 — 로그인한 직원만. 번들 anon 키만으로는 호출 불가 (AI 무단 사용·요금 남용 차단).
+  {
+    const su = Deno.env.get('SUPABASE_URL') ?? ''
+    const sk = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const bearer = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+    const caller = su && sk ? createClient(su, sk, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${bearer}` } } }) : null
+    const uid = caller ? (await caller.auth.getUser()).data?.user?.id : null
+    if (!uid) return json({ success: false, error: '로그인 후 사용할 수 있습니다.' }, 401)
+  }
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) {

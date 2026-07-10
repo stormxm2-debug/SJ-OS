@@ -4,6 +4,8 @@
 // 출력: { success, parsed: { type, customerName, date, time, location } }
 // "내일 오후 2시 김민준 2차만남 강남역" → 구조화된 일정. 텍스트는 저장되지 않는다.
 
+import { createClient } from 'jsr:@supabase/supabase-js@2'
+
 const CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -19,6 +21,16 @@ const VALID_TYPES = ['ap', 'meeting-1', 'meeting-2', 'meeting-3', 'closing', 'de
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return json({ success: false, error: 'POST 요청만 지원합니다.' }, 405)
+
+  // (보안 H1) 호출자 인증 — 로그인한 직원만. 번들 anon 키만으로는 호출 불가 (AI 무단 사용·요금 남용 차단).
+  {
+    const su = Deno.env.get('SUPABASE_URL') ?? ''
+    const sk = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    const bearer = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+    const caller = su && sk ? createClient(su, sk, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${bearer}` } } }) : null
+    const uid = caller ? (await caller.auth.getUser()).data?.user?.id : null
+    if (!uid) return json({ success: false, error: '로그인 후 사용할 수 있습니다.' }, 401)
+  }
 
   const apiKey = Deno.env.get('OPENAI_API_KEY')
   if (!apiKey) return json({ success: false, code: 'OPENAI_API_KEY_MISSING', error: 'OPENAI_API_KEY 시크릿이 없습니다.' }, 503)
