@@ -24,6 +24,8 @@ export interface MatchedExcelRow extends ExcelApplyRow {
   rowNumber: number
   name: string
   matchedBy: 'phone' | 'name'
+  /** 같은 직원·같은 달 행이 여러 개라 합산된 경우 원본 행 수 (2 이상). */
+  mergedRows?: number
 }
 
 export interface UnmatchedExcelRow {
@@ -38,7 +40,7 @@ export interface ExcelMatchResult {
   unmatched: UnmatchedExcelRow[]
 }
 
-type ColumnKey = keyof Omit<ParsedExcelRow, 'rowNumber' | 'input'> | keyof PerformanceInput
+export type ColumnKey = keyof Omit<ParsedExcelRow, 'rowNumber' | 'input'> | keyof PerformanceInput
 
 const HEADER_ALIASES: Record<ColumnKey, string[]> = {
   name: ['이름', '성명', '직원', '설계사', '사원'],
@@ -105,11 +107,68 @@ function parseMonthCell(v: unknown): string {
   return ''
 }
 
+export type ColumnMap = Record<ColumnKey, number>
+
+/** 열 지정 UI + 재파싱에 필요한 컨텍스트 (파일을 다시 읽지 않고 매핑만 바꿔 재파싱). */
+export interface ExcelParseContext {
+  /** 열 인덱스별 표시 라벨 (드롭다운용) — 헤더 텍스트 없으면 "열 N". */
+  columnLabels: string[]
+  /** 각 열의 헤더 텍스트(헤더+아랫줄) — 만원 단위 감지용. */
+  headerText: string[]
+  grid: unknown[][]
+  dataStart: number
+  /** 자동 인식된 열 매핑 (없으면 -1). 사용자가 여기서 바꿀 수 있다. */
+  cols: ColumnMap
+}
+
+const ALL_KEYS: ColumnKey[] = ['name', 'phone', 'month', 'life', 'nonLife', 'shortTerm', 'contractCount']
+const AMOUNT_KEYS: (keyof PerformanceInput)[] = ['life', 'nonLife', 'shortTerm', 'contractCount']
+
+function unitFromText(t: string): number {
+  return /만\s*원|\(만\)/.test(t) ? 10000 : 1
+}
+
+/** 주어진 열 매핑으로 데이터 행을 만든다 (자동 인식 결과·수동 지정 모두 이걸 사용). */
+export function rebuildRows(ctx: ExcelParseContext, cols: ColumnMap): ParsedExcelRow[] {
+  const units = {
+    life: cols.life >= 0 ? unitFromText(ctx.headerText[cols.life] ?? '') : 1,
+    nonLife: cols.nonLife >= 0 ? unitFromText(ctx.headerText[cols.nonLife] ?? '') : 1,
+    shortTerm: cols.shortTerm >= 0 ? unitFromText(ctx.headerText[cols.shortTerm] ?? '') : 1
+  }
+  const rows: ParsedExcelRow[] = []
+  for (let i = ctx.dataStart; i < ctx.grid.length; i++) {
+    const r = ctx.grid[i]
+    const name = cols.name >= 0 ? String(r[cols.name] ?? '').trim() : ''
+    const phone = cols.phone >= 0 ? String(r[cols.phone] ?? '').trim() : ''
+    const input: PerformanceInput = {
+      life: cols.life >= 0 ? parseAmount(r[cols.life], units.life) : 0,
+      nonLife: cols.nonLife >= 0 ? parseAmount(r[cols.nonLife], units.nonLife) : 0,
+      shortTerm: cols.shortTerm >= 0 ? parseAmount(r[cols.shortTerm], units.shortTerm) : 0,
+      contractCount: cols.contractCount >= 0 ? parseAmount(r[cols.contractCount]) : 0
+    }
+    if (!name && !phone) continue // 빈 행
+    // 금액이 전부 0이어도 행은 유지 (명단만 채운 양식에서 0 반영을 원할 수 있음)
+    rows.push({
+      rowNumber: i + 1,
+      name,
+      phone,
+      month: cols.month >= 0 ? parseMonthCell(r[cols.month]) : '',
+      input
+    })
+  }
+  return rows
+}
+
 /**
- * 업로드된 엑셀(.xlsx/.xls/.csv) 파일 → 행 파싱. 실패 시 빈 배열 + 사유.
- * warnings: 못 찾은 금액 열 등 — UI가 그대로 보여줘서 "조용한 0 반영"을 막는다.
+ * 업로드된 엑셀(.xlsx/.xls/.csv) 파일 → 행 파싱 + 열 지정 컨텍스트. 실패 시 빈 배열 + 사유.
+ * warnings: 못 찾은 금액 열 등 — UI가 그대로 보여주고, 사용자가 열을 직접 지정하게 한다.
  */
-export async function parseExcelFile(file: File): Promise<{ rows: ParsedExcelRow[]; error?: string; warnings: string[] }> {
+export async function parseExcelFile(file: File): Promise<{
+  rows: ParsedExcelRow[]
+  error?: string
+  warnings: string[]
+  context?: ExcelParseContext
+}> {
   let wb: XLSX.WorkBook
   try {
     const buf = await file.arrayBuffer()
@@ -139,16 +198,15 @@ export async function parseExcelFile(file: File): Promise<{ rows: ParsedExcelRow
   const next = grid[headerIdx + 1] ?? []
   const nextStrings = next.map((c) => (typeof c === 'string' ? c.trim() : ''))
   const nextHasNumbers = next.some((c) => typeof c === 'number' || (typeof c === 'string' && /^[\d,]+$/.test(c.trim()) && c.trim() !== ''))
-  const amountKeys: (keyof PerformanceInput)[] = ['life', 'nonLife', 'shortTerm', 'contractCount']
-  const missingOnHeader = amountKeys.some((k) => matchIn(header, k) < 0)
-  const useSecondRow = missingOnHeader && !nextHasNumbers && amountKeys.some((k) => matchIn(nextStrings, k) >= 0)
+  const missingOnHeader = AMOUNT_KEYS.some((k) => matchIn(header, k) < 0)
+  const useSecondRow = missingOnHeader && !nextHasNumbers && AMOUNT_KEYS.some((k) => matchIn(nextStrings, k) >= 0)
 
   const colOf = (key: ColumnKey): number => {
     const first = matchIn(header, key)
     if (first >= 0) return first
     return useSecondRow ? matchIn(nextStrings, key) : -1
   }
-  const cols = {
+  const cols: ColumnMap = {
     name: colOf('name'),
     phone: colOf('phone'),
     month: colOf('month'),
@@ -159,44 +217,31 @@ export async function parseExcelFile(file: File): Promise<{ rows: ParsedExcelRow
   }
   if (cols.name < 0) return { rows: [], warnings: [], error: "'이름' 열이 없습니다." }
 
-  // 만원 단위 헤더 힌트 (예: "생보(만원)") — 숫자 셀에 ×10,000 적용
-  const headerTextOf = (col: number): string => `${header[col] ?? ''} ${nextStrings[col] ?? ''}`
-  const unitOf = (col: number): number => (col >= 0 && /만\s*원|\(만\)/.test(headerTextOf(col)) ? 10000 : 1)
-  const units = { life: unitOf(cols.life), nonLife: unitOf(cols.nonLife), shortTerm: unitOf(cols.shortTerm) }
+  // 열 지정 UI/재파싱용 컨텍스트
+  const width = Math.max(header.length, nextStrings.length)
+  const headerText: string[] = []
+  const columnLabels: string[] = []
+  for (let c = 0; c < width; c++) {
+    const top = header[c] ?? ''
+    const sub = nextStrings[c] ?? ''
+    headerText.push(`${top} ${sub}`.trim())
+    columnLabels.push(top || sub || `열 ${c + 1}`)
+  }
+  const dataStart = headerIdx + (useSecondRow ? 2 : 1)
+  const context: ExcelParseContext = { columnLabels, headerText, grid, dataStart, cols }
 
   const warnings: string[] = []
-  const missing = amountKeys.filter((k) => cols[k] < 0)
+  const missing = AMOUNT_KEYS.filter((k) => cols[k] < 0)
   if (missing.length > 0) {
     const seen = header.filter(Boolean).join(', ')
     warnings.push(
-      `${missing.map((k) => AMOUNT_LABEL[k]).join(' · ')} 열을 찾지 못해 0으로 처리합니다. ` +
-        `(인식된 헤더: ${seen || '없음'} — 열 이름에 '생명/생보', '손해/손보', '단기', '건수'가 들어가야 합니다)`
+      `${missing.map((k) => AMOUNT_LABEL[k]).join(' · ')} 열을 자동 인식하지 못했습니다. ` +
+        `아래 "열 직접 지정"에서 각 항목이 엑셀의 어느 열인지 골라주세요. (인식된 헤더: ${seen || '없음'})`
     )
   }
 
-  const dataStart = headerIdx + (useSecondRow ? 2 : 1)
-  const rows: ParsedExcelRow[] = []
-  for (let i = dataStart; i < grid.length; i++) {
-    const r = grid[i]
-    const name = String(r[cols.name] ?? '').trim()
-    const phone = cols.phone >= 0 ? String(r[cols.phone] ?? '').trim() : ''
-    const input: PerformanceInput = {
-      life: cols.life >= 0 ? parseAmount(r[cols.life], units.life) : 0,
-      nonLife: cols.nonLife >= 0 ? parseAmount(r[cols.nonLife], units.nonLife) : 0,
-      shortTerm: cols.shortTerm >= 0 ? parseAmount(r[cols.shortTerm], units.shortTerm) : 0,
-      contractCount: cols.contractCount >= 0 ? parseAmount(r[cols.contractCount]) : 0
-    }
-    if (!name && !phone) continue // 빈 행
-    // 금액이 전부 0이어도 행은 유지 (명단만 채운 양식에서 0 반영을 원할 수 있음)
-    rows.push({
-      rowNumber: i + 1,
-      name,
-      phone,
-      month: cols.month >= 0 ? parseMonthCell(r[cols.month]) : '',
-      input
-    })
-  }
-  return { rows, warnings }
+  const rows = rebuildRows(context, cols)
+  return { rows, warnings, context }
 }
 
 /** 파싱된 행 ↔ 직원 디렉토리 매칭 (휴대폰 우선, 이름은 유일할 때만). */
@@ -244,7 +289,27 @@ export function matchExcelRows(
     }
     matched.push({ rowNumber: row.rowNumber, name: dir.name, matchedBy, staffId: dir.profileId, teamId: dir.teamId, month, input: row.input })
   }
-  return { matched, unmatched }
+
+  // 같은 직원·같은 달 행이 여러 개면 합산해 1행으로 — 한 번의 upsert가 같은
+  // (staff_id,month,source) 행을 두 번 건드리면 Postgres가 전체를 거부한다
+  // ("ON CONFLICT DO UPDATE ... a second time"). 분할 기재된 실적은 합계가 의도.
+  const byKey = new Map<string, MatchedExcelRow>()
+  for (const m of matched) {
+    const key = `${m.staffId}:${m.month}`
+    const prev = byKey.get(key)
+    if (!prev) {
+      byKey.set(key, m)
+      continue
+    }
+    prev.input = {
+      life: prev.input.life + m.input.life,
+      nonLife: prev.input.nonLife + m.input.nonLife,
+      shortTerm: prev.input.shortTerm + m.input.shortTerm,
+      contractCount: prev.input.contractCount + m.input.contractCount
+    }
+    prev.mergedRows = (prev.mergedRows ?? 1) + 1
+  }
+  return { matched: Array.from(byKey.values()), unmatched }
 }
 
 /** 실적 양식 다운로드 — 등록 직원 명단이 미리 채워진 .xlsx. */

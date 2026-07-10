@@ -14,7 +14,8 @@ import {
   Plus,
   Pencil,
   Trash2,
-  X
+  X,
+  Columns3
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import { useSession } from '@renderer/navigation/SessionContext'
@@ -44,7 +45,11 @@ import {
   downloadTemplate,
   matchExcelRows,
   parseExcelFile,
-  type ExcelMatchResult
+  rebuildRows,
+  type ExcelMatchResult,
+  type ExcelParseContext,
+  type ColumnMap,
+  type ColumnKey
 } from '@renderer/services/commercial/performanceExcel'
 
 /**
@@ -62,6 +67,17 @@ const RT_TABLES = ['performance_records', 'performance_entries']
 const GOLD = '#b0821f'
 
 const CATEGORY_OPTIONS: PerformanceCategory[] = ['life', 'non-life', 'short-term']
+
+/** 엑셀 열 직접 지정 드롭다운 항목. */
+const MAP_FIELDS: { key: ColumnKey; label: string }[] = [
+  { key: 'name', label: '이름' },
+  { key: 'phone', label: '휴대폰' },
+  { key: 'month', label: '월' },
+  { key: 'life', label: '생명보험' },
+  { key: 'nonLife', label: '손해보험' },
+  { key: 'shortTerm', label: '단기납종신' },
+  { key: 'contractCount', label: '계약건수' }
+]
 const CATEGORY_BADGE: Record<PerformanceCategory, string> = {
   life: 'bg-indigo-50 text-indigo-600',
   'non-life': 'bg-sky-50 text-sky-600',
@@ -510,6 +526,8 @@ function AdminExcelUpload({ month, onApplied }: { month: string; onApplied: () =
   const [applying, setApplying] = useState(false)
   const [applied, setApplied] = useState<string | undefined>()
   const [dragOver, setDragOver] = useState(false)
+  const [parseContext, setParseContext] = useState<ExcelParseContext | undefined>()
+  const [colMap, setColMap] = useState<ColumnMap | undefined>()
 
   const ensureDirectory = useCallback(async (): Promise<StaffDirectoryEntry[] | undefined> => {
     if (directory) return directory
@@ -532,17 +550,32 @@ function AdminExcelUpload({ month, onApplied }: { month: string; onApplied: () =
     setMatch(undefined)
     setParseWarnings([])
     setApplied(undefined)
+    setParseContext(undefined)
+    setColMap(undefined)
     setFileName(file.name)
     const dir = await ensureDirectory()
-    const { rows, error, warnings } = await parseExcelFile(file)
+    const { rows, error, warnings, context } = await parseExcelFile(file)
     setParsing(false)
     setParseWarnings(warnings)
     if (error) {
       setMatch({ matched: [], unmatched: [{ rowNumber: 0, name: '', phone: '', reason: error }] })
       return
     }
+    if (context) {
+      setParseContext(context)
+      setColMap(context.cols)
+    }
     if (!dir) return
     setMatch(matchExcelRows(rows, dir, month))
+  }
+
+  /** 열 직접 지정 — 관리자가 드롭다운으로 열을 바꾸면 파일 재읽기 없이 재파싱·재매칭. */
+  const remap = (key: ColumnKey, col: number): void => {
+    if (!parseContext || !colMap) return
+    const nextMap: ColumnMap = { ...colMap, [key]: col }
+    setColMap(nextMap)
+    const rows = rebuildRows(parseContext, nextMap)
+    if (directory) setMatch(matchExcelRows(rows, directory, month))
   }
 
   const onPick = (e: ChangeEvent<HTMLInputElement>): void => {
@@ -634,6 +667,41 @@ function AdminExcelUpload({ month, onApplied }: { month: string; onApplied: () =
         </div>
       ))}
 
+      {parseContext && colMap ? (
+        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
+          <div className="mb-1 flex items-center gap-1.5 text-[12px] font-extrabold text-slate-100">
+            <Columns3 className="h-3.5 w-3.5 text-[#b0821f]" /> 열 직접 지정
+          </div>
+          <p className="mb-2 text-[11px] leading-4 text-slate-500">
+            각 항목이 엑셀의 어느 열인지 고르세요. 바꾸면 아래 미리보기에 바로 반영됩니다. (자동 인식된 열은 미리 선택돼 있습니다)
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {MAP_FIELDS.map((f) => (
+              <label key={f.key} className="block">
+                <span className="mb-0.5 block text-[10px] font-semibold text-slate-500">{f.label}</span>
+                <select
+                  value={colMap[f.key]}
+                  onChange={(e) => remap(f.key, Number(e.target.value))}
+                  className={[
+                    'w-full rounded-lg border bg-white px-2 py-1.5 text-[12px] outline-none focus:border-[#c6982f]',
+                    colMap[f.key] < 0 && (f.key === 'life' || f.key === 'nonLife' || f.key === 'shortTerm')
+                      ? 'border-amber-400 text-amber-700'
+                      : 'border-slate-800 text-slate-100'
+                  ].join(' ')}
+                >
+                  <option value={-1}>(없음)</option>
+                  {parseContext.columnLabels.map((label, idx) => (
+                    <option key={idx} value={idx}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {match ? (
         <div className="mt-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2 text-[12px]">
@@ -663,6 +731,9 @@ function AdminExcelUpload({ month, onApplied }: { month: string; onApplied: () =
                       <td className="px-2 py-1.5 font-medium text-slate-200">
                         {m.name}
                         <span className="ml-1 text-[10px] text-slate-500">({m.matchedBy === 'phone' ? '번호' : '이름'})</span>
+                        {m.mergedRows ? (
+                          <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">{m.mergedRows}행 합산</span>
+                        ) : null}
                       </td>
                       <td className="px-2 py-1.5 text-slate-400">{m.month}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums text-slate-300">{comma(m.input.life)}</td>
