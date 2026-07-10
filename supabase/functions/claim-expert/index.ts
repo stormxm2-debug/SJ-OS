@@ -93,10 +93,12 @@ function friendlyClaudeError(msg: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-/** 웹 약관 조회 도구(Anthropic 서버 툴) — 종합/재검토 단계에서만 (검색·열람 각 4회 한도). */
+/** 웹 약관 조회 도구(Anthropic 서버 툴) — 종합/재검토 단계에서만.
+ *  실시간 웹 검색·PDF 열람은 매우 느려(호출당 수십 초) 속도의 최대 병목이므로
+ *  한도를 낮게 잡는다(검색·열람 각 2회). 보관함 약관이 있으면 아예 끈다(아래 synthesize). */
 const WEB_TOOLS = [
-  { type: 'web_search_20260209', name: 'web_search', max_uses: 4 },
-  { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 4 }
+  { type: 'web_search_20260209', name: 'web_search', max_uses: 2 },
+  { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 2 }
 ]
 
 // 판독(extract)은 "베껴 쓰기" 작업이라 고속 모델로 — 판단(종합·재검토·약관정독)은 Opus 유지.
@@ -412,7 +414,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .join('\n')
       }
     ]
-    const res = await callClaude(apiKey, SYNTH_SYSTEM, content, 16000, true)
+    // 속도 핵심: 웹 약관 조회(실시간 검색·PDF 열람)는 호출당 수십 초로 최대 병목이다.
+    // 보관함/업로드 약관 요약이 있으면 그게 최우선·검증된 근거이므로 웹을 끄고 바로
+    // 종합한다(대부분의 실사용). 약관이 하나도 없을 때만 폴백으로 웹을 켠다.
+    // 클라이언트가 useWeb를 명시하면(정밀 웹조회 옵션 등) 그 값을 우선한다.
+    const explicitWeb = typeof (body as { useWeb?: unknown }).useWeb === 'boolean' ? (body as { useWeb: boolean }).useWeb : null
+    const useWeb = explicitWeb ?? terms.length === 0
+    if (!useWeb) {
+      // 웹 도구가 없으니 업로드/보관함 약관 + 증권 기재만으로 판단하도록 안내.
+      content[0].text += '\n\n(참고: 이번 분석은 웹 약관 조회 없이 위 보관함/업로드 약관과 증권 기재만으로 신속히 종합합니다. 약관에 없는 담보는 증권 기재를 근거로 policy-stated 처리하세요.)'
+    }
+    const res = await callClaude(apiKey, SYNTH_SYSTEM, content, 16000, useWeb)
     if (!res.ok) return json({ success: false, error: res.error }, 502)
     const parsed = parseJson(res.text ?? '')
     if (!parsed || !Array.isArray(parsed.companies)) return json({ success: false, error: '종합 결과 형식 오류 — 다시 시도해 주세요.' }, 502)
