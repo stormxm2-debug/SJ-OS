@@ -22,6 +22,7 @@ export type View =
   | { name: 'underwriting'; q?: string }
   | { name: 'pre-underwriting' }
   | { name: 'contacts' }
+  | { name: 'leads' }
   | { name: 'app-builder' }
   | { name: 'devprompt' }
   | { name: 'cto' }

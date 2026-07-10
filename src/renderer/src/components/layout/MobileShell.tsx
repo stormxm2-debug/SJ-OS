@@ -19,6 +19,7 @@ import SupabaseAttendanceManager from '@renderer/components/attendance/SupabaseA
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
+import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
@@ -166,6 +167,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <UnderwritingGuidePage />
     case 'pre-underwriting':
       return <PreUnderwritingPage />
+    case 'leads':
+      return <LeadDistributionPage />
     case 'contacts':
       return <ManagerContactsPage />
     case 'notice':

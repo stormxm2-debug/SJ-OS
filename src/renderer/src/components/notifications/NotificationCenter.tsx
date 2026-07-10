@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, X, ClipboardCheck } from 'lucide-react'
+import { Bell, X, ClipboardCheck, PhoneCall } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
@@ -23,7 +23,7 @@ interface Toast {
   id: number
   title: string
   body: string
-  target: 'registration-admin' | 'customer'
+  target: 'registration-admin' | 'customer' | 'leads'
 }
 
 let toastSeq = 1
@@ -102,6 +102,20 @@ export default function NotificationCenter(): JSX.Element | null {
             })
         })
       })
+      // 새 DB(리드) 배정 → 배정받은 FC 본인에게만 (RLS가 관리자에게도 INSERT를
+      // 전달하므로, 배정 대상이 나일 때만 알림을 띄운다 — 분배한 관리자 스팸 방지).
+      channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, (payload: any) => {
+        const row = payload?.new ?? {}
+        if (String(row.assigned_fc_id ?? '') !== meRef.current) return
+        const name = row.name ? String(row.name) : '신규 고객'
+        const source = row.source ? String(row.source) : ''
+        if (active)
+          push({
+            title: '새 DB 배정 · 24시간 내 콜',
+            body: `${name}${source ? ` · ${source}` : ''}`,
+            target: 'leads'
+          })
+      })
       channel.subscribe()
     })()
 
@@ -133,7 +147,13 @@ export default function NotificationCenter(): JSX.Element | null {
           className="pointer-events-auto flex items-start gap-2.5 rounded-2xl border border-slate-800 bg-white p-3 text-left shadow-xl ring-1 ring-black/5 transition hover:border-indigo-300"
         >
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-            {t.target === 'registration-admin' ? <ClipboardCheck className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+            {t.target === 'registration-admin' ? (
+              <ClipboardCheck className="h-4 w-4" />
+            ) : t.target === 'leads' ? (
+              <PhoneCall className="h-4 w-4" />
+            ) : (
+              <Bell className="h-4 w-4" />
+            )}
           </span>
           <span className="min-w-0 flex-1">
             <span className="block text-[13px] font-bold text-slate-100">{t.title}</span>
