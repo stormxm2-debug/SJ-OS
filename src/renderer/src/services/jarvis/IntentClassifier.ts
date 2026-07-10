@@ -99,8 +99,11 @@ const IMPLEMENTATION_MARKERS = [
   '실행하게'
 ]
 
-/** Phrases that signal an explicit navigation request. */
-const NAVIGATION_MARKERS = ['열어', '열어줘', '이동', '화면으로', '로 가', '바로가기', '보여줘', '띄워', '가줘', 'open ', 'go to']
+/** Phrases that signal an explicit navigation request (구어체 포함). */
+const NAVIGATION_MARKERS = [
+  '열어', '열어줘', '열어봐', '이동', '화면으로', '로 가', '바로가기', '보여줘', '보여봐', '띄워', '띄워봐',
+  '가줘', '가자', '가보자', '들어가', '틀어', '켜줘', '켜봐', '보자', 'open ', 'go to'
+]
 
 /** Phrases that signal a daily briefing. */
 const BRIEFING_MARKERS = ['브리핑', 'briefing', '오늘 요약', '전체 요약']

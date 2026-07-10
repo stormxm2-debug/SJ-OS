@@ -514,10 +514,12 @@ export class JarvisService {
       navigationTarget: classification.navigationTarget,
       suggestedCommands: info.suggested
     }
+    // 크리스프 확인 문구 — 클라이언트가 자동으로 화면을 열고 TTS로 이 문구를 읽는다.
+    const response = classification.navigationTarget ? `네, ${label} 열게요.` : info.summary
     return {
       mode: 'navigation',
       intent: classification.intent,
-      response: info.summary,
+      response,
       toolCalls: [this.tool('navigate', `대상: ${label} (${classification.navigationTarget ?? '—'})`)],
       status: 'completed',
       answer,

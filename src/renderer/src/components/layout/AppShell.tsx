@@ -3,6 +3,7 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import Router from '../Router'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
+import JarvisClapListener from '@renderer/components/jarvis/JarvisClapListener'
 import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
 import { useWakeKey } from '@renderer/services/commercial/wakeResync'
@@ -42,6 +43,8 @@ export default function AppShell(): JSX.Element {
       {/* 자비스 플로팅 버튼은 대표 지시로 제거 (2026-07) — 자비스는 대시보드
           빠른 실행/단축키로 열 수 있고, 패널 자체는 유지된다. */}
       <JarvisPanel />
+      {/* 박수 두 번으로 자비스 열기 (옵트인) — 설정 ON일 때만 마이크 감지 */}
+      <JarvisClapListener />
       {/* 우하단 알림 (고객등록 요청/처리) + 출근 후 다짐 잠금 — wakeKey로 함께
           리마운트해 realtime 구독도 복귀 시 새로 맺는다. */}
       <NotificationCenter key={`nc-${wakeKey}`} />

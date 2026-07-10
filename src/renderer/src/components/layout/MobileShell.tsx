@@ -7,6 +7,7 @@ import BrandLogo from '@renderer/components/brand/BrandLogo'
 import { ROLE_LABEL, routeCategory, isAdminRole, type UserRole } from '@renderer/navigation/roleAccess'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
+import JarvisClapListener from '@renderer/components/jarvis/JarvisClapListener'
 import MobileHome from '@renderer/components/mobile/MobileHome'
 import MobilePerformance from '@renderer/components/mobile/MobilePerformance'
 import MobileMenuPage from '@renderer/components/mobile/MobileMenuPage'
@@ -124,6 +125,7 @@ export default function MobileShell(): JSX.Element {
       </nav>
 
       <JarvisPanel />
+      <JarvisClapListener />
       {/* wakeKey로 함께 리마운트 — 복귀 시 realtime 알림 구독을 새로 맺는다. */}
       <NotificationCenter key={`nc-${wakeKey}`} />
       <ResolutionLockGate key={`rg-${wakeKey}`} />

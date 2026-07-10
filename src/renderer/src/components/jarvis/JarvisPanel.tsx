@@ -30,6 +30,7 @@ import {
   Check,
   Layers,
   Radar,
+  Hand,
   RotateCcw,
   Settings,
   ChevronDown,
@@ -70,6 +71,7 @@ import {
 import { scanAutoBuildPrompt } from '@shared/claudeAutoBuild'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { useAppMode } from '@renderer/navigation/AppModeContext'
+import { getClapEnabled, setClapEnabled } from '@renderer/services/jarvis/clapSettings'
 import type { View } from '@renderer/navigation/types'
 
 /** Simple, arg-free views a Jarvis navigation target can jump to. */
@@ -314,6 +316,8 @@ export default function JarvisPanel(): JSX.Element | null {
   // 홀로 UI: 설정·진단 시트 + 대화 기록 접기.
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  // 박수로 열기 토글 상태 (설정 시트에서 제어, 루트 리스너와 localStorage 공유).
+  const [clapOn, setClapOn] = useState<boolean>(() => getClapEnabled())
   const lastAutoBuildJob = lastAutoBuildJobId
     ? autoBuild.jobs.find((j) => j.id === lastAutoBuildJobId) ?? null
     : null
@@ -555,6 +559,12 @@ export default function JarvisPanel(): JSX.Element | null {
         // Adopt the finalized session and replay its timeline progressively.
         setSession(result.session)
         setRevealed(1)
+      }
+      // 앱 전체 음성 조종: 이동 의도(로컬 navigation 모드 또는 브레인 navigate)면
+      // 실제로 화면을 연다. 확인 문구를 잠깐 보여준 뒤(음성/글자) 이동.
+      const target = result.navigationTarget
+      if (target && (result.mode === 'navigation' || result.mode === 'brain') && toView(target)) {
+        window.setTimeout(() => goToTarget(target), 850)
       }
     } finally {
       // Defensive recovery: always resync from the authoritative service state so
@@ -1873,6 +1883,17 @@ export default function JarvisPanel(): JSX.Element | null {
                 </SheetToggle>
                 <SheetToggle onClick={toggleWake} active={wakeEnabled} icon={<Radar className="h-3.5 w-3.5" />}>
                   호출 대기 {wakeEnabled ? 'ON' : 'OFF'}
+                </SheetToggle>
+                <SheetToggle
+                  onClick={() => {
+                    const next = !clapOn
+                    setClapEnabled(next)
+                    setClapOn(next)
+                  }}
+                  active={clapOn}
+                  icon={<Hand className="h-3.5 w-3.5" />}
+                >
+                  박수로 열기 {clapOn ? 'ON' : 'OFF'}
                 </SheetToggle>
                 <SheetToggle onClick={() => setAutoRunDev((v) => !v)} active={autoRunDev} icon={<Hammer className="h-3.5 w-3.5" />}>
                   개발 명령 자동 실행 {autoRunDev ? 'ON' : 'OFF'}
