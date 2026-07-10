@@ -192,6 +192,17 @@ export default function SalesActivityWorkspacePage(): JSX.Element {
           </div>
         }
       >
+        {/* 실데이터 연동 상태 안내 — 실제 회원 영업활동은 아직 자동으로 들어오지
+            않는다(로컬 목업 구조). 빈 대시보드가 고장처럼 보이지 않도록 명시. */}
+        {snapshot.activities.length === 0 ? (
+          <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs leading-5 text-amber-200/90">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              실제 회원(직원)들의 영업활동 데이터는 아직 자동 연동되지 않았습니다. 현재는 이 기기에서 <b>새 활동</b>으로 직접
+              기록한 로컬 데이터만 표시됩니다 — 실데이터(일정·상담·고객 기반) 자동 집계는 준비 중입니다.
+            </span>
+          </div>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Metric icon={<CalendarCheck className="h-4 w-4" />} label="오늘 활동" value={`${summary.today}건`} tone="text-sky-300" />
           <Metric icon={<ListChecks className="h-4 w-4" />} label="예정" value={`${summary.planned}건`} />
