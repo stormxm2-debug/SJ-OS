@@ -72,6 +72,7 @@ import { scanAutoBuildPrompt } from '@shared/claudeAutoBuild'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { useAppMode } from '@renderer/navigation/AppModeContext'
 import { getClapEnabled, setClapEnabled } from '@renderer/services/jarvis/clapSettings'
+import { LOW_PERF } from '@renderer/services/system/perf'
 import type { View } from '@renderer/navigation/types'
 
 /** Simple, arg-free views a Jarvis navigation target can jump to. */
@@ -1050,9 +1051,20 @@ export default function JarvisPanel(): JSX.Element | null {
     // ESC(전역 핸들러) + 상시 노출 닫기 버튼 + 마운트 시 포인터락 해제 + 배경
     // 장식 레이어는 전부 pointer-events-none.
     <div
-      className="fixed inset-0 z-50 flex flex-col overflow-hidden"
+      className={`fixed inset-0 z-50 flex flex-col overflow-hidden${LOW_PERF ? ' jarvis-lowperf' : ''}`}
       style={{ background: 'radial-gradient(1100px 700px at 50% -12%, #0b2144 0%, #060f22 46%, #02060e 100%)' }}
     >
+      {/* 저사양(앱/Electron) 성능 모드 — 소프트웨어 렌더링에서 가장 비싼 효과를
+          앱에서만 끈다: backdrop-filter(글래스 블러)·대형 blur 글로우·additive
+          블렌드·대형 오로라 회전. 웹은 이 클래스가 없어 풀 화려함 그대로. */}
+      {LOW_PERF ? (
+        <style>{`
+          .jarvis-lowperf *, .jarvis-lowperf *::before, .jarvis-lowperf *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+          .jarvis-lowperf .blur-3xl, .jarvis-lowperf .blur-2xl { filter: none !important; }
+          .jarvis-lowperf canvas { mix-blend-mode: normal !important; }
+          .jarvis-lowperf .jarvis-holo-rotate { animation: none !important; }
+        `}</style>
+      ) : null}
       {/* ── 홀로그램 배경 (장식 전용 — 클릭 통과) ─────────────────── */}
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         {/* 정밀 그리드 */}

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { LOW_PERF } from '@renderer/services/system/perf'
 import type { AiCoreStatus } from './JarvisAiCore'
 
 /**
@@ -27,11 +28,13 @@ function runNebula(
   canvas: HTMLCanvasElement,
   count: number,
   pulsingRef: { current: boolean },
-  opts: { wide?: boolean } = {}
+  opts: { wide?: boolean; lite?: boolean } = {}
 ): () => void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return () => {}
-  const dpr = Math.min(2, typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)
+  // lite(저사양/Electron): DPR 1로 픽셀 수를 줄이고 additive 합성·60fps를 끈다.
+  const lite = Boolean(opts.lite)
+  const dpr = lite ? 1 : Math.min(2, typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1)
   const cssW = canvas.clientWidth || 260
   const cssH = canvas.clientHeight || 260
   canvas.width = Math.round(cssW * dpr)
@@ -69,9 +72,18 @@ function runNebula(
   let running = true
   const start = performance.now()
   let last = start
+  let lastDraw = 0
+  // lite: additive 합성은 소프트웨어 렌더링에서 가장 비싸므로 끈다(밝기 보정).
+  const drawInterval = lite ? 33 : 0 // lite는 ~30fps로 스로틀
 
   const frame = (now: number): void => {
     if (!running) return
+    // lite 스로틀 — rAF는 계속 받되 그리기만 30fps로 (CPU 부담 절반).
+    if (drawInterval && now - lastDraw < drawInterval) {
+      raf = requestAnimationFrame(frame)
+      return
+    }
+    lastDraw = now
     const t = (now - start) / 1000
     const dt = Math.min(0.05, (now - last) / 1000)
     last = now
@@ -85,12 +97,13 @@ function runNebula(
     const bright = 0.55 + energy * (0.25 + 0.45 * beat) + (1 - energy) * 0.08 * breathe
 
     ctx.clearRect(0, 0, cssW, cssH)
-    ctx.globalCompositeOperation = 'lighter'
+    if (!lite) ctx.globalCompositeOperation = 'lighter'
     // 색상 3패스 — 패스당 fillStyle 1회.
     for (let c = 0; c < 3; c += 1) {
       // 골드를 조금 더 밝게(럭셔리 강조), 아이스/플래티넘은 표준.
-      const mul = c === 0 ? 0.72 : 0.6
-      ctx.fillStyle = `${PARTICLE_COLORS[c]}${(mul * bright).toFixed(3)})`
+      // lite는 additive가 없어 겹침 발광이 사라지므로 밝기를 조금 올린다.
+      const mul = (c === 0 ? 0.72 : 0.6) * (lite ? 1.25 : 1)
+      ctx.fillStyle = `${PARTICLE_COLORS[c]}${Math.min(1, mul * bright).toFixed(3)})`
       for (let i = 0; i < N; i += 1) {
         if (col[i] !== c) continue
         const a = ang[i] + t * spd[i]
@@ -102,7 +115,7 @@ function runNebula(
         ctx.fillRect(x - s / 2, y - s / 2, s, s)
       }
     }
-    ctx.globalCompositeOperation = 'source-over'
+    if (!lite) ctx.globalCompositeOperation = 'source-over'
     raf = requestAnimationFrame(frame)
   }
   raf = requestAnimationFrame(frame)
@@ -322,18 +335,21 @@ export default function JarvisHoloOrb({
     const canvas = canvasRef.current
     if (!canvas) return
     const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    // 저사양(앱/Electron) 또는 reduced-motion이면 파티클을 대폭 줄인다.
+    const light = LOW_PERF || reduce
     const count = fullscreen
-      ? reduce
-        ? 1600
+      ? light
+        ? 600
         : 5000
-      : reduce
+      : light
         ? compact
-          ? 400
-          : 900
+          ? 300
+          : 500
         : compact
           ? 2000
           : 4600
-    let cleanup = runNebula(canvas, count, pulsingRef, { wide: fullscreen })
+    const nebulaOpts = { wide: fullscreen, lite: LOW_PERF }
+    let cleanup = runNebula(canvas, count, pulsingRef, nebulaOpts)
     if (!fullscreen) return cleanup
     // 풀스크린은 뷰포트가 바뀌면 성운을 다시 맞춘다 (디바운스 재초기화).
     let t = 0
@@ -341,7 +357,7 @@ export default function JarvisHoloOrb({
       window.clearTimeout(t)
       t = window.setTimeout(() => {
         cleanup()
-        cleanup = runNebula(canvas, count, pulsingRef, { wide: true })
+        cleanup = runNebula(canvas, count, pulsingRef, nebulaOpts)
       }, 200)
     }
     window.addEventListener('resize', onResize)
@@ -407,21 +423,23 @@ export default function JarvisHoloOrb({
         <span key={r.kind + r.inset} className="absolute rounded-full" style={{ inset: `${r.inset}%`, ...flatRingStyle(r.kind, r.dur, r.rev) }} />
       ))}
 
-      {/* 3D 자이로스코프 링 3개 */}
-      <span className="absolute inset-0" style={{ transformStyle: 'preserve-3d' }}>
-        {GYRO_RINGS.map((g) => (
-          <span
-            key={g.anim}
-            className="absolute rounded-full"
-            style={{
-              inset: '16%',
-              border: `${g.width}px solid ${g.color}`,
-              boxShadow: `0 0 12px -4px ${g.color}`,
-              animation: `${g.anim} ${g.dur * tone.speed}s linear infinite`
-            }}
-          />
-        ))}
-      </span>
+      {/* 3D 자이로스코프 링 3개 — 저사양(앱)에선 3D 변환 비용이 커서 생략. */}
+      {LOW_PERF ? null : (
+        <span className="absolute inset-0" style={{ transformStyle: 'preserve-3d' }}>
+          {GYRO_RINGS.map((g) => (
+            <span
+              key={g.anim}
+              className="absolute rounded-full"
+              style={{
+                inset: '16%',
+                border: `${g.width}px solid ${g.color}`,
+                boxShadow: `0 0 12px -4px ${g.color}`,
+                animation: `${g.anim} ${g.dur * tone.speed}s linear infinite`
+              }}
+            />
+          ))}
+        </span>
+      )}
 
       {/* 아크 리액터 코어 — 하우징 링 + 회전 세그먼트 코일 + 골드 링 +
           트라이스포크 + 화이트핫 허브. pulsing 중엔 하트비트로 맥동. */}
