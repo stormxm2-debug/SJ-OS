@@ -20,7 +20,10 @@ export interface OverviewStaff {
 export interface StaffOverview {
   customerCount: number
   customers: { id: string; name: string; phone?: string; source?: string; createdAt: string }[]
+  /** 예정(미래) 일정만 — 요약 카드 "다음 일정"용. */
   upcoming: { id: string; type: string; title?: string; customerName?: string; startsAt: string; status: string; location?: string }[]
+  /** 이 직원이 올린 일정 전체(지난 일정 포함, 최근 40건). */
+  schedules: { id: string; type: string; title?: string; customerName?: string; startsAt: string; status: string; location?: string }[]
   consultations: { id: string; type?: string; summary: string; customerName?: string; createdAt: string }[]
   perf: { life: number; nonLife: number; shortTerm: number; total: number; contractCount: number; source: 'excel' | 'self' | 'none' }
   attendance: { workDays: number; lateDays: number; lateFee: number; lastCheckIn?: string }
@@ -193,9 +196,8 @@ export async function loadStaffOverview(staffId: string, month: string): Promise
       .from('schedule_events')
       .select('id, type, title, manual_customer_name, starts_at, status, location, customers(name)')
       .eq('staff_id', staffId)
-      .gte('starts_at', nowIso)
-      .order('starts_at', { ascending: true })
-      .limit(15),
+      .order('starts_at', { ascending: false })
+      .limit(40),
     client
       .from('consultations')
       .select('id, consultation_type, summary, created_at, customers(name)')
@@ -234,6 +236,20 @@ export async function loadStaffOverview(staffId: string, month: string): Promise
   const attRows = Array.isArray(att?.data) ? (att.data as any[]) : []
   const lateRows = attRows.filter((a) => a.status === 'late')
 
+  // 일정: 전체(지난 것 포함)를 매핑하고, 요약 카드용 '예정'은 미래분만 골라 오름차순.
+  const allSchedules = (Array.isArray(sched?.data) ? (sched.data as any[]) : []).map((s) => ({
+    id: s.id,
+    type: s.type ?? 'meeting',
+    title: s.title ?? undefined,
+    customerName: s.customers?.name ?? s.manual_customer_name ?? undefined,
+    startsAt: s.starts_at,
+    status: s.status ?? 'planned',
+    location: s.location ?? undefined
+  }))
+  const upcoming = allSchedules
+    .filter((s) => s.startsAt >= nowIso)
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+
   return {
     customerCount: cust?.count ?? (Array.isArray(cust?.data) ? cust.data.length : 0),
     customers: (Array.isArray(cust?.data) ? (cust.data as any[]) : []).map((c) => ({
@@ -243,15 +259,8 @@ export async function loadStaffOverview(staffId: string, month: string): Promise
       source: c.source ?? undefined,
       createdAt: c.created_at
     })),
-    upcoming: (Array.isArray(sched?.data) ? (sched.data as any[]) : []).map((s) => ({
-      id: s.id,
-      type: s.type ?? 'meeting',
-      title: s.title ?? undefined,
-      customerName: s.customers?.name ?? s.manual_customer_name ?? undefined,
-      startsAt: s.starts_at,
-      status: s.status ?? 'planned',
-      location: s.location ?? undefined
-    })),
+    upcoming,
+    schedules: allSchedules,
     consultations: (Array.isArray(consult?.data) ? (consult.data as any[]) : []).map((c) => ({
       id: c.id,
       type: c.consultation_type ?? undefined,

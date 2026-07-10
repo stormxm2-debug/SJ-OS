@@ -46,6 +46,7 @@ import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import { Send, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import CustomerUnderwritingHint from './CustomerUnderwritingHint'
+import MapNavButtons from '@renderer/components/ui/MapNavButtons'
 import { setUnderwritingPrefill } from '@renderer/services/underwriting-ai/underwritingPrefill'
 
 /**
@@ -528,6 +529,11 @@ export default function SupabaseCustomerManager(): JSX.Element {
                 />
               </div>
             </Field>
+            {form.address.trim() ? (
+              <div className="mt-1.5">
+                <MapNavButtons location={form.address.trim()} />
+              </div>
+            ) : null}
           </div>
 
           <div className="mb-3">
@@ -827,8 +833,11 @@ export default function SupabaseCustomerManager(): JSX.Element {
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                     {head.phone ? <span>{head.phone}</span> : null}
                     {head.address ? (
-                      <span className="inline-flex items-center gap-0.5">
-                        <MapPin className="h-3 w-3" /> {head.address}
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-0.5">
+                          <MapPin className="h-3 w-3" /> {head.address}
+                        </span>
+                        <MapNavButtons location={head.address} />
                       </span>
                     ) : null}
                     {head.medicalHistory ? (

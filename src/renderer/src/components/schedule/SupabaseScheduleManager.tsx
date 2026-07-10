@@ -14,7 +14,6 @@ import {
   NotebookPen,
   UserRound,
   MapPin,
-  Navigation,
   Pencil,
   Trash2,
   UsersRound,
@@ -48,6 +47,7 @@ import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
 import { listOverviewStaff, type OverviewStaff } from '@renderer/services/commercial/staffOverviewService'
 import { buildMeetingMessage, shareMeetingText } from '@renderer/services/share/meetingShare'
+import MapNavButtons from '@renderer/components/ui/MapNavButtons'
 import { sendMeetingAlimtalk } from '@renderer/services/alimtalk/alimtalkService'
 
 /**
@@ -830,30 +830,6 @@ export default function SupabaseScheduleManager(): JSX.Element {
   )
 }
 
-// --- 네비 연결 버튼 (카카오맵 + 티맵) -----------------------------------------
-
-function NavButtons({ location }: { location: string }): JSX.Element {
-  const enc = encodeURIComponent(location)
-  return (
-    <span className="inline-flex items-center gap-1">
-      <a
-        href={`https://map.kakao.com/link/search/${enc}`}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-1 rounded-full bg-[#FEE500] px-2.5 py-1 text-[10px] font-bold text-[#3C1E1E] transition hover:brightness-95"
-      >
-        <Navigation className="h-3 w-3" /> 카카오맵
-      </a>
-      <a
-        href={`tmap://search?name=${enc}`}
-        className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-bold text-sky-700 transition hover:bg-sky-100"
-      >
-        <Navigation className="h-3 w-3" /> 티맵
-      </a>
-    </span>
-  )
-}
-
 // --- 일정 카드 ----------------------------------------------------------------
 
 function EventCard({
@@ -1022,7 +998,7 @@ function EventCard({
           <span className="inline-flex items-center gap-1 text-[12px] text-slate-400">
             <MapPin className="h-3.5 w-3.5 text-slate-500" /> {event.location}
           </span>
-          <NavButtons location={event.location} />
+          <MapNavButtons location={event.location} />
         </div>
       ) : null}
 

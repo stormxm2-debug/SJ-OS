@@ -103,6 +103,19 @@ export async function updateCustomerStatus(id: string, status: CustomerStatus): 
   return updateCustomer(id, { status })
 }
 
+/**
+ * 단건 고객 전체 조회 (관리자 직원현황 상세용). RLS상 관리자는 전 직원 고객을
+ * 열람할 수 있으므로 소유자와 무관하게 id로 바로 가져온다. 없으면 null.
+ */
+export async function getCustomerById(id: string): Promise<CustomerRecord | null> {
+  if (isSupabase()) {
+    const res = await supabaseCustomerAdapter.getCustomer(id)
+    return res.ok ? res.data : null
+  }
+  const items = await customerRepository.list()
+  return items.find((c) => c.id === id) ?? null
+}
+
 /** Client-side search/filter (UX only). */
 export function filterCustomers(customers: CustomerRecord[], query: string, status?: CustomerStatus | 'all', tag?: string): CustomerRecord[] {
   const q = query.trim().toLowerCase()
