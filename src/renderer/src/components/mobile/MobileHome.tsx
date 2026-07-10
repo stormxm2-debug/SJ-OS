@@ -1,85 +1,20 @@
 import { useEffect, useState } from 'react'
-import { Clock, UserPlus, ClipboardList, CalendarDays, Bot, Users, UserRound, Star, Sparkles } from 'lucide-react'
+import { Star } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
-import { ROLE_LABEL, isAdminRole } from '@renderer/navigation/roleAccess'
+import { isAdminRole } from '@renderer/navigation/roleAccess'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
 import { findMenuItem, listFavorites, subscribeFavorites } from './mobileMenu'
-import {
-  getAttendanceSummary,
-  listAttendanceRecords,
-  listMyTodayAttendance
-} from '@renderer/services/commercial/attendanceService'
-import { listCustomers } from '@renderer/services/commercial/customerService'
-import { listConsultations, filterToday as todayConsultations } from '@renderer/services/commercial/consultationService'
-import { listScheduleEvents, filterToday as todaySchedules } from '@renderer/services/commercial/scheduleService'
-import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
-
-/** Tables whose changes should live-refresh the home summary (stable ref for the hook). */
-const RT_TABLES = ['attendance_records', 'customers', 'consultations', 'schedule_events']
-
-interface HomeSummary {
-  mode: 'supabase' | 'local'
-  myWorkState: '출근 전' | '근무중' | '퇴근 완료'
-  attendanceRatio: string
-  todaySchedules: number
-  todayConsultations: number
-  customers: number
-  /** 오늘 출근 기록의 다짐(memo) — 출근 전/미작성이면 null */
-  resolution: string | null
-}
-
-const EMPTY: HomeSummary = {
-  mode: 'local',
-  myWorkState: '출근 전',
-  attendanceRatio: '-',
-  todaySchedules: 0,
-  todayConsultations: 0,
-  customers: 0,
-  resolution: null
-}
 
 /**
- * Mobile staff home (role-aware). Quick actions + REAL summaries through the same
- * commercial services the full pages use (Supabase when configured, local-mock
- * otherwise) — RLS already scopes each list to the viewer's role, so the numbers
- * here are per-person for FC, per-team for team leaders, and company-wide for the
- * owner. Live-refreshes via realtime sync like every other screen.
+ * 모바일 홈 — 즐겨찾기 + 최근 공지만 (2026-07-10 대표 지시로 대폭 정리).
+ * 인사말·오늘 다짐·빠른 실행·통계 카드·자비스 버튼은 제거 — 홈은 "내가 고른
+ * 메뉴로 바로 가는 곳"으로 단순화. 다른 기능은 하단 탭/전체 메뉴에서 접근.
  */
 export default function MobileHome(): JSX.Element {
   const { session } = useSession()
   const { navigate } = useNavigation()
-  const role = session.role
-  const [sum, setSum] = useState<HomeSummary>(EMPTY)
-
-  const load = async (): Promise<void> => {
-    const [all, my, cust, cons, sched] = await Promise.all([
-      listAttendanceRecords(),
-      listMyTodayAttendance(),
-      listCustomers(),
-      listConsultations(),
-      listScheduleEvents()
-    ])
-    const checkIn = my.records.find((r) => r.type === 'check-in')
-    const hasIn = Boolean(checkIn)
-    const hasOut = my.records.some((r) => r.type === 'check-out')
-    const att = getAttendanceSummary(all.records)
-    setSum({
-      mode: all.mode === 'supabase' ? 'supabase' : 'local',
-      myWorkState: !hasIn ? '출근 전' : hasOut ? '퇴근 완료' : '근무중',
-      attendanceRatio: att.total > 0 ? `${att.checkedIn}/${att.total}` : '-',
-      todaySchedules: todaySchedules(sched.events).length,
-      todayConsultations: todayConsultations(cons.consultations).length,
-      customers: cust.customers.length,
-      resolution: checkIn?.memo?.trim() || null
-    })
-  }
-  useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-  useRealtimeSync(RT_TABLES, load)
 
   // 즐겨찾기 — 전체 메뉴에서 ⭐를 누르면 즉시 반영된다. 관리자 전용 항목은
   // 관리자가 아닌 계정에서 걸러낸다 (기기 공유 등으로 저장돼 있어도 숨김).
@@ -87,59 +22,10 @@ export default function MobileHome(): JSX.Element {
   useEffect(() => subscribeFavorites(() => setFavKeys(listFavorites())), [])
   const favItems = favKeys
     .map((k) => findMenuItem(k))
-    .filter((i): i is NonNullable<typeof i> => Boolean(i && (!i.adminOnly || isAdminRole(role))))
-
-  const quick = [
-    { label: '출퇴근', icon: <Clock className="h-5 w-5" />, onClick: () => navigate({ name: 'attendance' }) },
-    { label: '고객 등록', icon: <UserPlus className="h-5 w-5" />, onClick: () => navigate({ name: 'customer' }) },
-    { label: '상담 작성', icon: <ClipboardList className="h-5 w-5" />, onClick: () => navigate({ name: 'consultation' }) },
-    { label: '일정', icon: <CalendarDays className="h-5 w-5" />, onClick: () => navigate({ name: 'schedule' }) }
-  ]
-
-  const teamScope = isAdminRole(role) ? '전체' : role === 'team-leader' ? '팀' : '내'
+    .filter((i): i is NonNullable<typeof i> => Boolean(i && (!i.adminOnly || isAdminRole(session.role))))
 
   return (
     <div className="space-y-3">
-      {/* Greeting */}
-      <div className="rounded-2xl border border-slate-800 bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold text-slate-100">{session.name || '직원'}님</h1>
-          <span className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[10px] font-bold text-indigo-600">{ROLE_LABEL[role]}</span>
-        </div>
-        <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
-          <span>SJ INVEST 모바일</span>
-          {sum.mode === 'supabase' ? (
-            <span className="rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[10px] font-bold text-emerald-600">실시간 연동</span>
-          ) : (
-            <span className="rounded-full border border-slate-700 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-400">로컬 데이터</span>
-          )}
-        </div>
-      </div>
-
-      {/* 오늘 다짐 — 출근 보고 때 적은 다짐을 딥네이비+골드 카드로 강조 */}
-      <div className="rounded-2xl border p-4 shadow-sm" style={{ backgroundColor: '#0e1e3a', borderColor: '#c6982f' }}>
-        <div className="flex items-center gap-1.5 text-[11px] font-bold" style={{ color: '#e6c877' }}>
-          <Sparkles className="h-3.5 w-3.5" /> 오늘 다짐
-        </div>
-        {sum.resolution ? (
-          <p className="mt-1.5 text-sm font-semibold leading-relaxed text-white">“{sum.resolution}”</p>
-        ) : (
-          <p className="mt-1.5 text-xs" style={{ color: '#9db1d1' }}>
-            아직 오늘 다짐이 없어요 — 출근 보고 후 다짐을 적으면 여기에 표시됩니다.
-          </p>
-        )}
-      </div>
-
-      {/* Quick actions */}
-      <div className="grid grid-cols-4 gap-2">
-        {quick.map((q) => (
-          <button key={q.label} type="button" onClick={q.onClick} className="flex flex-col items-center gap-1 rounded-2xl border border-slate-800 bg-white py-3 text-slate-300 transition active:bg-slate-950">
-            <span className="text-indigo-500">{q.icon}</span>
-            <span className="text-[11px] font-medium">{q.label}</span>
-          </button>
-        ))}
-      </div>
-
       {/* 즐겨찾기 — 전체 메뉴에서 ⭐한 항목이 여기 나타난다 */}
       {favItems.length > 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-white p-3">
@@ -172,37 +58,8 @@ export default function MobileHome(): JSX.Element {
         </div>
       )}
 
-      {/* Role-scoped summary (RLS already narrows each list to the viewer). */}
-      <div className="grid grid-cols-2 gap-2">
-        {role === 'fc' ? (
-          <Card icon={<Clock />} label="오늘 출근" value={sum.myWorkState} tone="emerald" />
-        ) : (
-          <Card icon={<Users />} label={`${teamScope} 출근`} value={sum.attendanceRatio} tone="emerald" />
-        )}
-        <Card icon={<CalendarDays />} label="오늘 일정" value={`${sum.todaySchedules}건`} tone="indigo" />
-        <Card icon={<ClipboardList />} label="오늘 상담" value={`${sum.todayConsultations}건`} tone="amber" />
-        <Card icon={<UserRound />} label={`${teamScope} 고객`} value={`${sum.customers}명`} tone="indigo" />
-      </div>
-
       {/* Recent announcements */}
       <RecentAnnouncementsWidget />
-
-      {/* Jarvis */}
-      <button type="button" onClick={() => jarvisService.open()} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3 text-sm font-semibold text-white">
-        <Bot className="h-4 w-4" /> 자비스 도움받기
-      </button>
-
-    </div>
-  )
-}
-
-function Card({ icon, label, value, tone }: { icon: JSX.Element; label: string; value: string; tone?: 'emerald' | 'indigo' | 'amber' }): JSX.Element {
-  const t = tone === 'emerald' ? 'text-emerald-600' : tone === 'indigo' ? 'text-indigo-600' : tone === 'amber' ? 'text-amber-600' : 'text-slate-300'
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-white p-3">
-      <div className={['mb-1 flex h-7 w-7 items-center justify-center rounded-lg bg-slate-950 [&>svg]:h-4 [&>svg]:w-4', t].join(' ')}>{icon}</div>
-      <div className={['text-lg font-bold tabular-nums', t].join(' ')}>{value}</div>
-      <div className="text-[11px] text-slate-500">{label}</div>
     </div>
   )
 }

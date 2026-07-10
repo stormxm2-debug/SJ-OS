@@ -48,7 +48,12 @@ create policy profiles_select on public.profiles for select using (
   or public.is_owner_or_admin()
   or (public.is_team_leader() and team_id = public.current_user_team_id())
 );
-create policy profiles_update_self on public.profiles for update using (id = auth.uid());
+-- SECURITY: WITH CHECK 은 행 id 만 고정한다. role/team_id/status 같은 '권한 컬럼'은
+-- 이 정책만으로는 못 막으므로, SJ_OS_SUPABASE_SECURITY_HARDENING.sql 의
+-- profiles_guard_privileged 트리거로 '민감 컬럼 변경 = 관리자만' 을 강제한다.
+-- (WITH CHECK 없이 두면 일반 직원이 스스로 role='owner' 로 승격 가능 — 권한 상승 취약점.)
+create policy profiles_update_self on public.profiles for update
+  using (id = auth.uid()) with check (id = auth.uid());
 create policy profiles_admin_manage on public.profiles for all using (public.is_owner_or_admin())
   with check (public.is_owner_or_admin());
 

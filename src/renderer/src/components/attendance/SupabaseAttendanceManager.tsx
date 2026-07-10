@@ -86,6 +86,8 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   const [mode, setMode] = useState<AttendanceDataMode>('local-mock')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
+  // 기록은 저장됐지만 사진 업로드만 실패한 경우의 안내 (조용히 사라지는 사진 방지)
+  const [photoWarn, setPhotoWarn] = useState<string | undefined>()
   const [memo, setMemo] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<'checkin-dup' | 'checkout-none' | null>(null)
@@ -217,6 +219,13 @@ export default function SupabaseAttendanceManager(): JSX.Element {
       return
     }
     setError(undefined)
+    // 사진을 찍었는데 저장된 기록에 사진이 없으면(업로드 실패) 사용자에게 알린다 —
+    // 기록 자체는 저장됐으므로 빨간 에러가 아닌 안내로.
+    setPhotoWarn(
+      photo?.dataUrl && res.record && !res.record.photoUrl
+        ? '기록은 저장되었지만 사진 업로드가 확인되지 않았습니다. 통신 상태를 확인하고, 목록에 사진이 안 보이면 관리자에게 알려주세요.'
+        : undefined
+    )
     setMemo('')
     void load()
     // 속도 우선: 주소 변환(최대 6초)은 기록을 막지 않고 뒤에서 채운다.
@@ -352,6 +361,12 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700">
             <AlertTriangle className="mr-1 inline h-3 w-3" />
             {error}
+          </div>
+        ) : null}
+        {photoWarn ? (
+          <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">
+            <AlertTriangle className="mr-1 inline h-3 w-3" />
+            {photoWarn}
           </div>
         ) : null}
 

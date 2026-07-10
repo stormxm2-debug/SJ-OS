@@ -58,19 +58,56 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
 
 const MAX_DIM = 1600
 
-/** 파일 → 다운스케일된 캔버스. <img> 디코드라 초고화소/EXIF 회전에도 안전. */
+/**
+ * 모든 기기에서 동작하는 둥근 사각형 경로.
+ * ctx.roundRect는 Safari 16 / Chrome 99 미만(구형 아이폰·웹뷰)에 없어서
+ * 촬영 자체가 통째로 실패하는 원인이었다 — arcTo로 직접 그린다.
+ */
+function roundedRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2))
+  ctx.beginPath()
+  ctx.moveTo(x + rr, y)
+  ctx.arcTo(x + w, y, x + w, y + h, rr)
+  ctx.arcTo(x + w, y + h, x, y + h, rr)
+  ctx.arcTo(x, y + h, x, y, rr)
+  ctx.arcTo(x, y, x + w, y, rr)
+  ctx.closePath()
+}
+
+/** 파일 → 다운스케일된 캔버스. <img> 디코드 실패 시 createImageBitmap 폴백. */
 async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
   const url = URL.createObjectURL(file)
   try {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const el = new Image()
-      el.onload = () => resolve(el)
-      el.onerror = () => reject(new Error('decode'))
-      el.src = url
-    })
-    const iw = img.naturalWidth || img.width
-    const ih = img.naturalHeight || img.height
-    if (!iw || !ih) throw new Error('empty')
+    let src: CanvasImageSource | null = null
+    let iw = 0
+    let ih = 0
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image()
+        el.onload = () => resolve(el)
+        el.onerror = () => reject(new Error('decode'))
+        el.src = url
+      })
+      iw = img.naturalWidth || img.width
+      ih = img.naturalHeight || img.height
+      src = img
+    } catch {
+      // 일부 기기/웹뷰에서 <img> 디코드가 실패하는 형식 → createImageBitmap 재시도
+      if (typeof createImageBitmap === 'function') {
+        try {
+          const bmp = await createImageBitmap(file)
+          iw = bmp.width
+          ih = bmp.height
+          src = bmp
+        } catch {
+          src = null
+        }
+      }
+    }
+    if (!src || !iw || !ih) {
+      // 삼성 '고효율 사진(HEIF)' 등 브라우저가 디코드 못 하는 형식 구분해 안내
+      throw new Error(/hei[cf]/i.test(file.type) ? 'heic' : 'decode')
+    }
     const scaleDown = Math.min(1, MAX_DIM / Math.max(iw, ih))
     const w = Math.max(1, Math.round(iw * scaleDown))
     const h = Math.max(1, Math.round(ih * scaleDown))
@@ -79,7 +116,7 @@ async function fileToCanvas(file: File): Promise<HTMLCanvasElement> {
     canvas.height = h
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('canvas')
-    ctx.drawImage(img, 0, 0, w, h)
+    ctx.drawImage(src, 0, 0, w, h)
     return canvas
   } finally {
     URL.revokeObjectURL(url)
@@ -206,39 +243,50 @@ export default function AttendanceCamera({
       ctx.font = `bold ${Math.round(44 * scale)}px sans-serif`
       ctx.fillText(`${staffName} · ${label}`, pad, y)
 
-      ctx.textBaseline = 'top'
-      ctx.font = `bold ${Math.round(34 * scale)}px sans-serif`
-      const brand = 'SJ INVEST'
-      const bw = ctx.measureText(brand).width + Math.round(36 * scale)
-      const bh = Math.round(56 * scale)
-      ctx.shadowBlur = 0
-      ctx.fillStyle = 'rgba(11,17,32,0.78)'
-      ctx.beginPath()
-      ctx.roundRect(pad, pad, bw, bh, Math.round(12 * scale))
-      ctx.fill()
-      ctx.strokeStyle = '#c6982f'
-      ctx.lineWidth = Math.max(2, Math.round(3 * scale))
-      ctx.stroke()
-      ctx.fillStyle = '#e6c877'
-      ctx.fillText(brand, pad + Math.round(18 * scale), pad + Math.round(11 * scale))
-
-      if (lateFee > 0) {
-        const lateText = `지각 · 벌금 ${feeLabel(lateFee)}`
-        ctx.font = `bold ${Math.round(30 * scale)}px sans-serif`
-        const lw = ctx.measureText(lateText).width + Math.round(32 * scale)
-        const lh = Math.round(50 * scale)
-        ctx.fillStyle = 'rgba(190,30,30,0.92)'
-        ctx.beginPath()
-        ctx.roundRect(w - pad - lw, pad, lw, lh, Math.round(10 * scale))
+      // 배지(장식)는 실패해도 사진·기본 워터마크를 살린다 — 기기별 캔버스 특이점 격리
+      try {
+        ctx.textBaseline = 'top'
+        ctx.font = `bold ${Math.round(34 * scale)}px sans-serif`
+        const brand = 'SJ INVEST'
+        const bw = ctx.measureText(brand).width + Math.round(36 * scale)
+        const bh = Math.round(56 * scale)
+        ctx.shadowBlur = 0
+        ctx.fillStyle = 'rgba(11,17,32,0.78)'
+        roundedRectPath(ctx, pad, pad, bw, bh, Math.round(12 * scale))
         ctx.fill()
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(lateText, w - pad - lw + Math.round(16 * scale), pad + Math.round(10 * scale))
+        ctx.strokeStyle = '#c6982f'
+        ctx.lineWidth = Math.max(2, Math.round(3 * scale))
+        ctx.stroke()
+        ctx.fillStyle = '#e6c877'
+        ctx.fillText(brand, pad + Math.round(18 * scale), pad + Math.round(11 * scale))
+
+        if (lateFee > 0) {
+          const lateText = `지각 · 벌금 ${feeLabel(lateFee)}`
+          ctx.font = `bold ${Math.round(30 * scale)}px sans-serif`
+          const lw = ctx.measureText(lateText).width + Math.round(32 * scale)
+          const lh = Math.round(50 * scale)
+          ctx.fillStyle = 'rgba(190,30,30,0.92)'
+          roundedRectPath(ctx, w - pad - lw, pad, lw, lh, Math.round(10 * scale))
+          ctx.fill()
+          ctx.fillStyle = '#ffffff'
+          ctx.fillText(lateText, w - pad - lw + Math.round(16 * scale), pad + Math.round(10 * scale))
+        }
+      } catch {
+        /* 배지 없이 진행 */
       }
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+      // 일부 구형 기기에서 jpeg 인코딩이 빈 값을 돌려주면 png로 재시도
+      let dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+      if (!dataUrl.startsWith('data:image/')) dataUrl = canvas.toDataURL('image/png')
+      if (!dataUrl.startsWith('data:image/')) throw new Error('encode')
       onCapture({ dataUrl, watermarkText, coords: geo, address, lateFee, timestamp })
-    } catch {
-      setNote('사진을 읽지 못했습니다. 다시 촬영해 주세요. (계속 안 되면 "사진 없이 기록"을 눌러 주세요)')
+    } catch (e) {
+      const heic = e instanceof Error && e.message === 'heic'
+      setNote(
+        heic
+          ? '카메라가 고효율(HEIF) 형식으로 저장해 사진을 읽지 못했습니다. 카메라 설정에서 "고효율 사진"을 꺼 주세요. 지금은 "사진 없이 기록"으로 출근할 수 있습니다.'
+          : '사진을 읽지 못했습니다. 다시 촬영해 주세요. (계속 안 되면 "사진 없이 기록"을 눌러 주세요)'
+      )
       setBusy(false)
     }
   }
