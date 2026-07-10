@@ -132,7 +132,7 @@ export default function MobileShell(): JSX.Element {
 }
 
 /** 모바일에서 관리자에게만 열어주는 관리자 라우트 (개발/배포 도구는 계속 차단). */
-const MOBILE_ADMIN_ROUTES: ViewName[] = ['staff-overview', 'staff-table', 'registration-admin']
+const MOBILE_ADMIN_ROUTES: ViewName[] = ['staff-overview', 'staff-table', 'registration-admin', 'shared-schedule']
 
 /** Mobile router: staff routes only; admin/dev routes → mobile access-denied card. */
 function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRole }): JSX.Element {

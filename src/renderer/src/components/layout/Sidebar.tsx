@@ -114,6 +114,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'settings', label: '설정', icon: Settings, view: { name: 'settings' }, match: ['settings'] },
       { key: 'staff-table', label: '전 직원 정리표', icon: UsersRound, view: { name: 'staff-table' }, match: ['staff-table'] },
       { key: 'staff-overview', label: '직원 현황', icon: UsersRound, view: { name: 'staff-overview' }, match: ['staff-overview'] },
+      { key: 'shared-schedule', label: '공유 일정 (전 직원)', icon: Share2, view: { name: 'shared-schedule' }, match: ['shared-schedule'] },
       { key: 'staff-team', label: '직원 / 팀 관리', icon: UsersRound, view: { name: 'staff-team' }, match: ['staff-team'] },
       { key: 'staff-login', label: '직원 로그인 관리', icon: UserRound, view: { name: 'staff-login' }, match: ['staff-login'] },
       { key: 'announcements', label: '공지사항 관리', icon: Megaphone, view: { name: 'announcements' }, match: ['announcements'] },
@@ -186,7 +187,6 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
-  { key: 'shared-schedule', label: '공유 일정', icon: Share2, view: { name: 'shared-schedule' }, match: ['shared-schedule'] },
   { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }
 ]

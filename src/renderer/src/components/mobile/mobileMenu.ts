@@ -48,7 +48,6 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     items: [
       { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' } },
       { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' } },
-      { key: 'shared-schedule', label: '공유 일정', icon: Share2, view: { name: 'shared-schedule' } },
       { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' } },
       { key: 'consultation', label: '상담기록', icon: ClipboardList, view: { name: 'consultation' } }
     ]
@@ -74,6 +73,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
   {
     title: '관리자 메뉴',
     items: [
+      { key: 'shared-schedule', label: '공유 일정 (전 직원)', icon: Share2, view: { name: 'shared-schedule' }, adminOnly: true },
       { key: 'staff-overview', label: '직원 현황', icon: UsersRound, view: { name: 'staff-overview' }, adminOnly: true },
       { key: 'staff-table', label: '전 직원 정리표', icon: LayoutList, view: { name: 'staff-table' }, adminOnly: true },
       { key: 'registration-admin', label: '고객등록 관리', icon: ClipboardCheck, view: { name: 'registration-admin' }, adminOnly: true }
