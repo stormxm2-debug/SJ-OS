@@ -50,9 +50,10 @@ alter table public.chat_conversations enable row level security;
 alter table public.chat_participants  enable row level security;
 alter table public.chat_messages      enable row level security;
 
--- 대화방: 참여자만 조회. 생성=본인이 만든 것만. 수정(last_message 등)=참여자.
+-- 대화방: 참여자만 조회 + 생성자 본인(참여자 행이 생기기 전 insert().select('id')가
+-- RLS에 가려 방 생성이 실패하는 버그 방지 — 2026-07-11 총괄 배포 시 발견·수정).
 create policy chat_conv_select on public.chat_conversations for select to authenticated
-  using ( public.is_chat_member(id) );
+  using ( public.is_chat_member(id) or created_by = auth.uid() );
 create policy chat_conv_insert on public.chat_conversations for insert to authenticated
   with check ( created_by = auth.uid() );
 create policy chat_conv_update on public.chat_conversations for update to authenticated
