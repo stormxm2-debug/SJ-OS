@@ -69,6 +69,11 @@ export default function MobileShell(): JSX.Element {
     navigate(view)
   }
 
+  // 뒤로가기(popstate)로 화면이 바뀐 경우에도 전체 메뉴가 떠 있지 않게 닫는다.
+  useEffect(() => {
+    setMoreOpen(false)
+  }, [route.name])
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-950 text-slate-200">
       {/* Top bar */}

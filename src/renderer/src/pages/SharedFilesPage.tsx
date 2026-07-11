@@ -10,8 +10,10 @@ import {
   FileText,
   Image as ImageIcon,
   FileSpreadsheet,
-  File as FileIcon
+  File as FileIcon,
+  PenLine
 } from 'lucide-react'
+import PdfFillEditor from '@renderer/components/files/PdfFillEditor'
 import Card from '@renderer/components/ui/Card'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
@@ -53,6 +55,11 @@ export default function SharedFilesPage(): JSX.Element {
   const [dragOver, setDragOver] = useState(false)
   const [opening, setOpening] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // PDF 채우기 편집기 (자료실 파일 또는 기기에서 고른 PDF)
+  const [editing, setEditing] = useState<{ name: string; data: ArrayBuffer } | null>(null)
+  const [fillLoading, setFillLoading] = useState<string | null>(null)
+  const pdfPickRef = useRef<HTMLInputElement>(null)
 
   const canUpload = scope === 'personal' || admin
 
@@ -109,6 +116,33 @@ export default function SharedFilesPage(): JSX.Element {
 
   const canDelete = (item: SharedFileItem): boolean => (item.scope === 'personal' ? item.ownerId === session.id : admin)
 
+  /** 자료실 PDF → 바이트 내려받아 채우기 편집기 열기. */
+  const openFill = async (item: SharedFileItem): Promise<void> => {
+    setFillLoading(item.id)
+    setNotes([])
+    try {
+      const res = await sharedFileUrl(item)
+      if (!res.ok || !res.url) throw new Error(res.error)
+      const bin = await fetch(res.url)
+      if (!bin.ok) throw new Error('download')
+      setEditing({ name: item.name, data: await bin.arrayBuffer() })
+    } catch {
+      setNotes(['PDF를 내려받지 못했습니다. 잠시 후 다시 시도해 주세요.'])
+    } finally {
+      setFillLoading(null)
+    }
+  }
+
+  /** 기기(폰/PC)에서 PDF를 직접 골라 채우기 — 자료실에 없어도 사용 가능. */
+  const pickLocalPdf = async (f: File | null): Promise<void> => {
+    if (!f) return
+    if (extOf(f.name) !== 'pdf') {
+      setNotes(['PDF 파일만 채우기를 지원합니다.'])
+      return
+    }
+    setEditing({ name: f.name, data: await f.arrayBuffer() })
+  }
+
   return (
     <div className="space-y-4">
       <Card
@@ -128,6 +162,25 @@ export default function SharedFilesPage(): JSX.Element {
         <p className="text-[12px] leading-5 text-slate-500">
           컴퓨터에서 파일을 올리면 폰 앱에서 바로 열 수 있습니다. PDF·사진은 바로 열리고, 엑셀·워드·한글 파일은 다운로드됩니다.
         </p>
+
+        {/* PDF 양식 채우기 — 자료실 PDF의 [채우기] 또는 기기에서 직접 선택 */}
+        <button
+          type="button"
+          onClick={() => pdfPickRef.current?.click()}
+          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-[#c6982f] bg-[#fdf7ea] px-3 py-2 text-xs font-bold text-[#8a6a1f] transition hover:brightness-95"
+        >
+          <PenLine className="h-3.5 w-3.5" /> 기기에서 PDF 열어 채우기
+        </button>
+        <input
+          ref={pdfPickRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            void pickLocalPdf(e.target.files?.[0] ?? null)
+            e.target.value = ''
+          }}
+        />
 
         {/* 공유 자료 ↔ 내 파일 (내것/직원것 분리 원칙과 동일한 두 칸 구조) */}
         <div className="mt-3 flex overflow-hidden rounded-xl border border-slate-800">
@@ -246,6 +299,16 @@ export default function SharedFilesPage(): JSX.Element {
                 >
                   {opening === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />} 열기
                 </button>
+                {extOf(item.name) === 'pdf' ? (
+                  <button
+                    type="button"
+                    onClick={() => void openFill(item)}
+                    disabled={fillLoading === item.id}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#c6982f] bg-[#fdf7ea] px-2.5 py-1.5 text-[11px] font-bold text-[#8a6a1f] disabled:opacity-60"
+                  >
+                    {fillLoading === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <PenLine className="h-3 w-3" />} 채우기
+                  </button>
+                ) : null}
                 {canDelete(item) ? (
                   <button
                     type="button"
@@ -261,6 +324,18 @@ export default function SharedFilesPage(): JSX.Element {
           )}
         </div>
       </Card>
+
+      {/* PDF 채우기 편집기 (풀스크린 오버레이) */}
+      {editing ? (
+        <PdfFillEditor
+          fileName={editing.name}
+          data={editing.data}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            if (scope === 'personal') void load('personal')
+          }}
+        />
+      ) : null}
     </div>
   )
 }
