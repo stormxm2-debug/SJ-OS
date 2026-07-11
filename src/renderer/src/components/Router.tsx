@@ -24,7 +24,9 @@ import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
+import ChatPage from '@renderer/pages/ChatPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
+import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
 import DeveloperPromptCenterPage from '@renderer/pages/DeveloperPromptCenterPage'
 import AutopilotPage from '@renderer/pages/AutopilotPage'
@@ -106,6 +108,10 @@ export default function Router(): JSX.Element {
       return <LeadDistributionPage />
     case 'contacts':
       return <ManagerContactsPage />
+    case 'chat':
+      return <ChatPage />
+    case 'files':
+      return <SharedFilesPage />
     case 'app-builder':
       return <UniversalAppBuilderPage />
     case 'devprompt':

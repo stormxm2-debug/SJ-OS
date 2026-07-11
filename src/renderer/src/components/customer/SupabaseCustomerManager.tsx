@@ -25,6 +25,7 @@ import {
   updateCustomer
 } from '@renderer/services/commercial/customerService'
 import { deleteCustomerRecord } from '@renderer/services/commercial/recordDeleteService'
+import CustomerDetailModal from '@renderer/components/customer/CustomerDetailModal'
 import {
   bmiOf,
   CUSTOMER_SOURCES,
@@ -45,6 +46,7 @@ import { createRegistration, INSURERS } from '@renderer/services/commercial/regi
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import { Send, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
+import { useSession } from '@renderer/navigation/SessionContext'
 import CustomerUnderwritingHint from './CustomerUnderwritingHint'
 import MapNavButtons from '@renderer/components/ui/MapNavButtons'
 import { setUnderwritingPrefill } from '@renderer/services/underwriting-ai/underwritingPrefill'
@@ -112,11 +114,18 @@ function numOr(v: string): number | undefined {
 
 export default function SupabaseCustomerManager(): JSX.Element {
   const { navigate } = useNavigation()
+  const { session } = useSession()
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
   const [query, setQuery] = useState('')
 
+  // 대표/관리자/팀장은 RLS로 직원 고객까지 내려오므로 화면에서 "내 고객"과
+  // "직원 고객"을 분리한다 (대표 지시: 내 것과 섞이지 않게). FC는 원래 본인만.
+  const elevated = session.role !== 'fc'
+  const [scope, setScope] = useState<'mine' | 'staff'>('mine')
+
+  const [detail, setDetail] = useState<CustomerRecord | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [formErrors, setFormErrors] = useState<string[]>([])
@@ -169,16 +178,20 @@ export default function SupabaseCustomerManager(): JSX.Element {
     }
   }, [form.attachments])
 
+  const mineList = useMemo(() => customers.filter((c) => c.ownerStaffId === session.id), [customers, session.id])
+  const staffList = useMemo(() => customers.filter((c) => c.ownerStaffId !== session.id), [customers, session.id])
+  const scoped = !elevated ? customers : scope === 'mine' ? mineList : staffList
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return customers
-    return customers.filter(
+    if (!q) return scoped
+    return scoped.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
         (c.phone ?? '').includes(q) ||
         (c.address ?? '').toLowerCase().includes(q)
     )
-  }, [customers, query])
+  }, [scoped, query])
 
   /** 세대 단위 그룹: 세대주(또는 미배정) → 가족 구성원. */
   const households = useMemo(() => {
@@ -375,7 +388,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-indigo-600" />
             <h2 className="text-base font-bold text-slate-100">고객관리</h2>
-            <span className="text-sm font-semibold text-slate-400">{customers.length}명</span>
+            <span className="text-sm font-semibold text-slate-400">{scoped.length}명</span>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -398,6 +411,31 @@ export default function SupabaseCustomerManager(): JSX.Element {
         {error ? (
           <div className="mt-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
+          </div>
+        ) : null}
+        {/* 대표/관리자/팀장: 내 고객 ↔ 직원 고객 분리 (섞이지 않게) */}
+        {elevated ? (
+          <div className="mt-3 flex overflow-hidden rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setScope('mine')}
+              className={[
+                'flex-1 px-3 py-2 text-xs font-bold transition',
+                scope === 'mine' ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-white text-slate-500'
+              ].join(' ')}
+            >
+              내 고객 {mineList.length}
+            </button>
+            <button
+              type="button"
+              onClick={() => setScope('staff')}
+              className={[
+                'flex-1 px-3 py-2 text-xs font-bold transition',
+                scope === 'staff' ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-white text-slate-500'
+              ].join(' ')}
+            >
+              직원 고객 {staffList.length}
+            </button>
           </div>
         ) : null}
         <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-800 bg-white px-3">
@@ -751,7 +789,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
               return (
                 <div key={head.id} className="rounded-xl border border-slate-800 bg-white p-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" onClick={() => openEdit(head)} className="flex items-center gap-1.5 text-left">
+                    <button type="button" onClick={() => setDetail(head)} className="flex items-center gap-1.5 text-left">
                       <UserRound className="h-4 w-4 text-slate-500" />
                       <span className="text-sm font-bold text-slate-100 hover:text-indigo-700">{head.name}</span>
                     </button>
@@ -813,7 +851,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
                         <span key={m.id} className="inline-flex items-center overflow-hidden rounded-full bg-slate-950">
                           <button
                             type="button"
-                            onClick={() => openEdit(m)}
+                            onClick={() => setDetail(m)}
                             className="px-2.5 py-1 text-[11px] font-medium text-slate-300 transition hover:bg-indigo-50 hover:text-indigo-700"
                           >
                             {m.name} ({m.relation ?? '가족'})
@@ -831,6 +869,9 @@ export default function SupabaseCustomerManager(): JSX.Element {
                     </div>
                   ) : null}
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                    {elevated && scope === 'staff' && head.ownerStaffName ? (
+                      <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-[#e6c877]">담당 {head.ownerStaffName}</span>
+                    ) : null}
                     {head.phone ? <span>{head.phone}</span> : null}
                     {head.address ? (
                       <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -862,6 +903,18 @@ export default function SupabaseCustomerManager(): JSX.Element {
           </div>
         )}
       </div>
+
+      {detail ? (
+        <CustomerDetailModal
+          customer={detail}
+          onClose={() => setDetail(null)}
+          onEdit={() => {
+            const c = detail
+            setDetail(null)
+            openEdit(c)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

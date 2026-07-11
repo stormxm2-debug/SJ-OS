@@ -66,6 +66,10 @@ export default function SupabaseConsultationManager(): JSX.Element {
 
   const roleHint = session.role === 'fc' ? '내 상담기록만 표시됩니다.' : session.role === 'team-leader' ? '팀 상담기록이 표시됩니다.' : '전체 상담기록이 표시됩니다.'
 
+  // 대표/관리자/팀장: 내 상담과 직원 상담을 분리해 표시 (대표 지시: 섞이지 않게)
+  const elevated = session.role !== 'fc'
+  const [scope, setScope] = useState<'mine' | 'staff'>('mine')
+
   const removeConsultation = async (id: string, who?: string): Promise<void> => {
     if (typeof window !== 'undefined' && !window.confirm(`${who ?? '이'} 상담기록을 완전히 삭제할까요?\n삭제하면 되돌릴 수 없습니다.`)) return
     const res = await deleteConsultationRecord(id)
@@ -93,12 +97,16 @@ export default function SupabaseConsultationManager(): JSX.Element {
   // Live sync: re-load instantly when consultations change on any device.
   useRealtimeSync(RT_TABLES, load)
 
+  const mineList = useMemo(() => list.filter((c) => c.staffId === session.id), [list, session.id])
+  const staffOnly = useMemo(() => list.filter((c) => c.staffId !== session.id), [list, session.id])
+  const scoped = !elevated ? list : scope === 'mine' ? mineList : staffOnly
+
   const visible = useMemo(() => {
-    let v = searchConsultations(list, query, statusFilter, typeFilter)
+    let v = searchConsultations(scoped, query, statusFilter, typeFilter)
     if (todayOnly) v = filterToday(v)
     if (pendingOnly) v = filterPendingNextActions(v)
     return v
-  }, [list, query, statusFilter, typeFilter, todayOnly, pendingOnly])
+  }, [scoped, query, statusFilter, typeFilter, todayOnly, pendingOnly])
 
   const custName = (id: string): string => customers.find((c) => c.id === id)?.name ?? '-'
 
@@ -127,7 +135,10 @@ export default function SupabaseConsultationManager(): JSX.Element {
     setSelected(null); void load()
   }
 
-  const noCustomers = customers.length === 0
+  // 새 상담 작성은 "내 고객"만 대상 (관리자에게 전 직원 고객이 뜨던 문제).
+  // 이름 표시/AI 컨텍스트는 전체 목록 유지 — 직원 상담 상세에서 고객명이 보여야 함.
+  const myCustomers = useMemo(() => customers.filter((c) => c.ownerStaffId === session.id), [customers, session.id])
+  const noCustomers = myCustomers.length === 0
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -155,6 +166,26 @@ export default function SupabaseConsultationManager(): JSX.Element {
         </div>
       ) : null}
 
+      {/* 대표/관리자/팀장: 내 상담 ↔ 직원 상담 분리 */}
+      {elevated ? (
+        <div className="mb-3 flex overflow-hidden rounded-xl border border-slate-800">
+          <button
+            type="button"
+            onClick={() => setScope('mine')}
+            className={['flex-1 px-3 py-2 text-xs font-bold transition', scope === 'mine' ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-white text-slate-500'].join(' ')}
+          >
+            내 상담 {mineList.length}
+          </button>
+          <button
+            type="button"
+            onClick={() => setScope('staff')}
+            className={['flex-1 px-3 py-2 text-xs font-bold transition', scope === 'staff' ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-white text-slate-500'].join(' ')}
+          >
+            직원 상담 {staffOnly.length}
+          </button>
+        </div>
+      ) : null}
+
       {/* Filters */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5">
@@ -177,7 +208,7 @@ export default function SupabaseConsultationManager(): JSX.Element {
       {showForm && !noCustomers ? (
         <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3">
           <div className="mb-2 text-[11px] font-semibold text-slate-300">새 상담기록</div>
-          <Fields input={form} onChange={setForm} customers={customers} />
+          <Fields input={form} onChange={setForm} customers={myCustomers} />
           <AiCoachBlock
             summary={form.summary ?? ''}
             typeLabel={CONSULTATION_TYPE_LABEL[form.consultationType]}
@@ -218,7 +249,12 @@ export default function SupabaseConsultationManager(): JSX.Element {
             <tbody>
               {visible.map((c) => (
                 <tr key={c.id} onClick={() => { setSelected({ ...c }); setShowForm(false) }} className="cursor-pointer border-b border-slate-50 hover:bg-slate-50">
-                  <td className="py-1.5 pr-2 font-medium text-slate-300">{c.customerName ?? custName(c.customerId)}</td>
+                  <td className="py-1.5 pr-2 font-medium text-slate-300">
+                    {c.customerName ?? custName(c.customerId)}
+                    {elevated && scope === 'staff' && c.staffName ? (
+                      <span className="ml-1.5 rounded-full bg-[#0e1e3a] px-1.5 py-0.5 text-[9px] font-bold text-[#e6c877]">담당 {c.staffName}</span>
+                    ) : null}
+                  </td>
                   <td className="py-1.5 pr-2 text-slate-500">{CONSULTATION_TYPE_LABEL[c.consultationType]}</td>
                   <td className="py-1.5 pr-2"><StatusChip status={c.status} /></td>
                   <td className="py-1.5 pr-2 text-slate-500">{c.scheduledAt ? new Date(c.scheduledAt).toLocaleDateString() : '-'}</td>

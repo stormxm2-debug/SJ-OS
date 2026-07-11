@@ -16,6 +16,7 @@ import Card from '@renderer/components/ui/Card'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View } from '@renderer/navigation/types'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
+import MyDayWidgets from '@renderer/components/home/MyDayWidgets'
 
 /**
  * Staff Home — quick-action launcher + Jarvis command shortcuts. Sits below the
@@ -67,6 +68,9 @@ export default function StaffHomePage(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      {/* 내 하루 — 본인 일정 + 본인 이번 달 매출 (자기 것만, 실데이터) */}
+      <MyDayWidgets />
+
       {/* Quick Action launcher */}
       <Card title="빠른 실행" icon={<Sparkles className="h-4 w-4 text-indigo-600" />}>
         <p className="mb-3 text-xs text-slate-500">자주 쓰는 업무를 빠르게 실행하세요.</p>

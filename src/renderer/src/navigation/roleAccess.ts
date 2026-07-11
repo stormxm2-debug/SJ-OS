@@ -34,7 +34,9 @@ export const STAFF_ROUTES: ViewName[] = [
   'underwriting',
   'pre-underwriting',
   'contacts',
+  'chat',
   'leads',
+  'files',
   'notice',
   'fcos',
   'assistant' // 자비스 / 경영 비서 — available to all roles

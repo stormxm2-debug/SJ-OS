@@ -38,7 +38,9 @@ import {
   Stethoscope,
   ShieldQuestion,
   ListChecks,
-  Phone
+  Phone,
+  MessageCircle,
+  FolderOpen
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -91,7 +93,9 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
       { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
       { key: 'leads', label: 'DB 분배', icon: ListChecks, view: { name: 'leads' }, match: ['leads'] },
-      { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] }
+      { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
+      { key: 'chat', label: '메신저', icon: MessageCircle, view: { name: 'chat' }, match: ['chat'] },
+      { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] }
     ]
   },
   {
@@ -170,6 +174,8 @@ const STAFF_NAV: NavItem[] = [
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'leads', label: 'DB 분배', icon: ListChecks, view: { name: 'leads' }, match: ['leads'] },
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
+  { key: 'chat', label: '메신저', icon: MessageCircle, view: { name: 'chat' }, match: ['chat'] },
+  { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
   { key: 'fcos', label: '내 업무', icon: Briefcase, view: { name: 'fcos' }, match: ['fcos'] }
 ]
 
@@ -190,6 +196,8 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'leads', label: 'DB 분배', icon: ListChecks, view: { name: 'leads' }, match: ['leads'] },
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
+  { key: 'chat', label: '메신저', icon: MessageCircle, view: { name: 'chat' }, match: ['chat'] },
+  { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
   { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }

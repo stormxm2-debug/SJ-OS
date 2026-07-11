@@ -216,6 +216,9 @@ export default function SupabaseScheduleManager(): JSX.Element {
   // 일반 뷰(주간 띠·달력·일별 목록)는 관리자여도 "내 일정"만 표시한다 (대표 지시:
   // 자기 것만 보이게 — 직원들 일정은 직원별 보기로 따로). RLS도 본인+관리자로 좁혀짐.
   const myEvents = useMemo(() => events.filter((ev) => ev.staffId === session.id), [events, session.id])
+  // 일정은 개인 업무라 등록 폼/AI 등록의 고객 목록도 "내 고객"만 (관리자에게 전 직원
+  // 고객이 다 뜨던 문제 — 대표 지시: 직원 정보와 섞이지 않게).
+  const myCustomers = useMemo(() => customers.filter((c) => c.ownerStaffId === session.id), [customers, session.id])
 
   const eventsOf = (d: Date): ScheduleWithCustomer[] =>
     myEvents
@@ -335,7 +338,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
     setAiBusy(true)
     setAiError(undefined)
     setAiPreview(undefined)
-    const res = await requestScheduleParse(aiText.trim(), customers.map((c) => c.name))
+    const res = await requestScheduleParse(aiText.trim(), myCustomers.map((c) => c.name))
     setAiBusy(false)
     if (!res.ok || !res.parsed) {
       setAiError(res.error)
@@ -347,7 +350,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
   const confirmAiRegister = async (): Promise<void> => {
     if (!aiPreview) return
     const type = (SCHEDULE_TYPES.includes(aiPreview.type as ScheduleType) ? aiPreview.type : 'meeting') as ScheduleType
-    const match = aiPreview.customerName ? customers.find((c) => c.name === aiPreview.customerName) : undefined
+    const match = aiPreview.customerName ? myCustomers.find((c) => c.name === aiPreview.customerName) : undefined
     const day = fromDateStr(aiPreview.date) ?? today
     const [h, m] = aiPreview.time.split(':').map(Number)
     const starts = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h || 10, m || 0)
@@ -616,7 +619,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
                   className="w-full rounded-xl border border-slate-800 bg-white px-3 py-2.5 text-sm text-slate-200 focus:outline-none"
                 >
                   <option value="">고객 없음</option>
-                  {customers.map((c) => (
+                  {myCustomers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>

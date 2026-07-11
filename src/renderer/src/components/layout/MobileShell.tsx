@@ -22,6 +22,8 @@ import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
+import ChatPage from '@renderer/pages/ChatPage'
+import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
@@ -161,6 +163,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <MobilePerformance />
     case 'claim-assistant':
       return <InsuranceClaimAssistantPage />
+    case 'chat':
+      return <ChatPage />
     case 'wiki':
       return <InsuranceWikiPage />
     case 'underwriting':
@@ -171,6 +175,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <LeadDistributionPage />
     case 'contacts':
       return <ManagerContactsPage />
+    case 'files':
+      return <SharedFilesPage />
     case 'notice':
       return <NoticePage />
     case 'staff-overview':

@@ -5,6 +5,7 @@ import { isAdminRole } from '@renderer/navigation/roleAccess'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
+import MyDayWidgets from '@renderer/components/home/MyDayWidgets'
 import { findMenuItem, listFavorites, subscribeFavorites } from './mobileMenu'
 
 /**
@@ -26,6 +27,9 @@ export default function MobileHome(): JSX.Element {
 
   return (
     <div className="space-y-3">
+      {/* 내 하루 — 본인 일정 + 본인 이번 달 매출 (자기 것만) */}
+      <MyDayWidgets />
+
       {/* 즐겨찾기 — 전체 메뉴에서 ⭐한 항목이 여기 나타난다 */}
       {favItems.length > 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-white p-3">
