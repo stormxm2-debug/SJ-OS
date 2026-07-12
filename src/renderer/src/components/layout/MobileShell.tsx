@@ -20,6 +20,7 @@ import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
+import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
@@ -181,6 +182,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <PreUnderwritingPage />
     case 'leads':
       return <LeadDistributionPage />
+    case 'referrals':
+      return <ReferralEnginePage />
     case 'contacts':
       return <ManagerContactsPage />
     case 'files':

@@ -25,6 +25,7 @@ export type View =
   | { name: 'pre-underwriting' }
   | { name: 'contacts' }
   | { name: 'leads' }
+  | { name: 'referrals' }
   | { name: 'files' }
   | { name: 'app-builder' }
   | { name: 'devprompt' }
