@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   FolderOpen,
   UploadCloud,
@@ -13,7 +13,8 @@ import {
   File as FileIcon,
   PenLine
 } from 'lucide-react'
-import PdfFillEditor from '@renderer/components/files/PdfFillEditor'
+// PDF 편집기는 열 때만 내려받는다 — pdf-lib/폰트가 메인 번들에 실리지 않게 (첫 로딩 속도)
+const PdfFillEditor = lazy(() => import('@renderer/components/files/PdfFillEditor'))
 import Card from '@renderer/components/ui/Card'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
@@ -325,16 +326,24 @@ export default function SharedFilesPage(): JSX.Element {
         </div>
       </Card>
 
-      {/* PDF 채우기 편집기 (풀스크린 오버레이) */}
+      {/* PDF 채우기 편집기 (풀스크린 오버레이, 지연 로드) */}
       {editing ? (
-        <PdfFillEditor
-          fileName={editing.name}
-          data={editing.data}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            if (scope === 'personal') void load('personal')
-          }}
-        />
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 text-sm text-slate-300">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 편집기를 여는 중…
+            </div>
+          }
+        >
+          <PdfFillEditor
+            fileName={editing.name}
+            data={editing.data}
+            onClose={() => setEditing(null)}
+            onSaved={() => {
+              if (scope === 'personal') void load('personal')
+            }}
+          />
+        </Suspense>
       ) : null}
     </div>
   )

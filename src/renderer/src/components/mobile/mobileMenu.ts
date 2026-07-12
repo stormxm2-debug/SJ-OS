@@ -17,7 +17,9 @@ import {
   ShieldQuestion,
   ListChecks,
   Phone,
-  FolderOpen
+  FolderOpen,
+  Cake,
+  TrendingUp
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -51,6 +53,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' } },
       { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' } },
       { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' } },
+      { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' } },
       { key: 'consultation', label: '상담기록', icon: ClipboardList, view: { name: 'consultation' } },
       { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' } }
     ]
@@ -71,6 +74,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     title: '실적·공지',
     items: [
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
+      { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' } },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } }
     ]
   },

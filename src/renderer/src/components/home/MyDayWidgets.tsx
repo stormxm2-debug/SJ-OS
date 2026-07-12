@@ -14,6 +14,7 @@ import {
   SHORT_TERM_RATE
 } from '@renderer/services/commercial/performanceRecordsService'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
+import BirthdayWidget from './BirthdayWidget'
 
 /**
  * 홈 화면 "내 하루" 위젯 — 본인 일정 + 본인 이번 달 매출.
@@ -136,6 +137,9 @@ export default function MyDayWidgets(): JSX.Element {
           </ul>
         )}
       </button>
+
+      {/* 생일 임박 고객 (7일 내, 본인 고객만) — 없으면 렌더링 안 함 */}
+      <BirthdayWidget />
     </div>
   )
 }
