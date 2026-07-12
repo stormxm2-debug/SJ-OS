@@ -20,12 +20,11 @@ import {
   Landmark,
   History,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Hourglass
 } from 'lucide-react'
 import {
-  analyzeClaimExpert,
   generateAppeal,
-  saveClaimAnalysis,
   listClaimAnalyses,
   won,
   fileSizeIssue,
@@ -34,12 +33,20 @@ import {
   type ClaimAppeal,
   type SavedClaimAnalysis
 } from '@renderer/services/insurance-claim/claimExpertService'
+import {
+  enqueueClaimJob,
+  getClaimJobs,
+  subscribeClaimJobs,
+  markClaimJobSeen,
+  removeClaimJob,
+  claimProgressPct,
+  type ClaimJob
+} from '@renderer/services/insurance-claim/claimJobManager'
 import { listCustomers } from '@renderer/services/commercial/customerService'
 import {
   deletePolicyTerm,
   listPolicyTerms,
   registerPolicyTerm,
-  saveWebTerms,
   type PolicyTerm
 } from '@renderer/services/insurance-claim/policyTermsService'
 import type { CustomerRecord } from '@shared/commercial/models'
@@ -52,6 +59,9 @@ import ClaimFaxPanel from '@renderer/components/insurance-claim/ClaimFaxPanel'
  * 2) 회사별·담보별 예상 보험금 + 약관 조항 인용 + 숨은 청구(소멸시효)
  * 3) 고객 발송 안내문 + 부지급 시 재검토(이의) 요청서 생성
  * 고객을 선택하면 결과가 고객 기록에 자동 저장된다. 서류는 저장되지 않는다.
+ *
+ * 분석 실행은 claimJobManager(백그라운드 큐)에 위임 — 다른 화면으로 이동해도
+ * 계속 진행되고, 여러 건을 연달아 걸 수 있으며, 완료되면 토스트+OS 알림이 뜬다.
  */
 
 type Phase = 'upload' | 'analyzing' | 'result'
@@ -78,12 +88,12 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
   const [customer, setCustomer] = useState<CustomerRecord | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  const [progress, setProgress] = useState<ClaimProgress | null>(null)
-  const [result, setResult] = useState<ClaimExpertResult | null>(null)
-  const [error, setError] = useState('')
-  const [disabled, setDisabled] = useState(false)
+  // 백그라운드 작업 매니저 구독 — 페이지를 떠나도 분석은 매니저가 계속 진행한다
+  const [jobs, setJobs] = useState<ClaimJob[]>(() => [...getClaimJobs()])
+  const [viewJobId, setViewJobId] = useState<string | null>(null)
+  /** 지난 분석(고객 기록)에서 불러온 결과 — 작업 결과와 구분해 보관. */
+  const [pastResult, setPastResult] = useState<ClaimExpertResult | null>(null)
 
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [past, setPast] = useState<SavedClaimAnalysis[]>([])
   const [pastOpen, setPastOpen] = useState(false)
 
@@ -100,8 +110,6 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
   const [terms, setTerms] = useState<PolicyTerm[]>([])
   const [termsOpen, setTermsOpen] = useState(false)
   const [forcedTermIds, setForcedTermIds] = useState<string[]>([])
-  const [usedTermIds, setUsedTermIds] = useState<string[]>([])
-  const [autoSavedTerms, setAutoSavedTerms] = useState<string[]>([])
   const [regInsurer, setRegInsurer] = useState('')
   const [regProduct, setRegProduct] = useState('')
   const [regBusy, setRegBusy] = useState(false)
@@ -196,58 +204,96 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
   const totalMb = (files.reduce((s, f) => s + f.size, 0) / 1024 / 1024).toFixed(1)
   const sizeIssues = files.map(fileSizeIssue).filter((m): m is string => Boolean(m))
 
-  const analyze = async (): Promise<void> => {
-    if (files.length === 0) return
-    setPhase('analyzing')
-    setError('')
-    setDisabled(false)
-    setResult(null)
+  // 작업 매니저 구독 — 진행률·완료·저장 상태가 바뀔 때마다 갱신
+  useEffect(() => {
+    return subscribeClaimJobs(() => setJobs([...getClaimJobs()]))
+  }, [])
+
+  const viewJob = useMemo(() => jobs.find((j) => j.id === viewJobId) ?? null, [jobs, viewJobId])
+
+  /** 완료된 작업 결과 열기 — seen 처리 + 결과 화면 전환. */
+  const openJob = (id: string): void => {
+    const j = getClaimJobs().find((x) => x.id === id)
+    if (!j?.result) return
+    markClaimJobSeen(id)
+    setViewJobId(id)
+    setPastResult(null)
+    setMessage(j.result.customerMessage ?? '')
     setAppeal(null)
     setRejection('')
-    setSaveState('idle')
-    const res = await analyzeClaimExpert({
-      files,
-      customerName: customer?.name,
-      onProgress: (p) => setProgress(p),
-      policyTerms: terms.map((t) => ({ id: t.id, insurer: t.insurer, summary: t.summary, filePath: t.filePath })),
-      forcedTermIds
-    })
-    if (!res.ok || !res.result) {
-      setError(res.error ?? '분석에 실패했습니다.')
-      setDisabled(Boolean(res.disabled))
+    setPhase('result')
+    // 백그라운드에서 자동 보관된 웹 약관·고객 기록이 생겼을 수 있으니 갱신
+    void listPolicyTerms().then(setTerms)
+    if (j.customerId) void listClaimAnalyses(j.customerId).then((r) => setPast(r.items))
+  }
+
+  // 페이지 재진입 복원: 안 본 완료 결과가 있으면 자동으로 열고, 진행 중이면 진행 화면으로
+  useEffect(() => {
+    const js = getClaimJobs()
+    const unseen = [...js].reverse().find((j) => j.status === 'done' && !j.seen)
+    if (unseen) {
+      openJob(unseen.id)
+      return
+    }
+    const active = js.find((j) => j.status === 'running' || j.status === 'queued')
+    if (active) {
+      setViewJobId(active.id)
+      setPhase('analyzing')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 지켜보던 작업이 끝나면 자동 전환 (완료 → 결과, 실패 → 업로드로 복귀해 작업 목록에 사유 표시)
+  useEffect(() => {
+    if (phase !== 'analyzing') return
+    if (!viewJob) {
       setPhase('upload')
       return
     }
-    setUsedTermIds(res.usedTerms ?? [])
-    setResult(res.result)
-    // 웹에서 확인한 약관 → 보관함 자동 저장 (다음 분석부터 검색 없이 즉시 적용)
-    if ((res.webTerms ?? []).length > 0) {
-      void saveWebTerms(res.webTerms as unknown[], terms).then((added) => {
-        if (added.length > 0) {
-          setTerms((prev) => [...added, ...prev])
-          setAutoSavedTerms(added.map((t) => `${t.insurer} · ${t.productName}`))
-        }
-      })
-    } else {
-      setAutoSavedTerms([])
-    }
-    setMessage(res.result.customerMessage)
-    setPhase('result')
-    // 고객이 선택돼 있으면 고객 기록에 자동 저장
-    if (customer) {
-      setSaveState('saving')
-      const saved = await saveClaimAnalysis(customer.id, res.result)
-      setSaveState(saved.ok ? 'saved' : 'failed')
-      if (saved.ok) void listClaimAnalyses(customer.id).then((r) => setPast(r.items))
-    }
+    if (viewJob.status === 'done') openJob(viewJob.id)
+    else if (viewJob.status === 'error') setPhase('upload')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, jobs])
+
+  /** 분석 시작 — 백그라운드 큐에 등록. 앞 작업이 진행 중이면 대기열에 쌓인다. */
+  const startAnalysis = (): void => {
+    if (files.length === 0 || sizeIssues.length > 0) return
+    const job = enqueueClaimJob({
+      files,
+      customer: customer ? { id: customer.id, name: customer.name } : null,
+      policyTerms: terms.map((t) => ({ id: t.id, insurer: t.insurer, summary: t.summary, filePath: t.filePath })),
+      forcedTermIds
+    })
+    setFiles([])
+    setForcedTermIds([])
+    setPastResult(null)
+    setAppeal(null)
+    setRejection('')
+    setViewJobId(job.id)
+    // 대기열에 쌓였다면(앞 작업 진행 중) 업로드 화면에 남아 다음 건을 계속 올릴 수 있다
+    setPhase(job.status === 'running' ? 'analyzing' : 'upload')
+  }
+
+  /** 실패한 작업 재시도 — 같은 서류·고객·약관으로 다시 큐에 등록. */
+  const retryJob = (j: ClaimJob): void => {
+    removeClaimJob(j.id)
+    const nj = enqueueClaimJob({
+      files: j.files,
+      customer: j.customerId && j.customerName ? { id: j.customerId, name: j.customerName } : null,
+      policyTerms: j.policyTerms,
+      forcedTermIds: j.forcedTermIds
+    })
+    setViewJobId(nj.id)
+    setPastResult(null)
+    setPhase(nj.status === 'running' ? 'analyzing' : 'upload')
   }
 
   const loadPast = (item: SavedClaimAnalysis): void => {
-    setResult(item.result)
+    setPastResult(item.result)
+    setViewJobId(null)
     setMessage(item.result.customerMessage ?? '')
     setAppeal(null)
     setRejection('')
-    setSaveState('idle')
     setPhase('result')
     setPastOpen(false)
   }
@@ -269,14 +315,23 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
   const reset = (): void => {
     setPhase('upload')
     setFiles([])
-    setResult(null)
-    setError('')
+    setPastResult(null)
+    setViewJobId(null)
     setAppeal(null)
     setRejection('')
-    setSaveState('idle')
   }
 
   const stepNow = phase === 'upload' ? 1 : phase === 'analyzing' ? 2 : 3
+
+  // 표시할 결과·부가 정보는 보고 있는 작업(또는 지난 분석)에서 파생
+  const result = viewJob?.result ?? pastResult
+  const usedTermIds = viewJob?.usedTermIds ?? []
+  const autoSavedTerms = viewJob?.autoSavedTermLabels ?? []
+  const disabled = jobs.some((j) => j.status === 'error' && j.disabled)
+  const hasRunning = jobs.some((j) => j.status === 'running')
+  // 팩스 패널은 실제 File 객체가 필요 — 작업에 보관된 원본을 넘긴다 (지난 분석은 서류 없음)
+  const faxFiles = viewJob?.files ?? []
+  const faxCustomer = viewJob ? (customers.find((c) => c.id === viewJob.customerId) ?? null) : customer
 
   return (
     <div className="space-y-5">
@@ -324,6 +379,114 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
         </div>
       </div>
 
+      {/* ── 분석 작업 현황 — 다른 화면으로 이동해도 계속 진행 ─────── */}
+      {jobs.length > 0 ? (
+        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+            <h2 className="flex items-center gap-1.5 text-[13px] font-extrabold text-slate-100">
+              {hasRunning ? <Loader2 className="h-4 w-4 animate-spin text-[#b0821f]" /> : <ShieldCheck className="h-4 w-4 text-[#b0821f]" />}
+              분석 작업 {jobs.length}건
+            </h2>
+            <span className="text-[11px] text-slate-500">다른 화면으로 이동해도 계속 진행 · 완료되면 우하단 알림</span>
+          </div>
+          <div className="space-y-1.5">
+            {[...jobs].reverse().map((j) => (
+              <div key={j.id} className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2">
+                <span className="mt-0.5 shrink-0">
+                  {j.status === 'running' ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-[#b0821f]" />
+                  ) : j.status === 'queued' ? (
+                    <Hourglass className="h-4 w-4 text-amber-500" />
+                  ) : j.status === 'done' ? (
+                    <BadgeCheck className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 text-rose-500" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-[12px] font-bold text-slate-100">{j.label}</span>
+                    <span
+                      className={[
+                        'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                        j.status === 'running'
+                          ? 'bg-[#c6982f]/15 text-[#b0821f]'
+                          : j.status === 'queued'
+                            ? 'bg-amber-50 text-amber-600'
+                            : j.status === 'done'
+                              ? 'bg-emerald-50 text-emerald-600'
+                              : 'bg-rose-50 text-rose-600'
+                      ].join(' ')}
+                    >
+                      {j.status === 'running'
+                        ? `분석중 ${claimProgressPct(j.progress)}%`
+                        : j.status === 'queued'
+                          ? '대기'
+                          : j.status === 'done'
+                            ? '완료'
+                            : '실패'}
+                    </span>
+                  </div>
+                  {j.status === 'running' ? (
+                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#0e1e3a] via-[#1b3a6b] to-[#c6982f] transition-all duration-700"
+                        style={{ width: `${claimProgressPct(j.progress)}%` }}
+                      />
+                    </div>
+                  ) : j.status === 'error' ? (
+                    <div className="mt-0.5 truncate text-[11px] text-rose-600">{j.error}</div>
+                  ) : j.status === 'done' && j.result ? (
+                    <div className="mt-0.5 text-[11px] text-slate-500">
+                      예상 <b className="text-[#b0821f]">{won(j.result.grandTotal)}</b>
+                      {j.customerId ? (
+                        <span className="ml-1.5">
+                          · 고객 기록{' '}
+                          {j.saveState === 'saved' ? '저장됨' : j.saveState === 'saving' ? '저장 중…' : j.saveState === 'failed' ? '저장 실패' : ''}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-0.5 text-[11px] text-slate-500">앞 작업이 끝나면 자동으로 시작됩니다</div>
+                  )}
+                </div>
+                {j.status === 'done' ? (
+                  <button
+                    type="button"
+                    onClick={() => openJob(j.id)}
+                    className="shrink-0 rounded-lg bg-[#0e1e3a] px-2.5 py-1.5 text-[11px] font-bold text-[#e6c877] hover:brightness-125"
+                  >
+                    결과 보기
+                  </button>
+                ) : null}
+                {j.status === 'error' ? (
+                  <button
+                    type="button"
+                    onClick={() => retryJob(j)}
+                    className="shrink-0 rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-slate-950"
+                  >
+                    재시도
+                  </button>
+                ) : null}
+                {j.status !== 'running' ? (
+                  <button
+                    type="button"
+                    aria-label="작업 삭제"
+                    onClick={() => {
+                      if (viewJobId === j.id) reset()
+                      removeClaimJob(j.id)
+                    }}
+                    className="shrink-0 rounded p-1 text-slate-400 hover:text-rose-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {/* ── 1단계: 업로드 ────────────────────────────────────────── */}
       {phase === 'upload' ? (
         <>
@@ -334,12 +497,6 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
                 Claude 분석 키(ANTHROPIC_API_KEY)가 아직 서버에 설정되지 않았습니다. 관리자(대표님)가 Supabase → Edge
                 Functions → Secrets에 키를 추가하면 즉시 사용할 수 있습니다.
               </span>
-            </div>
-          ) : null}
-          {error ? (
-            <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] leading-6 text-rose-700">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
             </div>
           ) : null}
 
@@ -583,7 +740,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
             ) : null}
             <button
               type="button"
-              onClick={() => void analyze()}
+              onClick={startAnalysis}
               disabled={files.length === 0 || sizeIssues.length > 0}
               className={[
                 'mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-extrabold transition sm:w-auto sm:px-8',
@@ -604,7 +761,9 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
       ) : null}
 
       {/* ── 2단계: 분석 진행 ─────────────────────────────────────── */}
-      {phase === 'analyzing' ? <AnalyzingPanel progress={progress} fileCount={files.length} /> : null}
+      {phase === 'analyzing' && viewJob ? (
+        <AnalyzingPanel progress={viewJob.progress} fileCount={viewJob.files.length} onBackground={() => setPhase('upload')} />
+      ) : null}
 
       {/* ── 3단계: 결과 ──────────────────────────────────────────── */}
       {phase === 'result' && result ? (
@@ -612,22 +771,26 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
           {/* 저장 상태 + 새 분석 */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-[12px] text-slate-500">
-              {customer ? (
-                saveState === 'saved' ? (
+              {viewJob?.customerId ? (
+                viewJob.saveState === 'saved' ? (
                   <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
-                    <BadgeCheck className="h-3.5 w-3.5" /> {customer.name} 고객 기록에 저장됨
+                    <BadgeCheck className="h-3.5 w-3.5" /> {viewJob.customerName} 고객 기록에 저장됨
                   </span>
-                ) : saveState === 'saving' ? (
+                ) : viewJob.saveState === 'saving' ? (
                   <span className="inline-flex items-center gap-1">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> 고객 기록에 저장 중…
                   </span>
-                ) : saveState === 'failed' ? (
+                ) : viewJob.saveState === 'failed' ? (
                   <span className="text-rose-600">고객 기록 저장 실패 (결과는 그대로 사용 가능)</span>
                 ) : (
-                  <span>{customer.name} 고객의 분석</span>
+                  <span>{viewJob.customerName} 고객의 분석</span>
                 )
-              ) : (
+              ) : viewJob ? (
                 <span>고객 미선택 — 저장되지 않는 1회성 분석입니다.</span>
+              ) : customer ? (
+                <span>{customer.name} 고객의 지난 분석</span>
+              ) : (
+                <span>지난 분석</span>
               )}
             </div>
             <button
@@ -833,7 +996,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
           </div>
 
           {/* 자동청구 · 팩스 동시 접수 (AI 라우팅으로 회사별 필요 서류만) */}
-          <ClaimFaxPanel result={result} files={files} customer={customer} />
+          <ClaimFaxPanel result={result} files={faxFiles} customer={faxCustomer} />
 
           {/* 고객 발송 안내문 */}
           <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm sm:p-5">
@@ -930,15 +1093,17 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
 }
 
 /** 분석 진행 패널 — 준비(압축) → 배치 판독 → 종합 계산 3단계 진행률. */
-function AnalyzingPanel({ progress, fileCount }: { progress: ClaimProgress | null; fileCount: number }): JSX.Element {
+function AnalyzingPanel({
+  progress,
+  fileCount,
+  onBackground
+}: {
+  progress: ClaimProgress | null
+  fileCount: number
+  onBackground: () => void
+}): JSX.Element {
   const stage = progress?.stage ?? 'prepare'
-  const pct = !progress
-    ? 3
-    : stage === 'prepare'
-      ? Math.round((progress.batch / Math.max(progress.totalBatches, 1)) * 12) + 3
-      : stage === 'extract'
-        ? Math.round((Math.max(progress.batch - 1, 0) / Math.max(progress.totalBatches, 1)) * 65) + 15
-        : 85
+  const pct = claimProgressPct(progress)
   const title = stage === 'prepare' ? '서류 압축·준비 중…' : stage === 'extract' ? '서류 정밀 판독 중…' : '회사별 보험금 계산 · 약관 대조 중…'
   const detail =
     stage === 'prepare' && progress
@@ -966,8 +1131,16 @@ function AnalyzingPanel({ progress, fileCount }: { progress: ClaimProgress | nul
         />
       </div>
       <p className="mt-3 text-[11px] leading-5 text-slate-500">
-        서류가 많을수록 시간이 걸립니다(배치당 30초~1분). 화면을 닫지 마세요 — 판독이 끝나면 자동으로 결과가 열립니다.
+        서류가 많을수록 시간이 걸립니다(배치당 30초~1분). <b className="text-slate-400">다른 화면으로 이동해도 분석은 계속되고</b>,
+        완료되면 우하단 알림으로 알려드립니다.
       </p>
+      <button
+        type="button"
+        onClick={onBackground}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[12px] font-semibold text-slate-300 hover:bg-white"
+      >
+        <UploadCloud className="h-3.5 w-3.5" /> 백그라운드로 두고 다른 서류 올리기
+      </button>
     </div>
   )
 }

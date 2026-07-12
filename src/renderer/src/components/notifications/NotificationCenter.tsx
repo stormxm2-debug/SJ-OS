@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, X, ClipboardCheck, PhoneCall, MessageCircle } from 'lucide-react'
+import { Bell, X, ClipboardCheck, PhoneCall, ShieldCheck } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
 import { getBackendConfig } from '@renderer/services/commercial/backendConfig'
 import { getSupabaseClient, initSupabaseClient } from '@renderer/services/commercial/supabaseClient'
+import { subscribeLocalNotifications } from '@renderer/services/notifications/localNotify'
 
 /**
  * 우하단 알림 센터 (카카오톡 스타일 토스트 + OS 알림).
@@ -13,9 +14,6 @@ import { getSupabaseClient, initSupabaseClient } from '@renderer/services/commer
  *  - INSERT → 관리자에게 "새 고객등록 요청" (본인이 만든 요청은 제외)
  *  - UPDATE(status done/rejected) → 요청한 직원에게 "처리 결과" (RLS가 본인 행만
  *    전달하므로 자연스럽게 대상만 받음)
- * chat_messages INSERT → 새 메신저 메시지 알림 (RLS가 내가 참여한 대화의 메시지만
- * 전달). 내가 보낸 메시지·메신저 화면을 보고 있는 동안은 조용히 — 화면이 이미
- * 실시간으로 갱신되므로 알림은 소음이 된다.
  * 토스트 클릭 → 관리자는 고객등록 관리, 직원은 고객관리로 이동. OS 알림은 앱이
  * 백그라운드여도 뜨고, 클릭하면 창을 앞으로 가져온다. 알림 내용에 PII 최소 표기.
  */
@@ -26,7 +24,7 @@ interface Toast {
   id: number
   title: string
   body: string
-  target: 'registration-admin' | 'customer' | 'leads' | 'chat'
+  target: 'registration-admin' | 'customer' | 'leads' | 'claim-assistant'
 }
 
 let toastSeq = 1
@@ -34,13 +32,11 @@ let channelSeq = 0
 
 export default function NotificationCenter(): JSX.Element | null {
   const { session } = useSession()
-  const { navigate, route } = useNavigation()
+  const { navigate } = useNavigation()
   const [toasts, setToasts] = useState<Toast[]>([])
   const meRef = useRef<string | null>(null)
   const adminRef = useRef(false)
   adminRef.current = isAdminRole(session.role)
-  const routeRef = useRef(route.name)
-  routeRef.current = route.name
 
   const push = (t: Omit<Toast, 'id'>): void => {
     const id = toastSeq++
@@ -60,6 +56,13 @@ export default function NotificationCenter(): JSX.Element | null {
       /* OS 알림 실패는 무시 — 토스트는 이미 표시됨 */
     }
   }
+
+  // 로컬 버스 (청구비서 분석 완료 등 앱 내부 이벤트) — DB 구독과 독립적으로 항상 수신
+  const pushRef = useRef(push)
+  pushRef.current = push
+  useEffect(() => {
+    return subscribeLocalNotifications((n) => pushRef.current({ title: n.title, body: n.body, target: n.target }))
+  }, [])
 
   useEffect(() => {
     if (getBackendConfig().mode !== 'supabase' || !session.isLoggedIn) return
@@ -132,16 +135,6 @@ export default function NotificationCenter(): JSX.Element | null {
             target: 'leads'
           })
       })
-      // 새 메신저 메시지 → 참여자 본인에게 (RLS가 내가 낀 대화의 메시지만 전달).
-      channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload: any) => {
-        const row = payload?.new ?? {}
-        if (String(row.sender_id ?? '') === meRef.current || routeRef.current === 'chat') return
-        const preview = String(row.body ?? '').slice(0, 60)
-        void senderName(client, String(row.sender_id ?? '')).then((name) => {
-          if (active && routeRef.current !== 'chat')
-            push({ title: `${name}님의 새 메시지`, body: preview, target: 'chat' })
-        })
-      })
       channel.subscribe((status: string) => {
         // 소켓 오류/타임아웃이면 잠시 후 재구독 (useRealtimeSync와 같은 방어).
         if (!active) return
@@ -186,8 +179,8 @@ export default function NotificationCenter(): JSX.Element | null {
               <ClipboardCheck className="h-4 w-4" />
             ) : t.target === 'leads' ? (
               <PhoneCall className="h-4 w-4" />
-            ) : t.target === 'chat' ? (
-              <MessageCircle className="h-4 w-4" />
+            ) : t.target === 'claim-assistant' ? (
+              <ShieldCheck className="h-4 w-4" />
             ) : (
               <Bell className="h-4 w-4" />
             )}
@@ -213,16 +206,6 @@ export default function NotificationCenter(): JSX.Element | null {
       ))}
     </div>
   )
-}
-
-/** 메시지 발신자 id → 이름 (알림 제목용). */
-async function senderName(client: any, id: string): Promise<string> {
-  try {
-    const { data } = await client.from('profiles').select('name').eq('id', id).maybeSingle()
-    return data?.name ? String(data.name) : '직원'
-  } catch {
-    return '직원'
-  }
 }
 
 /** 이벤트 행 → 사람이 읽는 한 줄 (고객·요청자 이름 짧게 조회). */
