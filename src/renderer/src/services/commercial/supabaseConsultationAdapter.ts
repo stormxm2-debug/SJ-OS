@@ -14,7 +14,7 @@ import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const SELECT_COLS =
-  'id, customer_id, staff_id, consultation_type, status, summary, next_action, scheduled_at, completed_at, created_at, updated_at, customer:customers(id, name, status, owner_staff_id, team_id)'
+  'id, customer_id, staff_id, consultation_type, status, channel, summary, next_action, scheduled_at, completed_at, created_at, updated_at, customer:customers(id, name, status, owner_staff_id, team_id)'
 
 export type AdapterReason = 'not-configured' | 'no-session' | 'error'
 export interface AdapterOk<T> {
@@ -58,6 +58,7 @@ function mapRow(row: Record<string, unknown>): ConsultationWithCustomer {
     staffName: '',
     consultationType: (row.consultation_type as ConsultationRecord['consultationType']) ?? 'first',
     status: (row.status as ConsultationRecord['status']) ?? 'planned',
+    channel: (row.channel as ConsultationRecord['channel']) ?? undefined,
     summary: String(row.summary ?? ''),
     nextAction: (row.next_action as string | null) ?? undefined,
     scheduledAt: (row.scheduled_at as string | null) ?? undefined,
@@ -74,6 +75,7 @@ function buildInsert(input: ConsultationInput, staffId: string): Record<string, 
     staff_id: staffId, // must equal auth.uid() (RLS enforces)
     consultation_type: input.consultationType,
     status: input.status,
+    channel: input.channel ?? null,
     summary: input.summary?.trim() || null,
     next_action: input.nextAction?.trim() || null,
     scheduled_at: input.scheduledAt?.trim() || null,
@@ -132,6 +134,7 @@ export const supabaseConsultationAdapter = {
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (input.consultationType !== undefined) patch.consultation_type = input.consultationType
     if (input.status !== undefined) patch.status = input.status
+    if (input.channel !== undefined) patch.channel = input.channel ?? null
     if (input.summary !== undefined) patch.summary = input.summary?.trim() || null
     if (input.nextAction !== undefined) patch.next_action = input.nextAction?.trim() || null
     if (input.scheduledAt !== undefined) patch.scheduled_at = input.scheduledAt?.trim() || null

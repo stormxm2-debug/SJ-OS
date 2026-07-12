@@ -133,6 +133,7 @@ export async function createConsultation(input: ConsultationInput): Promise<Cons
     staffName: '로컬 사용자',
     consultationType: input.consultationType,
     status: input.status,
+    channel: input.channel,
     summary: input.summary?.trim() || '',
     nextAction: input.nextAction?.trim() || undefined,
     scheduledAt: input.scheduledAt?.trim() || undefined,
@@ -154,6 +155,7 @@ export async function updateConsultation(id: string, input: Partial<Consultation
   const patch: Partial<ConsultationRecord> = { updatedAt: new Date().toISOString() }
   if (input.consultationType !== undefined) patch.consultationType = input.consultationType
   if (input.status !== undefined) patch.status = input.status
+  if (input.channel !== undefined) patch.channel = input.channel
   if (input.summary !== undefined) patch.summary = input.summary?.trim() || ''
   if (input.nextAction !== undefined) patch.nextAction = input.nextAction?.trim() || undefined
   if (input.scheduledAt !== undefined) patch.scheduledAt = input.scheduledAt?.trim() || undefined

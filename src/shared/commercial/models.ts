@@ -90,8 +90,25 @@ export interface ConsultationRecord {
   customerId: string
   staffId: string
   staffName: string
-  consultationType: 'first' | 'follow-up' | 'proposal' | 'closing' | 'aftercare'
+  /**
+   * 상담 v2: 일정의 영업 퍼널과 통일된 8종(ap→1·2·3차→클로징→증권전달→사후관리, 소개확보).
+   * 구버전 3종(first/follow-up/proposal)은 기존 행 호환용 — 표시 시 퍼널로 매핑.
+   */
+  consultationType:
+    | 'ap'
+    | 'meeting-1'
+    | 'meeting-2'
+    | 'meeting-3'
+    | 'closing'
+    | 'delivery'
+    | 'aftercare'
+    | 'referral'
+    | 'first'
+    | 'follow-up'
+    | 'proposal'
   status: 'planned' | 'completed' | 'cancelled'
+  /** 접촉 방식 — 대면/전화/카톡·문자 (v2 추가, 과거 기록은 비어 있음). */
+  channel?: 'face' | 'phone' | 'message'
   summary: string
   nextAction?: string
   scheduledAt?: string
