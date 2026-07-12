@@ -541,6 +541,36 @@ export function monthlyCounts(rows: Referral[], now: Date = new Date()): { recei
   return { received, contracted }
 }
 
+/* ---------- 셀프 유입 퍼널 링크 (자체생산 3단계) ---------- */
+
+/** 운영 웹 도메인 (Cloudflare Pages) — 공개 랜딩은 웹에서만 열린다. */
+export const PUBLIC_WEB_ORIGIN = 'https://sj-invest.pages.dev'
+
+/** FC 개인 신청 링크 — 명함·카톡 프로필·SNS에 붙이는 셀프 유입 퍼널 입구. */
+export function buildApplyLink(fcId: string, fcName: string): string {
+  const p = new URLSearchParams({ apply: '1', fc: fcId, fcn: fcName })
+  return `${PUBLIC_WEB_ORIGIN}/?${p.toString()}`
+}
+
+/** 회사 공용 신청 링크 — FC 미지정, 접수 시 최소부하 자동배정. */
+export function buildCompanyApplyLink(): string {
+  return `${PUBLIC_WEB_ORIGIN}/?apply=1`
+}
+
+/** 지인에게 보내는 신청 링크 안내 문안 (카톡 공유용). */
+export function buildApplyShareMessage(link: string, staffName?: string): string {
+  return [
+    `안녕하세요, SJ INVEST${staffName ? ` ${staffName}` : ''}입니다.`,
+    '',
+    '지금 갖고 계신 보험이 잘 되어 있는지, 가입 권유 없이 무료로 꼼꼼히 점검해 드립니다.',
+    '아래 링크로 편하게 신청해 주세요. (1분이면 끝나요)',
+    '',
+    link,
+    '',
+    '신청해 주시면 영업일 기준 1일 내 연락드리겠습니다. 감사합니다.'
+  ].join('\n')
+}
+
 /* ---------- 카톡 문안 ---------- */
 
 /** 고객에게 보내도 되는 정중한 소개 요청 문안 (부담 없는 톤). */

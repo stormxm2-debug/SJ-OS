@@ -11,8 +11,11 @@ import {
   Info,
   ChevronRight,
   X,
-  UserPlus
+  UserPlus,
+  QrCode,
+  Copy
 } from 'lucide-react'
+import QRCode from 'qrcode'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
 import { listCustomers, type CustomerDataMode } from '@renderer/services/commercial/customerService'
@@ -31,6 +34,9 @@ import {
   fcLeaderboard,
   monthlyCounts,
   buildReferralAskMessage,
+  buildApplyLink,
+  buildCompanyApplyLink,
+  buildApplyShareMessage,
   nextReferralStatus,
   REFERRAL_STATUS_LABEL,
   GOLDEN_REASON_LABEL,
@@ -52,7 +58,7 @@ import {
  * 접근 범위: FC는 본인 것만(RLS), 관리자는 "내 것 기본 + 직원 것 토글".
  */
 
-type Tab = 'golden' | 'pipeline' | 'stats'
+type Tab = 'golden' | 'pipeline' | 'stats' | 'funnel'
 
 const STATUS_CHIP: Record<ReferralStatus, string> = {
   asked: 'bg-slate-950 text-slate-300 ring-1 ring-slate-800',
@@ -116,6 +122,11 @@ export default function ReferralEnginePage(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [shared, setShared] = useState<Record<string, 'shared' | 'copied' | 'failed'>>({})
 
+  // 내 QR 탭 — 셀프 유입 퍼널 링크·QR 이미지
+  const [myQr, setMyQr] = useState<string | null>(null)
+  const [companyQr, setCompanyQr] = useState<string | null>(null)
+  const [linkFlash, setLinkFlash] = useState<Record<string, 'shared' | 'copied' | 'failed'>>({})
+
   const refreshReferrals = useCallback(async (): Promise<void> => {
     const res = await listReferrals()
     setRefMode(res.mode)
@@ -165,6 +176,48 @@ export default function ReferralEnginePage(): JSX.Element {
   const funnel = useMemo(() => referralFunnel(myReferrals), [myReferrals])
   const monthly = useMemo(() => monthlyCounts(myReferrals), [myReferrals])
   const leaderboard = useMemo(() => (admin ? fcLeaderboard(referrals) : []), [admin, referrals])
+
+  const myLink = useMemo(() => buildApplyLink(session.id, session.name), [session.id, session.name])
+  const companyLink = useMemo(() => buildCompanyApplyLink(), [])
+
+  // 탭을 열 때 QR 이미지를 생성한다 (딥네이비 도트 — 인쇄·명함에서도 선명).
+  useEffect(() => {
+    if (tab !== 'funnel') return
+    const opts = { width: 512, margin: 2, color: { dark: '#0e1e3a', light: '#ffffff' } }
+    QRCode.toDataURL(myLink, opts)
+      .then(setMyQr)
+      .catch(() => setMyQr(null))
+    if (admin) {
+      QRCode.toDataURL(companyLink, opts)
+        .then(setCompanyQr)
+        .catch(() => setCompanyQr(null))
+    }
+  }, [tab, myLink, companyLink, admin])
+
+  const flashLink = (key: string, outcome: 'shared' | 'copied' | 'failed'): void => {
+    setLinkFlash((s) => ({ ...s, [key]: outcome }))
+    window.setTimeout(() => {
+      setLinkFlash((s) => {
+        const next = { ...s }
+        delete next[key]
+        return next
+      })
+    }, 3000)
+  }
+
+  const copyLink = async (key: string, link: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(link)
+      flashLink(key, 'copied')
+    } catch {
+      flashLink(key, 'failed')
+    }
+  }
+
+  const shareLink = async (key: string, link: string): Promise<void> => {
+    const outcome = await shareMeetingText(buildApplyShareMessage(link, session.name))
+    flashLink(key, outcome)
+  }
 
   const flashShare = (key: string, outcome: 'shared' | 'copied' | 'failed'): void => {
     setShared((s) => ({ ...s, [key]: outcome }))
@@ -296,12 +349,13 @@ export default function ReferralEnginePage(): JSX.Element {
       </div>
 
       {/* 탭 */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         {(
           [
             { key: 'golden', labelText: '골든타임', icon: Sparkles },
             { key: 'pipeline', labelText: '소개 현황', icon: Users },
-            { key: 'stats', labelText: '성과', icon: Trophy }
+            { key: 'stats', labelText: '성과', icon: Trophy },
+            { key: 'funnel', labelText: '내 QR', icon: QrCode }
           ] as const
         ).map((t) => {
           const active = tab === t.key
@@ -657,7 +711,7 @@ export default function ReferralEnginePage(): JSX.Element {
             </ul>
           )}
         </>
-      ) : (
+      ) : tab === 'stats' ? (
         /* ───────── 성과 ───────── */
         <>
           {/* 내 퍼널 */}
@@ -741,6 +795,121 @@ export default function ReferralEnginePage(): JSX.Element {
             <span>
               소개 리드는 구매 DB보다 전환율이 훨씬 높고 비용이 들지 않습니다. <b className="text-slate-300">한 계약이 끝날 때마다 소개
               요청 1번</b>을 습관으로 만들면 DB를 사지 않아도 파이프라인이 유지됩니다.
+            </span>
+          </div>
+        </>
+      ) : (
+        /* ───────── 내 QR (셀프 유입 퍼널) ───────── */
+        <>
+          {/* 내 개인 링크 */}
+          <div className="rounded-2xl border border-slate-800 bg-white p-4">
+            <h2 className="flex items-center gap-1.5 text-sm font-bold text-slate-100">
+              <QrCode className="h-4 w-4 text-[#c6982f]" /> 내 신청 링크
+              <span className="text-[11px] font-normal text-slate-500">— 이 QR로 신청하면 나에게 배정</span>
+            </h2>
+            <div className="mt-3 flex flex-col items-center gap-3">
+              {myQr ? (
+                <img src={myQr} alt="내 신청 QR 코드" className="h-44 w-44 rounded-xl border border-slate-800 bg-[#ffffff] p-2" />
+              ) : (
+                <div className="flex h-44 w-44 items-center justify-center rounded-xl border border-slate-800 text-xs text-slate-500">
+                  QR 생성 중…
+                </div>
+              )}
+              <p className="w-full break-all rounded-xl bg-slate-950 px-3 py-2 text-center text-[11px] text-slate-400">{myLink}</p>
+              <div className="flex w-full gap-2">
+                <button
+                  type="button"
+                  onClick={() => void copyLink('my', myLink)}
+                  className={[
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-bold transition',
+                    linkFlash.my === 'copied'
+                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                      : 'bg-[#0e1e3a] text-[#e6c877] hover:brightness-125'
+                  ].join(' ')}
+                >
+                  {linkFlash.my === 'copied' ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" /> 복사됨
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" /> 링크 복사
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void shareLink('my-share', myLink)}
+                  className={[
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-bold transition',
+                    linkFlash['my-share'] === 'shared' || linkFlash['my-share'] === 'copied'
+                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                      : 'bg-[#FEE500] text-[#191919] hover:brightness-95'
+                  ].join(' ')}
+                >
+                  {linkFlash['my-share'] === 'shared' ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" /> 공유됨
+                    </>
+                  ) : linkFlash['my-share'] === 'copied' ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" /> 문안 복사됨
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="h-3.5 w-3.5" /> 카톡 공유
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 관리자: 회사 공용 링크 (자동배정) */}
+          {admin ? (
+            <div className="rounded-2xl border border-slate-800 bg-white p-4">
+              <h2 className="flex items-center gap-1.5 text-sm font-bold text-slate-100">
+                <Users className="h-4 w-4 text-[#c6982f]" /> 회사 공용 링크
+                <span className="text-[11px] font-normal text-slate-500">— 신청 시 최소부하 자동배정 (관리자)</span>
+              </h2>
+              <div className="mt-3 flex flex-col items-center gap-3">
+                {companyQr ? (
+                  <img src={companyQr} alt="회사 공용 신청 QR 코드" className="h-36 w-36 rounded-xl border border-slate-800 bg-[#ffffff] p-2" />
+                ) : (
+                  <div className="flex h-36 w-36 items-center justify-center rounded-xl border border-slate-800 text-xs text-slate-500">
+                    QR 생성 중…
+                  </div>
+                )}
+                <p className="w-full break-all rounded-xl bg-slate-950 px-3 py-2 text-center text-[11px] text-slate-400">{companyLink}</p>
+                <button
+                  type="button"
+                  onClick={() => void copyLink('company', companyLink)}
+                  className={[
+                    'flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-bold transition',
+                    linkFlash.company === 'copied'
+                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                      : 'bg-[#0e1e3a] text-[#e6c877] hover:brightness-125'
+                  ].join(' ')}
+                >
+                  {linkFlash.company === 'copied' ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" /> 복사됨
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" /> 링크 복사
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex items-start gap-2 rounded-xl border border-dashed border-slate-700 bg-white/60 px-4 py-3 text-[12px] text-slate-500">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              QR을 <b className="text-slate-300">명함·카톡 프로필·SNS·매장</b>에 붙여 두세요. 방문자가 로그인 없이 무료 보장분석을
+              신청하면 <b className="text-slate-300">DB 배정</b>에 자동으로 들어오고, 내 링크로 온 신청은 나에게 배정됩니다.
             </span>
           </div>
         </>

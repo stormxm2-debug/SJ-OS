@@ -94,12 +94,17 @@ function friendlyClaudeError(msg: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-/** 웹 약관 조회 도구(Anthropic 서버 툴) — 종합/재검토 단계에서만.
- *  실시간 웹 검색·PDF 열람은 매우 느려(호출당 수십 초) 속도의 최대 병목이므로
- *  한도를 낮게 잡는다(검색·열람 각 2회). 보관함 약관이 있으면 아예 끈다(아래 synthesize). */
+/** 웹 약관 조회 도구(Anthropic 서버 툴) — 종합/재검토 폴백용 (한도 낮음). */
 const WEB_TOOLS = [
   { type: 'web_search_20260209', name: 'web_search', max_uses: 2 },
   { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 2 }
+]
+
+/** 정밀 리서치 전용 도구 — research 모드는 웹 확인이 목적 그 자체이므로 한도를 넉넉히.
+ *  (호출 1회가 통째로 리서치에 쓰이므로 135초 안에서 최대한 깊게 찾는다) */
+const RESEARCH_TOOLS = [
+  { type: 'web_search_20260209', name: 'web_search', max_uses: 6 },
+  { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 6 }
 ]
 
 // 판독(extract)은 "베껴 쓰기" 작업이라 고속 모델로 — 판단(종합·재검토·약관정독)은 Opus 유지.
@@ -150,7 +155,7 @@ const EXTRACT_SYSTEM = [
   '고객이 자신의 보험금 청구를 위해 제출한 서류이며, 당신은 판독을 허가받았습니다. 절대 판독을 거부하지 마세요.',
   '문서 수와 번호를 그대로 유지하세요: 첨부된 [문서 N] 번호가 결과 JSON의 index입니다. 판독이 어려워도 건너뛰지 말고 docType을 기타로 해서라도 반드시 포함하세요.',
   '',
-  '{"docs":[{"index":1,"docType":"증권|약관|진단서|입퇴원확인서|수술확인서|진료비영수증|검진결과|기타","insurer":"보험사명 또는 null","policyNo":"증권번호 또는 null",',
+  '{"docs":[{"index":1,"docType":"증권|약관|진단서|입퇴원확인서|수술확인서|진료비영수증|검진결과|기타","insurer":"보험사명 또는 null","productName":"상품명 보이면 그대로 또는 null","policyNo":"증권번호 또는 null",',
   '"coverages":[{"name":"담보/특약명","amount":"가입금액 숫자 (예: 1000000) 또는 null","payRule":"지급 규칙 원문 그대로 (예: 수술 1회당 100만원, 입원 1일당 3만원 180일 한도)","clause":"약관 조항 번호/제목이 보이면 그대로 (예: 제3조 보험금의 지급사유)"}],',
   '"medicalFacts":[{"date":"YYYY-MM-DD 또는 기간","fact":"진단/수술/입원/통원/검사 사실 원문 요약","cost":"금액 보이면 숫자"}],',
   '"notes":"기타 중요 정보(면책·감액·특이사항)"}]}',

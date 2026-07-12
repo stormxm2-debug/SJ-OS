@@ -69,7 +69,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' } },
       { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' } },
       { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' } },
-      { key: 'leads', label: 'DB 분배', icon: ListChecks, view: { name: 'leads' } },
+      { key: 'leads', label: 'DB 배정', icon: ListChecks, view: { name: 'leads' } },
       { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' } },
       { key: 'jarvis', label: '자비스', icon: Bot, action: 'jarvis' }
     ]
