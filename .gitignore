@@ -15,3 +15,6 @@ release/
 
 # Claude Code Bridge exported prompts (local, not committed)
 .sj-os/
+
+# Local Netlify folder
+.netlify
