@@ -26,6 +26,7 @@ export type View =
   | { name: 'contacts' }
   | { name: 'leads' }
   | { name: 'referrals' }
+  | { name: 'today-contacts' }
   | { name: 'files' }
   | { name: 'app-builder' }
   | { name: 'devprompt' }

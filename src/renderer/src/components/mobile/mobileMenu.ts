@@ -20,7 +20,8 @@ import {
   FolderOpen,
   Cake,
   TrendingUp,
-  UserPlus
+  UserPlus,
+  PhoneCall
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -53,6 +54,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     items: [
       { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' } },
       { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' } },
+      { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' } },
       { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' } },
       { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' } },
       { key: 'consultation', label: '상담기록', icon: ClipboardList, view: { name: 'consultation' } },

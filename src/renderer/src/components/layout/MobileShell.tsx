@@ -21,6 +21,7 @@ import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
+import TodayContactsPage from '@renderer/pages/TodayContactsPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
@@ -184,6 +185,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <LeadDistributionPage />
     case 'referrals':
       return <ReferralEnginePage />
+    case 'today-contacts':
+      return <TodayContactsPage />
     case 'contacts':
       return <ManagerContactsPage />
     case 'files':
