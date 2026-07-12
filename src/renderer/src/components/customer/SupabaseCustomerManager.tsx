@@ -49,6 +49,7 @@ import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { useSession } from '@renderer/navigation/SessionContext'
 import CustomerUnderwritingHint from './CustomerUnderwritingHint'
 import MapNavButtons from '@renderer/components/ui/MapNavButtons'
+import { PhoneSegments, RrnSegments } from '@renderer/components/ui/SegmentedInputs'
 import { setUnderwritingPrefill } from '@renderer/services/underwriting-ai/underwritingPrefill'
 
 /**
@@ -465,27 +466,14 @@ export default function SupabaseCustomerManager(): JSX.Element {
               />
             </Field>
             <Field label="연락처">
-              <input
-                value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                inputMode="tel"
-                placeholder="010-0000-0000"
-                className="w-full rounded-xl border border-slate-800 bg-white px-3 py-2.5 text-sm text-slate-100 focus:outline-none"
-              />
+              <PhoneSegments value={form.phone} onChange={(v) => setForm((f) => ({ ...f, phone: v }))} />
             </Field>
           </div>
 
           <div className="mb-3">
             <Field label="주민등록번호">
               <div className="flex flex-wrap items-center gap-2">
-                <input
-                  value={form.rrn}
-                  onChange={(e) => setForm((f) => ({ ...f, rrn: e.target.value }))}
-                  onBlur={() => setForm((f) => ({ ...f, rrn: normalizeRrn(f.rrn) }))}
-                  inputMode="numeric"
-                  placeholder="000000-0000000"
-                  className="w-56 rounded-xl border border-slate-800 bg-white px-3 py-2.5 text-sm tracking-wider text-slate-100 focus:outline-none"
-                />
+                <RrnSegments value={form.rrn} onChange={(v) => setForm((f) => ({ ...f, rrn: v }))} />
                 {rrnInfo ? (
                   <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
                     만 {rrnInfo.age}세 · {rrnInfo.gender} · {rrnInfo.birthDate.replace(/-/g, '.')} 자동계산
@@ -724,13 +712,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
                         placeholder="이름 *"
                         className="rounded-lg border border-slate-800 bg-white px-2 py-1.5 text-[12px] text-slate-100 focus:outline-none"
                       />
-                      <input
-                        value={fam.rrn}
-                        onChange={(e) => setForm((f) => ({ ...f, family: f.family.map((x, j) => (j === i ? { ...x, rrn: e.target.value } : x)) }))}
-                        inputMode="numeric"
-                        placeholder="주민번호 (선택)"
-                        className="rounded-lg border border-slate-800 bg-white px-2 py-1.5 text-[12px] tracking-wider text-slate-100 focus:outline-none"
-                      />
+                      <RrnSegments compact value={fam.rrn} onChange={(v) => setForm((f) => ({ ...f, family: f.family.map((x, j) => (j === i ? { ...x, rrn: v } : x)) }))} />
                       <input
                         value={fam.address}
                         onChange={(e) => setForm((f) => ({ ...f, family: f.family.map((x, j) => (j === i ? { ...x, address: e.target.value } : x)) }))}
