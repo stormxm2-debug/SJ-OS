@@ -232,7 +232,9 @@ export default function BirthdayPage(): JSX.Element {
                     'inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition',
                     outcome === 'shared' || outcome === 'copied'
                       ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                      : 'bg-[#FEE500] text-[#191919] hover:brightness-95'
+                      : outcome === 'failed'
+                        ? 'bg-rose-50 text-rose-600 ring-1 ring-rose-200'
+                        : 'bg-[#FEE500] text-[#191919] hover:brightness-95'
                   ].join(' ')}
                 >
                   {outcome === 'shared' ? (
@@ -243,6 +245,8 @@ export default function BirthdayPage(): JSX.Element {
                     <>
                       <Check className="h-3.5 w-3.5" /> 복사됨
                     </>
+                  ) : outcome === 'failed' ? (
+                    <>다시 시도</>
                   ) : (
                     <>
                       <Share2 className="h-3.5 w-3.5" /> 카톡 축하
