@@ -55,3 +55,36 @@ begin
     alter publication supabase_realtime add table public.leads;
   end if;
 end $$;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- DB 종류(태그) — migration add_lead_db_types (2026-07-13).
+-- DB는 여러 종류로 들어온다(예: 소상공인DB · 여성일반DB · 실버DB). 관리자가 종류를
+-- 등록/삭제하고, 배정할 때 각 DB에 종류 하나를 태깅한다. leads.db_type = 선택한 이름(text).
+create table if not exists public.lead_db_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  sort_order int not null default 0,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+-- 대소문자 무시 중복 방지
+create unique index if not exists lead_db_types_name_ci_key on public.lead_db_types (lower(name));
+
+alter table public.lead_db_types enable row level security;
+
+-- 조회 = 로그인한 전 직원 / 등록·삭제 = 관리자.
+drop policy if exists lead_db_types_select on public.lead_db_types;
+create policy lead_db_types_select on public.lead_db_types
+  for select to authenticated using (true);
+
+drop policy if exists lead_db_types_write on public.lead_db_types;
+create policy lead_db_types_write on public.lead_db_types
+  for all to authenticated using (public.is_owner_or_admin()) with check (public.is_owner_or_admin());
+
+-- leads에 DB종류(태그) 컬럼 추가.
+alter table public.leads add column if not exists db_type text;
+
+-- 관리 목록이 여러 기기에서 즉시 갱신되도록 realtime publication에 추가.
+do $$ begin
+  alter publication supabase_realtime add table public.lead_db_types;
+exception when duplicate_object then null; end $$;

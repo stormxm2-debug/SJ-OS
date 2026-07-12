@@ -1,12 +1,13 @@
 import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
 
 /**
- * DB(리드) 자동분배 서비스.
+ * DB 배정 서비스.
  *
- * 관리자가 DB(잠재고객 리드)를 입력하면 **활성 직원 중 미콜 부하가 가장 적은
- * 사람에게 최소부하 자동분배**한다(공평). 배정된 직원은 실시간 알림을 받고,
- * 24시간 내 '콜 완료'를 눌러야 한다 — 안 누르면 미콜(overdue)로 경고된다.
- * RLS: 관리자 전체 / 직원은 본인 배정분만. leads 테이블 참조.
+ * 관리자가 DB(잠재고객 리드)를 DB종류와 함께 입력하면 **활성 직원 중 미콜 부하가
+ * 가장 적은 사람에게 최소부하 자동배정**한다(공평). 배정된 직원은 실시간 알림을
+ * 받고, 24시간 내 '콜 완료'를 눌러야 한다 — 안 누르면 미콜(overdue)로 경고된다.
+ * DB종류(lead_db_types)는 관리자가 등록/삭제하고 각 DB에 태깅한다.
+ * RLS: 관리자 전체 / 직원은 본인 배정분만. leads · lead_db_types 테이블 참조.
  */
 
 export type LeadStatus = 'new' | 'called' | 'contracted' | 'fail'
@@ -25,11 +26,19 @@ export interface Lead {
   source: string | null
   memo: string | null
   status: LeadStatus
+  /** DB 종류(태그) — 예: 소상공인DB, 여성일반DB, 실버DB. 관리자 등록 목록에서 선택. */
+  dbType: string | null
   assignedFcId: string | null
   assignedFcName: string | null
   assignedAt: string | null
   firstCallAt: string | null
   createdAt: string
+}
+
+/** DB 종류 레지스트리 항목 (관리자 관리). */
+export interface LeadDbType {
+  id: string
+  name: string
 }
 
 export interface LeadInput {
@@ -89,6 +98,7 @@ function mapLead(r: Record<string, any>): Lead {
     source: r.source ?? null,
     memo: r.memo ?? null,
     status,
+    dbType: r.db_type ?? null,
     assignedFcId: r.assigned_fc_id ?? null,
     assignedFcName: r.assigned_fc_name ?? null,
     assignedAt: r.assigned_at ?? null,
@@ -120,7 +130,7 @@ export async function listSalesStaff(): Promise<SalesStaff[]> {
  * 리드들을 최소부하 자동분배해 저장 (관리자). 각 직원의 현재 미콜(new) 수를 세어
  * 가장 적은 사람부터 배분하고, 배치 내에서 즉시 카운트를 올려 균등을 유지한다.
  */
-export async function distributeLeads(inputs: LeadInput[]): Promise<{ ok: boolean; assigned: number; perStaff: Record<string, number>; error?: string }> {
+export async function distributeLeads(inputs: LeadInput[], dbType?: string): Promise<{ ok: boolean; assigned: number; perStaff: Record<string, number>; error?: string }> {
   const clean = inputs.map((i) => ({ ...i, name: (i.name ?? '').trim() })).filter((i) => i.name)
   if (clean.length === 0) return { ok: false, assigned: 0, perStaff: {}, error: '이름이 있는 리드가 없습니다.' }
   const client = await getClient()
@@ -146,6 +156,7 @@ export async function distributeLeads(inputs: LeadInput[]): Promise<{ ok: boolea
 
   const nameById = new Map(staff.map((s) => [s.id, s.name]))
   const nowIso = new Date().toISOString()
+  const type = dbType?.trim() || null
   const perStaff: Record<string, number> = {}
   const rows = clean.map((lead) => {
     // 부하 최소 직원 선택 (동률이면 첫 번째).
@@ -159,6 +170,7 @@ export async function distributeLeads(inputs: LeadInput[]): Promise<{ ok: boolea
       source: lead.source?.trim() || null,
       memo: lead.memo?.trim() || null,
       status: 'new',
+      db_type: type,
       assigned_fc_id: pick,
       assigned_fc_name: nameById.get(pick) ?? null,
       assigned_at: nowIso,
@@ -182,7 +194,7 @@ export async function listAllLeads(): Promise<{ ok: boolean; leads: Lead[]; erro
   try {
     const { data, error } = await client
       .from('leads')
-      .select('id, name, phone, source, memo, status, assigned_fc_id, assigned_fc_name, assigned_at, first_call_at, created_at')
+      .select('id, name, phone, source, memo, status, db_type, assigned_fc_id, assigned_fc_name, assigned_at, first_call_at, created_at')
       .order('assigned_at', { ascending: false })
       .limit(500)
     if (error) return { ok: false, leads: [], error: error.message }
@@ -201,7 +213,7 @@ export async function listMyLeads(): Promise<{ ok: boolean; leads: Lead[]; error
   try {
     const { data, error } = await client
       .from('leads')
-      .select('id, name, phone, source, memo, status, assigned_fc_id, assigned_fc_name, assigned_at, first_call_at, created_at')
+      .select('id, name, phone, source, memo, status, db_type, assigned_fc_id, assigned_fc_name, assigned_at, first_call_at, created_at')
       .eq('assigned_fc_id', me)
       .order('assigned_at', { ascending: false })
       .limit(500)
@@ -254,5 +266,71 @@ export async function reassignLead(leadId: string, fcId: string, fcName: string)
     return { ok: true }
   } catch {
     return { ok: false, error: '재배정 중 오류가 발생했습니다.' }
+  }
+}
+
+/** 개별 리드의 DB 종류(태그) 변경. */
+export async function updateLeadDbType(leadId: string, dbType: string | null): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  try {
+    const { error } = await client.from('leads').update({ db_type: dbType?.trim() || null }).eq('id', leadId)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '처리 중 오류가 발생했습니다.' }
+  }
+}
+
+// ── DB 종류 레지스트리 (관리자 관리, 전 직원 조회) ─────────────────────────
+
+/** 등록된 DB 종류 목록 (정렬순 → 이름순). */
+export async function listDbTypes(): Promise<LeadDbType[]> {
+  const client = await getClient()
+  if (!client) return []
+  try {
+    const { data, error } = await client
+      .from('lead_db_types')
+      .select('id, name')
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true })
+    if (error) return []
+    return ((data as any[]) ?? []).map((r) => ({ id: String(r.id), name: String(r.name ?? '') }))
+  } catch {
+    return []
+  }
+}
+
+/** DB 종류 추가 (관리자). 중복 이름은 대소문자 무시로 거부됨(unique index). */
+export async function addDbType(name: string): Promise<{ ok: boolean; error?: string }> {
+  const trimmed = name.trim()
+  if (!trimmed) return { ok: false, error: 'DB 종류 이름을 입력해 주세요.' }
+  const client = await getClient()
+  if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  const me = await uid(client)
+  try {
+    const { error } = await client.from('lead_db_types').insert({ name: trimmed, created_by: me })
+    if (error) {
+      if (String(error.code) === '23505' || /duplicate|unique/i.test(String(error.message))) {
+        return { ok: false, error: '이미 있는 DB 종류입니다.' }
+      }
+      return { ok: false, error: error.message }
+    }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '추가 중 오류가 발생했습니다.' }
+  }
+}
+
+/** DB 종류 삭제 (관리자). 기존 리드의 태그(text)는 그대로 남는다. */
+export async function deleteDbType(id: string): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  try {
+    const { error } = await client.from('lead_db_types').delete().eq('id', id)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '삭제 중 오류가 발생했습니다.' }
   }
 }
