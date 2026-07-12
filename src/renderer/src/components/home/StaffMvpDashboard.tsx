@@ -1,36 +1,102 @@
-import { Clock, Users, CalendarDays, BarChart3, UserRound, Bot, Sparkles, Building2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Clock, Users, CalendarDays, UserRound, Bot, Sparkles, PhoneCall, ChevronRight } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
-import { ROLE_LABEL } from '@renderer/navigation/roleAccess'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
+import { ROLE_LABEL, isAdminRole } from '@renderer/navigation/roleAccess'
 import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
-import {
-  attendanceService,
-  customerService,
-  performanceService,
-  staffService
-} from '@renderer/services/mvp'
+import { listMyTodayAttendance, listAttendanceRecords } from '@renderer/services/commercial/attendanceService'
+import { listScheduleEvents, filterToday } from '@renderer/services/commercial/scheduleService'
+import { listCustomers } from '@renderer/services/commercial/customerService'
+import { listAllLeads, listMyLeads } from '@renderer/services/commercial/leadService'
+import { listOverviewStaff } from '@renderer/services/commercial/staffOverviewService'
+import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
+import type { View } from '@renderer/navigation/types'
 
 /**
- * Role-aware staff home dashboard for the commercial MVP. Shows FC / team-leader /
- * owner-appropriate summary cards from local mock services.
+ * Role-aware staff home dashboard — 2026-07-13 목업 수치를 전부 실데이터로 교체.
+ * FC: 내 출근/오늘 내 일정/내 고객/미콜 DB · 팀장: 팀 출근 포함 · 대표/관리자: 전체.
+ * 카드를 누르면 해당 화면으로 이동. (기존 services/mvp 로컬 목업 의존 제거)
  *
  * Styling = "Direction A" (deep navy + gold, bright surfaces). NOTE: this app remaps
  * the `slate` scale to a light theme, so dark text uses text-slate-100/300/500 and
  * light surfaces use bg-white / bg-slate-950; the greeting banner uses explicit hex
  * so it stays reliably dark with white text.
  */
+
+const RT_TABLES = ['attendance_records', 'schedule_events', 'leads']
+
+interface DashStats {
+  myAttendance: string
+  myAttendanceDone: boolean
+  todayMySchedules: number
+  todayAllSchedules: number
+  customerCount: number
+  uncalledLeads: number
+  presentStaff: number
+  totalStaff: number
+}
+
+function hhmm(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 export default function StaffMvpDashboard(): JSX.Element {
   const { session } = useSession()
+  const { navigate } = useNavigation()
   const role = session.role
-  const att = attendanceService.myStatus()
-  const cust = customerService.summary()
+  const admin = isAdminRole(role)
+  const [stats, setStats] = useState<DashStats | null>(null)
+
+  const load = async (): Promise<void> => {
+    const wantRoster = admin || role === 'team-leader'
+    const [myToday, sch, cust, leadsRes, staff, allAtt] = await Promise.all([
+      listMyTodayAttendance(),
+      listScheduleEvents(),
+      listCustomers(),
+      admin ? listAllLeads() : listMyLeads(),
+      wantRoster ? listOverviewStaff() : Promise.resolve([]),
+      wantRoster ? listAttendanceRecords() : Promise.resolve(null)
+    ])
+    const rin = myToday.records.find((r) => r.type === 'check-in')
+    const rout = myToday.records.find((r) => r.type === 'check-out')
+    const events = sch.ok ? sch.events : []
+    const todayEvents = filterToday(events).filter((e) => e.status !== 'cancelled')
+    // 오늘 출근 인원 (RLS: 팀장=팀, 관리자=전체) — 같은 사람 중복 출근은 1명으로.
+    const todayKey = new Date().toDateString()
+    const present = allAtt
+      ? new Set(allAtt.records.filter((r) => r.type === 'check-in' && new Date(r.timestamp).toDateString() === todayKey).map((r) => r.staffId)).size
+      : 0
+    const scopedStaff =
+      role === 'team-leader' ? staff.filter((s) => s.teamId && s.teamId === session.teamName) : staff.filter((s) => s.role === 'fc' || s.role === 'team-leader')
+    setStats({
+      myAttendance: rout ? `퇴근 ${hhmm(rout.timestamp)}` : rin ? `출근 ${hhmm(rin.timestamp)}` : '미출근',
+      myAttendanceDone: Boolean(rin),
+      todayMySchedules: todayEvents.filter((e) => e.staffId === session.id).length,
+      todayAllSchedules: todayEvents.length,
+      customerCount: cust.ok ? cust.customers.length : 0,
+      uncalledLeads: leadsRes.ok ? leadsRes.leads.filter((l) => l.status === 'new' && !l.firstCallAt).length : 0,
+      presentStaff: present,
+      totalStaff: scopedStaff.length
+    })
+  }
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id, role])
+  useRealtimeSync(RT_TABLES, () => void load())
 
   const jarvisExamples =
     role === 'owner' || role === 'admin'
-      ? ['전체 조직 현황 보여줘', '개발 작업 상태 보여줘', '릴리즈 상태 보여줘']
+      ? ['전체 조직 현황 보여줘', '오늘 일정 요약해줘', '이번 달 매출 보여줘']
       : role === 'team-leader'
-        ? ['팀 실적 요약해줘', '미처리 고객 보여줘', '오늘 팀 일정 알려줘']
+        ? ['팀 실적 요약해줘', '오늘 팀 일정 알려줘', '이번 달 내 실적 알려줘']
         : ['오늘 상담 일정 보여줘', '고객 등록 도와줘', '이번 달 내 실적 알려줘']
+
+  const go = (view: View): void => navigate(view)
+  const dash = (n: number | undefined): string => (stats ? String(n ?? 0) : '…')
 
   return (
     <div className="space-y-4">
@@ -57,55 +123,49 @@ export default function StaffMvpDashboard(): JSX.Element {
               SJ INVEST · 보험 업무 플랫폼{session.teamName ? ` · ${session.teamName}` : ''}
             </p>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="rounded-full bg-[#c6982f] px-2.5 py-0.5 text-[10px] font-bold text-[#201603]">직원 실사용 MVP</span>
-            <span className="text-[10px] font-medium text-white/45">상용 MVP 로컬 데이터</span>
-          </div>
+          <span className="rounded-full bg-[#c6982f] px-2.5 py-0.5 text-[10px] font-bold text-[#201603]">실시간 현황</span>
         </div>
       </div>
 
-      {/* Role-based summary cards */}
+      {/* Role-based summary cards — 전부 실데이터, 클릭=해당 화면 이동 */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {role === 'fc' ? (
+        {admin ? (
           <>
-            <Stat icon={<Clock />} label="오늘 출근 상태" value={att.status} tone="emerald" />
-            <Stat icon={<CalendarDays />} label="오늘 상담 일정" value={`${cust.todayConsultations}건`} tone="indigo" />
-            <Stat icon={<UserRound />} label="미처리 고객" value={`${cust.pending}명`} tone="amber" />
-            <Stat icon={<BarChart3 />} label="이번 달 실적" value={`${performanceService.mySummary().monthlyCount}건`} tone="indigo" />
+            <Stat icon={<Users />} label="오늘 출근 (전 직원)" value={stats ? `${stats.presentStaff}/${stats.totalStaff}명` : '…'} tone="emerald" onClick={() => go({ name: 'attendance' })} />
+            <Stat icon={<CalendarDays />} label="오늘 전체 일정" value={`${dash(stats?.todayAllSchedules)}건`} tone="indigo" onClick={() => go({ name: 'shared-schedule' })} />
+            <Stat icon={<UserRound />} label="전체 고객" value={`${dash(stats?.customerCount)}명`} tone="gold" onClick={() => go({ name: 'customer' })} />
+            <Stat icon={<PhoneCall />} label="미콜 DB" value={`${dash(stats?.uncalledLeads)}건`} tone={stats && stats.uncalledLeads > 0 ? 'amber' : 'emerald'} onClick={() => go({ name: 'leads' })} />
           </>
         ) : role === 'team-leader' ? (
           <>
-            <Stat icon={<Clock />} label="내 출근 상태" value={att.status} tone="emerald" />
-            <Stat icon={<Users />} label="팀 출근 현황" value={`${staffService.attendanceToday().present}/${staffService.attendanceToday().total}명`} tone="indigo" />
-            <Stat icon={<UserRound />} label="미처리 고객" value={`${cust.pending}명`} tone="amber" />
-            <Stat icon={<BarChart3 />} label="팀 실적 달성률" value={`${performanceService.teamSummary().achievementRate}%`} tone="indigo" />
+            <Stat icon={<Clock />} label="내 출근" value={stats?.myAttendance ?? '…'} tone={stats?.myAttendanceDone ? 'emerald' : 'amber'} onClick={() => go({ name: 'attendance' })} />
+            <Stat icon={<Users />} label="오늘 팀 출근" value={stats ? `${stats.presentStaff}${stats.totalStaff > 0 ? `/${stats.totalStaff}` : ''}명` : '…'} tone="indigo" onClick={() => go({ name: 'attendance' })} />
+            <Stat icon={<CalendarDays />} label="오늘 내 일정" value={`${dash(stats?.todayMySchedules)}건`} tone="indigo" onClick={() => go({ name: 'schedule' })} />
+            <Stat icon={<PhoneCall />} label="미콜 DB (내)" value={`${dash(stats?.uncalledLeads)}건`} tone={stats && stats.uncalledLeads > 0 ? 'amber' : 'emerald'} onClick={() => go({ name: 'leads' })} />
           </>
         ) : (
           <>
-            <Stat icon={<Users />} label="전체 출근 현황" value={`${staffService.attendanceToday().present}/${staffService.attendanceToday().total}명`} tone="emerald" />
-            <Stat icon={<BarChart3 />} label="전체 실적 달성률" value={`${performanceService.companySummary().achievementRate}%`} tone="indigo" />
-            <Stat icon={<UserRound />} label="고객 진행률" value={`${customerService.teamProgressRate()}%`} tone="gold" />
-            <Stat icon={<Building2 />} label="개발/릴리즈" value="정상" tone="emerald" />
+            <Stat icon={<Clock />} label="오늘 출근" value={stats?.myAttendance ?? '…'} tone={stats?.myAttendanceDone ? 'emerald' : 'amber'} onClick={() => go({ name: 'attendance' })} />
+            <Stat icon={<CalendarDays />} label="오늘 내 일정" value={`${dash(stats?.todayMySchedules)}건`} tone="indigo" onClick={() => go({ name: 'schedule' })} />
+            <Stat icon={<UserRound />} label="내 고객" value={`${dash(stats?.customerCount)}명`} tone="gold" onClick={() => go({ name: 'customer' })} />
+            <Stat icon={<PhoneCall />} label="미콜 DB (내)" value={`${dash(stats?.uncalledLeads)}건`} tone={stats && stats.uncalledLeads > 0 ? 'amber' : 'emerald'} onClick={() => go({ name: 'leads' })} />
           </>
         )}
       </div>
 
-      {/* Team status (team-leader / owner) */}
-      {role === 'team-leader' || role === 'owner' || role === 'admin' ? (
-        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
-          <div className="mb-2 text-sm font-bold text-slate-100">{role === 'team-leader' ? '팀원 현황' : '팀별 현황'}</div>
-          <div className="space-y-1">
-            {staffService.teamStatus(session.teamName).map((m) => (
-              <div key={m.name} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 text-xs">
-                <span className="font-semibold text-slate-200">{m.name}</span>
-                <span className="text-slate-500">{m.attendance} · 오늘 상담 {m.todayConsultations}건 · 이번 달 {m.monthlyCount}건</span>
-              </div>
-            ))}
-            {staffService.teamStatus(session.teamName).length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-700 py-4 text-center text-[11px] text-slate-500">등록된 팀원이 없습니다.</div>
-            ) : null}
-          </div>
-        </div>
+      {/* 직원별 상세는 직원 현황 페이지에서 (목업 팀원 리스트 제거) */}
+      {admin ? (
+        <button
+          type="button"
+          onClick={() => go({ name: 'staff-overview' })}
+          className="flex w-full items-center justify-between rounded-2xl border border-slate-800 bg-white px-4 py-3 text-left shadow-sm transition hover:border-[#c6982f]"
+        >
+          <span className="flex items-center gap-2 text-sm font-bold text-slate-100">
+            <Users className="h-4 w-4 text-[#b0821f]" /> 직원별 상세 현황 보기
+            <span className="text-[11px] font-medium text-slate-500">고객·일정·실적·출퇴근 전체</span>
+          </span>
+          <ChevronRight className="h-4 w-4 text-slate-400" />
+        </button>
       ) : null}
 
       {/* Recent announcements */}
@@ -136,7 +196,19 @@ export default function StaffMvpDashboard(): JSX.Element {
   )
 }
 
-function Stat({ icon, label, value, tone }: { icon: JSX.Element; label: string; value: string; tone?: 'emerald' | 'indigo' | 'amber' | 'gold' }): JSX.Element {
+function Stat({
+  icon,
+  label,
+  value,
+  tone,
+  onClick
+}: {
+  icon: JSX.Element
+  label: string
+  value: string
+  tone?: 'emerald' | 'indigo' | 'amber' | 'gold'
+  onClick?: () => void
+}): JSX.Element {
   const tile =
     tone === 'emerald'
       ? 'bg-emerald-50 text-emerald-600'
@@ -158,10 +230,14 @@ function Stat({ icon, label, value, tone }: { icon: JSX.Element; label: string; 
             ? 'text-[#b0821f]'
             : 'text-slate-100'
   return (
-    <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-2xl border border-slate-800 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#c6982f] hover:shadow-md"
+    >
       <div className={['mb-2 flex h-8 w-8 items-center justify-center rounded-lg [&>svg]:h-4 [&>svg]:w-4', tile].join(' ')}>{icon}</div>
       <div className={['text-lg font-bold tabular-nums tracking-tight', val].join(' ')}>{value}</div>
       <div className="mt-0.5 text-[11px] text-slate-500">{label}</div>
-    </div>
+    </button>
   )
 }

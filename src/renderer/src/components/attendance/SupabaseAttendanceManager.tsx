@@ -13,7 +13,9 @@ import {
   CalendarDays,
   Timer,
   ImageOff,
-  Phone
+  Phone,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import {
@@ -67,6 +69,20 @@ async function listActiveStaff(): Promise<StaffLite[]> {
 /** Tables whose changes should live-refresh this screen (stable ref for the hook). */
 const RT_TABLES = ['attendance_records', 'profiles']
 
+/** 로컬 타임존 기준 YYYY-MM-DD (date input 값과 동일 포맷). */
+function toDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function parseDateKey(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1)
+}
+function shiftDateKey(key: string, days: number): string {
+  const d = parseDateKey(key)
+  d.setDate(d.getDate() + days)
+  return toDateKey(d)
+}
+
 /**
  * 출퇴근 (Supabase-connected). Check-in/out saves to attendance_records (Supabase
  * when configured + logged in, else local-mock). RLS enforces access; role guidance
@@ -94,6 +110,8 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   const [cameraFor, setCameraFor] = useState<AttendanceInput['type'] | null>(null)
   const [now, setNow] = useState(() => new Date())
   const [staffList, setStaffList] = useState<StaffLite[]>([])
+  // 현황판 조회 날짜 (관리자/팀장) — 기본 오늘, ◀▶·달력으로 지난 날짜 출근 현황 조회.
+  const [boardDate, setBoardDate] = useState(() => toDateKey(new Date()))
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000)
@@ -131,27 +149,33 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   const worked = useMemo(() => getTodayWorkedDuration(myToday), [myToday])
   const summary = useMemo(() => getAttendanceSummary(records), [records])
 
-  // ─── 지각·벌금 리포트 (오늘 + 이번 달) ─────────────────────────────────
-  const todayKey = now.toDateString()
-  const todayCheckIns = useMemo(
-    () => records.filter((r) => r.type === 'check-in' && new Date(r.timestamp).toDateString() === todayKey),
-    [records, todayKey]
+  // ─── 지각·벌금 리포트 + 현황판 (조회 날짜 기준 — 기본 오늘, 지난 날짜 조회 가능) ──
+  const boardObj = useMemo(() => parseDateKey(boardDate), [boardDate])
+  const boardKey = boardObj.toDateString()
+  const boardIsToday = boardKey === now.toDateString()
+  const boardLabel = boardIsToday
+    ? '오늘'
+    : boardObj.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })
+  const boardIsWeekend = boardObj.getDay() === 0 || boardObj.getDay() === 6
+  const boardCheckIns = useMemo(
+    () => records.filter((r) => r.type === 'check-in' && new Date(r.timestamp).toDateString() === boardKey),
+    [records, boardKey]
   )
-  const todayLate = useMemo(() => todayCheckIns.filter((r) => (r.lateFee ?? 0) > 0), [todayCheckIns])
-  const todayFeeSum = todayLate.reduce((s, r) => s + (r.lateFee ?? 0), 0)
-  const absentToday = useMemo(() => {
-    const checked = new Set(todayCheckIns.map((r) => r.staffId))
+  const boardLate = useMemo(() => boardCheckIns.filter((r) => (r.lateFee ?? 0) > 0), [boardCheckIns])
+  const boardFeeSum = boardLate.reduce((s, r) => s + (r.lateFee ?? 0), 0)
+  const boardAbsent = useMemo(() => {
+    const checked = new Set(boardCheckIns.map((r) => r.staffId))
     const scope = session.role === 'team-leader' ? staffList.filter((s) => s.teamId && s.teamId === session.teamName) : staffList
     return scope.filter((s) => !checked.has(s.id))
-  }, [todayCheckIns, staffList, session.role, session.teamName])
+  }, [boardCheckIns, staffList, session.role, session.teamName])
 
-  // ─── 오늘 출근 현황 명단 (자동 체크: 미출근→지각→근무중→퇴근 순 정렬) ────
+  // ─── 출근 현황 명단 (자동 체크: 미출근→지각→근무중→퇴근 순 정렬) ────────
   type RosterState = 'absent' | 'late' | 'in' | 'out'
   const roster = useMemo(() => {
     const scope = session.role === 'team-leader' ? staffList.filter((s) => s.teamId && s.teamId === session.teamName) : staffList
-    const inBy = new Map(todayCheckIns.map((r) => [r.staffId, r]))
+    const inBy = new Map(boardCheckIns.map((r) => [r.staffId, r]))
     const outBy = new Map(
-      records.filter((r) => r.type === 'check-out' && new Date(r.timestamp).toDateString() === todayKey).map((r) => [r.staffId, r])
+      records.filter((r) => r.type === 'check-out' && new Date(r.timestamp).toDateString() === boardKey).map((r) => [r.staffId, r])
     )
     const order: Record<RosterState, number> = { absent: 0, late: 1, in: 2, out: 3 }
     return scope
@@ -162,7 +186,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
         return { staff: s, rin, rout, state }
       })
       .sort((a, b) => order[a.state] - order[b.state] || a.staff.name.localeCompare(b.staff.name, 'ko'))
-  }, [staffList, todayCheckIns, records, todayKey, session.role, session.teamName])
+  }, [staffList, boardCheckIns, records, boardKey, session.role, session.teamName])
   const monthlyFines = useMemo(() => {
     const map = new Map<string, { name: string; count: number; sum: number }>()
     for (const r of records) {
@@ -403,30 +427,75 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           <ConfirmBar text="오늘 출근 기록이 없습니다. 퇴근을 기록하시겠습니까?" onYes={() => openCamera('check-out')} onNo={() => setConfirm(null)} />
         ) : null}
 
-        {/* 관리자/팀장 — 오늘 지각 리포트 + 월별 벌금 정산 */}
+        {/* 관리자/팀장 — 출근 현황판 (날짜 이동 가능) + 월별 벌금 정산 */}
         {admin ? (
           <div className="mb-4 space-y-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Stat label="오늘 출근" value={todayCheckIns.length} tone="emerald" />
-              <Stat label="오늘 지각" value={todayLate.length} tone="rose" />
-              <Stat label="미출근" value={absentToday.length} tone="amber" />
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5">
-                <div className="text-[10px] font-medium text-rose-500">오늘 벌금 합계</div>
-                <div className="text-lg font-bold tabular-nums text-rose-600">{feeLabel(todayFeeSum)}</div>
+            {/* 조회 날짜 이동 — ◀ 이전날 / 달력 / 다음날 ▶ / 오늘 복귀 */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2">
+              <div className="flex items-center gap-1.5 text-[12px] font-bold text-slate-100">
+                <CalendarDays className="h-3.5 w-3.5 text-[#b0821f]" /> 출근 현황판
+                {boardIsWeekend ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600">주말 — 미출근 표시는 참고용</span> : null}
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setBoardDate(shiftDateKey(boardDate, -1))}
+                  aria-label="이전 날짜"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-800 bg-white text-slate-300 hover:bg-slate-950"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <input
+                  type="date"
+                  value={boardDate}
+                  max={toDateKey(now)}
+                  onChange={(e) => {
+                    if (e.target.value && e.target.value <= toDateKey(now)) setBoardDate(e.target.value)
+                  }}
+                  className="h-7 rounded-lg border border-slate-800 bg-white px-2 text-[12px] font-semibold text-slate-100 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setBoardDate(shiftDateKey(boardDate, 1))}
+                  disabled={boardIsToday}
+                  aria-label="다음 날짜"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-800 bg-white text-slate-300 hover:bg-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                {!boardIsToday ? (
+                  <button
+                    type="button"
+                    onClick={() => setBoardDate(toDateKey(new Date()))}
+                    className="h-7 rounded-lg bg-[#0e1e3a] px-2.5 text-[11px] font-bold text-[#e6c877] hover:brightness-125"
+                  >
+                    오늘
+                  </button>
+                ) : null}
               </div>
             </div>
 
-            {/* 오늘 출근 현황 명단 — 전 직원 자동 대조 (미출근이 맨 위) */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Stat label={`${boardLabel} 출근`} value={boardCheckIns.length} tone="emerald" />
+              <Stat label={`${boardLabel} 지각`} value={boardLate.length} tone="rose" />
+              <Stat label="미출근" value={boardAbsent.length} tone="amber" />
+              <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5">
+                <div className="text-[10px] font-medium text-rose-500">{boardLabel} 벌금 합계</div>
+                <div className="text-lg font-bold tabular-nums text-rose-600">{feeLabel(boardFeeSum)}</div>
+              </div>
+            </div>
+
+            {/* 출근 현황 명단 — 전 직원 자동 대조 (미출근이 맨 위) */}
             {roster.length > 0 ? (
               <div className="rounded-xl border border-slate-800 bg-white p-3">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
                   <div className="text-[12px] font-bold text-slate-100">
-                    오늘 출근 현황 <span className="font-medium text-slate-500">(자동 체크 · {roster.length}명)</span>
+                    {boardLabel} 출근 현황 <span className="font-medium text-slate-500">(자동 체크 · {roster.length}명)</span>
                   </div>
                   <div className="flex flex-wrap gap-1 text-[10px] font-bold">
                     <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-600">미출근 {roster.filter((r) => r.state === 'absent').length}</span>
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-600">지각 {roster.filter((r) => r.state === 'late').length}</span>
-                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">근무중 {roster.filter((r) => r.state === 'in').length}</span>
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">{boardIsToday ? '근무중' : '출근'} {roster.filter((r) => r.state === 'in').length}</span>
                     <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-600">퇴근 {roster.filter((r) => r.state === 'out').length}</span>
                   </div>
                 </div>
@@ -444,7 +513,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
                             state === 'absent' ? 'bg-rose-500' : state === 'late' ? 'bg-amber-500' : state === 'in' ? 'bg-emerald-500' : 'bg-sky-500'
                           ].join(' ')}
                         >
-                          {state === 'absent' ? '미출근' : state === 'late' ? '지각' : state === 'in' ? '근무중' : '퇴근'}
+                          {state === 'absent' ? '미출근' : state === 'late' ? '지각' : state === 'in' ? (boardIsToday ? '근무중' : '출근') : '퇴근'}
                         </span>
                         <span className="min-w-0 truncate font-semibold text-slate-100">{staff.name}</span>
                         {rin ? (
@@ -453,7 +522,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
                           </span>
                         ) : null}
                         {state === 'late' ? <span className="ml-auto shrink-0 font-bold text-rose-600">벌금 {feeLabel(rin?.lateFee ?? 0)}</span> : null}
-                        {state === 'absent' && staff.phone ? (
+                        {state === 'absent' && staff.phone && boardIsToday ? (
                           <a
                             href={`tel:${staff.phone}`}
                             className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-500 px-2.5 py-1 text-[10px] font-bold text-white active:brightness-110"
@@ -465,7 +534,9 @@ export default function SupabaseAttendanceManager(): JSX.Element {
                     )
                   })}
                 </div>
-                <div className="mt-1.5 text-[10px] text-slate-500">평일 09:05 미출근자는 공지로도 자동 보고됩니다.</div>
+                {boardIsToday ? (
+                  <div className="mt-1.5 text-[10px] text-slate-500">평일 09:05 미출근자는 공지로도 자동 보고됩니다.</div>
+                ) : null}
               </div>
             ) : null}
 

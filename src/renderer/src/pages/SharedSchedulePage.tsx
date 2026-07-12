@@ -79,6 +79,34 @@ export default function SharedSchedulePage(): JSX.Element {
     return items
   }, [posts, events])
 
+  // ─── 이번 주 직원별 활동량 (월~일 · 개인/내부 일정, 취소 제외) ──────────
+  const week = useMemo(() => {
+    const d = new Date()
+    const day = d.getDay() // 0=일 … 6=토
+    const mondayOffset = day === 0 ? -6 : 1 - day
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() + mondayOffset)
+    const end = new Date(start)
+    end.setDate(start.getDate() + 7)
+    return { start, end }
+  }, [])
+  const weeklyByStaff = useMemo(() => {
+    const map = new Map<string, { id: string; total: number; done: number; types: Map<string, number> }>()
+    for (const ev of events) {
+      if (ev.type === 'personal' || ev.type === 'internal') continue
+      if (ev.status === 'cancelled') continue
+      const t = Date.parse(ev.startsAt)
+      if (Number.isNaN(t) || t < week.start.getTime() || t >= week.end.getTime()) continue
+      const cur = map.get(ev.staffId) ?? { id: ev.staffId, total: 0, done: 0, types: new Map<string, number>() }
+      cur.total += 1
+      if (ev.status === 'done') cur.done += 1
+      cur.types.set(ev.type, (cur.types.get(ev.type) ?? 0) + 1)
+      map.set(ev.staffId, cur)
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total)
+  }, [events, week])
+  const weeklyMax = weeklyByStaff.reduce((m, s) => Math.max(m, s.total), 0)
+  const weekRangeLabel = `${week.start.getMonth() + 1}/${week.start.getDate()}~${new Date(week.end.getTime() - 86400000).getMonth() + 1}/${new Date(week.end.getTime() - 86400000).getDate()}`
+
   const now = Date.now()
   const upcoming = useMemo(
     () => feed.filter((i) => Date.parse(i.startsAt) >= now - 3600000).sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt)),
@@ -238,6 +266,43 @@ export default function SharedSchedulePage(): JSX.Element {
           </div>
         ) : null}
       </div>
+
+      {/* 이번 주 직원별 활동량 요약 — 누가 얼마나 뛰는지 한눈에 */}
+      {!loading && weeklyByStaff.length > 0 ? (
+        <div className="rounded-2xl border border-slate-800 bg-white p-3.5 shadow-sm">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+            <div className="text-[12px] font-bold text-slate-100">
+              이번 주 직원별 활동량 <span className="font-medium text-slate-500">({weekRangeLabel})</span>
+            </div>
+            <span className="text-[10px] text-slate-500">개인·내부 일정 제외 · 취소 미집계</span>
+          </div>
+          <div className="space-y-1.5">
+            {weeklyByStaff.map((s) => (
+              <div key={s.id} className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5">
+                <span className="w-16 shrink-0 truncate text-[12px] font-bold text-slate-100">{staffNames.get(s.id) || '(이름없음)'}</span>
+                <span className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
+                  <span
+                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#c6982f] to-[#e6c877]"
+                    style={{ width: `${weeklyMax > 0 ? Math.max(6, Math.round((s.total / weeklyMax) * 100)) : 0}%` }}
+                  />
+                </span>
+                <span className="w-12 shrink-0 text-right text-[12px] font-extrabold tabular-nums text-slate-100">{s.total}건</span>
+                <span className="w-14 shrink-0 text-right text-[10px] font-bold text-emerald-600">완료 {s.done}</span>
+                <span className="hidden shrink-0 gap-1 sm:flex">
+                  {[...s.types.entries()]
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3)
+                    .map(([ty, n]) => (
+                      <span key={ty} className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600">
+                        {SCHEDULE_TYPE_LABEL[ty as keyof typeof SCHEDULE_TYPE_LABEL] ?? ty} {n}
+                      </span>
+                    ))}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
