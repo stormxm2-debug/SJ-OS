@@ -10,6 +10,8 @@ export type View =
   | { name: 'dashboard' }
   | { name: 'fcos' }
   | { name: 'customer' }
+  | { name: 'birthdays' }
+  | { name: 'stats-report' }
   | { name: 'sales-activity' }
   | { name: 'schedule' }
   | { name: 'shared-schedule' }
@@ -22,7 +24,6 @@ export type View =
   | { name: 'underwriting'; q?: string }
   | { name: 'pre-underwriting' }
   | { name: 'contacts' }
-  | { name: 'chat' }
   | { name: 'leads' }
   | { name: 'files' }
   | { name: 'app-builder' }

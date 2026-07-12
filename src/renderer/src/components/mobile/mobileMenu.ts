@@ -17,7 +17,6 @@ import {
   ShieldQuestion,
   ListChecks,
   Phone,
-  MessageCircle,
   FolderOpen
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
@@ -53,7 +52,6 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' } },
       { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' } },
       { key: 'consultation', label: '상담기록', icon: ClipboardList, view: { name: 'consultation' } },
-      { key: 'chat', label: '메신저', icon: MessageCircle, view: { name: 'chat' } },
       { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' } }
     ]
   },

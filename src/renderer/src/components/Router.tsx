@@ -24,7 +24,6 @@ import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
-import ChatPage from '@renderer/pages/ChatPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
@@ -48,6 +47,8 @@ import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
 import SharedSchedulePage from '@renderer/pages/SharedSchedulePage'
+import BirthdayPage from '@renderer/pages/BirthdayPage'
+import StatsReportPage from '@renderer/pages/StatsReportPage'
 
 /** Renders the active view chosen by the navigation state. */
 export default function Router(): JSX.Element {
@@ -82,6 +83,10 @@ export default function Router(): JSX.Element {
       return <FcOsPage />
     case 'customer':
       return <SupabaseCustomerManager />
+    case 'birthdays':
+      return <BirthdayPage />
+    case 'stats-report':
+      return <StatsReportPage />
     case 'sales-activity':
       return <SalesActivityWorkspacePage />
     case 'schedule':
@@ -108,8 +113,6 @@ export default function Router(): JSX.Element {
       return <LeadDistributionPage />
     case 'contacts':
       return <ManagerContactsPage />
-    case 'chat':
-      return <ChatPage />
     case 'files':
       return <SharedFilesPage />
     case 'app-builder':

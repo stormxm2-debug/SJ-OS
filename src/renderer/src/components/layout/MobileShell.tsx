@@ -22,7 +22,6 @@ import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
-import ChatPage from '@renderer/pages/ChatPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
@@ -30,6 +29,8 @@ import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
 import NoticePage from '@renderer/pages/NoticePage'
+import BirthdayPage from '@renderer/pages/BirthdayPage'
+import StatsReportPage from '@renderer/pages/StatsReportPage'
 import { useWakeKey } from '@renderer/services/commercial/wakeResync'
 
 /**
@@ -158,6 +159,10 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <SupabaseAttendanceManager />
     case 'customer':
       return <SupabaseCustomerManager />
+    case 'birthdays':
+      return <BirthdayPage />
+    case 'stats-report':
+      return <StatsReportPage />
     case 'consultation':
       return <SupabaseConsultationManager />
     case 'schedule':
@@ -168,8 +173,6 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <MobilePerformance />
     case 'claim-assistant':
       return <InsuranceClaimAssistantPage />
-    case 'chat':
-      return <ChatPage />
     case 'wiki':
       return <InsuranceWikiPage />
     case 'underwriting':
