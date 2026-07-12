@@ -849,7 +849,66 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
             </div>
           ) : null}
 
+          {/* 2차 감사 배지 — 담보 전수 재검사 통과 */}
+          {result.audited ? (
+            <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/60 px-4 py-2.5">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              <span className="text-[12px] font-bold text-emerald-700">
+                2차 감사 완료 — 담보 전수 대조·계산 재검산·놓친 청구 탐색을 한 번 더 거친 결과입니다.
+              </span>
+            </div>
+          ) : null}
+
+          {/* 병원서류만 모드 — 청구 가능성 가이드 */}
+          {result.claimGuide ? (
+            <>
+              <div className="overflow-hidden rounded-2xl border border-slate-800 bg-[#0e1e3a] shadow-sm">
+                <div className="relative px-5 py-6 sm:py-7">
+                  <div className="pointer-events-none absolute -left-10 -bottom-16 h-44 w-44 rounded-full bg-[#c6982f]/15 blur-2xl" />
+                  <div className="text-[12px] font-semibold tracking-widest text-[#e6c877]">병원서류 분석 — 청구 가능성 가이드</div>
+                  <div className="mt-1 text-xl font-black text-white sm:text-2xl">이 서류로 받을 수 있는 보험금 후보 {result.claimGuide.possibleClaims.length}가지</div>
+                  <div className="mt-2 text-[12px]" style={{ color: 'rgba(203,213,225,0.85)' }}>
+                    증권·가입내역이 없어도 아래 방법으로 확인할 수 있습니다. 증권을 올리면 정확한 금액까지 계산해 드립니다.
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {result.claimGuide.possibleClaims.map((p, i) => (
+                  <div key={i} className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <Gem className="h-4 w-4 text-[#b0821f]" />
+                      <span className="text-sm font-extrabold text-slate-100">{p.type}</span>
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-6 text-slate-200">{p.how}</p>
+                    {p.check ? (
+                      <div className="mt-2 flex items-start gap-2 rounded-lg bg-slate-950 px-3 py-2">
+                        <Search className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#b0821f]" />
+                        <span className="text-[12px] leading-5 text-slate-300">증권에서 확인: {p.check}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              {result.claimGuide.howToFind.length > 0 ? (
+                <div className="rounded-2xl border border-[#c6982f]/40 bg-gradient-to-r from-[#c6982f]/10 to-transparent p-4 shadow-sm">
+                  <h3 className="mb-2 flex items-center gap-1.5 text-[13px] font-extrabold text-slate-100">
+                    <BadgeCheck className="h-4 w-4 text-[#b0821f]" /> 내 보험 가입내역 확인 방법
+                  </h3>
+                  <ul className="space-y-1 text-[13px] leading-6 text-slate-200">
+                    {result.claimGuide.howToFind.map((h, i) => (
+                      <li key={i}>· {h}</li>
+                    ))}
+                  </ul>
+                  {result.claimGuide.nextStep ? (
+                    <p className="mt-2 rounded-lg bg-white px-3 py-2 text-[12px] font-semibold text-[#b0821f]">→ {result.claimGuide.nextStep}</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
           {/* 총액 히어로 */}
+          {!result.claimGuide ? (
           <div className="overflow-hidden rounded-2xl border border-slate-800 bg-[#0e1e3a] shadow-sm">
             <div className="relative px-5 py-6 text-center sm:py-8">
               <div className="pointer-events-none absolute -left-10 -bottom-16 h-44 w-44 rounded-full bg-[#c6982f]/15 blur-2xl" />
@@ -861,6 +920,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
               </div>
             </div>
           </div>
+          ) : null}
 
           {/* 회사별 카드 */}
           <div className="space-y-4">
@@ -1104,15 +1164,28 @@ function AnalyzingPanel({
 }): JSX.Element {
   const stage = progress?.stage ?? 'prepare'
   const pct = claimProgressPct(progress)
-  const title = stage === 'prepare' ? '서류 압축·준비 중…' : stage === 'extract' ? '서류 정밀 판독 중…' : '회사별 보험금 계산 · 약관 대조 중…'
+  const title =
+    stage === 'prepare'
+      ? '서류 압축·준비 중…'
+      : stage === 'extract'
+        ? '서류 정밀 판독 중…'
+        : stage === 'research'
+          ? '공식 약관 웹 검색·대조 중…'
+          : stage === 'audit'
+            ? '2차 감사 — 빠진 보험금 재검사 중…'
+            : '회사별 보험금 계산 · 약관 대조 중…'
   const detail =
     stage === 'prepare' && progress
       ? `파일 ${progress.batch}/${progress.totalBatches} — ${(progress.fileNames ?? []).join(', ')}`
       : stage === 'extract' && progress
         ? `배치 ${progress.batch}/${progress.totalBatches} — ${(progress.fileNames ?? []).join(', ')}`
-        : stage === 'synthesize'
-          ? '담보별 금액 · 근거 조항 · 숨은 청구 · 고객 안내문 작성'
-          : `서류 ${fileCount}개 준비 중`
+        : stage === 'research' && progress
+          ? `보험사 ${progress.batch}/${progress.totalBatches} — ${(progress.fileNames ?? []).join(', ')} 공식 약관·공시 확인`
+          : stage === 'audit'
+            ? '담보 전수 대조 · 계산 재검산 · 놓친 청구 탐색'
+            : stage === 'synthesize'
+              ? '담보별 금액 · 근거 조항 · 숨은 청구 · 고객 안내문 작성'
+              : `서류 ${fileCount}개 준비 중`
   return (
     <div className="rounded-2xl border border-slate-800 bg-white p-6 shadow-sm">
       <div className="flex items-center gap-3">

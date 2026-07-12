@@ -22,6 +22,8 @@ export interface ExtractedDoc {
   index: number
   docType: string
   insurer?: string | null
+  /** 증권에 기재된 상품명 (약관 웹 리서치의 검색 키). */
+  productName?: string | null
   policyNo?: string | null
   coverages: { name: string; amount?: number | string; payRule?: string; clause?: string }[]
   medicalFacts: { date?: string; fact: string; cost?: string | number }[]
@@ -46,6 +48,13 @@ export interface ClaimCompany {
   subtotal: number
 }
 
+/** 병원서류만 있을 때의 청구 가능성 가이드 (증권 없이도 "어떻게 받는지" 안내). */
+export interface ClaimGuide {
+  possibleClaims: { type: string; how: string; check: string }[]
+  howToFind: string[]
+  nextStep: string
+}
+
 export interface ClaimExpertResult {
   companies: ClaimCompany[]
   grandTotal: number
@@ -57,6 +66,10 @@ export interface ClaimExpertResult {
   neededDocs: string[]
   /** 판독된 문서 요약 (분류 칩 표시용). */
   docs: ExtractedDoc[]
+  /** 병원서류만 모드의 청구 가능성 가이드 (증권 있으면 null). */
+  claimGuide?: ClaimGuide | null
+  /** 2차 감사 패스 통과 여부 (누락 재검사 완료). */
+  audited?: boolean
 }
 
 export interface ClaimAppeal {
@@ -65,11 +78,11 @@ export interface ClaimAppeal {
 }
 
 export interface ClaimProgress {
-  stage: 'prepare' | 'extract' | 'synthesize'
-  /** prepare: 현재 파일/전체 파일, extract: 현재 배치/전체 배치, synthesize: 0/0. */
+  stage: 'prepare' | 'extract' | 'research' | 'synthesize' | 'audit'
+  /** prepare: 파일/전체, extract: 배치/전체, research: 보험사/전체, synthesize·audit: 0/0. */
   batch: number
   totalBatches: number
-  /** 처리 중인 파일명들 (진행 표시용). */
+  /** 처리 중인 파일명/보험사명들 (진행 표시용). */
   fileNames?: string[]
 }
 
@@ -313,6 +326,7 @@ function normalizeDoc(d: Record<string, unknown>, i: number, names: string[]): E
     index: idx,
     docType: String(d.docType ?? '기타'),
     insurer: d.insurer ? String(d.insurer) : null,
+    productName: d.productName ? String(d.productName) : null,
     policyNo: d.policyNo ? String(d.policyNo) : null,
     coverages: Array.isArray(d.coverages)
       ? (d.coverages as Record<string, unknown>[]).map((c) => ({
@@ -398,7 +412,88 @@ function normalizeResult(raw: Record<string, unknown>, docs: ExtractedDoc[]): Cl
     cautions: Array.isArray(raw.cautions) ? (raw.cautions as unknown[]).map(String) : [],
     customerMessage: String(raw.customerMessage ?? ''),
     neededDocs: Array.isArray(raw.neededDocs) ? (raw.neededDocs as unknown[]).map(String) : [],
-    docs
+    docs,
+    claimGuide: normalizeGuide((raw as { claimGuide?: unknown }).claimGuide),
+    audited: false
+  }
+}
+
+const BASIS_SOURCES = new Set<BasisSource>(['clause-confirmed', 'web-confirmed', 'policy-stated', 'standard-estimate'])
+
+/**
+ * 2차 감사 결과를 1차 결과에 병합 — 추가 지급(additions), 금액 정정(corrections),
+ * 추가 제외/숨은청구/주의. 병합 후 소계·총계는 재검산한다. 감사로 추가된 항목은
+ * basis에 표식을 남겨 화면에서 근거를 추적할 수 있게 한다.
+ */
+function applyAudit(result: ClaimExpertResult, audit: Record<string, unknown>): void {
+  const norm = (s: string): string => s.replace(/\s/g, '').toLowerCase()
+  const additions = Array.isArray(audit.additions) ? (audit.additions as Record<string, unknown>[]) : []
+  for (const a of additions) {
+    const companyName = String(a.company ?? '보험사')
+    const coverage = String(a.coverage ?? '').trim()
+    if (!coverage) continue
+    let company = result.companies.find((c) => norm(c.name) === norm(companyName) || norm(c.name).includes(norm(companyName)) || norm(companyName).includes(norm(c.name)))
+    if (!company) {
+      company = { name: companyName, items: [], subtotal: 0 }
+      result.companies.push(company)
+    }
+    if (company.items.some((it) => norm(it.coverage) === norm(coverage))) continue // 중복 추가 방지
+    const src = String(a.basisSource ?? 'standard-estimate') as BasisSource
+    company.items.push({
+      coverage,
+      amount: toNumber(a.amount),
+      calc: a.calc ? String(a.calc) : undefined,
+      basis: `${String(a.basis ?? '')} (2차 감사에서 추가 발견)`,
+      basisSource: BASIS_SOURCES.has(src) ? src : 'standard-estimate'
+    })
+    // 감사에서 지급으로 재판정된 담보는 제외 목록에서 걷어낸다
+    result.excluded = result.excluded.filter((e) => !norm(e.coverage).includes(norm(coverage)))
+  }
+  const corrections = Array.isArray(audit.corrections) ? (audit.corrections as Record<string, unknown>[]) : []
+  for (const c of corrections) {
+    const coverage = norm(String(c.coverage ?? ''))
+    if (!coverage) continue
+    for (const company of result.companies) {
+      if (c.company && !(norm(company.name).includes(norm(String(c.company))) || norm(String(c.company)).includes(norm(company.name)))) continue
+      const item = company.items.find((it) => norm(it.coverage) === coverage || norm(it.coverage).includes(coverage) || coverage.includes(norm(it.coverage)))
+      if (item) {
+        item.amount = toNumber(c.amount)
+        if (c.calc) item.calc = String(c.calc)
+        if (c.reason) item.basis = `${item.basis} · 감사 정정: ${String(c.reason)}`
+      }
+    }
+  }
+  const newExclusions = Array.isArray(audit.newExclusions) ? (audit.newExclusions as Record<string, unknown>[]) : []
+  for (const e of newExclusions) {
+    const coverage = String(e.coverage ?? '').trim()
+    if (!coverage || result.excluded.some((x) => norm(x.coverage) === norm(coverage))) continue
+    result.excluded.push({ coverage, reason: String(e.reason ?? '') })
+  }
+  const hidden = Array.isArray(audit.additionalHidden) ? (audit.additionalHidden as Record<string, unknown>[]) : []
+  for (const h of hidden) {
+    const desc = String(h.desc ?? '').trim()
+    if (desc) result.hiddenClaims.push({ desc, amount: h.amount == null ? null : toNumber(h.amount) })
+  }
+  const cautions = Array.isArray(audit.additionalCautions) ? (audit.additionalCautions as unknown[]).map(String) : []
+  result.cautions.push(...cautions.filter((c) => c.trim()))
+  // 병합 후 재검산 — 모델 산수는 끝까지 믿지 않는다
+  const fixed = reconcile(result.companies)
+  result.companies = fixed.companies
+  result.grandTotal = fixed.grandTotal
+}
+
+/** 병원서류만 모드의 청구 가능성 가이드 정규화. 형식이 아니면 null. */
+function normalizeGuide(raw: unknown): ClaimGuide | null {
+  const g = raw as Record<string, unknown> | null | undefined
+  if (!g || !Array.isArray(g.possibleClaims)) return null
+  return {
+    possibleClaims: (g.possibleClaims as Record<string, unknown>[]).map((p) => ({
+      type: String(p.type ?? ''),
+      how: String(p.how ?? ''),
+      check: String(p.check ?? '')
+    })),
+    howToFind: Array.isArray(g.howToFind) ? (g.howToFind as unknown[]).map(String) : [],
+    nextStep: String(g.nextStep ?? '')
   }
 }
 
@@ -481,6 +576,49 @@ export async function analyzeClaimExpert(args: {
     return ti && docInsurers.some((w) => w.includes(ti) || ti.includes(w))
   }).slice(0, 10)
 
+  // 증권(가입 담보) 존재 여부 — 없으면 병원서류만 모드(청구 가능성 가이드)
+  const hasPolicy = allDocs.some((d) => d.docType === '증권' || d.coverages.length > 0)
+  // 전수 검토 체크리스트 — 추출된 모든 담보 (누락 방지의 기준선)
+  const coverageChecklist = allDocs
+    .flatMap((d) => d.coverages.map((c) => ({ insurer: d.insurer ?? '', coverage: c.name })))
+    .filter((c) => c.coverage.trim())
+    .slice(0, 200)
+
+  // ── 정밀 리서치: 보관함 약관이 없는 보험사는 웹에서 공식 약관을 찾아 대조 ──
+  // (시간이 걸려도 정확하게 — 백그라운드 큐에서 도는 작업이라 기다릴 필요 없음)
+  const researchedTerms: unknown[] = []
+  const researchedWebTerms: unknown[] = []
+  if (hasPolicy) {
+    const coveredInsurers = new Set(matched.map((t) => normName(t.insurer)))
+    const targets = new Map<string, { insurer: string; productName: string; coverages: string[] }>()
+    for (const d of allDocs) {
+      const ins = String(d.insurer ?? '').trim()
+      if (!ins || d.coverages.length === 0) continue
+      const key = normName(ins)
+      if ([...coveredInsurers].some((c) => c && (c.includes(key) || key.includes(c)))) continue
+      const t = targets.get(key) ?? { insurer: ins, productName: String(d.productName ?? ''), coverages: [] }
+      if (!t.productName && d.productName) t.productName = String(d.productName)
+      for (const c of d.coverages) if (c.name.trim() && !t.coverages.includes(c.name)) t.coverages.push(c.name)
+      targets.set(key, t)
+    }
+    const list = [...targets.values()].slice(0, 3)
+    for (let i = 0; i < list.length; i += 1) {
+      const t = list[i]
+      args.onProgress?.({ stage: 'research', batch: i + 1, totalBatches: list.length, fileNames: [t.insurer] })
+      const res = await postJson(
+        { mode: 'research', insurer: t.insurer, productName: t.productName, coverages: t.coverages.slice(0, 30) },
+        170000
+      )
+      const r = res.ok ? ((res.data?.research ?? null) as Record<string, unknown> | null) : null
+      if (r && Array.isArray(r.clauses) && (r.clauses as unknown[]).length > 0) {
+        researchedTerms.push(r)
+        // webTerms 형태와 호환 — 완료 후 보관함 자동 저장돼 다음 분석부터 재사용
+        researchedWebTerms.push(r)
+      }
+      // 리서치 실패는 치명적이지 않다 — 종합 단계가 증권 기재/표준약관 위계로 폴백
+    }
+  }
+
   // 종별 수술비 감지 시 — 약관 "원본"을 다시 열어 수술분류표에서 해당 수술의 종을 직접 확정.
   // 약관 소스: ① 이번 분석에 함께 올린 약관 문서 ② 보관함 매칭분의 원본 PDF(storage).
   const CLASS_RE = /[1-9]\s*종/
@@ -505,12 +643,18 @@ export async function analyzeClaimExpert(args: {
   }
 
   args.onProgress?.({ stage: 'synthesize', batch: 0, totalBatches: 0 })
+  const termsForSynth = [...matched.map((t) => t.summary), ...researchedTerms]
   const synthBody = {
     mode: 'synthesize',
     docs: allDocs.map(({ fileName: _fileName, ...rest }) => rest),
     customerName: args.customerName ?? '',
-    termsSummaries: matched.map((t) => t.summary),
-    surgeryClasses
+    termsSummaries: termsForSynth,
+    surgeryClasses,
+    coverageChecklist,
+    hasPolicy,
+    // 리서치 단계가 웹 확인을 이미 수행 — 종합은 웹 없이 빠르고 한도 안전하게.
+    // 약관 근거가 하나도 없을 때만(리서치 전멸) 종합 안에서 웹 폴백을 켠다.
+    useWeb: termsForSynth.length === 0 && hasPolicy
   }
   let synth = await postJson(synthBody, 170000)
   if (!synth.ok && !synth.disabled) {
@@ -522,6 +666,46 @@ export async function analyzeClaimExpert(args: {
   const raw = (synth.data?.result ?? null) as Record<string, unknown> | null
   if (!raw) return { ok: false, error: '종합 결과가 비어 있습니다. 다시 시도해 주세요.' }
   const result = normalizeResult(raw, allDocs)
+
+  // ── 2차 감사 패스: 빠뜨린 보험금·계산 오류 재검사 (증권이 있을 때만) ────────
+  if (hasPolicy && result.companies.length > 0) {
+    args.onProgress?.({ stage: 'audit', batch: 0, totalBatches: 0 })
+    const auditRes = await postJson(
+      {
+        mode: 'audit',
+        docs: allDocs.map(({ fileName: _f, ...rest }) => rest),
+        result: { companies: result.companies, grandTotal: result.grandTotal, excluded: result.excluded, hiddenClaims: result.hiddenClaims },
+        coverageChecklist,
+        termsSummaries: termsForSynth
+      },
+      170000
+    )
+    if (auditRes.ok && auditRes.data?.audit) {
+      applyAudit(result, auditRes.data.audit as Record<string, unknown>)
+      result.audited = true
+    } else {
+      result.cautions = ['⚠ 2차 감사(누락 재검사)에 실패해 1차 분석만 표시됩니다. 재분석을 권장합니다.', ...result.cautions]
+    }
+  }
+
+  // ── 기계적 누락 검산: 체크리스트의 모든 담보가 지급/제외 어느 쪽에든 있는지 ──
+  if (coverageChecklist.length > 0) {
+    const seen = [
+      ...result.companies.flatMap((c) => c.items.map((it) => normName(it.coverage))),
+      ...result.excluded.map((e) => normName(e.coverage))
+    ]
+    const missing = coverageChecklist.filter((c) => {
+      const k = normName(c.coverage)
+      return k && !seen.some((s) => s.includes(k) || k.includes(s))
+    })
+    if (missing.length > 0) {
+      const names = missing.slice(0, 8).map((m) => m.coverage).join(', ')
+      result.cautions = [
+        `⚠ 검토 누락 가능 담보 ${missing.length}건: ${names}${missing.length > 8 ? ' 외' : ''} — 해당 담보는 재분석으로 확인해 주세요.`,
+        ...result.cautions
+      ]
+    }
+  }
   // 서버가 용량 한도로 뒤쪽 문서를 계산에서 제외했다면 반드시 겉으로 알린다.
   const dropped = Number((synth.data as { droppedDocs?: unknown })?.droppedDocs ?? 0)
   if (dropped > 0) {
@@ -534,9 +718,9 @@ export async function analyzeClaimExpert(args: {
   if ((synth.data as { truncated?: unknown })?.truncated) {
     result.cautions = ['⚠️ 결과가 매우 길어 마지막 일부 항목이 생략됐을 수 있습니다. 서류를 나눠 다시 분석하면 전체를 확인할 수 있습니다.', ...result.cautions]
   }
-  // 웹에서 확인한 약관 조항 — 호출부(페이지)가 보관함에 자동 저장해 다음 분석부터 재사용
-  const webTerms = Array.isArray((raw as { webTerms?: unknown }).webTerms) ? ((raw as { webTerms: unknown[] }).webTerms) : []
-  return { ok: true, result, usedTerms: matched.map((t) => t.id), webTerms }
+  // 웹에서 확인한 약관 조항(리서치 단계 + 종합 폴백) — 보관함에 자동 저장돼 다음 분석부터 재사용
+  const synthWebTerms = Array.isArray((raw as { webTerms?: unknown }).webTerms) ? ((raw as { webTerms: unknown[] }).webTerms) : []
+  return { ok: true, result, usedTerms: matched.map((t) => t.id), webTerms: [...researchedWebTerms, ...synthWebTerms] }
 }
 
 /** 부지급/삭감 통보 → 약관 조항 근거 재검토 요청서 생성. */

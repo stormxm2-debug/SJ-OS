@@ -104,16 +104,21 @@ export function hasActiveClaimJob(): boolean {
   return jobs.some((j) => j.status === 'queued' || j.status === 'running')
 }
 
-/** 진행률(%) — 페이지 진행 패널과 작업 목록 미니바가 함께 쓴다. */
+/** 진행률(%) — 페이지 진행 패널과 작업 목록 미니바가 함께 쓴다.
+ *  정밀 파이프라인 v2: 준비→판독→약관 웹 대조(research)→종합→2차 감사(audit). */
 export function claimProgressPct(progress: ClaimProgress | null): number {
   if (!progress) return 3
   if (progress.stage === 'prepare') {
     return Math.round((progress.batch / Math.max(progress.totalBatches, 1)) * 12) + 3
   }
   if (progress.stage === 'extract') {
-    return Math.round((Math.max(progress.batch - 1, 0) / Math.max(progress.totalBatches, 1)) * 65) + 15
+    return Math.round((Math.max(progress.batch - 1, 0) / Math.max(progress.totalBatches, 1)) * 35) + 15
   }
-  return 85
+  if (progress.stage === 'research') {
+    return Math.round((Math.max(progress.batch - 1, 0) / Math.max(progress.totalBatches, 1)) * 22) + 52
+  }
+  if (progress.stage === 'synthesize') return 78
+  return 91 // audit
 }
 
 /**

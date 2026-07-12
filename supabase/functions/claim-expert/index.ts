@@ -1,9 +1,12 @@
 // SJ INVEST — 보험금 청구 보상전문가 (claim-expert, Claude 기반)
 //
-// 3가지 모드 (multipart 또는 JSON):
+// 모드 (multipart 또는 JSON) — 정밀 파이프라인 v2:
 //  - extract   : 서류 묶음(≤6개, PDF/이미지) → 문서별 추출 JSON (분류·보험사·담보·의료사실)
-//  - synthesize: 추출 JSON 전체 → 회사별·담보별 예상 보험금 + 약관 근거 + 고객 안내문
-//  - appeal    : 분석 결과 + 거절 사유 → 약관 조항 근거 재검토(이의) 요청서
+//  - research  : 보험사별 공식 약관 웹 리서치 (검색·열람 넉넉히) → 담보별 조항 확인
+//  - synthesize: 추출 JSON 전체(+체크리스트·약관) → 회사별·담보별 예상 보험금 + 근거
+//                (hasPolicy=false면 병원서류만 모드 — 청구 가능성 가이드 반환)
+//  - audit     : 1차 종합 결과 2차 감사 — 누락 보험금·계산 오류 재검사
+//  - digest/classify/appeal : 약관 요약·수술 종 확정·재검토 요청서
 // Claude는 PDF 원본을 그대로 읽는다(document 블록). 키는 ANTHROPIC_API_KEY 시크릿.
 // 서류는 메모리에서만 처리되고 저장되지 않는다. 고객의 편에 선 보상 전문가 관점.
 
@@ -110,7 +113,8 @@ const RESEARCH_TOOLS = [
 // 판독(extract)은 "베껴 쓰기" 작업이라 고속 모델로 — 판단(종합·재검토·약관정독)은 Opus 유지.
 const EXTRACT_MODEL = (): string => Deno.env.get('CLAIM_EXTRACT_MODEL') || 'claude-sonnet-5'
 
-async function callClaude(apiKey: string, system: string, content: any[], maxTokens: number, useWeb = false, model?: string): Promise<{ ok: boolean; text?: string; error?: string; truncated?: boolean }> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function callClaude(apiKey: string, system: string, content: any[], maxTokens: number, useWeb = false, model?: string, tools?: any[]): Promise<{ ok: boolean; text?: string; error?: string; truncated?: boolean }> {
   const controller = new AbortController()
   // Supabase 요청 타임아웃(150s)보다 먼저 끊어 친절한 오류가 나가게 한다.
   const timer = setTimeout(() => controller.abort(), 135000)
@@ -126,7 +130,7 @@ async function callClaude(apiKey: string, system: string, content: any[], maxTok
         model: model || Deno.env.get('CLAIM_EXPERT_MODEL') || 'claude-opus-4-8',
         max_tokens: maxTokens,
         system,
-        ...(useWeb ? { tools: WEB_TOOLS } : {}),
+        ...(tools ? { tools } : useWeb ? { tools: WEB_TOOLS } : {}),
         // 주의: opus-4-8은 assistant 프리필 미지원("does not support assistant message prefill")
         // — JSON 시작 강제는 시스템 프롬프트 지시 + parseJson 복구로 대신한다.
         messages: [{ role: 'user', content }]
@@ -214,14 +218,61 @@ const SYNTH_SYSTEM = [
   '"neededDocs":["청구에 추가로 필요한 서류"]}',
   '',
   '규칙:',
-  '1) 전수 검토: 증권에서 추출된 모든 담보는 하나도 빠짐없이 items(지급) 또는 excluded(부지급+이유) 중 한쪽에 반드시 들어가야 합니다. 담보를 조용히 누락하는 것은 최악의 오류입니다.',
+  '1) 전수 검토 (가장 중요): 입력에 "담보 체크리스트"가 제공되면, 그 목록의 모든 담보가 items(지급) 또는 excluded(부지급+이유) 중 한쪽에 반드시 들어가야 합니다. 응답 전에 체크리스트 개수와 items+excluded 개수를 스스로 대조하세요. 보험금을 빠뜨리는 것은 최악의 오류이며, 애매하면 excluded가 아니라 items에 넣고 cautions에 확인 포인트를 적으세요.',
   '2) 추출 데이터에 있는 사실·금액·조항만 근거로. 지어내기 금지. 일당형은 (1일 금액×일수) 계산식 명시.',
   '3) subtotal은 각 items 합, grandTotal은 subtotal 합 — 반드시 검산.',
   '4) 같은 담보가 여러 회사에 있으면 각각 계산 (실손은 비례보상 주의사항을 cautions에).',
   '5) 의료 사실 날짜가 3년 이내인데 청구 흔적이 없으면 hiddenClaims로.',
   '6) 간결하게 (응답이 잘리지 않도록): basis는 조항 인용 포함 1문장(90자 이내), excluded.reason은 60자 이내, calc는 30자 이내, cautions 각 항목 80자 이내. 담보가 많아도 전수 검토가 우선 — 설명을 줄여서라도 모든 담보를 포함할 것.',
   '7) 종별 수술비(1~5종 등): "수술 종 확정 데이터"가 입력에 제공되면 그것이 약관 분류표에서 직접 확인된 값이므로 **최우선으로 사용**해 종을 확정하고, calc에 "담낭절제술=3종→50만원" 형식으로 종을 명시하세요 (basisSource=clause-confirmed). 확정 데이터가 없으면 보관함 요약 → 웹 검색 순으로 확인. 그래도 분류표를 확인하지 못했다면 종을 절대 추측하지 말 것 — 그 담보는 amount를 0으로 하고, basis에 증권 기재 종별 금액표를 그대로 정확히 적은 뒤 "수술분류표 확인 후 확정"을 명시하고, neededDocs에 "해당 상품 약관 수술분류표"를, cautions에 확정 필요 안내 1줄을 넣으세요.',
+  '8) 실손의료비 정밀 계산: 실손 담보가 있으면 진료비영수증의 급여/비급여 구분으로 세대별 산식을 적용하세요 —',
+  '   · 1세대(2009.9 이전): 상품별 상이 — 통상 입원 100%(자기부담 없음 상품 다수)/통원 공제 5천~1만. 가입시점 확인 필요.',
+  '   · 2세대 표준화(2009.10~2017.3): 입원 (급여+비급여)의 90% (선택형 80%), 통원 외래 공제 1~2만·처방 8천 차감.',
+  '   · 3세대 착한실손(2017.4~2021.6): 기본형 급여 90%·비급여 80%, 특약(비급여주사·MRI·도수) 70%·공제 2만/3만.',
+  '   · 4세대(2021.7~): 급여 80%(공제 최소 외래1만·입원 20%)·비급여 70%(공제 최소 3만).',
+  '   가입 시기를 모르면 calc에 세대 미확정을 밝히고 amount는 가장 보수적인(4세대) 산식으로 계산 + cautions에 "가입시기별 최대 ○○원까지 가능 — 증권의 가입일 확인" 1줄. 영수증에 급여/비급여 분해가 없으면 총진료비 기준 범위를 계산하고 neededDocs에 "진료비 세부내역서"를 추가하세요.',
+  '9) 병원서류만 있는 경우 (입력에 hasPolicy=false 안내가 있으면): companies는 빈 배열, grandTotal 0으로 하고, 반드시 "claimGuide"를 채우세요 —',
+  '"claimGuide":{"possibleClaims":[{"type":"골절진단금 등 담보 유형","how":"이 진단/치료가 왜 해당되는지 + 통상 지급 규칙","check":"증권/가입내역에서 확인할 담보명 키워드"}],',
+  '"howToFind":["내보험찾아줌(cont.insure.or.kr)에서 전체 가입내역 무료 조회","각 보험사 앱/콜센터에서 가입담보 확인" 등 실행 가능한 방법],',
+  '"nextStep":"증권이나 가입내역서를 올려주시면 회사별 정확한 금액을 계산해 드립니다"}',
+  '   possibleClaims는 의료사실에서 청구 가능성이 있는 모든 담보 유형을 빠짐없이 (진단금·수술비·입원일당·통원·실손·검사·후유장해·간병 등 해당되는 것 전부).',
   '모두 한국어.'
+].join('\n')
+
+const RESEARCH_SYSTEM = [
+  '당신은 대한민국 보험 약관 리서처입니다. 웹 검색·열람 도구로 요청된 보험사의 공식 약관·상품공시를 찾아, 요청된 담보들의 지급 조항을 확인해 JSON으로만 답하세요.',
+  '응답의 첫 글자는 반드시 { 여야 합니다 — 인사말·설명·마크다운 코드펜스(```) 절대 금지.',
+  '이 결과는 보험금 계산의 근거로 쓰이므로 정확성이 최우선입니다. 시간이 걸려도 공식 출처를 찾으세요.',
+  '',
+  '출처 우선순위: ① 해당 보험사 공식 사이트 상품공시실/약관 PDF ② 생명·손해보험협회 상품공시 ③ 그 외 신뢰 가능한 출처.',
+  '정확한 상품(상품명·판매시기)의 약관을 찾으면 confidence="exact". 같은 보험사의 유사 상품 약관이면 "similar". 표준약관/일반 기준밖에 못 찾으면 "standard".',
+  '',
+  '{"insurer":"보험사명","productName":"확인된 상품명 (모르면 \'일반\')","sourceUrl":"확인한 페이지/문서 URL","confidence":"exact|similar|standard",',
+  '"clauses":[{"coverage":"요청 담보명 그대로","clause":"조항 번호+제목 (확인된 경우만, 아니면 null)","payRule":"지급 조건·금액 규칙 (100자 이내)","exclusions":"면책·감액 핵심 (80자 이내, 없으면 null)"}],',
+  '"notes":"확인하지 못한 담보와 이유, 판매시기별 차이 등 (200자 이내)"}',
+  '',
+  '규칙: 1) 요청된 담보를 최대한 많이 clauses에 담되, 웹에서 확인하지 못한 담보는 clauses에 넣지 말고 notes에 나열 (지어내기 절대 금지). 2) 조항 번호는 확인된 문서에 있는 그대로만. 3) 종별 수술비 담보가 요청에 있으면 수술분류표 기준(종별 대표 수술)도 payRule에 최대한 담기. 모두 한국어.'
+].join('\n')
+
+const AUDIT_SYSTEM = [
+  '당신은 보험금 분석 감사관입니다. 아래 1차 분석 결과를 의심하는 눈으로 재검사해, 빠뜨린 보험금·계산 오류를 찾아 JSON으로만 답하세요.',
+  '응답의 첫 글자는 반드시 { 여야 합니다 — 인사말·설명·마크다운 코드펜스(```) 절대 금지.',
+  '당신의 유일한 목표: 고객이 받을 수 있는 보험금이 단 1건도 누락되지 않게 하는 것.',
+  '',
+  '검사 항목:',
+  '1) 담보 체크리스트의 모든 담보가 1차 결과의 items 또는 excluded에 있는가 — 빠진 담보는 직접 판정해 additions(지급 가능) 또는 newExclusions(부지급+이유)로.',
+  '2) 의료사실(진단·수술·입원·통원·검사) 대비 놓친 청구 유형이 없는가 — 증권 담보와 대조해 지급 가능한데 빠진 것은 additions로.',
+  '3) 금액·산식 재검산 — 일당×일수, 종별 금액, 실손 세대별 공제(급여80~90%/비급여70~80%, 통원공제)가 틀렸으면 corrections로.',
+  '4) excluded 중 실제로는 지급 가능한 건 — 약관/의료사실 근거가 있으면 additions로 (reason에 재판정 사유).',
+  '',
+  '{"complete":true|false (1차 결과에 문제가 없으면 true),',
+  '"additions":[{"company":"보험사명","coverage":"담보명","amount":숫자,"calc":"산정식","basis":"근거 (조항 인용 포함, 90자 이내)","basisSource":"clause-confirmed|web-confirmed|policy-stated|standard-estimate"}],',
+  '"corrections":[{"company":"보험사명","coverage":"1차 결과의 담보명 그대로","amount":숫자(정정 금액),"calc":"정정 산식","reason":"정정 사유 (60자 이내)"}],',
+  '"newExclusions":[{"coverage":"담보명 (보험사명)","reason":"이유 (60자 이내)"}],',
+  '"additionalHidden":[{"desc":"추가로 발견한 숨은 청구","amount":숫자 또는 null}],',
+  '"additionalCautions":["추가 주의 포인트 (80자 이내)"]}',
+  '',
+  '규칙: 1) 근거 없는 추가 금지 — 추출 데이터·약관 요약에 있는 사실만. 2) 1차 결과가 이미 정확하면 모든 배열을 비우고 complete=true. 3) 중복 추가 금지 — 1차 items에 이미 있는 담보는 additions에 넣지 말 것(금액이 틀렸으면 corrections). 모두 한국어.'
 ].join('\n')
 
 const APPEAL_SYSTEM = [
@@ -395,6 +446,66 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ success: true, mode: 'classify', classifications: parsed.classifications })
   }
 
+  // ── research: 보험사별 공식 약관 웹 리서치 (정밀 모드 전담 단계) ────────────
+  if (mode === 'research') {
+    const insurer = String((body as { insurer?: unknown }).insurer ?? '').trim().slice(0, 40)
+    const productName = String((body as { productName?: unknown }).productName ?? '').trim().slice(0, 80)
+    const coverages = Array.isArray((body as { coverages?: unknown }).coverages)
+      ? ((body as { coverages: unknown[] }).coverages).map(String).slice(0, 30)
+      : []
+    if (!insurer || coverages.length === 0) return json({ success: false, error: '보험사명과 담보 목록이 필요합니다.' }, 400)
+    const content = [
+      {
+        type: 'text',
+        text: [
+          `보험사: ${insurer}`,
+          productName ? `상품명(증권 기재): ${productName}` : '상품명: 미상 — 웹에서 파악 시도',
+          '',
+          '아래 담보들의 지급 조항을 웹에서 확인하세요:',
+          coverages.map((c, i) => `${i + 1}. ${c}`).join('\n')
+        ].join('\n')
+      }
+    ]
+    const res = await callClaude(apiKey, RESEARCH_SYSTEM, content, 8000, false, undefined, RESEARCH_TOOLS)
+    if (!res.ok) return json({ success: false, error: res.error }, 502)
+    const parsed = parseJson(res.text ?? '')
+    if (!parsed || !Array.isArray(parsed.clauses)) return json({ success: false, error: '약관 리서치 형식 오류.' }, 502)
+    return json({ success: true, mode: 'research', research: parsed })
+  }
+
+  // ── audit: 1차 종합 결과 2차 감사 — 누락 보험금·계산 오류 재검사 ────────────
+  if (mode === 'audit') {
+    const docs = Array.isArray(body.docs) ? body.docs : []
+    const result = (body as { result?: unknown }).result
+    if (docs.length === 0 || !result) return json({ success: false, error: '감사할 데이터가 없습니다.' }, 400)
+    const checklist = Array.isArray((body as { coverageChecklist?: unknown }).coverageChecklist)
+      ? ((body as { coverageChecklist: unknown[] }).coverageChecklist).slice(0, 200)
+      : []
+    const terms = Array.isArray(body.termsSummaries) ? body.termsSummaries.slice(0, 10) : []
+    const content = [
+      {
+        type: 'text',
+        text: [
+          checklist.length > 0 ? '--- 담보 체크리스트 (전수 검토 대상) ---\n' + JSON.stringify(checklist).slice(0, 30000) : '',
+          terms.length > 0 ? '\n--- 약관 요약 (검증된 근거) ---\n' + JSON.stringify(terms).slice(0, 100000) : '',
+          '',
+          '--- 문서 추출 데이터 ---',
+          JSON.stringify(docs).slice(0, 250000),
+          '',
+          '--- 1차 분석 결과 (감사 대상) ---',
+          JSON.stringify(result).slice(0, 80000)
+        ]
+          .filter(Boolean)
+          .join('\n')
+      }
+    ]
+    const res = await callClaude(apiKey, AUDIT_SYSTEM, content, 8000)
+    if (!res.ok) return json({ success: false, error: res.error }, 502)
+    const parsed = parseJson(res.text ?? '')
+    if (!parsed) return json({ success: false, error: '감사 결과 형식 오류.' }, 502)
+    return json({ success: true, mode: 'audit', audit: parsed })
+  }
+
   if (mode === 'synthesize') {
     const docs = Array.isArray(body.docs) ? body.docs : []
     if (docs.length === 0) return json({ success: false, error: '종합할 추출 데이터가 없습니다.' }, 400)
@@ -414,14 +525,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // 보관함 약관 요약 — 검증된 상품약관으로 최우선 근거 (있으면 웹 검색이 대부분 불필요해져 빨라진다)
     const terms = Array.isArray(body.termsSummaries) ? body.termsSummaries.slice(0, 10) : []
     const surgeryClasses = Array.isArray((body as { surgeryClasses?: unknown }).surgeryClasses) ? ((body as { surgeryClasses: unknown[] }).surgeryClasses).slice(0, 10) : []
+    // 전수 검토 체크리스트 — 클라이언트가 추출된 담보명 전체를 넘긴다 (누락 방지 핵심)
+    const checklist = Array.isArray((body as { coverageChecklist?: unknown }).coverageChecklist)
+      ? ((body as { coverageChecklist: unknown[] }).coverageChecklist).slice(0, 200)
+      : []
+    // 병원서류만 있는 분석 — 청구 가능성 가이드 모드
+    const hasPolicy = (body as { hasPolicy?: unknown }).hasPolicy !== false
     const content = [
       {
         type: 'text',
         text: [
           customerName ? `고객명: ${customerName}` : '',
           `오늘 날짜: ${new Date().toISOString().slice(0, 10)} (소멸시효 3년 판단 기준)`,
+          !hasPolicy ? '\n(hasPolicy=false — 증권·가입내역 없음. 규칙 9의 claimGuide 모드로 답하세요.)' : '',
+          checklist.length > 0 ? '\n--- 담보 체크리스트 (이 모든 담보가 items 또는 excluded에 반드시 포함되어야 함) ---\n' + JSON.stringify(checklist).slice(0, 30000) : '',
           surgeryClasses.length > 0 ? '\n--- 수술 종 확정 데이터 (약관 수술분류표에서 직접 확인됨 — 최우선 사용) ---\n' + JSON.stringify(surgeryClasses).slice(0, 20000) : '',
-          terms.length > 0 ? '\n--- 보관함 약관 요약 (검증된 상품약관 — clause-confirmed 근거) ---\n' + JSON.stringify(terms).slice(0, 150000) : '',
+          terms.length > 0 ? '\n--- 약관 요약 (검증된 근거 — 보관함/웹 리서치) ---\n' + JSON.stringify(terms).slice(0, 150000) : '',
           '',
           '--- 문서 추출 데이터 (전체) ---',
           JSON.stringify(included)
@@ -464,5 +583,5 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ success: true, mode: 'appeal', appeal: parsed })
   }
 
-  return json({ success: false, error: '알 수 없는 mode 입니다 (extract|synthesize|appeal).' }, 400)
+  return json({ success: false, error: '알 수 없는 mode 입니다 (extract|research|synthesize|audit|digest|classify|appeal).' }, 400)
 })
