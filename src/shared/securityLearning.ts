@@ -222,6 +222,29 @@ export interface EngineSummary {
   byCategory: Record<ElementCategory, number>
 }
 
+/** 완전 자동 감지(백그라운드 감시) 상태. */
+export interface AutoWatchState {
+  /** 사용자가 자동 감지를 켰는지(설정 영속). */
+  enabled: boolean
+  /** 이 환경(Windows)에서 자동 감지가 가능한지. */
+  supported: boolean
+  /** 현재 자동 학습 중인 보험사(감지된 전산). */
+  activeInsurerId: string | null
+  activeInsurerName: string | null
+  /** 마지막 자동 이벤트(감지/학습/종료) 시각·설명. */
+  lastEventAt: string | null
+  lastEventText: string | null
+}
+
+/** 자동으로 찾아낸 "보완할 점". 사용자 조치 없이도 계속 학습해 채워진다. */
+export interface ImprovementHint {
+  insurerId: string
+  insurerName: string
+  type: 'needs-repeat' | 'unknown' | 'lingering' | 'low-confidence'
+  count: number
+  message: string
+}
+
 export interface EngineState {
   support: CollectorSupport
   /** 1차에서는 항상 false(관찰 전용). */
@@ -229,6 +252,10 @@ export interface EngineState {
   activeSession: LearningSession | null
   recentSessions: LearningSession[]
   summary: EngineSummary
+  /** 완전 자동 감지 상태. */
+  autoWatch: AutoWatchState
+  /** 자동으로 파악한 보완할 점(반복 학습으로 채워짐). */
+  improvements: ImprovementHint[]
   updatedAt: string
 }
 
@@ -820,6 +847,49 @@ export function summarize(insurers: InsurerProfile[], learned: LearnedElement[])
     controlEligibleCount,
     byCategory
   }
+}
+
+/**
+ * 자동으로 "보완할 점"을 계산한다(순수). 사용자 조치 없이도 반복 학습으로 채워질
+ * 항목들: 학습 횟수 부족, 소속 불명, 종료 후 잔존, 신뢰점수 낮음.
+ */
+export function computeImprovements(
+  insurers: InsurerProfile[],
+  learned: LearnedElement[]
+): ImprovementHint[] {
+  const hints: ImprovementHint[] = []
+  const byInsurer = new Map<string, LearnedElement[]>()
+  for (const el of learned) {
+    const arr = byInsurer.get(el.insurerId) ?? []
+    arr.push(el)
+    byInsurer.set(el.insurerId, arr)
+  }
+  for (const insurer of insurers) {
+    const els = byInsurer.get(insurer.id) ?? []
+    const name = insurer.name
+    if (insurer.totalSessions < REPEAT_TARGET) {
+      hints.push({
+        insurerId: insurer.id,
+        insurerName: name,
+        type: 'needs-repeat',
+        count: REPEAT_TARGET - insurer.totalSessions,
+        message: `${name}: 전산을 ${REPEAT_TARGET}번 이상 실행하면 분류가 정확해집니다 (현재 ${insurer.totalSessions}번 학습)`
+      })
+    }
+    const unknown = els.filter((e) => e.category === 'unknown').length
+    if (unknown > 0) {
+      hints.push({ insurerId: insurer.id, insurerName: name, type: 'unknown', count: unknown, message: `${name}: 소속 불명 ${unknown}건 — 계속 자동 학습 중` })
+    }
+    const lingering = els.filter((e) => e.lingersAfterExit).length
+    if (lingering > 0) {
+      hints.push({ insurerId: insurer.id, insurerName: name, type: 'lingering', count: lingering, message: `${name}: 전산 종료 후 잔존 ${lingering}건 — 자동 전환 시 정리 후보` })
+    }
+    const lowConf = els.filter((e) => e.confidence < 0.5 && e.sessionsSeen >= 1).length
+    if (lowConf > 0) {
+      hints.push({ insurerId: insurer.id, insurerName: name, type: 'low-confidence', count: lowConf, message: `${name}: 신뢰점수 낮은 항목 ${lowConf}건 — 반복 학습으로 보완 중` })
+    }
+  }
+  return hints.slice(0, 12)
 }
 
 export const CATEGORY_LABEL: Record<ElementCategory, string> = {

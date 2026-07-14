@@ -82,6 +82,7 @@ import {
   getState as secLearnGetState,
   listInsurers as secLearnListInsurers,
   listLearned as secLearnListLearned,
+  setAutoWatch as secLearnSetAutoWatch,
   setSecurityLearningEmitter
 } from './securityLearning'
 import type { CodingExecRequest } from '@shared/providers'
@@ -411,6 +412,9 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('sj-seclearn:capture-after', () => secLearnCaptureAfter())
   ipcMain.handle('sj-seclearn:end-session', () => secLearnEndSession())
+  ipcMain.handle('sj-seclearn:set-auto-watch', (_e, enabled: boolean) => secLearnSetAutoWatch(!!enabled))
+  // 앱 시작 시 상태를 한 번 읽어, 설정에 저장된 자동 감지를 페이지 열기 전에도 재개시킨다.
+  try { secLearnGetState() } catch { /* noop */ }
 
   createWindow()
 

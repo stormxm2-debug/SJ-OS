@@ -20,8 +20,15 @@ import type {
   SystemSnapshot
 } from '@shared/securityLearning'
 import {
+  BUSINESS_COMMON_HINTS,
+  NOISY_HOST_PROCESSES,
+  SECURITY_VENDOR_HINTS,
+  WINDOWS_CORE_PROCESSES,
+  baseName,
+  computeImprovements,
   diffSnapshots,
   extractUrlHosts,
+  norm,
   recomputeElement,
   redact,
   summarize
@@ -50,6 +57,8 @@ interface PersistedStore {
   insurers: InsurerProfile[]
   elements: LearnedElement[]
   recentSessions: LearningSession[]
+  /** 완전 자동 감지 켜짐 여부(영속). */
+  autoWatchEnabled?: boolean
 }
 
 const MAX_RECENT_SESSIONS = 25
@@ -87,7 +96,8 @@ function loadStore(): void {
       store = {
         insurers: Array.isArray(raw.insurers) ? raw.insurers : [],
         elements: Array.isArray(raw.elements) ? raw.elements : [],
-        recentSessions: Array.isArray(raw.recentSessions) ? raw.recentSessions : []
+        recentSessions: Array.isArray(raw.recentSessions) ? raw.recentSessions : [],
+        autoWatchEnabled: !!raw.autoWatchEnabled
       }
     }
   } catch {
@@ -99,6 +109,8 @@ function ensureLoaded(): void {
   if (!loaded) {
     loadStore()
     loaded = true
+    // 설정에 자동 감지가 켜져 있으면 앱 시작 시 자동으로 감시를 재개한다.
+    if (store.autoWatchEnabled && isWindows()) startAutoWatch()
   }
 }
 function saveStore(): void {
@@ -382,6 +394,15 @@ function buildState(): EngineState {
     activeSession,
     recentSessions: store.recentSessions.slice(0, MAX_RECENT_SESSIONS),
     summary: summarize(store.insurers, store.elements),
+    autoWatch: {
+      enabled: !!store.autoWatchEnabled,
+      supported: isWindows(),
+      activeInsurerId: activeAuto?.insurerId ?? null,
+      activeInsurerName: activeAuto?.insurerName ?? null,
+      lastEventAt: autoLastEvent?.at ?? null,
+      lastEventText: autoLastEvent?.text ?? null
+    },
+    improvements: computeImprovements(store.insurers, store.elements),
     updatedAt: nowIso()
   }
 }
@@ -637,6 +658,234 @@ export function getDependencyGraph(insurerId: string): DependencyGraph {
   }
 
   return { insurerId, nodes, edges }
+}
+
+// ---------------------------------------------------------------------------
+// 완전 자동 감지 (백그라운드) — 사용자 조작 없이 전산 실행을 감지·학습·재보완
+// ---------------------------------------------------------------------------
+//
+// 동작: 가벼운 프로세스 목록을 주기적으로 폴링해서 (1) 유휴 상태의 기준 스냅샷을
+// 유지하고, (2) 눈에 띄는 사용자 앱(=보험사 전산 후보)이 새로 뜨면 자동으로 학습
+// 세션을 시작한다. 같은 세션에서 몇 회 더 캡처해 늦게 뜨는 보안 모듈까지 보완하고,
+// 그 전산이 종료되면 잔존 요소를 표시한 뒤 세션을 닫는다. 여전히 관찰 전용 —
+// 어떤 프로세스도 종료하지 않는다.
+
+const AUTO_INTERVAL_MS = 8000
+const AUTO_MAX_CAPTURES = 3 // 실행 직후 + 늦게 뜨는 모듈까지 "한 번 더 보완"
+const AUTO_RECAPTURE_GAP_MS = 20000
+const IDLE_BASELINE_REFRESH_POLLS = 8
+
+interface ActiveAuto {
+  insurerId: string
+  insurerName: string
+  session: LearningSession
+  launchKey: string
+  captureCount: number
+  lastCaptureAt: number
+}
+
+let autoWatchTimer: ReturnType<typeof setInterval> | null = null
+let rollingBaseline: SystemSnapshot | null = null
+let lastProcKeys = new Set<string>()
+let idlePolls = 0
+let activeAuto: ActiveAuto | null = null
+let autoLastEvent: { at: string; text: string } | null = null
+
+function autoEvent(text: string): void {
+  autoLastEvent = { at: nowIso(), text }
+}
+
+const FAST_PROC_SCRIPT = `
+$ErrorActionPreference='SilentlyContinue'
+Get-Process | Select-Object Id,ProcessName,Path | ConvertTo-Json -Compress
+`
+
+/** 경량 프로세스 목록(경로 기준 식별자 → 이름·경로). 폴링 전용. */
+async function collectProcMap(): Promise<Map<string, { name: string; path: string | null }>> {
+  const map = new Map<string, { name: string; path: string | null }>()
+  if (!isWindows()) return map
+  const raw = await runPowerShell(FAST_PROC_SCRIPT)
+  if (!raw.trim()) return map
+  try {
+    const arr = asArray<{ Id?: number; ProcessName?: string; Path?: string | null }>(JSON.parse(raw))
+    for (const p of arr) {
+      const path = p.Path ?? null
+      const name = String(p.ProcessName ?? '')
+      const key = norm(path) || norm(name)
+      if (key) map.set(key, { name, path })
+    }
+  } catch {
+    /* 파싱 실패는 무시 */
+  }
+  return map
+}
+
+function matchesHints(value: string, hints: readonly string[]): boolean {
+  const v = norm(value)
+  return hints.some((h) => v.includes(h))
+}
+
+/** 학습 세션을 시작할 만한 "눈에 띄는 사용자 앱"인가(=보험사 전산 후보). */
+function isLaunchCandidate(name: string, path: string | null): boolean {
+  if (!path) return false
+  const p = norm(path)
+  if (p.startsWith('c:\\windows')) return false // 시스템
+  const bn = baseName(path)
+  if (WINDOWS_CORE_PROCESSES.includes(bn) || NOISY_HOST_PROCESSES.includes(bn)) return false
+  // 우리 앱/런타임 제외
+  if (p.includes('sj invest') || p.includes('sj-os') || p.includes('sjinvest') || bn === 'electron') return false
+  // 브라우저·오피스·백신은 "트리거"에서 제외(전산 실행 시 diff엔 여전히 잡힘)
+  if (matchesHints(`${name} ${path}`, BUSINESS_COMMON_HINTS)) return false
+  if (matchesHints(`${name} ${path}`, SECURITY_VENDOR_HINTS)) return false
+  return true
+}
+
+/** 감지된 전산에 대해 자동 학습 세션을 시작한다. */
+async function autoStartSession(launchKey: string, name: string, path: string | null): Promise<void> {
+  const insurerId = `auto:${baseName(path ?? name) || launchKey}`
+  const insurerName = name || baseName(path ?? '') || insurerId
+  const insurer = upsertInsurer(insurerId, insurerName)
+  insurer.totalSessions += 1
+  insurer.lastSessionAt = nowIso()
+  const session: LearningSession = {
+    id: randomUUID(),
+    insurerId,
+    status: 'observing',
+    startedAt: nowIso(),
+    endedAt: null,
+    baselineSnapshotId: rollingBaseline?.id ?? null,
+    lastAfterSnapshotId: null,
+    appearedCount: 0,
+    changedCount: 0
+  }
+  countedThisSession.set(session.id, new Set())
+  activeAuto = { insurerId, insurerName, session, launchKey, captureCount: 0, lastCaptureAt: 0 }
+  autoEvent(`${insurerName} 전산 자동 감지 — 학습 시작`)
+  await autoLearnCapture(activeAuto)
+}
+
+/** 현재 상태를 기준 스냅샷과 비교해 학습에 병합한다("한 번 더 보완"에도 재사용). */
+async function autoLearnCapture(a: ActiveAuto): Promise<void> {
+  if (!rollingBaseline) return
+  const after = await collectSnapshot('after-launch', a.insurerId)
+  const diff = diffSnapshots(rollingBaseline, after)
+  const enrichTargets = [...diff.appeared, ...diff.changed]
+    .map((it) => it.detail.path)
+    .filter((p): p is string => !!p)
+  const enriched = await enrichPaths(enrichTargets)
+  mergeDiff(a.session, diff, enriched)
+  a.session.lastAfterSnapshotId = after.id
+  a.session.appearedCount = diff.appeared.length
+  a.session.changedCount = diff.changed.length
+  a.captureCount += 1
+  a.lastCaptureAt = Date.now()
+  snapshots.delete(after.id)
+  autoEvent(`${a.insurerName} 자동 학습 ${a.captureCount}회차 — 신규 ${diff.appeared.length}건`)
+  saveStore()
+  pushState()
+}
+
+/** 감지된 전산이 종료되면 잔존 요소를 표시하고 세션을 닫는다(종료 동작 없음). */
+async function autoCloseSession(a: ActiveAuto): Promise<void> {
+  if (rollingBaseline) {
+    const exit = await collectSnapshot('after-exit', a.insurerId)
+    const diff = diffSnapshots(rollingBaseline, exit)
+    const lingering = new Set(diff.appeared.map((it) => `${it.kind}:${it.identityKey}`))
+    for (const el of store.elements) {
+      if (el.insurerId === a.insurerId && lingering.has(`${el.kind}:${el.identityKey}`)) {
+        el.lingersAfterExit = true
+      }
+    }
+    snapshots.delete(exit.id)
+  }
+  a.session.status = 'closed'
+  a.session.endedAt = nowIso()
+  store.recentSessions.unshift(a.session)
+  store.recentSessions = store.recentSessions.slice(0, MAX_RECENT_SESSIONS)
+  countedThisSession.delete(a.session.id)
+  autoEvent(`${a.insurerName} 전산 종료 감지 — 세션 마감`)
+  // 다음 감지를 위해 기준 스냅샷을 다시 잡도록 초기화.
+  rollingBaseline = null
+  idlePolls = 0
+  saveStore()
+  pushState()
+}
+
+/** 주기 폴링 1회: 감지/학습/종료를 자동 진행. */
+async function autoTick(): Promise<void> {
+  if (!isWindows()) return
+  const procs = await collectProcMap()
+  const currentKeys = new Set(procs.keys())
+
+  if (activeAuto) {
+    if (currentKeys.has(activeAuto.launchKey)) {
+      if (
+        activeAuto.captureCount < AUTO_MAX_CAPTURES &&
+        Date.now() - activeAuto.lastCaptureAt >= AUTO_RECAPTURE_GAP_MS
+      ) {
+        await autoLearnCapture(activeAuto)
+      }
+    } else {
+      const closing = activeAuto
+      activeAuto = null
+      await autoCloseSession(closing)
+    }
+    lastProcKeys = currentKeys
+    return
+  }
+
+  // 유휴: 기준 스냅샷 유지 + 신규 전산 감시.
+  if (!rollingBaseline) {
+    rollingBaseline = await collectSnapshot('baseline', null)
+    lastProcKeys = currentKeys
+    return
+  }
+  const appeared = [...currentKeys].filter((k) => !lastProcKeys.has(k))
+  const launch = appeared
+    .map((k) => ({ k, info: procs.get(k)! }))
+    .find((x) => isLaunchCandidate(x.info.name, x.info.path))
+  if (launch) {
+    await autoStartSession(launch.k, launch.info.name, launch.info.path)
+  } else {
+    idlePolls += 1
+    if (idlePolls >= IDLE_BASELINE_REFRESH_POLLS) {
+      rollingBaseline = await collectSnapshot('baseline', null)
+      idlePolls = 0
+    }
+  }
+  lastProcKeys = currentKeys
+}
+
+function startAutoWatch(): void {
+  if (autoWatchTimer || !isWindows()) return
+  autoWatchTimer = setInterval(() => {
+    void autoTick().catch(() => {})
+  }, AUTO_INTERVAL_MS)
+}
+function stopAutoWatch(): void {
+  if (autoWatchTimer) {
+    clearInterval(autoWatchTimer)
+    autoWatchTimer = null
+  }
+  activeAuto = null
+  rollingBaseline = null
+  lastProcKeys = new Set()
+  idlePolls = 0
+}
+
+/** 완전 자동 감지를 켜고/끈다(설정 영속). 켜면 앱 재시작 후에도 유지된다. */
+export function setAutoWatch(enabled: boolean): EngineState {
+  ensureLoaded()
+  store.autoWatchEnabled = enabled
+  saveStore()
+  if (enabled) {
+    autoEvent('자동 감지 켜짐 — 전산 실행을 자동으로 학습합니다')
+    startAutoWatch()
+  } else {
+    stopAutoWatch()
+    autoEvent('자동 감지 꺼짐')
+  }
+  return pushState()
 }
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,9 @@ import {
   Network,
   Info,
   Loader2,
-  Eye
+  Eye,
+  Zap,
+  Lightbulb
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import {
@@ -163,6 +165,72 @@ export default function SecurityCenterPage(): JSX.Element {
           자동 실행/정리 종료는 신뢰점수가 충분히 축적된 뒤 별도 단계에서 활성화됩니다.
         </div>
       </div>
+
+      {/* 완전 자동 감지 토글 */}
+      {state && (
+        <Card title="완전 자동 감지" icon={<Zap className="h-4 w-4" />}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 text-sm text-slate-300">
+              <p>
+                켜두면 <b className="text-slate-100">아무것도 누르지 않아도</b> 앱이 알아서 보험사 전산
+                실행을 감지해 학습하고, 늦게 뜨는 보안 모듈까지 자동으로 한 번 더 보완합니다.
+              </p>
+              {state.autoWatch.enabled && state.autoWatch.lastEventText && (
+                <p className="mt-2 text-xs text-emerald-300">
+                  최근: {state.autoWatch.lastEventText}
+                  {state.autoWatch.lastEventAt
+                    ? ` · ${new Date(state.autoWatch.lastEventAt).toLocaleTimeString('ko-KR')}`
+                    : ''}
+                </p>
+              )}
+              {state.autoWatch.activeInsurerName && (
+                <p className="mt-1 text-xs text-indigo-300">
+                  지금 자동 학습 중: {state.autoWatch.activeInsurerName}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={unsupported || busy === 'auto'}
+              onClick={() =>
+                void run('auto', async () => api()?.setAutoWatch(!state.autoWatch.enabled))
+              }
+              aria-pressed={state.autoWatch.enabled}
+              className={[
+                'relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition disabled:opacity-40',
+                state.autoWatch.enabled ? 'bg-emerald-500' : 'bg-slate-600'
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'inline-block h-5 w-5 transform rounded-full bg-white transition',
+                  state.autoWatch.enabled ? 'translate-x-6' : 'translate-x-1'
+                ].join(' ')}
+              />
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* 자동으로 파악한 보완할 점 */}
+      {state && state.improvements.length > 0 && (
+        <Card title="자동으로 파악한 보완할 점" icon={<Lightbulb className="h-4 w-4" />}>
+          <div className="space-y-1.5">
+            {state.improvements.slice(0, 8).map((h, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-xs text-slate-300"
+              >
+                <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+                <span>{h.message}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            이 항목들은 사용자가 조치하지 않아도 전산을 반복 실행하는 동안 자동으로 채워집니다.
+          </p>
+        </Card>
+      )}
 
       {unsupported && (
         <Card>

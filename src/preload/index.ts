@@ -307,6 +307,9 @@ const api = {
       ipcRenderer.invoke('sj-seclearn:begin-session', { insurerId, insurerName }),
     captureAfter: (): Promise<EngineState> => ipcRenderer.invoke('sj-seclearn:capture-after'),
     endSession: (): Promise<EngineState> => ipcRenderer.invoke('sj-seclearn:end-session'),
+    /** 완전 자동 감지 켜기/끄기 (사용자 조작 없이 전산 실행을 자동 학습). */
+    setAutoWatch: (enabled: boolean): Promise<EngineState> =>
+      ipcRenderer.invoke('sj-seclearn:set-auto-watch', enabled),
     onStateChange: (callback: (state: EngineState) => void): (() => void) => {
       const handler = (_event: IpcRendererEvent, payload: EngineState): void => callback(payload)
       ipcRenderer.on('sj-seclearn:state', handler)
