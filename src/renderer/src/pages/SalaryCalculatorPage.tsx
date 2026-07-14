@@ -22,6 +22,7 @@ import {
   deleteSalaryCalc,
   listCommissionRates,
   listSalaryCalcs,
+  rateFor,
   saveCommissionRate,
   sortRates,
   type CommissionRate,
@@ -122,13 +123,13 @@ export default function SalaryCalculatorPage(): JSX.Element {
   }, [rates])
 
   const groupOptions = useMemo(
-    () => rates.filter((r) => r.insurer === insurer).map((r) => r.productGroup),
+    () => Array.from(new Set(rates.filter((r) => r.insurer === insurer).map((r) => r.productGroup))),
     [rates, insurer]
   )
 
-  // 보험사/상품군 선택 → 요율 자동 채움 (수정 가능)
-  const applyRate = (ins: string, grp: string): void => {
-    const hit = rates.find((r) => r.insurer === ins && r.productGroup === grp) ?? rates.find((r) => r.insurer === ins)
+  // 보험사/상품군/귀속월 선택 → 요율 자동 채움 (그 달 시책 우선, 없으면 기본 — 수정 가능)
+  const applyRate = (ins: string, grp: string, m: string): void => {
+    const hit = rateFor(rates, ins, grp, m) ?? rates.find((r) => r.insurer === ins)
     if (hit) {
       setPct({
         recruiter: String(hit.recruiterPct || ''),
@@ -142,12 +143,20 @@ export default function SalaryCalculatorPage(): JSX.Element {
     setInsurer(ins)
     const grp = rates.find((r) => r.insurer === ins)?.productGroup ?? '공통'
     setProductGroup(grp)
-    applyRate(ins, grp)
+    applyRate(ins, grp, month)
   }
   const pickGroup = (grp: string): void => {
     setProductGroup(grp)
-    applyRate(insurer, grp)
+    applyRate(insurer, grp, month)
   }
+  // 귀속월 변경 시 그 달 요율(시책/기본)로 다시 채움
+  useEffect(() => {
+    if (insurer) applyRate(insurer, productGroup, month)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month])
+
+  // 현재 선택에 자동 적용된 요율 출처 표시용
+  const appliedRate = insurer ? rateFor(rates, insurer, productGroup, month) : undefined
 
   const premium = premiumOf(premiumStr)
   const amounts = useMemo(
@@ -280,7 +289,7 @@ export default function SalaryCalculatorPage(): JSX.Element {
       </div>
 
       {/* 관리자: 요율표 관리 */}
-      {admin && showRateAdmin ? <RateAdmin rates={rates} onChanged={() => void loadRates()} /> : null}
+      {admin && showRateAdmin ? <RateAdmin rates={rates} month={month} onChanged={() => void loadRates()} /> : null}
 
       {/* 계산기 */}
       <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
@@ -344,6 +353,20 @@ export default function SalaryCalculatorPage(): JSX.Element {
             />
           </label>
         </div>
+
+        {insurer ? (
+          <div className="mt-3 text-[11px] font-semibold text-slate-500">
+            {appliedRate ? (
+              appliedRate.effectiveMonth ? (
+                <span className="rounded-full bg-[#c6982f]/15 px-2 py-0.5 font-bold text-[#8a6a1f]">{appliedRate.effectiveMonth} 시책 요율 자동 적용</span>
+              ) : (
+                <span>기본 요율 자동 적용 ({month} 시책 없음)</span>
+              )
+            ) : (
+              <span>등록된 요율 없음 — 아래에 직접 입력해 계산하세요.</span>
+            )}
+          </div>
+        ) : null}
 
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(
@@ -513,8 +536,8 @@ function SummaryTile({ label, value, strong }: { label: string; value: string; s
   )
 }
 
-/** 관리자 요율표 관리 — 행 편집/추가/삭제. RLS(owner·admin)가 실제 경계. */
-function RateAdmin({ rates, onChanged }: { rates: CommissionRate[]; onChanged: () => void }): JSX.Element {
+/** 관리자 요율표 관리 — 기본 요율 / 월 시책 전환, 행 편집/추가/삭제. RLS(owner·admin)가 실제 경계. */
+function RateAdmin({ rates, month, onChanged }: { rates: CommissionRate[]; month: string; onChanged: () => void }): JSX.Element {
   interface RowDraft {
     id?: string
     insurer: string
@@ -533,13 +556,52 @@ function RateAdmin({ rates, onChanged }: { rates: CommissionRate[]; onChanged: (
     carrier: String(r.carrierPct),
     month13: String(r.month13Pct)
   })
-  const [rows, setRows] = useState<RowDraft[]>(sortRates(rates).map(toDraft))
+  // scope: 기본 요율('') ↔ 선택 귀속월 시책(month)
+  const [scope, setScope] = useState<'base' | 'month'>('base')
+  const scopeMonth = scope === 'base' ? '' : month
+  const scoped = useMemo(() => sortRates(rates.filter((r) => r.effectiveMonth === scopeMonth)), [rates, scopeMonth])
+  const baseRates = useMemo(() => rates.filter((r) => r.effectiveMonth === ''), [rates])
+  const [rows, setRows] = useState<RowDraft[]>(scoped.map(toDraft))
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | undefined>()
 
   useEffect(() => {
-    setRows(sortRates(rates).map(toDraft))
-  }, [rates])
+    setRows(scoped.map(toDraft))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scoped])
+
+  /** 기본 요율을 이번 달 시책으로 복사 (이미 시책이 있는 보험사×상품군은 건너뜀). */
+  const copyBaseToMonth = async (): Promise<void> => {
+    const missing = baseRates.filter(
+      (b) => !rates.some((r) => r.effectiveMonth === month && r.insurer === b.insurer && r.productGroup === b.productGroup)
+    )
+    if (missing.length === 0) {
+      setMsg({ ok: false, text: `${month} 시책이 이미 모두 만들어져 있습니다.` })
+      return
+    }
+    setBusy(true)
+    setMsg(undefined)
+    let fail = 0
+    for (const b of missing) {
+      const res = await saveCommissionRate({
+        insurer: b.insurer,
+        productGroup: b.productGroup,
+        effectiveMonth: month,
+        recruiterPct: b.recruiterPct,
+        sangsaengPct: b.sangsaengPct,
+        carrierPct: b.carrierPct,
+        month13Pct: b.month13Pct
+      })
+      if (!res.ok) fail++
+    }
+    setBusy(false)
+    setMsg(
+      fail === 0
+        ? { ok: true, text: `기본 요율 ${missing.length}건을 ${month} 시책으로 복사했습니다. 시책 값만 고쳐 저장하세요.` }
+        : { ok: false, text: `${missing.length}건 중 ${fail}건 복사 실패 — 새로고침 후 다시 시도해 주세요.` }
+    )
+    onChanged()
+  }
 
   const setRow = (i: number, patch: Partial<RowDraft>): void =>
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
@@ -555,6 +617,7 @@ function RateAdmin({ rates, onChanged }: { rates: CommissionRate[]; onChanged: (
       {
         insurer: r.insurer,
         productGroup: r.productGroup || '공통',
+        effectiveMonth: scopeMonth,
         recruiterPct: pctOf(r.recruiter),
         sangsaengPct: pctOf(r.sangsaeng),
         carrierPct: pctOf(r.carrier),
@@ -563,7 +626,11 @@ function RateAdmin({ rates, onChanged }: { rates: CommissionRate[]; onChanged: (
       r.id
     )
     setBusy(false)
-    setMsg(res.ok ? { ok: true, text: `${r.insurer} · ${r.productGroup || '공통'} 요율을 저장했습니다.` } : { ok: false, text: res.error ?? '저장 실패' })
+    setMsg(
+      res.ok
+        ? { ok: true, text: `${r.insurer} · ${r.productGroup || '공통'} ${scopeMonth ? `${scopeMonth} 시책` : '기본'} 요율을 저장했습니다.` }
+        : { ok: false, text: res.error ?? '저장 실패' }
+    )
     if (res.ok) onChanged()
   }
 
@@ -582,8 +649,40 @@ function RateAdmin({ rates, onChanged }: { rates: CommissionRate[]; onChanged: (
 
   return (
     <div className="rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
-      <div className="mb-1 text-sm font-bold text-slate-100">요율표 관리 (관리자)</div>
-      <p className="mb-3 text-[11px] text-slate-500">보험사 × 상품군별 수당 % — 저장하면 전 직원 계산기에 바로 적용됩니다. 같은 보험사에 상품군을 여러 개 만들 수 있습니다.</p>
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-bold text-slate-100">요율표 관리 (관리자)</span>
+        <div className="flex overflow-hidden rounded-lg border border-slate-800">
+          <button
+            type="button"
+            onClick={() => setScope('base')}
+            className={['px-2.5 py-1 text-[11px] font-bold transition', scope === 'base' ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-white text-slate-500'].join(' ')}
+          >
+            기본 요율
+          </button>
+          <button
+            type="button"
+            onClick={() => setScope('month')}
+            className={['px-2.5 py-1 text-[11px] font-bold transition', scope === 'month' ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-white text-slate-500'].join(' ')}
+          >
+            {month} 시책 {rates.filter((r) => r.effectiveMonth === month).length}
+          </button>
+        </div>
+        {scope === 'month' ? (
+          <button
+            type="button"
+            onClick={() => void copyBaseToMonth()}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded-lg border border-[#c6982f]/50 bg-[#c6982f]/10 px-2.5 py-1 text-[11px] font-bold text-[#8a6a1f] transition hover:bg-[#c6982f]/20 disabled:opacity-50"
+          >
+            <Plus className="h-3 w-3" /> 기본 요율 복사해 시책 만들기
+          </button>
+        ) : null}
+      </div>
+      <p className="mb-3 text-[11px] text-slate-500">
+        {scope === 'base'
+          ? '평소 적용되는 보험사 × 상품군별 수당 % — 저장하면 전 직원 계산기에 바로 적용됩니다.'
+          : `${month} 한 달에만 적용되는 시책 요율 — 이 달 계산에는 시책이 기본 요율보다 우선하고, 시책이 없는 보험사는 기본 요율로 계산됩니다. 시책은 다음 달로 이월되지 않습니다.`}
+      </p>
       {msg ? (
         <div className={['mb-2 rounded-lg px-3 py-2 text-[12px] font-semibold', msg.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'].join(' ')}>{msg.text}</div>
       ) : null}
@@ -598,6 +697,11 @@ function RateAdmin({ rates, onChanged }: { rates: CommissionRate[]; onChanged: (
             <span>13개월%</span>
             <span />
           </div>
+          {rows.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-700 py-4 text-center text-[11px] text-slate-500">
+              {scope === 'month' ? `${month} 시책이 없습니다 — 위 [기본 요율 복사] 버튼으로 시작하세요.` : '등록된 요율이 없습니다. 아래 행 추가로 시작하세요.'}
+            </div>
+          ) : null}
           {rows.map((r, i) => (
             <div key={r.id ?? `new-${i}`} className="grid grid-cols-[1.2fr_1fr_repeat(4,0.7fr)_auto] items-center gap-1.5">
               {r.id ? (

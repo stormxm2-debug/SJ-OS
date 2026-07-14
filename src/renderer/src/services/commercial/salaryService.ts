@@ -5,7 +5,9 @@ import { INSURERS } from './registrationService'
  * 급여 계산기 서비스.
  *
  * 수당 4종(모집자·상생시상·원수사시상·13개월시상)은 모두 월납보험료 기준 %.
- * - commission_rates: 보험사 × 상품군 요율표 — RLS: 조회=전 직원, 쓰기=owner·admin.
+ * - commission_rates: 보험사 × 상품군 × 적용월 요율표 — RLS: 조회=전 직원, 쓰기=owner·admin.
+ *   effectiveMonth '' = 기본 요율, 'YYYY-MM' = 그 달 시책(해당 월 계산에 우선).
+ *   시책이 없는 달은 기본 요율 — 직전 시책이 이월되지 않는 명시적 덮어쓰기 모델.
  * - salary_calculations: 저장된 계산 — RLS: 본인 rw, owner·admin 전체 조회(직원 급여 확인).
  *   요율은 저장 시점 스냅샷으로 보존 — 요율표가 바뀌어도 과거 계산은 변하지 않는다.
  * 금액 계산 자체는 클라이언트에서 수행(서버는 저장만).
@@ -17,6 +19,8 @@ export interface CommissionRate {
   id: string
   insurer: string
   productGroup: string
+  /** '' = 기본 요율, 'YYYY-MM' = 그 달 시책. */
+  effectiveMonth: string
   recruiterPct: number
   sangsaengPct: number
   carrierPct: number
@@ -28,6 +32,7 @@ export interface CommissionRate {
 export interface CommissionRateDraft {
   insurer: string
   productGroup: string
+  effectiveMonth: string
   recruiterPct: number
   sangsaengPct: number
   carrierPct: number
@@ -114,6 +119,7 @@ function mapRate(r: Record<string, any>): CommissionRate {
     id: String(r.id),
     insurer: String(r.insurer ?? ''),
     productGroup: String(r.product_group ?? '공통'),
+    effectiveMonth: String(r.effective_month ?? ''),
     recruiterPct: numOf(r.recruiter_pct),
     sangsaengPct: numOf(r.sangsaeng_pct),
     carrierPct: numOf(r.carrier_pct),
@@ -153,8 +159,24 @@ export function sortRates(items: CommissionRate[]): CommissionRate[] {
     const r = insurerRank(a.insurer) - insurerRank(b.insurer)
     if (r !== 0) return r
     if (a.insurer !== b.insurer) return a.insurer.localeCompare(b.insurer, 'ko')
-    return a.productGroup.localeCompare(b.productGroup, 'ko')
+    if (a.productGroup !== b.productGroup) return a.productGroup.localeCompare(b.productGroup, 'ko')
+    return a.effectiveMonth.localeCompare(b.effectiveMonth)
   })
+}
+
+/**
+ * 계산 귀속월에 적용할 요율: 그 달 시책(effectiveMonth === month) 우선,
+ * 없으면 기본 요율('') — 시책은 이월되지 않는다.
+ */
+export function rateFor(
+  rates: CommissionRate[],
+  insurer: string,
+  productGroup: string,
+  month: string
+): CommissionRate | undefined {
+  const of = (m: string): CommissionRate | undefined =>
+    rates.find((r) => r.insurer === insurer && r.productGroup === productGroup && r.effectiveMonth === m)
+  return of(month) ?? of('')
 }
 
 /** staff_id → profiles.name (실패 시 빈 맵 — 이름 표시만 빠지고 목록은 정상). */
@@ -193,6 +215,7 @@ export async function saveCommissionRate(draft: CommissionRateDraft, id?: string
   const row = {
     insurer: draft.insurer.trim(),
     product_group: draft.productGroup.trim() || '공통',
+    effective_month: draft.effectiveMonth.trim(),
     recruiter_pct: draft.recruiterPct,
     sangsaeng_pct: draft.sangsaengPct,
     carrier_pct: draft.carrierPct,
@@ -206,7 +229,7 @@ export async function saveCommissionRate(draft: CommissionRateDraft, id?: string
       ? client.from('commission_rates').update(row).eq('id', id)
       : client.from('commission_rates').insert(row)
     const { error } = await q
-    if (error) return { ok: false, error: '저장하지 못했습니다. (관리자 권한/중복 보험사×상품군 확인)' }
+    if (error) return { ok: false, error: '저장하지 못했습니다. (관리자 권한/중복 보험사×상품군×적용월 확인)' }
     return { ok: true }
   } catch {
     return { ok: false, error: '저장하지 못했습니다.' }
