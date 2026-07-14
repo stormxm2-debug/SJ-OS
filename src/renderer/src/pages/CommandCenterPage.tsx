@@ -1,515 +1,495 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Sparkles, Send, Loader2, ArrowRight, Check, X, CalendarPlus, Megaphone, Info } from 'lucide-react'
+import { useSession } from '@renderer/navigation/SessionContext'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
+import { isAdminRole } from '@renderer/navigation/roleAccess'
+import type { ViewName } from '@renderer/navigation/types'
+import { jarvisBrainService } from '@renderer/services/jarvis/JarvisBrainService'
+import type { ConversationEntry } from '@renderer/services/jarvis/types'
+import { buildAssistantContext } from '@renderer/services/assistant/assistantContext'
 import {
-  Sparkles,
-  Send,
-  Crown,
-  Cpu,
-  CheckCircle2,
-  Loader2,
-  Circle,
-  RotateCcw,
-  Info,
-  ClipboardList,
-  Inbox,
-  Tags,
-  FolderPlus,
-  ListTree,
-  ListOrdered,
-  UsersRound,
-  Users,
-  PlayCircle,
-  FileText,
-  AlertTriangle,
-  XCircle
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import type {
-  ChiefOfStaffState,
-  CosPhase,
-  CosLogActor,
-  WorkItem,
-  WorkItemState,
-  Priority
-} from '@shared/chief-of-staff'
-import { useChiefOfStaff } from '@renderer/chief-of-staff/useChiefOfStaff'
-import CompanyFloor from '@renderer/components/kernel/CompanyFloor'
-import ProjectPipeline from '@renderer/components/kernel/ProjectPipeline'
-import ProjectWorkspace from '@renderer/components/kernel/ProjectWorkspace'
-import EpicView from '@renderer/components/kernel/EpicView'
-import DomainArchitecture from '@renderer/components/kernel/DomainArchitecture'
-import AssetStore from '@renderer/components/kernel/AssetStore'
-import EventStream from '@renderer/components/kernel/EventStream'
-import MeetingView from '@renderer/components/kernel/MeetingView'
-import Card from '@renderer/components/ui/Card'
-import Chip from '@renderer/components/ui/Chip'
-import ProgressBar from '@renderer/components/ui/ProgressBar'
-import { ROLE_LABEL, ROLE_META } from '@renderer/lib/companyMeta'
+  isScheduleIntent,
+  parseAnnouncementIntent,
+  localNavFallback,
+  type AnnouncementDraft
+} from '@renderer/services/assistant/assistantCommands'
+import { requestScheduleParse, createScheduleEvent } from '@renderer/services/commercial/scheduleService'
+import {
+  SCHEDULE_TYPES,
+  SCHEDULE_TYPE_LABEL,
+  buildScheduleTitle,
+  type ScheduleType
+} from '@renderer/services/commercial/scheduleValidation'
+import { listCustomers } from '@renderer/services/commercial/customerService'
+import type { CustomerRecord } from '@shared/commercial/models'
+import { createAnnouncement } from '@renderer/services/commercial/announcementService'
 
-const EXAMPLES = [
-  'SJ 보험 플랫폼 시작',
-  'SJ 보험 로그인 개발',
-  '사내 경비 관리 시스템 만들기'
-]
+/**
+ * 경영 비서 — 명령이 실제로 실행되는 AI 비서 콘솔.
+ *
+ * 예전의 Chief-of-Staff 데모(모의 파이프라인 연출)를 대체한다. 이제:
+ * ① 대화: jarvis-brain(실제 Claude)에 사내 실시간 데이터 스냅샷(일정·실적·리드·
+ *    소개·접촉)을 함께 보내 진짜 숫자로 답한다.
+ * ② 실행: 화면 이동 버튼, 자연어 일정 등록(parse-schedule → 확인 카드 → 실제 저장),
+ *    공지 발행(관리자, '공지: …' → 확인 카드 → 공지사항 발행).
+ * ③ 서버 미연결(데모)에서는 키워드 화면 이동 폴백으로 동작한다.
+ *
+ * 데이터 경계는 RLS — 직원은 본인 범위, 관리자는 전체 스냅샷.
+ */
 
-/** The Chief of Staff's workflow, phase by phase — its nine actions. */
-const STEPS: { phase: CosPhase; label: string; icon: LucideIcon }[] = [
-  { phase: 'receiving', label: '요청 접수', icon: Inbox },
-  { phase: 'classifying', label: '분류 & 규모 산정', icon: Tags },
-  { phase: 'meeting', label: 'AI 회의', icon: Users },
-  { phase: 'creating_project', label: '프로젝트 생성', icon: FolderPlus },
-  { phase: 'planning', label: '업무 분해', icon: ListTree },
-  { phase: 'queuing', label: '작업 큐 구성', icon: ListOrdered },
-  { phase: 'assigning', label: '워커 배정', icon: UsersRound },
-  { phase: 'executing', label: '진행 추적', icon: PlayCircle },
-  { phase: 'reporting', label: 'CEO 보고', icon: FileText }
-]
-
-const PHASE_ORDER: CosPhase[] = [
-  'idle',
-  'receiving',
-  'classifying',
-  'meeting',
-  'creating_project',
-  'planning',
-  'queuing',
-  'assigning',
-  'executing',
-  'reporting',
-  'done'
-]
-
-const PHASE_TEXT: Record<CosPhase, string> = {
-  idle: '대기 중',
-  receiving: '요청을 접수하는 중…',
-  classifying: '분류하고 규모를 산정하는 중…',
-  meeting: '팀이 전략을 합의하기 위해 회의 중…',
-  creating_project: '프로젝트를 생성하는 중…',
-  planning: '업무를 에픽·기능·작업으로 분해하는 중…',
-  queuing: '작업 큐를 구성하는 중…',
-  assigning: '가용 워커에게 업무를 배정하는 중…',
-  executing: '워커가 실행 중; 진행 상황 추적 중…',
-  reporting: '상태 보고서를 작성하는 중…',
-  done: '완료',
-  failed: '중단됨'
+interface FeedEntry {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  navView?: ViewName
+  navLabel?: string
+  suggested?: string[]
 }
 
-const PRIORITY_TONE: Record<Priority, 'slate' | 'sky' | 'amber' | 'rose'> = {
-  low: 'slate',
-  medium: 'sky',
-  high: 'amber',
-  critical: 'rose'
+interface ScheduleDraft {
+  type: ScheduleType
+  customerName: string
+  customerId?: string
+  date: string // YYYY-MM-DD
+  time: string // HH:mm
+  location: string
 }
 
-const WORK_STATE_META: Record<
-  WorkItemState,
-  { label: string; text: string }
-> = {
-  queued: { label: '대기', text: 'text-slate-400' },
-  assigned: { label: '배정됨', text: 'text-indigo-300' },
-  in_progress: { label: '진행 중', text: 'text-emerald-300' },
-  blocked: { label: '차단됨', text: 'text-amber-300' },
-  done: { label: '완료', text: 'text-sky-300' },
-  failed: { label: '실패', text: 'text-rose-300' }
+/** 브레인 navigate 키 → 현재 존재하는 라우트만 허용 (구버전 키 무시). */
+const VALID_NAV: ViewName[] = [
+  'staff-home', 'attendance', 'customer', 'consultation', 'schedule', 'shared-schedule',
+  'performance', 'sales-activity', 'insurance-analysis', 'claim-assistant', 'wiki',
+  'underwriting', 'pre-underwriting', 'contacts', 'notice', 'dashboard', 'team-leader',
+  'referrals', 'today-contacts', 'birthdays', 'stats-report', 'leads', 'files'
+]
+const VALID_NAV_SET = new Set<string>(VALID_NAV)
+
+const NAV_LABEL: Partial<Record<ViewName, string>> = {
+  'today-contacts': '오늘의 접촉',
+  referrals: '소개 영업',
+  schedule: '일정',
+  performance: '실적',
+  customer: '고객 관리',
+  notice: '공지사항'
+}
+
+let seq = 0
+function nextId(): string {
+  seq += 1
+  return `fe-${Date.now().toString(36)}-${seq}`
 }
 
 export default function CommandCenterPage(): JSX.Element {
-  const { state, submit, reset } = useChiefOfStaff()
-  const [draft, setDraft] = useState('')
+  const { session } = useSession()
+  const { navigate } = useNavigation()
+  const admin = isAdminRole(session.role)
 
-  if (state.phase === 'idle') {
-    return (
-      <Hero
-        draft={draft}
-        setDraft={setDraft}
-        onSubmit={() => {
-          submit(draft)
-          setDraft('')
-        }}
-      />
-    )
+  const [entries, setEntries] = useState<FeedEntry[]>([])
+  const [input, setInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [customers, setCustomers] = useState<CustomerRecord[]>([])
+  const [scheduleDraft, setScheduleDraft] = useState<ScheduleDraft | null>(null)
+  const [annDraft, setAnnDraft] = useState<AnnouncementDraft | null>(null)
+  const feedEndRef = useRef<HTMLDivElement | null>(null)
+
+  const examples = useMemo(() => {
+    const base = ['오늘 브리핑해줘', '이번 달 실적 어때?', '내일 오후 2시 김민준 클로징 일정 잡아줘', '오늘의 접촉 열어줘']
+    return admin ? [...base, '공지: 내일 오전 9시 전체 회의'] : base
+  }, [admin])
+
+  useEffect(() => {
+    void (async () => {
+      const res = await listCustomers()
+      setCustomers(res.ok ? res.customers : [])
+    })()
+  }, [session.id])
+
+  useEffect(() => {
+    feedEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [entries, scheduleDraft, annDraft, busy])
+
+  const push = (entry: Omit<FeedEntry, 'id'>): void => {
+    setEntries((prev) => [...prev, { ...entry, id: nextId() }])
   }
 
-  const busy = !['idle', 'done', 'failed'].includes(state.phase)
+  const submit = async (raw?: string): Promise<void> => {
+    const text = (raw ?? input).trim()
+    if (!text || busy) return
+    setInput('')
+    push({ role: 'user', content: text })
+    setBusy(true)
+    try {
+      // ① 공지 발행 (관리자, '공지: …')
+      const ann = parseAnnouncementIntent(text)
+      if (ann) {
+        if (!admin) {
+          push({ role: 'assistant', content: '공지 등록은 관리자만 할 수 있습니다. 필요하시면 관리자에게 요청해 주세요.' })
+          return
+        }
+        setAnnDraft(ann)
+        push({ role: 'assistant', content: '공지 초안을 만들었습니다. 아래 카드에서 내용을 확인하고 발행해 주세요.' })
+        return
+      }
+
+      // ② 자연어 일정 등록
+      if (isScheduleIntent(text)) {
+        const parsed = await requestScheduleParse(text, customers.map((c) => c.name))
+        if (parsed.ok && parsed.parsed) {
+          const p = parsed.parsed
+          const type = (SCHEDULE_TYPES as string[]).includes(p.type) ? (p.type as ScheduleType) : 'meeting-1'
+          const matched = p.customerName ? customers.find((c) => c.name === p.customerName) : undefined
+          setScheduleDraft({
+            type,
+            customerName: p.customerName ?? '',
+            customerId: matched?.id,
+            date: p.date,
+            time: p.time,
+            location: p.location ?? ''
+          })
+          push({ role: 'assistant', content: '일정 초안을 만들었습니다. 아래 카드에서 확인·수정 후 등록해 주세요.' })
+          return
+        }
+        push({
+          role: 'assistant',
+          content: `일정 해석에 실패했습니다 — ${parsed.error ?? '다시 시도해 주세요.'}\n예: "내일 오후 2시 김민준 클로징 잡아줘"`
+        })
+        return
+      }
+
+      // ③ 브레인 대화 (실데이터 스냅샷 동봉)
+      const history: ConversationEntry[] = [...entries, { id: 'now', role: 'user' as const, content: text, timestamp: '' }]
+        .filter((e) => e.role === 'user' || e.role === 'assistant')
+        .slice(-12)
+        .map((e) => ({ id: e.id, role: e.role, content: e.content, timestamp: '' }))
+      const context = await buildAssistantContext(admin, session.id)
+      const res = await jarvisBrainService.chat(history, admin ? 'ceo' : 'staff', context)
+      if (res.ok && res.reply) {
+        const nav = res.navigate && VALID_NAV_SET.has(res.navigate) ? (res.navigate as ViewName) : undefined
+        push({
+          role: 'assistant',
+          content: res.reply,
+          navView: nav,
+          navLabel: nav ? (NAV_LABEL[nav] ?? '화면 열기') : undefined,
+          suggested: res.suggested
+        })
+        return
+      }
+
+      // ④ 서버 미연결/실패 폴백 — 키워드 화면 이동
+      const fallback = localNavFallback(text)
+      if (fallback) {
+        push({
+          role: 'assistant',
+          content: `지금은 AI 서버에 연결되어 있지 않아 화면 이동만 도와드릴 수 있어요. '${fallback.label}' 화면을 열까요?`,
+          navView: fallback.view,
+          navLabel: fallback.label
+        })
+        return
+      }
+      push({
+        role: 'assistant',
+        content: res.error
+          ? `처리하지 못했습니다 — ${res.error}`
+          : '지금은 처리할 수 없습니다. 서버 연결 상태를 확인하거나 잠시 후 다시 시도해 주세요.'
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirmSchedule = async (): Promise<void> => {
+    if (!scheduleDraft || busy) return
+    setBusy(true)
+    try {
+      const d = scheduleDraft
+      const matched = d.customerId ? customers.find((c) => c.id === d.customerId) : customers.find((c) => c.name === d.customerName.trim())
+      const res = await createScheduleEvent({
+        title: buildScheduleTitle(d.type, d.customerName || undefined),
+        type: d.type,
+        status: 'planned',
+        customerId: matched?.id,
+        manualCustomerName: matched ? undefined : d.customerName.trim() || undefined,
+        startsAt: `${d.date}T${d.time}:00`,
+        location: d.location.trim() || undefined
+      })
+      if (res.ok) {
+        setScheduleDraft(null)
+        push({
+          role: 'assistant',
+          content: `일정을 등록했습니다 ✅\n${d.date} ${d.time} · ${SCHEDULE_TYPE_LABEL[d.type]}${d.customerName ? ` · ${d.customerName}` : ''}${d.location ? ` @ ${d.location}` : ''}`,
+          navView: 'schedule',
+          navLabel: '일정 보기'
+        })
+      } else {
+        push({ role: 'assistant', content: `일정 등록에 실패했습니다 — ${res.error ?? '잠시 후 다시 시도해 주세요.'}` })
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirmAnnouncement = async (): Promise<void> => {
+    if (!annDraft || busy) return
+    setBusy(true)
+    try {
+      const res = await createAnnouncement({
+        title: annDraft.title,
+        body: annDraft.body,
+        priority: 'normal',
+        targetType: 'all',
+        pinned: false,
+        status: 'published',
+        createdBy: session.id,
+        createdByName: session.name
+      })
+      if (res.ok) {
+        setAnnDraft(null)
+        push({ role: 'assistant', content: `공지를 발행했습니다 ✅\n"${annDraft.title}"`, navView: 'notice', navLabel: '공지사항 보기' })
+      } else {
+        push({ role: 'assistant', content: `공지 발행에 실패했습니다 — ${res.error ?? '잠시 후 다시 시도해 주세요.'}` })
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const input_cls =
+    'w-full rounded-xl border border-slate-800 bg-white px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-[#c6982f] focus:outline-none'
 
   return (
-    <div className="space-y-6">
-      {/* Header — the request + live phase */}
-      <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600/20 text-indigo-300">
-            <ClipboardList className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs text-slate-500">
-              비서실장 · 당신의 지시
-            </div>
-            <p className="text-sm font-medium text-slate-100">
-              “{state.request?.text}”
-            </p>
-            <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
-              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {PHASE_TEXT[state.phase]}
-            </div>
-          </div>
+    <div className="mx-auto flex h-full max-w-3xl flex-col gap-4">
+      {/* 헤더 — 딥네이비 + 골드 */}
+      <div
+        className="relative overflow-hidden rounded-2xl p-5 text-white"
+        style={{
+          background:
+            'radial-gradient(480px 180px at 90% -30%, rgba(198,152,47,0.2), rgba(198,152,47,0) 60%), linear-gradient(120deg, #0e1e3a 0%, #16294b 70%, #1d2f57 100%)'
+        }}
+      >
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-[#c6982f] to-transparent opacity-80" />
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-[#e6c877]" />
+          <h1 className="text-lg font-bold">경영 비서</h1>
         </div>
+        <p className="mt-1 text-xs text-white/60">
+          말하면 실행됩니다 — 사내 실시간 데이터로 답하고, 일정 등록·공지 발행·화면 이동까지 처리합니다.
+        </p>
+      </div>
+
+      {/* 대화 피드 */}
+      <div className="min-h-[320px] flex-1 space-y-3 overflow-y-auto rounded-2xl border border-slate-800 bg-white p-4">
+        {entries.length === 0 ? (
+          <div className="py-8 text-center">
+            <Sparkles className="mx-auto mb-2 h-8 w-8 text-[#c6982f]" />
+            <p className="text-sm font-semibold text-slate-300">
+              {session.name ? `${session.name}님, ` : ''}무엇을 도와드릴까요?
+            </p>
+            <p className="mt-1 text-xs text-slate-500">아래 예시를 눌러보시거나, 자유롭게 명령해 주세요.</p>
+            <div className="mx-auto mt-4 flex max-w-md flex-wrap justify-center gap-1.5">
+              {examples.map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => void submit(ex)}
+                  className="rounded-full bg-slate-950 px-3 py-1.5 text-[12px] font-bold text-slate-300 ring-1 ring-slate-800 transition hover:text-[#8a6a1e] hover:ring-[#c6982f]/50"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          entries.map((e) => (
+            <div key={e.id} className={e.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
+              <div
+                className={[
+                  'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm whitespace-pre-wrap',
+                  e.role === 'user' ? 'text-[#e6c877]' : 'bg-slate-950 text-slate-200'
+                ].join(' ')}
+                style={e.role === 'user' ? { background: 'linear-gradient(120deg, #0e1e3a, #1d2f57)' } : undefined}
+              >
+                {e.content}
+                {e.navView ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate({ name: e.navView } as never)}
+                    className="mt-2 flex items-center gap-1 rounded-xl bg-[#c6982f] px-3 py-1.5 text-xs font-bold text-[#201603] transition hover:brightness-105"
+                  >
+                    {e.navLabel ?? '화면 열기'} <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
+                {e.suggested && e.suggested.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {e.suggested.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => void submit(s)}
+                        className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-400 ring-1 ring-slate-800 transition hover:text-[#8a6a1e] hover:ring-[#c6982f]/50"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))
+        )}
+
+        {/* 일정 등록 확인 카드 */}
+        {scheduleDraft ? (
+          <div className="rounded-2xl border border-[#c6982f]/40 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-sm font-bold text-slate-100">
+                <CalendarPlus className="h-4 w-4 text-[#c6982f]" /> 일정 등록 확인
+              </h2>
+              <button type="button" onClick={() => setScheduleDraft(null)} className="rounded-lg p-1 text-slate-400 hover:text-slate-200">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              <div>
+                <span className="mb-1 block text-[11px] font-bold text-slate-500">유형</span>
+                <select
+                  value={scheduleDraft.type}
+                  onChange={(e) => setScheduleDraft((d) => (d ? { ...d, type: e.target.value as ScheduleType } : d))}
+                  className={input_cls}
+                >
+                  {SCHEDULE_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {SCHEDULE_TYPE_LABEL[t]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <span className="mb-1 block text-[11px] font-bold text-slate-500">고객</span>
+                <input
+                  value={scheduleDraft.customerName}
+                  onChange={(e) => setScheduleDraft((d) => (d ? { ...d, customerName: e.target.value, customerId: undefined } : d))}
+                  placeholder="고객명"
+                  className={input_cls}
+                />
+              </div>
+              <div>
+                <span className="mb-1 block text-[11px] font-bold text-slate-500">날짜</span>
+                <input
+                  type="date"
+                  value={scheduleDraft.date}
+                  onChange={(e) => setScheduleDraft((d) => (d ? { ...d, date: e.target.value } : d))}
+                  className={input_cls}
+                />
+              </div>
+              <div>
+                <span className="mb-1 block text-[11px] font-bold text-slate-500">시간</span>
+                <input
+                  type="time"
+                  value={scheduleDraft.time}
+                  onChange={(e) => setScheduleDraft((d) => (d ? { ...d, time: e.target.value } : d))}
+                  className={input_cls}
+                />
+              </div>
+              <div className="col-span-2">
+                <span className="mb-1 block text-[11px] font-bold text-slate-500">장소 (선택)</span>
+                <input
+                  value={scheduleDraft.location}
+                  onChange={(e) => setScheduleDraft((d) => (d ? { ...d, location: e.target.value } : d))}
+                  placeholder="예: 강남역 2번 출구 카페"
+                  className={input_cls}
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void confirmSchedule()}
+              disabled={busy || !scheduleDraft.date || !scheduleDraft.time}
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#c6982f] px-4 py-2.5 text-sm font-bold text-[#201603] transition hover:brightness-105 disabled:opacity-40"
+            >
+              <Check className="h-4 w-4" /> {busy ? '등록 중…' : '이대로 일정 등록'}
+            </button>
+          </div>
+        ) : null}
+
+        {/* 공지 발행 확인 카드 */}
+        {annDraft ? (
+          <div className="rounded-2xl border border-[#c6982f]/40 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-1.5 text-sm font-bold text-slate-100">
+                <Megaphone className="h-4 w-4 text-[#c6982f]" /> 공지 발행 확인 <span className="text-[11px] font-normal text-slate-500">(전 직원)</span>
+              </h2>
+              <button type="button" onClick={() => setAnnDraft(null)} className="rounded-lg p-1 text-slate-400 hover:text-slate-200">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-3 space-y-2.5">
+              <input
+                value={annDraft.title}
+                onChange={(e) => setAnnDraft((d) => (d ? { ...d, title: e.target.value } : d))}
+                placeholder="공지 제목"
+                className={input_cls}
+              />
+              <textarea
+                value={annDraft.body}
+                onChange={(e) => setAnnDraft((d) => (d ? { ...d, body: e.target.value } : d))}
+                rows={4}
+                placeholder="공지 내용"
+                className={input_cls}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void confirmAnnouncement()}
+              disabled={busy || !annDraft.title.trim() || !annDraft.body.trim()}
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#c6982f] px-4 py-2.5 text-sm font-bold text-[#201603] transition hover:brightness-105 disabled:opacity-40"
+            >
+              <Check className="h-4 w-4" /> {busy ? '발행 중…' : '전 직원에게 발행'}
+            </button>
+          </div>
+        ) : null}
+
+        {busy && !scheduleDraft && !annDraft ? (
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-[#c6982f]" /> 처리 중…
+          </div>
+        ) : null}
+        <div ref={feedEndRef} />
+      </div>
+
+      {/* 입력창 */}
+      <div className="flex gap-2">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) void submit()
+          }}
+          placeholder={admin ? '명령을 입력하세요 — 예: 이번 달 실적 어때? / 공지: 내용' : '명령을 입력하세요 — 예: 오늘 브리핑해줘'}
+          className="flex-1 rounded-2xl border border-slate-800 bg-white px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-[#c6982f] focus:outline-none"
+        />
         <button
           type="button"
-          onClick={reset}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800"
+          onClick={() => void submit()}
+          disabled={busy || !input.trim()}
+          className="flex items-center gap-1.5 rounded-2xl bg-[#c6982f] px-5 py-3 text-sm font-bold text-[#201603] transition hover:brightness-105 disabled:opacity-40"
         >
-          <RotateCcw className="h-3.5 w-3.5" /> 새 요청
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </button>
       </div>
 
-      <WorkflowStepper phase={state.phase} />
-
-      <ProjectPipeline />
-
-      <ProjectWorkspace />
-
-      <EpicView />
-
-      <DomainArchitecture />
-
-      <AssetStore />
-
-      {state.classification && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 px-5 py-3">
-          <span className="text-xs text-slate-500">분류</span>
-          <Chip tone="indigo">{state.classification.type.replace('_', ' ')}</Chip>
-          <Chip tone={PRIORITY_TONE[state.classification.priority]}>
-            {state.classification.priority} 우선순위
-          </Chip>
-          <Chip tone="slate">규모 {state.classification.size}</Chip>
-          <Chip tone="slate">기능 영역 {state.classification.featureCount}개</Chip>
-        </div>
-      )}
-
-      <MeetingView />
-
-      {state.report && <ReportCard state={state} />}
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
-          {state.project && (
-            <Card title="프로젝트">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-slate-100">
-                  {state.project.name}
-                </span>
-                {state.progress && (
-                  <span className="text-xs tabular-nums text-slate-500">
-                    {state.progress.overall}%
-                  </span>
-                )}
-              </div>
-              <p className="mt-0.5 text-sm text-slate-500">
-                {state.project.description}
-              </p>
-              <div className="mt-2 text-xs text-slate-600">
-                리포지토리:{' '}
-                {state.project.repository ?? '아직 연결 안 됨 (GitHub 백엔드 대기)'}
-              </div>
-              {state.progress && (
-                <div className="mt-3">
-                  <ProgressBar value={state.progress.overall} />
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                    <span>완료 {state.progress.done}</span>
-                    <span>진행 중 {state.progress.inProgress}</span>
-                    <span>대기 {state.progress.queued}</span>
-                    {state.progress.blocked > 0 && (
-                      <span className="text-amber-400">
-                        차단됨 {state.progress.blocked}
-                      </span>
-                    )}
-                    {state.progress.failed > 0 && (
-                      <span className="text-rose-400">
-                        실패 {state.progress.failed}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </Card>
-          )}
-
-          {state.breakdown && (
-            <Card
-              title="업무 분해"
-              action={
-                <span className="text-xs text-slate-500">
-                  기능 {state.breakdown.featureCount} · 작업 {state.breakdown.taskCount}{' '}
-                  · 하위작업 {state.breakdown.subtaskCount}
-                </span>
-              }
-            >
-              <ul className="space-y-2">
-                {state.breakdown.epic.features.map((f) => (
-                  <li key={f.id} className="text-sm">
-                    <span className="font-medium text-slate-200">{f.title}</span>
-                    <span className="text-slate-600">
-                      {' '}
-                      · 작업 {f.tasks.length}개
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-
-          <Card
-            title="작업 큐"
-            action={
-              <span className="text-xs text-slate-500">
-                {state.queue.items.filter((i) => i.state === 'done').length}/
-                {state.queue.items.length} 완료
-              </span>
-            }
-          >
-            {state.queue.items.length === 0 ? (
-              <p className="text-sm text-slate-600">큐를 구성하는 중…</p>
-            ) : (
-              <ul className="space-y-4">
-                {state.queue.items.map((item) => (
-                  <WorkItemRow key={item.id} item={item} />
-                ))}
-              </ul>
-            )}
-          </Card>
-        </div>
-
-        <Card title="작업 로그">
-          <ol className="relative space-y-3 pl-6">
-            <span className="absolute left-[7px] top-1 h-[calc(100%-0.5rem)] w-px bg-slate-800" />
-            {state.log.map((entry) => {
-              const meta = logActorMeta(entry.actor)
-              const Icon = meta.icon
-              return (
-                <li key={entry.id} className="relative">
-                  <span className="absolute -left-6 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-slate-700 bg-slate-900">
-                    <Icon className="h-2.5 w-2.5 text-slate-400" />
-                  </span>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-slate-300">
-                      {meta.label}
-                    </span>
-                    <span className="shrink-0 text-xs text-slate-600">{entry.at}</span>
-                  </div>
-                  <p className="mt-0.5 text-xs text-slate-400">{entry.message}</p>
-                </li>
-              )
-            })}
-          </ol>
-        </Card>
-      </div>
-
-      <CompanyFloor />
-      <EventStream />
-    </div>
-  )
-}
-
-function WorkflowStepper({ phase }: { phase: CosPhase }): JSX.Element {
-  const currentIndex = PHASE_ORDER.indexOf(phase)
-  const failed = phase === 'failed'
-  return (
-    <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800 bg-slate-900/40 p-3">
-      {STEPS.map((step) => {
-        const stepIndex = PHASE_ORDER.indexOf(step.phase)
-        const done = phase === 'done' || currentIndex > stepIndex
-        const active = currentIndex === stepIndex && !failed
-        const Icon = active ? Loader2 : done ? CheckCircle2 : step.icon
-        const tone = done
-          ? 'text-emerald-300 border-emerald-500/30 bg-emerald-500/5'
-          : active
-            ? 'text-indigo-200 border-indigo-500/40 bg-indigo-500/10'
-            : 'text-slate-500 border-slate-800'
-        return (
-          <div
-            key={step.phase}
-            className={[
-              'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium',
-              tone
-            ].join(' ')}
-          >
-            <Icon className={['h-3.5 w-3.5', active ? 'animate-spin' : ''].join(' ')} />
-            {step.label}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function WorkItemRow({ item }: { item: WorkItem }): JSX.Element {
-  const RoleIcon = ROLE_META[item.role].icon
-  const meta = WORK_STATE_META[item.state]
-  return (
-    <li>
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-sm font-medium text-slate-200">
-          {item.title}
-        </span>
-        <span className={['shrink-0 text-xs', meta.text].join(' ')}>
-          {meta.label}
+      <div className="flex items-start gap-2 rounded-xl border border-dashed border-slate-700 bg-white/60 px-4 py-3 text-[12px] text-slate-500">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          할 수 있는 일: <b className="text-slate-300">사내 데이터 질문</b>(오늘 일정·이번 달 실적·리드·소개 현황),{' '}
+          <b className="text-slate-300">자연어 일정 등록</b>(&quot;내일 2시 OOO 클로징 잡아줘&quot;),{' '}
+          {admin ? (
+            <>
+              <b className="text-slate-300">공지 발행</b>(&quot;공지: 내용&quot;),{' '}
+            </>
+          ) : null}
+          <b className="text-slate-300">화면 이동</b>, 보험 지식·화법 상담. 일정·공지는 확인 카드에서 승인해야 실제로 저장됩니다.
         </span>
       </div>
-      <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
-        <RoleIcon className="h-3 w-3" />
-        {ROLE_LABEL[item.role]}
-        {item.note && <span className="text-slate-600">· {item.note}</span>}
-      </div>
-      <div className="mt-2 flex items-center gap-3">
-        <ProgressBar value={item.progress} />
-        <span className="w-9 shrink-0 text-right text-xs tabular-nums text-slate-500">
-          {item.progress}%
-        </span>
-      </div>
-    </li>
-  )
-}
-
-function ReportCard({ state }: { state: ChiefOfStaffState }): JSX.Element {
-  const report = state.report
-  if (!report) return <></>
-  return (
-    <Card
-      title="CEO 상태 보고"
-      icon={<Sparkles className="h-4 w-4 text-indigo-300" />}
-      action={<span className="text-xs text-slate-500">{report.progress}% 완료</span>}
-    >
-      <div className="text-base font-semibold text-slate-100">{report.headline}</div>
-      <p className="mt-1 text-sm text-slate-400">{report.summary}</p>
-
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {report.completed.length > 0 && (
-          <ReportList
-            title="완료"
-            items={report.completed}
-            icon={<CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
-          />
-        )}
-        {report.outstanding.length > 0 && (
-          <ReportList
-            title="미완료"
-            items={report.outstanding}
-            icon={<XCircle className="h-3.5 w-3.5 text-rose-400" />}
-          />
-        )}
-        {report.risks.length > 0 && (
-          <ReportList
-            title="위험"
-            items={report.risks}
-            icon={<AlertTriangle className="h-3.5 w-3.5 text-amber-400" />}
-          />
-        )}
-        {report.nextActions.length > 0 && (
-          <ReportList
-            title="다음 작업"
-            items={report.nextActions}
-            icon={<Circle className="h-3.5 w-3.5 text-slate-400" />}
-          />
-        )}
-      </div>
-    </Card>
-  )
-}
-
-function ReportList({
-  title,
-  items,
-  icon
-}: {
-  title: string
-  items: string[]
-  icon: JSX.Element
-}): JSX.Element {
-  return (
-    <div>
-      <div className="text-xs uppercase tracking-wide text-slate-600">{title}</div>
-      <ul className="mt-1 space-y-1">
-        {items.map((it) => (
-          <li key={it} className="flex items-start gap-2 text-sm text-slate-300">
-            <span className="mt-0.5 shrink-0">{icon}</span>
-            {it}
-          </li>
-        ))}
-      </ul>
     </div>
   )
-}
-
-function Hero({
-  draft,
-  setDraft,
-  onSubmit
-}: {
-  draft: string
-  setDraft: (v: string) => void
-  onSubmit: () => void
-}): JSX.Element {
-  return (
-    <div className="mx-auto flex max-w-2xl flex-col items-center pt-10 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600/20 text-indigo-300">
-        <ClipboardList className="h-6 w-6" />
-      </div>
-      <h1 className="mt-5 text-2xl font-semibold text-slate-100">
-        비서실장에게 요청을 전달하세요
-      </h1>
-      <p className="mt-2 text-sm text-slate-500">
-        지시 하나면 됩니다. 비서실장이 요청을 분류하고, 프로젝트를 생성하고, 업무를
-        분해하고, 팀에 배정하고, 진행 상황을 추적한 뒤 보고합니다.
-      </p>
-
-      <div className="mt-6 w-full rounded-xl border border-slate-800 bg-slate-900/50 p-3">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) onSubmit()
-          }}
-          rows={3}
-          placeholder="무엇을 하고 싶은지 설명하세요…"
-          className="w-full resize-none bg-transparent px-2 py-1 text-sm text-slate-200 outline-none placeholder:text-slate-600"
-        />
-        <div className="mt-2 flex items-center justify-between">
-          <span className="text-xs text-slate-600">⌘/Ctrl + Enter 로 전송</span>
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={!draft.trim()}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Send className="h-4 w-4" /> 비서실장에게 보내기
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
-        {EXAMPLES.map((ex) => (
-          <button
-            key={ex}
-            type="button"
-            onClick={() => setDraft(ex)}
-            className="rounded-full border border-slate-800 px-3 py-1 text-xs text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-200"
-          >
-            {ex}
-          </button>
-        ))}
-      </div>
-
-      <p className="mt-6 flex items-center gap-1.5 text-xs text-slate-600">
-        <Info className="h-3.5 w-3.5" />
-        모의(mock) 백엔드 — 모든 동작은 교체 가능한 인터페이스 뒤에 있으며, Claude Code,
-        OpenAI, GitHub, Playwright, Computer Use, Python 워커에 바로 연결할 수 있습니다.
-      </p>
-    </div>
-  )
-}
-
-function logActorMeta(actor: CosLogActor): { label: string; icon: LucideIcon } {
-  if (actor === 'ceo') return { label: 'CEO', icon: Crown }
-  if (actor === 'system') return { label: '시스템', icon: Cpu }
-  if (actor === 'chief_of_staff') return { label: '비서실장', icon: ClipboardList }
-  return { label: ROLE_LABEL[actor], icon: ROLE_META[actor].icon }
 }
