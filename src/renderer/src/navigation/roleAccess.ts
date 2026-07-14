@@ -33,7 +33,8 @@ export const STAFF_ROUTES: ViewName[] = [
   'wiki',
   'notice',
   'fcos',
-  'assistant' // 자비스 / 경영 비서 — available to all roles
+  'assistant', // 자비스 / 경영 비서 — available to all roles
+  'security-center' // 보안 모듈 학습 — 총무 자리(전산 실행 PC)에서 직원 계정으로 사용
 ]
 
 /** Team-leader-only additional routes. */
