@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { BookOpen, Search, Sparkles, Loader2, AlertTriangle, ChevronDown, Lightbulb, MessageCircle } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
+import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
 import { WIKI_CATEGORIES } from '@renderer/services/wiki/insuranceWiki'
 import { getFunctionsBaseUrl, getSupabaseAnonKey, getSupabaseClient, initSupabaseClient } from '@renderer/services/commercial/supabaseClient'
 
@@ -103,6 +104,7 @@ export default function InsuranceWikiPage(): JSX.Element {
 
   return (
     <div className="space-y-4">
+      <InsuranceHubBar current="wiki" />
       <Card title="보험 백과사전 — 신입 학습 센터" icon={<BookOpen className="h-4 w-4 text-indigo-600" />}>
         <p className="text-[12px] leading-5 text-slate-500">
           기초 용어부터 실전 화법까지 — 검색하면 바로 찾아지고, 없으면 <b className="text-slate-300">AI 선생님</b>이 신입 눈높이로

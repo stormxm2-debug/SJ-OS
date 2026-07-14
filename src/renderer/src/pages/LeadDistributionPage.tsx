@@ -14,10 +14,19 @@ import {
   UserRound,
   Tag,
   Plus,
-  X
+  X,
+  UserPlus,
+  ShieldQuestion,
+  FileSearch
 } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
+import type { View } from '@renderer/navigation/types'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
+import { createCustomer, listCustomers } from '@renderer/services/commercial/customerService'
+import { setHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
+import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
+import type { CustomerRecord } from '@shared/commercial/models'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import {
   distributeLeads,
@@ -75,6 +84,7 @@ function parsePaste(text: string): LeadInput[] {
 
 export default function LeadDistributionPage(): JSX.Element {
   const { session } = useSession()
+  const { navigate } = useNavigation()
   const admin = isAdminRole(session.role)
 
   const [leads, setLeads] = useState<Lead[]>([])
@@ -94,6 +104,10 @@ export default function LeadDistributionPage(): JSX.Element {
   const [paste, setPaste] = useState('')
   const [busy, setBusy] = useState(false)
   const [distMsg, setDistMsg] = useState('')
+
+  // 콜 완료한 내 리드 → 고객 전환 (보험 허브에 연결해 AI 도구로 직행)
+  const [convertBusyId, setConvertBusyId] = useState<string | null>(null)
+  const [converted, setConverted] = useState<Record<string, CustomerRecord>>({})
 
   const load = async (): Promise<void> => {
     const res = admin ? await listAllLeads() : await listMyLeads()
@@ -200,8 +214,51 @@ export default function LeadDistributionPage(): JSX.Element {
     if (res.ok) await load()
   }
 
+  /** 리드 → 고객 전환. 같은 전화번호 고객이 이미 있으면 새로 만들지 않고 연결만 한다. */
+  const convertLead = async (lead: Lead): Promise<void> => {
+    if (convertBusyId) return
+    setConvertBusyId(lead.id)
+    setError('')
+    const digits = (lead.phone ?? '').replace(/[^0-9]/g, '')
+    if (digits) {
+      const existing = await listCustomers()
+      const dup = existing.ok
+        ? existing.customers.find((c) => (c.phone ?? '').replace(/[^0-9]/g, '') === digits)
+        : undefined
+      if (dup) {
+        setConverted((m) => ({ ...m, [lead.id]: dup }))
+        setHubCustomer(dup)
+        setConvertBusyId(null)
+        return
+      }
+    }
+    const res = await createCustomer({
+      name: lead.name,
+      phone: lead.phone ?? undefined,
+      source: lead.source ?? (lead.dbType ? `DB배정(${lead.dbType})` : 'DB배정'),
+      status: lead.status === 'contracted' ? 'contracted' : 'contacted',
+      tags: [],
+      memo: lead.memo ?? undefined
+    })
+    setConvertBusyId(null)
+    if (!res.ok || !res.customer) {
+      setError(res.error ?? '고객 전환에 실패했습니다.')
+      return
+    }
+    const c = res.customer
+    setConverted((m) => ({ ...m, [lead.id]: c }))
+    setHubCustomer(c)
+  }
+
+  /** 전환된 고객을 보험 허브에 태워 AI 도구로 바로 이동. */
+  const goTool = (c: CustomerRecord, view: View): void => {
+    setHubCustomer(c)
+    navigate(view)
+  }
+
   return (
     <div className="space-y-5">
+      <InsuranceHubBar current="leads" />
       {/* 히어로 */}
       <div className="overflow-hidden rounded-2xl border border-slate-800 bg-[#0e1e3a] shadow-sm">
         <div className="relative px-5 py-6 sm:px-7">
@@ -428,6 +485,39 @@ export default function LeadDistributionPage(): JSX.Element {
                         <button type="button" onClick={() => void doStatus(l, 'contracted')} className="rounded-lg border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50">계약</button>
                         <button type="button" onClick={() => void doStatus(l, 'fail')} className="rounded-lg border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50">실패</button>
                       </>
+                    ) : null}
+                    {/* 내 리드 콜 완료 후: 고객으로 전환 → 보험 허브 태워 AI 도구 직행 */}
+                    {(l.status === 'called' || l.status === 'contracted') && l.assignedFcId === session.id ? (
+                      converted[l.id] ? (
+                        <>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#b0821f]">
+                            <CheckCircle2 className="h-3 w-3" /> 고객 연결됨
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => goTool(converted[l.id], { name: 'pre-underwriting' })}
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#c6982f]/40 bg-white px-2 py-1 text-[11px] font-semibold text-[#b0821f] hover:bg-[#c6982f]/10"
+                          >
+                            <ShieldQuestion className="h-3 w-3" /> 사전심사
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => goTool(converted[l.id], { name: 'insurance-analysis' })}
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#c6982f]/40 bg-white px-2 py-1 text-[11px] font-semibold text-[#b0821f] hover:bg-[#c6982f]/10"
+                          >
+                            <FileSearch className="h-3 w-3" /> 보장분석
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={convertBusyId === l.id}
+                          onClick={() => void convertLead(l)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#c6982f]/40 bg-white px-2 py-1 text-[11px] font-semibold text-[#b0821f] hover:bg-[#c6982f]/10 disabled:opacity-50"
+                        >
+                          {convertBusyId === l.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />} 고객 전환
+                        </button>
+                      )
                     ) : null}
                     {admin && staff.length > 0 ? (
                       <select

@@ -49,6 +49,8 @@ import {
   registerPolicyTerm,
   type PolicyTerm
 } from '@renderer/services/insurance-claim/policyTermsService'
+import { getHubCustomer, setHubCustomer, subscribeHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
+import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
 import type { CustomerRecord } from '@shared/commercial/models'
 import ClaimFaxPanel from '@renderer/components/insurance-claim/ClaimFaxPanel'
 
@@ -85,7 +87,8 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
 
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [customerQuery, setCustomerQuery] = useState('')
-  const [customer, setCustomer] = useState<CustomerRecord | null>(null)
+  // 보험 허브의 "현재 작업 중 고객"과 양방향 동기화 — 다른 도구에서 골라도 이어진다
+  const [customer, setCustomer] = useState<CustomerRecord | null>(() => getHubCustomer())
   const [pickerOpen, setPickerOpen] = useState(false)
 
   // 백그라운드 작업 매니저 구독 — 페이지를 떠나도 분석은 매니저가 계속 진행한다
@@ -156,6 +159,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     void listCustomers().then((r) => {
       if (r.ok) setCustomers(r.customers)
     })
+    return subscribeHubCustomer(setCustomer)
   }, [])
 
   // 고객 선택 시 지난 분석 이력 로드
@@ -335,6 +339,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      <InsuranceHubBar current="claim-assistant" />
       {/* ── 히어로 (딥네이비 + 골드) ─────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-slate-800 bg-[#0e1e3a] shadow-sm">
         <div className="relative px-5 py-6 sm:px-7">
@@ -522,7 +527,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
                       <div className="text-[11px] text-slate-500">{customer.phone ?? ''}</div>
                     </div>
                   </div>
-                  <button type="button" onClick={() => setCustomer(null)} className="rounded p-1 text-slate-400 hover:text-rose-600" aria-label="고객 해제">
+                  <button type="button" onClick={() => setHubCustomer(null)} className="rounded p-1 text-slate-400 hover:text-rose-600" aria-label="고객 해제">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
@@ -548,7 +553,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
                           key={c.id}
                           type="button"
                           onClick={() => {
-                            setCustomer(c)
+                            setHubCustomer(c)
                             setPickerOpen(false)
                             setCustomerQuery('')
                           }}

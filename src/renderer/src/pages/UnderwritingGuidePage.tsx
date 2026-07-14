@@ -15,6 +15,8 @@ import {
   type UnderwritingDisease,
   type UnderwritingStatus
 } from '@renderer/services/underwriting/underwritingService'
+import { getHubCustomer, subscribeHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
+import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
 
 /**
  * 예외질병 인수 가이드 — 질병을 검색하면 12개 보험사별 인수 기준(표준인수/유병자플랜/
@@ -74,6 +76,10 @@ export default function UnderwritingGuidePage(): JSX.Element {
     if (prefillQ !== undefined) setQuery(prefillQ)
   }, [prefillQ])
 
+  // 보험 허브의 "현재 작업 중 고객" — 병력에서 매칭되는 질병을 칩으로 띄워 원탭 검색
+  const [hubCustomer, setHubCustomerState] = useState(() => getHubCustomer())
+  useEffect(() => subscribeHubCustomer(setHubCustomerState), [])
+
   // 관리자 편집 상태
   const [edit, setEdit] = useState<CellEdit | null>(null)
   const [saving, setSaving] = useState(false)
@@ -118,6 +124,17 @@ export default function UnderwritingGuidePage(): JSX.Element {
       }),
     [items, q, category]
   )
+
+  // 허브 고객 병력 텍스트에 질병명·별칭이 들어 있으면 매칭 칩으로 제안
+  const matchedDiseases = useMemo(() => {
+    const hist = hubCustomer?.medicalHistory?.toLowerCase()
+    if (!hist) return []
+    return items.filter(
+      (d) =>
+        hist.includes(d.name.toLowerCase()) ||
+        d.aliases.some((a) => a.trim().length > 1 && hist.includes(a.trim().toLowerCase()))
+    )
+  }, [items, hubCustomer])
 
   const hasUnverified = useMemo(
     () => items.some((d) => Object.values(d.rules).some((r) => r.status !== 'unknown' && !r.verified)),
@@ -180,6 +197,7 @@ export default function UnderwritingGuidePage(): JSX.Element {
 
   return (
     <div className="space-y-4">
+      <InsuranceHubBar current="underwriting" />
       <Card
         title="예외질병 인수 가이드"
         icon={<Stethoscope className="h-4 w-4 text-[#c6982f]" />}
@@ -261,6 +279,22 @@ export default function UnderwritingGuidePage(): JSX.Element {
             className="h-10 w-full bg-transparent text-[13px] text-slate-100 outline-none placeholder:text-slate-500"
           />
         </div>
+        {/* 허브 고객 병력 매칭 — 칩을 누르면 해당 질병으로 바로 검색 */}
+        {hubCustomer && matchedDiseases.length > 0 ? (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-[#c6982f]/30 bg-[#c6982f]/5 px-3 py-2">
+            <span className="text-[11px] font-bold text-[#b0821f]">{hubCustomer.name} 고객 병력 매칭</span>
+            {matchedDiseases.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setQuery(d.name)}
+                className="rounded-full border border-[#c6982f]/40 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#b0821f] transition hover:bg-[#c6982f]/10"
+              >
+                {d.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="mt-2 flex flex-wrap gap-1.5">
           {['all', ...categories].map((c) => (
             <button

@@ -35,6 +35,8 @@ import {
 import { takeUnderwritingPrefill } from '@renderer/services/underwriting-ai/underwritingPrefill'
 import { listCustomers } from '@renderer/services/commercial/customerService'
 import { bmiOf, parseRrn } from '@renderer/services/commercial/customerValidation'
+import { getHubCustomer, setHubCustomer, subscribeHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
+import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
 import type { CustomerRecord } from '@shared/commercial/models'
 
 /**
@@ -181,8 +183,18 @@ export default function PreUnderwritingPage(): JSX.Element {
     void listCustomers().then((res) => {
       if (res.ok) setCustomers(res.customers)
     })
+    // 보험 허브와 양방향 동기화 — 다른 도구(보장분석·청구비서 등)에서 고른 고객이 이어진다
+    const unsub = subscribeHubCustomer((c) => {
+      if (c) applyCustomer(c)
+      else setCustomer(null)
+    })
     const pre = takeUnderwritingPrefill()
-    if (pre) applyCustomer(pre)
+    if (pre) setHubCustomer(pre)
+    else {
+      const hub = getHubCustomer()
+      if (hub) applyCustomer(hub)
+    }
+    return unsub
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -302,6 +314,7 @@ export default function PreUnderwritingPage(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      <InsuranceHubBar current="pre-underwriting" />
       {/* ── 히어로 (딥네이비 + 골드) ─────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-slate-800 bg-[#0e1e3a] shadow-sm">
         <div className="relative px-5 py-6 sm:px-7">
@@ -382,7 +395,7 @@ export default function PreUnderwritingPage(): JSX.Element {
                     <div className="text-[11px] text-slate-500">{customer.phone ?? ''}</div>
                   </div>
                 </div>
-                <button type="button" onClick={() => setCustomer(null)} className="rounded p-1 text-slate-400 hover:text-rose-600" aria-label="고객 해제">
+                <button type="button" onClick={() => setHubCustomer(null)} className="rounded p-1 text-slate-400 hover:text-rose-600" aria-label="고객 해제">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -404,7 +417,7 @@ export default function PreUnderwritingPage(): JSX.Element {
                 {pickerOpen && filteredCustomers.length > 0 ? (
                   <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-800 bg-white shadow-lg">
                     {filteredCustomers.map((c) => (
-                      <button key={c.id} type="button" onClick={() => applyCustomer(c)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-950">
+                      <button key={c.id} type="button" onClick={() => setHubCustomer(c)} className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-950">
                         <User className="h-3.5 w-3.5 text-slate-400" />
                         <span className="text-[13px] font-medium text-slate-200">{c.name}</span>
                         <span className="text-[11px] text-slate-500">{c.phone ?? ''}</span>
@@ -761,7 +774,7 @@ export default function PreUnderwritingPage(): JSX.Element {
               onClick={() => {
                 setPhase('input')
                 setResult(null)
-                setCustomer(null)
+                setHubCustomer(null)
                 setAge('')
                 setGender('')
                 setHeightCm('')

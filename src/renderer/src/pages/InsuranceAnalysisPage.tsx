@@ -32,6 +32,8 @@ import {
 } from '@renderer/services/insurance-analysis-ai/insuranceAnalysisAiService'
 import { listCustomers } from '@renderer/services/commercial/customerService'
 import { parseRrn } from '@renderer/services/commercial/customerValidation'
+import { getHubCustomer, setHubCustomer, subscribeHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
+import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
 import type { CustomerRecord } from '@shared/commercial/models'
 
 /**
@@ -71,7 +73,8 @@ export default function InsuranceAnalysisPage(): JSX.Element {
 
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [customerQuery, setCustomerQuery] = useState('')
-  const [customer, setCustomer] = useState<CustomerRecord | null>(null)
+  // 보험 허브의 "현재 작업 중 고객"과 양방향 동기화 — 다른 도구에서 골라도 이어진다
+  const [customer, setCustomer] = useState<CustomerRecord | null>(() => getHubCustomer())
   const [pickerOpen, setPickerOpen] = useState(false)
   const [extraNotes, setExtraNotes] = useState('')
 
@@ -89,6 +92,7 @@ export default function InsuranceAnalysisPage(): JSX.Element {
     void listCustomers().then((res) => {
       if (res.ok) setCustomers(res.customers)
     })
+    return subscribeHubCustomer(setCustomer)
   }, [])
 
   useEffect(() => {
@@ -171,7 +175,7 @@ export default function InsuranceAnalysisPage(): JSX.Element {
     setPhase('input')
     setResult(null)
     setFiles([])
-    setCustomer(null)
+    setHubCustomer(null)
     setExtraNotes('')
     setSaveState('idle')
   }
@@ -180,6 +184,7 @@ export default function InsuranceAnalysisPage(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      <InsuranceHubBar current="insurance-analysis" />
       {/* ── 히어로 ─────────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-slate-800 bg-[#0e1e3a] shadow-sm">
         <div className="relative px-5 py-6 sm:px-7">
@@ -255,7 +260,7 @@ export default function InsuranceAnalysisPage(): JSX.Element {
                     <div className="text-[11px] text-slate-500">{customer.phone ?? ''}</div>
                   </div>
                 </div>
-                <button type="button" onClick={() => setCustomer(null)} className="rounded p-1 text-slate-400 hover:text-rose-600" aria-label="고객 해제">
+                <button type="button" onClick={() => setHubCustomer(null)} className="rounded p-1 text-slate-400 hover:text-rose-600" aria-label="고객 해제">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -281,7 +286,7 @@ export default function InsuranceAnalysisPage(): JSX.Element {
                         key={c.id}
                         type="button"
                         onClick={() => {
-                          setCustomer(c)
+                          setHubCustomer(c)
                           setPickerOpen(false)
                           setCustomerQuery('')
                         }}
