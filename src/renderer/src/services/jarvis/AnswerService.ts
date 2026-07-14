@@ -65,11 +65,11 @@ export default class AnswerService {
     ]
     return {
       commandUnderstood: '오늘 브리핑',
-      sourceWorkspace: 'Live Company (통합)',
+      sourceWorkspace: '통합 브리핑',
       summary: `오늘 출근 ${fc.checkedIn}/${fc.totalFc}명 · 일정 ${schedule.today}건 · 활동 ${sales.today}건 · 이번달 실적 ${won(perf.monthlyPremiumTotal)}(달성률 ${perf.achievementRate}%) · 클로징 파이프라인 ${sales.closingPipeline}건.`,
       cards,
       recommendedNextAction: schedule.overdue > 0 ? `연체 일정 ${schedule.overdue}건 우선 처리` : '오늘 클로징 예정 고객 확인',
-      navigationTarget: 'company',
+      navigationTarget: 'dashboard',
       suggestedCommands: ['오늘 FC 출근 현황', '오늘 일정', '클로징 예정 고객', '미완료 활동']
     }
   }

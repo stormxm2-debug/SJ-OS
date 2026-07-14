@@ -3,7 +3,7 @@
  *
  * SJ OS runs a single, safe, local operating loop that walks the whole company
  * — Approval Center → PM Planner → Development OS → Worker Memory → CTO Room →
- * QA Center → Release Center → DevOps Center → Live Company — one step at a
+ * QA Center → Release Center → DevOps Center — one step at a
  * time. Autopilot owns no domain data of its own; it reads each module and
  * drives it through that module's existing public API. Its only persisted state
  * is the run itself (status, step, blockers, timeline, activity).
@@ -26,9 +26,9 @@ export type AutopilotStatus =
 /** Status of a single step in the operating-loop timeline. */
 export type AutopilotStepStatus = 'pending' | 'active' | 'done' | 'blocked' | 'skipped'
 
-/** One step in the nine-step operating-loop timeline. */
+/** One step in the eight-step operating-loop timeline. */
 export interface AutopilotTimelineEntry {
-  /** 1-based step number (1–9). */
+  /** 1-based step number (1–8). */
   step: number
   title: string
   department: string
@@ -52,12 +52,12 @@ export interface AutopilotState {
   /** Id of the current run; null before the first Start Company. */
   autopilotRunId: string | null
   status: AutopilotStatus
-  /** 0 before the first step; 1–9 while walking the loop. */
+  /** 0 before the first step; 1–8 while walking the loop. */
   currentStep: number
   currentDepartment: string
   currentWorker: string
   currentAction: string
-  /** 0–100 across the nine loop steps. */
+  /** 0–100 across the eight loop steps. */
   progress: number
   startedAt: string | null
   updatedAt: string
@@ -70,7 +70,7 @@ export interface AutopilotState {
   nextAction: string
   /** Human-readable result of the last executed step. */
   lastResult: string
-  /** The nine-step operating-loop timeline for the current run. */
+  /** The eight-step operating-loop timeline for the current run. */
   timeline: AutopilotTimelineEntry[]
   /** Newest-first activity log for the current run. */
   activity: AutopilotActivityEntry[]

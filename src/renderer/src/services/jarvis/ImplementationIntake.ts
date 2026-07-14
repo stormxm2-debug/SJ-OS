@@ -27,7 +27,6 @@ export const WORKSPACE_LABEL: Record<string, string> = {
   'insurance-analysis': '보험분석 엔트리',
   jarvis: 'Jarvis',
   autopilot: 'Autopilot',
-  company: 'Live Company',
   unknown: '대상 미정'
 }
 

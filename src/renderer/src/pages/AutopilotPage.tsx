@@ -154,7 +154,7 @@ export default function AutopilotPage(): JSX.Element {
               </div>
             </div>
             <div className="text-xs text-slate-500">
-              {state.autopilotRunId ? `실행 ${state.autopilotRunId}` : '아직 실행 없음'} · 단계 {state.currentStep}/9 · 업데이트{' '}
+              {state.autopilotRunId ? `실행 ${state.autopilotRunId}` : '아직 실행 없음'} · 단계 {state.currentStep}/8 · 업데이트{' '}
               {formatTimestamp(state.updatedAt)}
             </div>
           </div>
@@ -313,7 +313,7 @@ export default function AutopilotPage(): JSX.Element {
       <Card
         title="운영 루프 타임라인"
         icon={<ListChecks className="h-4 w-4" />}
-        action={<span className="text-xs text-slate-500">{state.currentStep}/9 단계</span>}
+        action={<span className="text-xs text-slate-500">{state.currentStep}/8 단계</span>}
       >
         {activeStep.length === 0 ? (
           <p className="text-sm text-slate-500">

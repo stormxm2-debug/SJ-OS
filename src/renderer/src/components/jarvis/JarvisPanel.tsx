@@ -77,7 +77,7 @@ import type { View } from '@renderer/navigation/types'
 
 /** Simple, arg-free views a Jarvis navigation target can jump to. */
 const NAV_VIEWS = new Set([
-  'assistant', 'company', 'dashboard', 'fcos', 'customer', 'sales-activity', 'schedule',
+  'assistant', 'dashboard', 'fcos', 'customer', 'sales-activity', 'schedule',
   'performance', 'team-leader', 'consultation', 'insurance-analysis', 'cto', 'qa', 'release',
   'devops', 'autopilot', 'devos', 'pm', 'backlog', 'workers', 'projects', 'approvals',
   'app-builder', 'devprompt', 'activity', 'settings',

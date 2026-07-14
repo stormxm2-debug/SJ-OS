@@ -27,7 +27,6 @@ const WORKSPACE_LABEL: Record<string, string> = {
   'insurance-analysis': '보험분석',
   jarvis: 'Jarvis',
   autopilot: 'Autopilot',
-  company: 'Live Company',
   unknown: '대상 미정'
 }
 
@@ -43,7 +42,6 @@ const INSPECT_PATHS: Record<string, string[]> = {
   'insurance-analysis': ['src/renderer/src/pages/InsuranceAnalysisPage.tsx', 'src/renderer/src/services/'],
   jarvis: ['src/renderer/src/components/jarvis/', 'src/renderer/src/services/jarvis/'],
   autopilot: ['src/renderer/src/pages/AutopilotPage.tsx', 'src/renderer/src/services/autopilot/'],
-  company: ['src/shared/company/', 'src/renderer/src/pages/LiveCompanyPage.tsx']
 }
 
 function bullets(items: string[]): string {

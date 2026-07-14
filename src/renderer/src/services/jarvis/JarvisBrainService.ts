@@ -30,7 +30,7 @@ const ALLOWED_NAV = new Set([
   'staff-home', 'attendance', 'customer', 'consultation', 'schedule', 'shared-schedule',
   'performance', 'sales-activity', 'insurance-analysis', 'claim-assistant', 'wiki',
   'underwriting', 'pre-underwriting', 'contacts', 'notice', 'fcos',
-  'dashboard', 'company', 'team-leader', 'autopilot', 'cto', 'qa', 'release', 'devops',
+  'dashboard', 'team-leader', 'autopilot', 'cto', 'qa', 'release', 'devops',
   'devos', 'pm', 'backlog', 'workers', 'projects', 'approvals', 'activity', 'settings',
   'app-builder', 'devprompt', 'staff-overview', 'staff-table', 'registration-admin'
 ])

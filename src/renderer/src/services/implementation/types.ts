@@ -44,7 +44,6 @@ export type TargetWorkspace =
   | 'insurance-analysis'
   | 'jarvis'
   | 'autopilot'
-  | 'company'
   | 'unknown'
 
 /** A single structured implementation request raised by Jarvis. */

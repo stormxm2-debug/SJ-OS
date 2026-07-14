@@ -6,7 +6,6 @@ export type View =
   | { name: 'staff-home' }
   | { name: 'attendance' }
   | { name: 'notice' }
-  | { name: 'company' }
   | { name: 'dashboard' }
   | { name: 'fcos' }
   | { name: 'customer' }

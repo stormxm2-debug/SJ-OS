@@ -1,7 +1,6 @@
 import {
   BookOpen,
   Sparkles,
-  Radio,
   LayoutDashboard,
   Briefcase,
   UserRound,
@@ -117,8 +116,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'AI 업무지원',
     items: [
-      { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, match: ['assistant'] },
-      { key: 'company', label: '라이브 컴퍼니', icon: Radio, view: { name: 'company' }, match: ['company'] }
+      { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, match: ['assistant'] }
     ]
   },
   {

@@ -13,7 +13,6 @@ import NoticePage from '@renderer/pages/NoticePage'
 import Dashboard from './dashboard/Dashboard'
 import WorkersPage from '@renderer/pages/WorkersPage'
 import WorkerDetailPage from '@renderer/pages/WorkerDetailPage'
-import LiveCompanyPage from '@renderer/pages/LiveCompanyPage'
 import FcOsPage from '@renderer/pages/FcOsPage'
 import SalesActivityWorkspacePage from '@renderer/pages/SalesActivityWorkspacePage'
 import PerformancePage from '@renderer/pages/PerformancePage'
@@ -78,8 +77,6 @@ export default function Router(): JSX.Element {
       return <SupabaseAttendanceManager />
     case 'notice':
       return <NoticePage />
-    case 'company':
-      return <LiveCompanyPage />
     case 'dashboard':
       return <Dashboard />
     case 'fcos':

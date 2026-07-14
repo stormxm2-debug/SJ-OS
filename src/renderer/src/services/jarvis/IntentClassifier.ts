@@ -219,7 +219,6 @@ const WORKSPACE_KEYWORDS: Array<{ workspace: string; nav: string | null; keys: s
   { workspace: 'sales-activity', nav: 'sales-activity', keys: ['영업활동', '영업 활동', '활동', 'ap', '클로징'] },
   { workspace: 'customer', nav: 'customer', keys: ['고객'] },
   { workspace: 'fc-os', nav: 'fcos', keys: ['fc os', 'fcos', 'fc', '출근', '설계사'] },
-  { workspace: 'company', nav: 'company', keys: ['라이브 컴퍼니', '라이브컴퍼니', 'live company', '회사 현황', '컴퍼니'] },
   { workspace: 'approvals', nav: 'approvals', keys: ['승인센터', '승인 센터', '승인', 'approval'] },
   { workspace: 'qa', nav: 'qa', keys: ['qa 센터', 'qa센터', 'qa'] },
   { workspace: 'release', nav: 'release', keys: ['릴리즈센터', '릴리즈 센터', '릴리스센터', '릴리스', '릴리즈', 'release'] },
@@ -311,7 +310,7 @@ export default class IntentClassifier {
 
     // 3) Briefing.
     if (matchesAny(command, BRIEFING_MARKERS)) {
-      return { mode: 'briefing', intent: 'daily-briefing', confidence: 0.95, targetWorkspace: 'company', navigationTarget: 'company', externalKey: null }
+      return { mode: 'briefing', intent: 'daily-briefing', confidence: 0.95, targetWorkspace: 'dashboard', navigationTarget: 'dashboard', externalKey: null }
     }
 
     // 4) Control phrases — start / operate the AI Company loop (→ Autopilot).

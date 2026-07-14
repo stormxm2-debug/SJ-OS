@@ -5,7 +5,6 @@ import { approvalRepository } from '@renderer/services/approvals/ApprovalReposit
 import { qaRepository } from '@renderer/services/qa/QaRepository'
 import { releaseRepository } from '@renderer/services/release/ReleaseRepository'
 import { devOpsRepository } from '@renderer/services/devops/DevOpsRepository'
-import { liveCompanyService } from '@renderer/services/live-company/LiveCompanyService'
 import { implementationRepository } from '@renderer/services/implementation/ImplementationRepository'
 import type { ImplementationRequest } from '@renderer/services/implementation/types'
 import { universalBuilderRepository } from '@renderer/services/universal-builder/UniversalBuilderRepository'
@@ -19,7 +18,7 @@ import type {
   AutopilotTimelineEntry
 } from './types'
 
-/** The nine safe, local steps the operating loop walks, in order. */
+/** The eight safe, local steps the operating loop walks, in order. */
 interface StepDef {
   step: number
   title: string
@@ -36,8 +35,7 @@ const STEP_DEFS: StepDef[] = [
   { step: 5, title: 'Summarize CTO risks', department: 'CTO Room', workerId: 'cto' },
   { step: 6, title: 'Check QA readiness', department: 'QA Center', workerId: 'qa' },
   { step: 7, title: 'Check Release readiness', department: 'Release Center', workerId: 'devops' },
-  { step: 8, title: 'Check DevOps readiness', department: 'DevOps Center', workerId: 'devops' },
-  { step: 9, title: 'Update Live Company snapshot', department: 'Live Company', workerId: 'jarvis' }
+  { step: 8, title: 'Check DevOps readiness', department: 'DevOps Center', workerId: 'devops' }
 ]
 
 const TOTAL_STEPS = STEP_DEFS.length
@@ -361,9 +359,9 @@ export class AutopilotService {
       progress: 100,
       currentStep: TOTAL_STEPS,
       completedAt: now,
-      currentAction: 'Operating loop complete — company snapshot up to date.',
-      nextAction: liveCompanyService.getSnapshot().nextRecommendedAction,
-      lastResult: 'Operating loop completed all nine steps.',
+      currentAction: 'Operating loop complete.',
+      nextAction: 'Review the Approval Center, then start the next cycle.',
+      lastResult: 'Operating loop completed all eight steps.',
       activity: this.withActivity(state, 'Operating loop completed')
     })
   }
@@ -387,8 +385,6 @@ export class AutopilotService {
         return this.stepCheckRelease()
       case 8:
         return this.stepCheckDevOps()
-      case 9:
-        return this.stepUpdateLiveCompany()
       default:
         return { detail: 'No-op.', gate: 'proceed', action: '', blockers: [], warnings: [] }
     }
@@ -579,7 +575,7 @@ export class AutopilotService {
       return {
         detail: 'No deployment candidate prepared yet.',
         gate: 'proceed',
-        action: 'Update the Live Company snapshot.',
+        action: 'Close out the operating loop.',
         blockers: [],
         warnings: ['DevOps Center has no deployment']
       }
@@ -589,22 +585,9 @@ export class AutopilotService {
     return {
       detail: `Deployment "${deployment.version}" to ${deployment.environment} is ${deployment.status} (health ${deployment.healthStatus}).`,
       gate: 'proceed',
-      action: 'Update the Live Company snapshot.',
+      action: 'Close out the operating loop.',
       blockers: [],
       warnings
-    }
-  }
-
-  /** Step 9 — recompute the Live Company snapshot and close the loop. */
-  private stepUpdateLiveCompany(): StepOutcome {
-    liveCompanyService.refresh()
-    const snapshot = liveCompanyService.getSnapshot()
-    return {
-      detail: `Live Company snapshot updated — company is "${snapshot.companyStatus}" at ${snapshot.overallProgress}%.`,
-      gate: 'proceed',
-      action: snapshot.nextRecommendedAction,
-      blockers: [],
-      warnings: []
     }
   }
 
