@@ -34,7 +34,7 @@ export function isDevelopmentCommand(text: string): boolean {
   const t = (text ?? '').trim()
   if (t.length < 4) return false
   // Exclude obvious navigation / utility commands.
-  const nav = ['열어', '켜줘', '보여줘', '이동', '오늘 일정', '유튜브', '오토파일럿', 'fcos', 'fc os']
+  const nav = ['열어', '켜줘', '보여줘', '이동', '오늘 일정', '유튜브', '오토파일럿']
   const lower = t.toLowerCase()
   if (nav.some((n) => lower.includes(n)) && !DEV_INTENT_PATTERNS.some((p) => lower.includes(p) && p.length > 2))
     return false

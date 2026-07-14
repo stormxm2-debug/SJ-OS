@@ -87,7 +87,7 @@ export default class AnswerService {
         { label: '결근', value: `${s.absent}명`, tone: 'text-rose-300' }
       ],
       recommendedNextAction: s.inactiveFcCount > 0 ? `활동 미기록 ${s.inactiveFcCount}명 팀장 확인` : '전 FC 활동 정상',
-      navigationTarget: 'fcos',
+      navigationTarget: 'attendance',
       suggestedCommands: ['이번 달 실적', '팀별 실적', '오늘 일정']
     }
   }

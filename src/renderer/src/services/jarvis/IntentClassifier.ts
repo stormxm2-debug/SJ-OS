@@ -218,7 +218,7 @@ const WORKSPACE_KEYWORDS: Array<{ workspace: string; nav: string | null; keys: s
   { workspace: 'schedule', nav: 'schedule', keys: ['일정', '캘린더', '스케줄'] },
   { workspace: 'sales-activity', nav: 'sales-activity', keys: ['영업활동', '영업 활동', '활동', 'ap', '클로징'] },
   { workspace: 'customer', nav: 'customer', keys: ['고객'] },
-  { workspace: 'fc-os', nav: 'fcos', keys: ['fc os', 'fcos', 'fc', '출근', '설계사'] },
+  { workspace: 'attendance', nav: 'attendance', keys: ['출근', '출퇴근'] },
   { workspace: 'approvals', nav: 'approvals', keys: ['승인센터', '승인 센터', '승인', 'approval'] },
   { workspace: 'qa', nav: 'qa', keys: ['qa 센터', 'qa센터', 'qa'] },
   { workspace: 'release', nav: 'release', keys: ['릴리즈센터', '릴리즈 센터', '릴리스센터', '릴리스', '릴리즈', 'release'] },

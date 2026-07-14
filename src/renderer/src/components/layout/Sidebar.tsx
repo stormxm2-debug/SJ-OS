@@ -2,7 +2,6 @@ import {
   BookOpen,
   Sparkles,
   LayoutDashboard,
-  Briefcase,
   UserRound,
   Activity as ActivityIcon,
   CalendarDays,
@@ -81,8 +80,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'staff-home', label: '홈', icon: Home, view: { name: 'staff-home' }, match: ['staff-home'] },
       { key: 'dashboard', label: 'CEO 대시보드', icon: LayoutDashboard, view: { name: 'dashboard' }, match: ['dashboard'] },
-      { key: 'schedule', label: '오늘 일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
-      { key: 'fcos', label: '내 업무', icon: Briefcase, view: { name: 'fcos' }, match: ['fcos'] }
+      { key: 'schedule', label: '오늘 일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] }
     ]
   },
   {
@@ -185,8 +183,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'leads', label: 'DB 배정', icon: ListChecks, view: { name: 'leads' }, match: ['leads'] },
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
-  { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
-  { key: 'fcos', label: '내 업무', icon: Briefcase, view: { name: 'fcos' }, match: ['fcos'] }
+  { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] }
 ]
 
 /**

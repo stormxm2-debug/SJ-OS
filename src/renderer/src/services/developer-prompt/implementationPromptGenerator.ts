@@ -17,7 +17,6 @@ import type { ImplementationRequest } from '@renderer/services/implementation/ty
 
 /** Human-readable Korean labels for target workspaces. */
 const WORKSPACE_LABEL: Record<string, string> = {
-  'fc-os': 'FC OS',
   customer: '고객 워크스페이스',
   'sales-activity': '영업활동 워크스페이스',
   schedule: '일정 워크스페이스',
@@ -32,7 +31,6 @@ const WORKSPACE_LABEL: Record<string, string> = {
 
 /** Likely files/areas to inspect first, per target workspace. */
 const INSPECT_PATHS: Record<string, string[]> = {
-  'fc-os': ['src/renderer/src/pages/FcOsPage.tsx', 'src/renderer/src/services/fc/'],
   customer: ['src/renderer/src/pages/CustomerWorkspacePage.tsx', 'src/renderer/src/services/customer/'],
   'sales-activity': ['src/renderer/src/pages/SalesActivityWorkspacePage.tsx', 'src/renderer/src/services/'],
   schedule: ['src/renderer/src/pages/SchedulePage.tsx', 'src/renderer/src/services/schedule/'],
@@ -41,7 +39,7 @@ const INSPECT_PATHS: Record<string, string[]> = {
   consultation: ['src/renderer/src/pages/ConsultationPage.tsx', 'src/renderer/src/services/'],
   'insurance-analysis': ['src/renderer/src/pages/InsuranceAnalysisPage.tsx', 'src/renderer/src/services/'],
   jarvis: ['src/renderer/src/components/jarvis/', 'src/renderer/src/services/jarvis/'],
-  autopilot: ['src/renderer/src/pages/AutopilotPage.tsx', 'src/renderer/src/services/autopilot/'],
+  autopilot: ['src/renderer/src/pages/AutopilotPage.tsx', 'src/renderer/src/services/autopilot/']
 }
 
 function bullets(items: string[]): string {

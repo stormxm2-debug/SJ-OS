@@ -7,7 +7,6 @@ export type View =
   | { name: 'attendance' }
   | { name: 'notice' }
   | { name: 'dashboard' }
-  | { name: 'fcos' }
   | { name: 'customer' }
   | { name: 'birthdays' }
   | { name: 'stats-report' }

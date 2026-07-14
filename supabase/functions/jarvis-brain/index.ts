@@ -76,8 +76,7 @@ const STAFF_NAV: Record<string, string> = {
   underwriting: '인수 가이드(질병별 기준표)',
   'pre-underwriting': 'AI 사전심사(가입 가능성 예측)',
   contacts: '매니저 연락처',
-  notice: '공지사항',
-  fcos: '내 업무'
+  notice: '공지사항'
 }
 
 const CEO_NAV: Record<string, string> = {
