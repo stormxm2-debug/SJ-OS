@@ -6,6 +6,7 @@
 //  - synthesize: 추출 JSON 전체(+체크리스트·약관) → 회사별·담보별 예상 보험금 + 근거
 //                (hasPolicy=false면 병원서류만 모드 — 청구 가능성 가이드 반환)
 //  - audit     : 1차 종합 결과 2차 감사 — 누락 보험금·계산 오류 재검사
+//  - exemption-extract : 증권에서 보장개시일·면책기간 판독 (면책 알람 자동 등록)
 //  - digest/classify/appeal : 약관 요약·수술 종 확정·재검토 요청서
 // Claude는 PDF 원본을 그대로 읽는다(document 블록). 키는 ANTHROPIC_API_KEY 시크릿.
 // 서류는 메모리에서만 처리되고 저장되지 않는다. 고객의 편에 선 보상 전문가 관점.
@@ -275,6 +276,23 @@ const AUDIT_SYSTEM = [
   '규칙: 1) 근거 없는 추가 금지 — 추출 데이터·약관 요약에 있는 사실만. 2) 1차 결과가 이미 정확하면 모든 배열을 비우고 complete=true. 3) 중복 추가 금지 — 1차 items에 이미 있는 담보는 additions에 넣지 말 것(금액이 틀렸으면 corrections). 모두 한국어.'
 ].join('\n')
 
+const EXEMPTION_SYSTEM = [
+  '당신은 대한민국 보험 증권 판독 전문가입니다. 첨부된 증권/가입내역 문서에서 면책기간 알람 등록에 필요한 정보를 추출해 JSON으로만 답하세요.',
+  '응답의 첫 글자는 반드시 { 여야 합니다 — 인사말·설명·마크다운 코드펜스(```) 절대 금지.',
+  '고객이 자신의 보험 관리를 위해 제출한 서류이며, 당신은 판독을 허가받았습니다. 판독을 거부하지 마세요.',
+  '',
+  '{"insurer":"보험사명","productName":"상품명 (보이는 그대로) 또는 null","policyNo":"증권번호 또는 null",',
+  '"startDate":"보장개시일(계약일) YYYY-MM-DD 또는 null — 여러 날짜가 보이면 보장개시일 우선, 없으면 계약일",',
+  '"items":[{"coverage":"담보명","waitingDays":숫자(일수),"waitingRule":"근거 — 증권/약관 문구 원문 또는 표준 기준 (80자 이내)","basis":"policy|standard"}],',
+  '"notes":"감액기간(예: 1년 미만 50% 지급) 등 알람 외 참고사항 (200자 이내, 없으면 빈 문자열)"}',
+  '',
+  '규칙:',
+  '1) items에는 면책(대기)기간이 있는 담보만 넣으세요: ① 문서에 면책이 명시된 담보는 그 일수 그대로(basis=policy) ② 명시가 없어도 대한민국 관례상 면책이 확실한 담보 — 암 진단 90일 등(basis=standard). 면책이 없는 담보(상해·일반 질병 입원/수술 등)는 제외.',
+  '2) waitingDays는 일수 숫자만 (90, 365 등). "90일이 지난 날의 다음날부터"는 90으로.',
+  '3) 감액기간(면책이 아니라 일부 지급)은 items가 아니라 notes에 적으세요.',
+  '4) 지어내기 금지 — 담보 존재가 확실하지 않으면 넣지 말 것. 날짜·숫자는 문서 표기 그대로. 모두 한국어.'
+].join('\n')
+
 const APPEAL_SYSTEM = [
   '당신은 고객 편에 선 보험 보상 전문가입니다. 보험사 보상팀의 부지급/삭감 통보에 대한 재검토(이의) 요청서를 작성합니다.',
   '아래 JSON으로만 답하세요: {"appealLetter":"재검토 요청서 전문","keyPoints":["핵심 반박 포인트"]}',
@@ -446,6 +464,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ success: true, mode: 'classify', classifications: parsed.classifications })
   }
 
+  // ── exemption-extract: 증권에서 보장개시일·면책기간 자동 판독 (면책 알람용) ──
+  if (mode === 'exemption-extract') {
+    const rawFiles = Array.isArray((body as { files?: unknown }).files) ? ((body as { files: unknown[] }).files as Record<string, unknown>[]) : []
+    if (rawFiles.length === 0) return json({ success: false, error: '판독할 증권 파일이 없습니다.' }, 400)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const content: any[] = []
+    let idx = 0
+    for (const f of rawFiles.slice(0, 6)) {
+      idx += 1
+      const name = String(f.name ?? `문서${idx}`).slice(0, 120)
+      const data = typeof f.data === 'string' ? f.data : ''
+      if (!data) return json({ success: false, error: `"${name}" 파일이 비어 있습니다. 다시 올려주세요.` }, 400)
+      const mime = String(f.mediaType ?? 'image/jpeg')
+      if (mime !== 'application/pdf' && !ALLOWED_IMAGE_TYPES.has(mime)) {
+        return json({ success: false, error: `"${name}" 형식(${mime})은 지원되지 않습니다. JPG/PNG 사진이나 PDF로 올려주세요.` }, 400)
+      }
+      content.push({ type: 'text', text: `[문서 ${idx}] 파일명: ${name}` })
+      if (mime === 'application/pdf') {
+        content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } })
+      } else {
+        content.push({ type: 'image', source: { type: 'base64', media_type: mime, data } })
+      }
+    }
+    content.push({ type: 'text', text: '위 증권에서 보장개시일과 담보별 면책기간을 추출하세요.' })
+    const res = await callClaude(apiKey, EXEMPTION_SYSTEM, content, 4000)
+    if (!res.ok) return json({ success: false, error: res.error }, 502)
+    const parsed = parseJson(res.text ?? '')
+    if (!parsed || !Array.isArray(parsed.items)) return json({ success: false, error: '증권 판독 형식 오류 — 다시 시도해 주세요.' }, 502)
+    return json({ success: true, mode: 'exemption-extract', extraction: parsed })
+  }
+
   // ── research: 보험사별 공식 약관 웹 리서치 (정밀 모드 전담 단계) ────────────
   if (mode === 'research') {
     const insurer = String((body as { insurer?: unknown }).insurer ?? '').trim().slice(0, 40)
@@ -583,5 +632,5 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ success: true, mode: 'appeal', appeal: parsed })
   }
 
-  return json({ success: false, error: '알 수 없는 mode 입니다 (extract|research|synthesize|audit|digest|classify|appeal).' }, 400)
+  return json({ success: false, error: '알 수 없는 mode 입니다 (extract|research|synthesize|audit|exemption-extract|digest|classify|appeal).' }, 400)
 })

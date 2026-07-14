@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Hourglass, Plus, Trash2, Loader2, AlertTriangle, Search, X, CalendarClock } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Hourglass, Plus, Trash2, Loader2, AlertTriangle, Search, X, CalendarClock, UploadCloud, Sparkles, BadgeCheck, FileText } from 'lucide-react'
 import {
   listExemptions,
   createExemption,
@@ -8,15 +8,21 @@ import {
   WAITING_PRESETS,
   type PolicyExemption
 } from '@renderer/services/commercial/exemptionService'
+import {
+  extractExemptionsFromPolicy,
+  registerExtractedExemptions,
+  type ExemptionExtraction,
+  type ExtractedExemptionItem
+} from '@renderer/services/commercial/exemptionExtractService'
 import { listCustomers } from '@renderer/services/commercial/customerService'
 import { INSURERS } from '@renderer/services/commercial/registrationService'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import type { CustomerRecord } from '@shared/commercial/models'
 
 /**
- * 면책기간 알람 (1단계) — 각 고객 보험 가입 건의 보장개시일 + 면책기간을 기록하면
+ * 면책기간 알람 — 각 고객 보험 가입 건의 보장개시일 + 면책기간을 기록하면
  * 면책 종료일이 자동 계산되고, 매일 점검해 임박(D-7)/도래 시 담당 FC 에게 알림이 온다.
- * (증권 AI 자동판독 = 3단계에서 이 목록을 자동으로 채운다)
+ * 증권 업로드(AI 자동 판독) 또는 수기 등록 두 가지 입력 경로 — 업로드가 기본 권장.
  */
 
 const RT = ['policy_exemptions', 'exemption_alerts']
@@ -65,14 +71,17 @@ export default function ExemptionsPage(): JSX.Element {
         ) : null}
       </div>
 
+      {/* 증권 업로드 → AI 자동 등록 (기본 권장 경로 — 타이핑 입력 없음) */}
+      <PolicyAutoRegister onSaved={() => void load()} />
+
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-extrabold text-slate-100">등록된 면책 {items.length}건</h2>
         <button
           type="button"
           onClick={() => setFormOpen((v) => !v)}
-          className="inline-flex items-center gap-1 rounded-lg bg-[#0e1e3a] px-3 py-1.5 text-[12px] font-bold text-[#e6c877] hover:brightness-125"
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-white px-3 py-1.5 text-[12px] font-bold text-slate-300 hover:bg-slate-950"
         >
-          {formOpen ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} {formOpen ? '닫기' : '면책 등록'}
+          {formOpen ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} {formOpen ? '닫기' : '수기 등록'}
         </button>
       </div>
 
@@ -140,6 +149,222 @@ function ExemptionCard({ e, onDeleted }: { e: PolicyExemption; onDeleted: () => 
         </button>
       </div>
       {e.memo ? <p className="mt-1.5 text-[12px] text-slate-400">{e.memo}</p> : null}
+    </div>
+  )
+}
+
+/**
+ * 증권 업로드 → AI 판독 → 1클릭 등록. 타이핑 입력 없이 고객 선택 + 파일만 올리면
+ * 보험사·상품·보장개시일·담보별 면책기간이 자동으로 채워지고, [등록] 한 번이면
+ * 알람이 걸린다 (이후 매일 cron이 D-7/도래 시 담당 FC에게 자동 알림).
+ */
+function PolicyAutoRegister({ onSaved }: { onSaved: () => void }): JSX.Element {
+  const [customers, setCustomers] = useState<CustomerRecord[]>([])
+  const [q, setQ] = useState('')
+  const [customer, setCustomer] = useState<CustomerRecord | null>(null)
+  const [files, setFiles] = useState<File[]>([])
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState('')
+  const [extraction, setExtraction] = useState<ExemptionExtraction | null>(null)
+  const [startDate, setStartDate] = useState('')
+  const [checked, setChecked] = useState<boolean[]>([])
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+  const [doneMsg, setDoneMsg] = useState('')
+
+  useEffect(() => {
+    void listCustomers().then((r) => {
+      if (r.ok) setCustomers(r.customers)
+    })
+  }, [])
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    if (!s) return customers.slice(0, 6)
+    return customers.filter((c) => c.name.toLowerCase().includes(s) || (c.phone ?? '').includes(s)).slice(0, 6)
+  }, [customers, q])
+
+  const analyze = async (): Promise<void> => {
+    if (files.length === 0) return
+    setBusy(true)
+    setErr('')
+    setDoneMsg('')
+    setExtraction(null)
+    const res = await extractExemptionsFromPolicy(files, setProgress)
+    setBusy(false)
+    if (!res.ok || !res.extraction) {
+      setErr(res.error ?? '증권 판독에 실패했습니다.')
+      return
+    }
+    setExtraction(res.extraction)
+    setStartDate(res.extraction.startDate ?? '')
+    setChecked(res.extraction.items.map(() => true))
+  }
+
+  const register = async (): Promise<void> => {
+    if (!extraction || !customer) return
+    setSaving(true)
+    setErr('')
+    const selected: ExtractedExemptionItem[] = extraction.items.filter((_, i) => checked[i])
+    const res = await registerExtractedExemptions({ customerId: customer.id, startDate, extraction, selected })
+    setSaving(false)
+    if (!res.ok) {
+      setErr(res.error ?? '등록에 실패했습니다.')
+      return
+    }
+    setDoneMsg(`✓ ${customer.name} 고객 면책 알람 ${res.count}건 등록 완료 — 종료 임박(D-7)·도래 시 자동으로 알림이 옵니다.`)
+    setExtraction(null)
+    setFiles([])
+    onSaved()
+  }
+
+  return (
+    <div className="rounded-2xl border border-[#c6982f]/40 bg-white p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-[#b0821f]" />
+        <h3 className="text-[13px] font-extrabold text-slate-100">증권 올리면 자동 등록</h3>
+        <span className="text-[11px] text-slate-500">— 보장개시일·면책기간을 AI가 판독해 알람까지 자동으로</span>
+      </div>
+
+      {doneMsg ? (
+        <div className="mb-2 flex items-start gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-semibold text-emerald-700">
+          <BadgeCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {doneMsg}
+        </div>
+      ) : null}
+
+      {/* 1) 고객 선택 */}
+      {customer ? (
+        <div className="mb-2 flex items-center justify-between rounded-lg bg-[#0e1e3a] px-3 py-2">
+          <span className="text-[13px] font-bold text-white">
+            {customer.name} <span className="text-[11px] text-slate-300">{customer.phone ?? ''}</span>
+          </span>
+          <button type="button" onClick={() => setCustomer(null)} className="text-[11px] text-slate-300 hover:text-white">변경</button>
+        </div>
+      ) : (
+        <div className="mb-2">
+          <div className="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1.5">
+            <Search className="h-3.5 w-3.5 text-slate-500" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="고객 이름/전화 검색" className="w-full bg-transparent text-[12px] text-slate-100 outline-none placeholder:text-slate-500" />
+          </div>
+          {filtered.length > 0 ? (
+            <div className="mt-1 space-y-0.5">
+              {filtered.map((c) => (
+                <button key={c.id} type="button" onClick={() => { setCustomer(c); setQ('') }} className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[12px] hover:bg-slate-950">
+                  <span className="font-semibold text-slate-100">{c.name}</span>
+                  <span className="text-slate-500">{c.phone ?? ''}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* 2) 증권 파일 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[12px] font-semibold text-slate-200 hover:border-[#c6982f]/60"
+        >
+          <UploadCloud className="h-3.5 w-3.5 text-[#b0821f]" /> 증권 파일 선택 (PDF·사진)
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/pdf,image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files?.length) setFiles(Array.from(e.target.files))
+            e.target.value = ''
+          }}
+        />
+        {files.map((f, i) => (
+          <span key={`${f.name}:${i}`} className="inline-flex items-center gap-1 rounded-full border border-slate-800 bg-white px-2 py-1 text-[11px] text-slate-300">
+            <FileText className="h-3 w-3 text-slate-500" /> {f.name}
+            <button type="button" aria-label="파일 제거" onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-rose-600">
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <button
+          type="button"
+          onClick={() => void analyze()}
+          disabled={busy || !customer || files.length === 0}
+          className={[
+            'ml-auto inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12px] font-extrabold',
+            busy || !customer || files.length === 0 ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-[#0e1e3a] to-[#1b3a6b] text-[#e6c877] hover:brightness-125'
+          ].join(' ')}
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} AI 판독
+        </button>
+      </div>
+      {busy ? <p className="mt-2 text-[11px] text-slate-500">{progress}</p> : null}
+      {!customer && files.length > 0 ? <p className="mt-1.5 text-[11px] text-amber-600">고객을 먼저 선택해주세요.</p> : null}
+
+      {/* 3) 판독 결과 확인 → 1클릭 등록 */}
+      {extraction ? (
+        <div className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-slate-950 p-3">
+          <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+            <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[11px] font-bold text-[#e6c877]">{extraction.insurer}</span>
+            {extraction.productName ? <span className="font-semibold text-slate-200">{extraction.productName}</span> : null}
+            <label className="ml-auto inline-flex items-center gap-1 text-[11px] text-slate-500">
+              보장개시일
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="rounded-lg border border-slate-800 bg-white px-2 py-1 text-[12px] text-slate-100 outline-none focus:border-[#c6982f]"
+              />
+            </label>
+          </div>
+          {!extraction.startDate ? (
+            <p className="text-[11px] text-amber-600">증권에서 보장개시일을 읽지 못했습니다 — 날짜만 지정해주세요.</p>
+          ) : null}
+          <div className="space-y-1">
+            {extraction.items.map((it, i) => (
+              <label key={`${it.coverage}:${i}`} className="flex items-start gap-2 rounded-lg bg-white px-2.5 py-2">
+                <input
+                  type="checkbox"
+                  checked={checked[i] ?? true}
+                  onChange={(e) => setChecked((prev) => prev.map((v, idx) => (idx === i ? e.target.checked : v)))}
+                  className="mt-0.5 h-3.5 w-3.5 accent-[#c6982f]"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <b className="text-[12px] text-slate-100">{it.coverage}</b>
+                    <span className="text-[11px] font-bold text-[#b0821f]">면책 {it.waitingDays}일</span>
+                    <span className={['rounded-full px-1.5 py-0.5 text-[9px] font-bold', it.basis === 'policy' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'].join(' ')}>
+                      {it.basis === 'policy' ? '증권 기재' : '표준 기준'}
+                    </span>
+                  </span>
+                  {it.waitingRule ? <span className="mt-0.5 block truncate text-[11px] text-slate-500">{it.waitingRule}</span> : null}
+                </span>
+              </label>
+            ))}
+          </div>
+          {extraction.notes ? <p className="text-[11px] leading-4 text-slate-500">참고: {extraction.notes}</p> : null}
+          {err ? <div className="text-[12px] font-medium text-rose-600">{err}</div> : null}
+          <button
+            type="button"
+            onClick={() => void register()}
+            disabled={saving || !startDate || checked.every((v) => !v)}
+            className={[
+              'inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-extrabold',
+              saving || !startDate || checked.every((v) => !v)
+                ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                : 'bg-gradient-to-r from-[#0e1e3a] to-[#1b3a6b] text-[#e6c877] hover:brightness-125'
+            ].join(' ')}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Hourglass className="h-4 w-4" />}
+            {`${checked.filter(Boolean).length}건 알람 등록`}
+          </button>
+        </div>
+      ) : err && !busy ? (
+        <div className="mt-2 text-[12px] font-medium text-rose-600">{err}</div>
+      ) : null}
     </div>
   )
 }

@@ -169,7 +169,7 @@ export async function postJson(
 // ── 1) prepare: 압축 + 인코딩 (전부 클라이언트에서) ──────────────────────────
 
 /** 인코딩 완료된 서류 한 건 — 서버에 그대로 전달되는 형태. */
-interface PreparedDoc {
+export interface PreparedDoc {
   name: string
   mediaType: string
   /** base64 본문 (data URL prefix 제거됨). */
@@ -261,8 +261,8 @@ async function downloadTermsOriginal(filePath: string): Promise<PreparedDoc | nu
   }
 }
 
-/** 파일 전체를 순차 준비 (압축→인코딩→검증). 진행 콜백 제공. */
-async function prepareFiles(
+/** 파일 전체를 순차 준비 (압축→인코딩→검증). 진행 콜백 제공. 면책 증권 판독 등 다른 판독 플로우도 재사용. */
+export async function prepareFiles(
   files: File[],
   onProgress?: (p: ClaimProgress) => void
 ): Promise<{ ok: true; docs: PreparedDoc[] } | { ok: false; error: string }> {
