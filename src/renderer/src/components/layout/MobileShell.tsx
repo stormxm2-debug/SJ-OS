@@ -22,6 +22,7 @@ import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
+import ExceptionDiseasePage from '@renderer/pages/ExceptionDiseasePage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import TodayContactsPage from '@renderer/pages/TodayContactsPage'
@@ -226,6 +227,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <UnderwritingGuidePage />
     case 'pre-underwriting':
       return <PreUnderwritingPage />
+    case 'disease-exceptions':
+      return <ExceptionDiseasePage />
     case 'leads':
       return <LeadDistributionPage />
     case 'referrals':

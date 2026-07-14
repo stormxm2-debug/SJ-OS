@@ -24,6 +24,7 @@ import ExemptionsPage from '@renderer/pages/ExemptionsPage'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
+import ExceptionDiseasePage from '@renderer/pages/ExceptionDiseasePage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
@@ -114,6 +115,8 @@ export default function Router(): JSX.Element {
       return <UnderwritingGuidePage />
     case 'pre-underwriting':
       return <PreUnderwritingPage />
+    case 'disease-exceptions':
+      return <ExceptionDiseasePage />
     case 'leads':
       return <LeadDistributionPage />
     case 'referrals':

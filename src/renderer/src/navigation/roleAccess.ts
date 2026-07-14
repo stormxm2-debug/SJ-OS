@@ -38,6 +38,7 @@ export const STAFF_ROUTES: ViewName[] = [
   'wiki',
   'underwriting',
   'pre-underwriting',
+  'disease-exceptions',
   'contacts',
   'leads',
   'referrals',

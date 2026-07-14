@@ -24,6 +24,7 @@ export type View =
   | { name: 'wiki' }
   | { name: 'underwriting'; q?: string }
   | { name: 'pre-underwriting' }
+  | { name: 'disease-exceptions' }
   | { name: 'contacts' }
   | { name: 'leads' }
   | { name: 'referrals' }
