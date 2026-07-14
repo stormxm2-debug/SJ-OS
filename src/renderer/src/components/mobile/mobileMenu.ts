@@ -23,7 +23,8 @@ import {
   UserPlus,
   PhoneCall,
   Hourglass,
-  FileSearch
+  FileSearch,
+  Calculator
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -82,6 +83,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     title: '실적·공지',
     items: [
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
+      { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' } },
       { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' } },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } }
     ]

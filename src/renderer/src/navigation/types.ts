@@ -15,6 +15,7 @@ export type View =
   | { name: 'schedule' }
   | { name: 'shared-schedule' }
   | { name: 'performance' }
+  | { name: 'salary' }
   | { name: 'team-leader' }
   | { name: 'consultation' }
   | { name: 'insurance-analysis' }

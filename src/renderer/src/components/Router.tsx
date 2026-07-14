@@ -15,6 +15,7 @@ import WorkersPage from '@renderer/pages/WorkersPage'
 import WorkerDetailPage from '@renderer/pages/WorkerDetailPage'
 import SalesActivityWorkspacePage from '@renderer/pages/SalesActivityWorkspacePage'
 import PerformancePage from '@renderer/pages/PerformancePage'
+import SalaryCalculatorPage from '@renderer/pages/SalaryCalculatorPage'
 import FcOsPage from '@renderer/pages/FcOsPage'
 import TeamLeaderPage from '@renderer/pages/TeamLeaderPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
@@ -95,6 +96,8 @@ export default function Router(): JSX.Element {
       return <SharedSchedulePage />
     case 'performance':
       return <PerformancePage />
+    case 'salary':
+      return <SalaryCalculatorPage />
     case 'team-leader':
       return <TeamLeaderPage />
     case 'consultation':

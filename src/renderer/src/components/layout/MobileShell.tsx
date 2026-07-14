@@ -11,6 +11,7 @@ import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
 import JarvisClapListener from '@renderer/components/jarvis/JarvisClapListener'
 import MobileHome from '@renderer/components/mobile/MobileHome'
 import MobilePerformance from '@renderer/components/mobile/MobilePerformance'
+import SalaryCalculatorPage from '@renderer/pages/SalaryCalculatorPage'
 import MobileMenuPage from '@renderer/components/mobile/MobileMenuPage'
 import SupabaseCustomerManager from '@renderer/components/customer/SupabaseCustomerManager'
 import SupabaseConsultationManager from '@renderer/components/consultation/SupabaseConsultationManager'
@@ -211,6 +212,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <SharedSchedulePage />
     case 'performance':
       return <MobilePerformance />
+    case 'salary':
+      return <SalaryCalculatorPage />
     case 'insurance-analysis':
       return <InsuranceAnalysisPage />
     case 'claim-assistant':
