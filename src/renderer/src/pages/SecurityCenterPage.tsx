@@ -10,7 +10,8 @@ import {
   Loader2,
   Eye,
   Zap,
-  Lightbulb
+  Lightbulb,
+  AlertTriangle
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import {
@@ -165,6 +166,50 @@ export default function SecurityCenterPage(): JSX.Element {
           자동 실행/정리 종료는 신뢰점수가 충분히 축적된 뒤 별도 단계에서 활성화됩니다.
         </div>
       </div>
+
+      {/* 먹통 원인 후보 — 충돌 위험 진단 (최우선) */}
+      {state && state.conflicts.length > 0 && (
+        <Card
+          title="⚠ 먹통 원인 후보 — 충돌 위험 진단"
+          icon={<AlertTriangle className="h-4 w-4 text-rose-400" />}
+        >
+          <div className="space-y-2">
+            {state.conflicts.map((c, i) => (
+              <div
+                key={i}
+                className={[
+                  'rounded-lg border px-3 py-2.5',
+                  c.severity === 'high'
+                    ? 'border-rose-500/40 bg-rose-500/10'
+                    : 'border-amber-500/40 bg-amber-500/10'
+                ].join(' ')}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={[
+                      'rounded px-1.5 py-0.5 text-[10px] font-bold',
+                      c.severity === 'high'
+                        ? 'bg-rose-500/20 text-rose-300'
+                        : 'bg-amber-500/20 text-amber-300'
+                    ].join(' ')}
+                  >
+                    {c.severity === 'high' ? '높음' : '주의'}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-100">{c.title}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-300">{c.detail}</p>
+                {c.insurers.length > 0 && (
+                  <p className="mt-1 text-[11px] text-slate-500">관련: {c.insurers.join(' · ')}</p>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            여러 보험사 전산을 학습할수록 먹통 원인이 더 정확히 잡힙니다. 자동 종료로 정리하는 기능은
+            안전 검증 후 2단계에서 켜집니다.
+          </p>
+        </Card>
+      )}
 
       {/* 완전 자동 감지 토글 */}
       {state && (

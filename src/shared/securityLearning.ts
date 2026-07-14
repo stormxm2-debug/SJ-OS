@@ -245,6 +245,21 @@ export interface ImprovementHint {
   message: string
 }
 
+/**
+ * 충돌 위험 진단 — 여러 보험사 전산을 동시에 켰을 때 "PC 먹통"을 유발할 수 있는
+ * 후보를 학습 데이터에서 자동으로 찾아낸다.
+ */
+export interface ConflictWarning {
+  severity: 'high' | 'medium'
+  type: 'version-conflict' | 'kernel-driver-stack' | 'keyboard-security-overlap'
+  title: string
+  detail: string
+  /** 관련 보험사 이름들. */
+  insurers: string[]
+  /** 관련 모듈 이름(있으면). */
+  module?: string
+}
+
 export interface EngineState {
   support: CollectorSupport
   /** 1차에서는 항상 false(관찰 전용). */
@@ -256,6 +271,8 @@ export interface EngineState {
   autoWatch: AutoWatchState
   /** 자동으로 파악한 보완할 점(반복 학습으로 채워짐). */
   improvements: ImprovementHint[]
+  /** 먹통 원인 후보 — 충돌 위험 진단. */
+  conflicts: ConflictWarning[]
   updatedAt: string
 }
 
@@ -890,6 +907,101 @@ export function computeImprovements(
     }
   }
   return hints.slice(0, 12)
+}
+
+/**
+ * 충돌 위험 진단(순수) — "여러 보험사 전산 동시 실행 시 먹통" 원인 후보를 학습 데이터에서
+ * 찾아낸다. 3가지 신호:
+ *  1) version-conflict: 같은 보안 모듈을 보험사마다 서로 다른 버전/경로로 사용 (가장 위험)
+ *  2) keyboard-security-overlap: 공용 키보드/인증 보안 모듈이 여러 보험사에 걸침 (입력 먹통)
+ *  3) kernel-driver-stack: 보험사 전용 커널 드라이버가 다수 상주 (자원 고갈/충돌)
+ */
+export function computeConflicts(
+  insurers: InsurerProfile[],
+  learned: LearnedElement[]
+): ConflictWarning[] {
+  const nameOf = (id: string): string => insurers.find((i) => i.id === id)?.name ?? id
+  const warnings: ConflictWarning[] = []
+
+  // 모듈 이름 기준 그룹핑(같은 프로그램을 여러 보험사가 올렸는지).
+  interface Group {
+    module: string
+    kind: ElementKind
+    insurerIds: Set<string>
+    hashes: Set<string>
+    paths: Set<string>
+    isSharedSecurity: boolean
+  }
+  const groups = new Map<string, Group>()
+  for (const el of learned) {
+    const mod = baseName(el.detail.path ?? el.label)
+    if (!mod) continue
+    const gkey = `${el.kind}:${mod}`
+    let g = groups.get(gkey)
+    if (!g) {
+      g = {
+        module: mod,
+        kind: el.kind,
+        insurerIds: new Set(),
+        hashes: new Set(),
+        paths: new Set(),
+        isSharedSecurity: SHARED_SECURITY_MODULE_HINTS.some((h) =>
+          `${norm(el.label)} ${norm(el.detail.path)}`.includes(h)
+        )
+      }
+      groups.set(gkey, g)
+    }
+    g.insurerIds.add(el.insurerId)
+    if (el.sha256) g.hashes.add(el.sha256)
+    if (el.detail.path) g.paths.add(norm(el.detail.path))
+  }
+
+  for (const g of groups.values()) {
+    if (g.insurerIds.size < 2) continue
+    const names = [...g.insurerIds].map(nameOf)
+    const versionDiffers = g.hashes.size >= 2 || g.paths.size >= 2
+    if (versionDiffers) {
+      warnings.push({
+        severity: 'high',
+        type: 'version-conflict',
+        title: `'${g.module}' 버전 충돌`,
+        detail: `${names.join(', ')} 전산이 같은 보안 모듈 '${g.module}'을(를) 서로 다른 버전/경로로 사용합니다. 동시에 켜면 충돌해 PC가 먹통될 수 있습니다.`,
+        insurers: names,
+        module: g.module
+      })
+    } else if (g.isSharedSecurity) {
+      warnings.push({
+        severity: 'medium',
+        type: 'keyboard-security-overlap',
+        title: `공용 보안 모듈 중복 '${g.module}'`,
+        detail: `${names.join(', ')}이(가) 공용 키보드/인증 보안 '${g.module}'을(를) 함께 사용합니다. 여러 전산을 동시에 켜면 입력(키보드·마우스)이 멈출 수 있습니다.`,
+        insurers: names,
+        module: g.module
+      })
+    }
+  }
+
+  // 보험사 전용 커널 드라이버 다수 상주.
+  const exclusiveDrivers = new Set<string>()
+  const driverInsurers = new Set<string>()
+  for (const el of learned) {
+    if (el.kind === 'driver' && el.category === 'insurer-exclusive') {
+      exclusiveDrivers.add(baseName(el.detail.path ?? el.label))
+      driverInsurers.add(el.insurerId)
+    }
+  }
+  if (exclusiveDrivers.size >= 3) {
+    warnings.push({
+      severity: 'medium',
+      type: 'kernel-driver-stack',
+      title: `보험사 전용 커널 드라이버 ${exclusiveDrivers.size}개`,
+      detail: `여러 보험사 전산을 동시에 켜면 전용 커널 드라이버 ${exclusiveDrivers.size}개가 함께 상주해 시스템 부하·충돌(먹통) 위험이 커집니다.`,
+      insurers: [...driverInsurers].map(nameOf)
+    })
+  }
+
+  // high 먼저.
+  return warnings.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'high' ? -1 : 1)).slice(0, 12)
 }
 
 export const CATEGORY_LABEL: Record<ElementCategory, string> = {

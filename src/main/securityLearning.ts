@@ -25,6 +25,7 @@ import {
   SECURITY_VENDOR_HINTS,
   WINDOWS_CORE_PROCESSES,
   baseName,
+  computeConflicts,
   computeImprovements,
   diffSnapshots,
   extractUrlHosts,
@@ -403,6 +404,7 @@ function buildState(): EngineState {
       lastEventText: autoLastEvent?.text ?? null
     },
     improvements: computeImprovements(store.insurers, store.elements),
+    conflicts: computeConflicts(store.insurers, store.elements),
     updatedAt: nowIso()
   }
 }
