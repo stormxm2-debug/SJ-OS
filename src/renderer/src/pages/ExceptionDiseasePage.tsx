@@ -14,11 +14,16 @@ import {
 } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import { useSession } from '@renderer/navigation/SessionContext'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
+import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
+import { getHubCustomer, subscribeHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
+import type { CustomerRecord } from '@shared/commercial/models'
 import {
   addException,
   deleteException,
   distinctProductClasses,
   EXCEPTION_INSURERS,
+  extractTermsFromText,
   filterRules,
   insurersCoveringAllTerms,
   listExceptions,
@@ -60,17 +65,33 @@ function dash(v?: string): string {
 
 export default function ExceptionDiseasePage(): JSX.Element {
   const { session } = useSession()
+  const { route } = useNavigation()
   const isAdmin = session.role === 'owner' || session.role === 'admin'
 
   const [rules, setRules] = useState<ExceptionRule[]>([])
   const [loading, setLoading] = useState(true)
   const [loadErr, setLoadErr] = useState<string | undefined>()
 
-  // 검색·필터
-  const [query, setQuery] = useState('')
+  // 검색·필터 (고객 카드 → q 프리필 지원)
+  const prefillQ = route.name === 'disease-exceptions' ? route.q : undefined
+  const [query, setQuery] = useState(prefillQ ?? '')
   const [insurer, setInsurer] = useState('all')
   const [productClass, setProductClass] = useState('all')
   const [limit, setLimit] = useState(PAGE_SIZE)
+
+  // 보험 허브 연결 고객 — 병력에서 예외질환 검색어 자동 매칭
+  const [hubCustomer, setHubCustomerState] = useState<CustomerRecord | null>(() => getHubCustomer())
+  useEffect(() => subscribeHubCustomer(setHubCustomerState), [])
+  const matchedTerms = useMemo(
+    () => (hubCustomer?.medicalHistory ? extractTermsFromText(rules, hubCustomer.medicalHistory) : []),
+    [hubCustomer, rules]
+  )
+  useEffect(() => {
+    // 고객 연결 시 검색창이 비어 있으면 병력 매칭 검색어를 자동 적용
+    if (matchedTerms.length > 0) {
+      setQuery((q) => (q.trim() === '' ? matchedTerms.join('&') : q))
+    }
+  }, [matchedTerms])
 
   // 관리자 폼 (추가/수정 겸용 — editId가 있으면 수정 모드)
   const [formOpen, setFormOpen] = useState(false)
@@ -172,6 +193,9 @@ export default function ExceptionDiseasePage(): JSX.Element {
 
   return (
     <div className="space-y-5">
+      {/* 보험 허브 — 도구 이동 + 작업 중 고객 공유 */}
+      <InsuranceHubBar current="disease-exceptions" />
+
       {/* 검색 */}
       <Card title="유병자 인수예외질환 검색" icon={<HeartPulse className="h-4 w-4 text-rose-600" />}>
         {loadErr ? (
@@ -222,6 +246,39 @@ export default function ExceptionDiseasePage(): JSX.Element {
           <Info className="h-3 w-3 shrink-0" />
           질환 2개 이상은 &apos;&amp;&apos;로 검색 (예: 충수염&amp;복막염, 최대 {MAX_SEARCH_TERMS}개) · 별칭도 검색됩니다 (혈압약 → 고혈압)
         </p>
+
+        {/* 허브 연결 고객의 병력 매칭 */}
+        {hubCustomer ? (
+          <div className="mt-3 rounded-xl border border-[#e6c877] bg-[#fdf7ea] px-3 py-2">
+            {!hubCustomer.medicalHistory?.trim() ? (
+              <p className="text-[12px] text-slate-500">
+                <b className="text-slate-100">{hubCustomer.name}</b> 고객에게 등록된 병력 정보가 없습니다.
+              </p>
+            ) : matchedTerms.length === 0 ? (
+              <p className="text-[12px] text-slate-500">
+                <b className="text-slate-100">{hubCustomer.name}</b> 고객 병력에서 매칭되는 예외질환이 없습니다 — 직접 검색하거나 관리자
+                검색 별칭을 보강해주세요.
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+                <span className="font-bold text-slate-100">{hubCustomer.name} 고객 병력 매칭:</span>
+                {matchedTerms.map((t) => (
+                  <span key={t} className="rounded-full border border-[#c6982f] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#8a6a1f]">
+                    {t}
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setQuery(matchedTerms.join('&'))}
+                  className="rounded-full bg-[#c6982f] px-2.5 py-0.5 text-[11px] font-bold text-white transition hover:brightness-110"
+                >
+                  검색 적용
+                </button>
+                <span className="text-[10px] text-slate-500">병력: {hubCustomer.medicalHistory.slice(0, 40)}{hubCustomer.medicalHistory.length > 40 ? '…' : ''}</span>
+              </div>
+            )}
+          </div>
+        ) : null}
 
         {/* 복수 질환: 모두 인정하는 보험사 요약 */}
         {terms.length >= 2 ? (

@@ -220,6 +220,19 @@ export async function deleteException(id: string): Promise<AdapterResult<void>> 
   }
 }
 
+// 고객 카드 병력 매칭·사전심사 주입 등 화면 밖 소비자를 위한 짧은 캐시
+// (고객 카드를 열 때마다 전체 표를 다시 받지 않도록 — underwritingService와 동일 패턴).
+let cache: { at: number; items: ExceptionRule[] } | null = null
+const CACHE_TTL_MS = 5 * 60_000
+
+/** 캐시 우선 로드 — 병력 매칭처럼 최신성이 덜 중요한 곳에서 사용. */
+export async function listExceptionsCached(): Promise<AdapterResult<ExceptionRule[]>> {
+  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return { ok: true, data: cache.items }
+  const res = await listExceptions()
+  if (res.ok) cache = { at: Date.now(), items: res.data }
+  return res
+}
+
 // --- 검색 (클라이언트 필터) ----------------------------------------------------
 
 export const MAX_SEARCH_TERMS = 4
@@ -291,4 +304,27 @@ export function insurersCoveringAllTerms(filtered: ExceptionRule[], terms: strin
 /** 데이터에 존재하는 가능상품구분 목록 (필터 select 구성용). */
 export function distinctProductClasses(rules: ExceptionRule[]): string[] {
   return [...new Set(rules.map((r) => r.productClass).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'))
+}
+
+/**
+ * 고객 병력 자유 텍스트에서 예외질환 검색어를 추출한다 (질환명·별칭이 병력에
+ * 포함되면 매칭). '고혈압'과 그 부분문자열 '혈압'이 함께 잡히면 더 구체적인
+ * 긴 토큰만 남긴다. 최대 MAX_SEARCH_TERMS개 — 검색창 '&' 조합에 바로 쓸 수 있다.
+ */
+export function extractTermsFromText(rules: ExceptionRule[], text: string): string[] {
+  const history = normalize(text)
+  if (history.length < 2) return []
+  const found = new Set<string>()
+  for (const r of rules) {
+    for (const name of [r.disease, ...r.searchTerms]) {
+      const token = name.trim()
+      if (token.length >= 2 && history.includes(normalize(token))) found.add(token)
+    }
+  }
+  const byLengthDesc = [...found].sort((a, b) => normalize(b).length - normalize(a).length)
+  const kept: string[] = []
+  for (const token of byLengthDesc) {
+    if (!kept.some((k) => normalize(k).includes(normalize(token)))) kept.push(token)
+  }
+  return kept.slice(0, MAX_SEARCH_TERMS)
 }

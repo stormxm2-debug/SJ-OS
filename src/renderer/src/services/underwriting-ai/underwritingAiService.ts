@@ -8,6 +8,7 @@ import {
   listUnderwriting as listGuideRules,
   UNDERWRITING_STATUS_LABEL
 } from '@renderer/services/underwriting/underwritingService'
+import { listExceptionsCached, type ExceptionRule } from '@renderer/services/underwriting/exceptionDiseaseService'
 
 /**
  * AI 사전심사 언더라이터 (underwriting-expert edge function) 클라이언트.
@@ -193,37 +194,78 @@ export async function assessUnderwriting(
 
 // ── 사내 인수기준 분류표 연동 (읽기 전용) ────────────────────────────────────
 
+/** 예외질환 인수조건(최소경과·치료기간·수술여부·비고)을 한 줄 노트로 요약. */
+function exceptionNote(r: ExceptionRule): string {
+  return [
+    r.minElapsed ? `최소경과 ${r.minElapsed}` : '',
+    r.treatmentPeriod ? `치료기간 ${r.treatmentPeriod}` : '',
+    r.surgery ? `수술 ${r.surgery}` : '',
+    r.note ?? ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 /**
- * 예외질병 인수 가이드에서 고객 병력 텍스트와 매칭되는 기준만 추린다.
- * 분류표가 아직 없거나(스키마 미적용) 비어 있으면 조용히 빈 배열 — AI 심사는
- * 일반 인수 관행만으로 진행된다.
+ * 사내 기준표 두 곳에서 고객 병력 텍스트와 매칭되는 기준만 추린다:
+ * ① 예외질병 인수 가이드(질병×보험사 5단계 상태) ② 유병자 인수예외질환 표
+ * (간편심사 가능상품·인수조건). 표가 아직 없거나(스키마 미적용) 비어 있으면
+ * 그 표만 조용히 생략 — AI 심사는 나머지 근거와 일반 인수 관행으로 진행된다.
  */
 export async function collectKnownRules(freeText: string): Promise<KnownRule[]> {
   const text = freeText.trim()
   if (text.length < 2) return []
+  const out: KnownRule[] = []
+
+  // ① 예외질병 인수 가이드
   try {
     const res = await listGuideRules()
-    if (!res.ok || res.items.length === 0) return []
-    const out: KnownRule[] = []
-    for (const disease of res.items) {
-      const names = [disease.name, ...disease.aliases].map((n) => n.trim()).filter((n) => n.length >= 2)
-      if (!names.some((n) => text.includes(n))) continue
-      for (const rule of Object.values(disease.rules)) {
-        if (rule.status === 'unknown') continue
-        out.push({
-          disease: disease.name,
-          insurer: rule.insurer,
-          status: UNDERWRITING_STATUS_LABEL[rule.status],
-          note: rule.note ?? '',
-          verified: rule.verified
-        })
-        if (out.length >= 60) return out
+    if (res.ok) {
+      for (const disease of res.items) {
+        if (out.length >= 60) break
+        const names = [disease.name, ...disease.aliases].map((n) => n.trim()).filter((n) => n.length >= 2)
+        if (!names.some((n) => text.includes(n))) continue
+        for (const rule of Object.values(disease.rules)) {
+          if (rule.status === 'unknown') continue
+          out.push({
+            disease: disease.name,
+            insurer: rule.insurer,
+            status: UNDERWRITING_STATUS_LABEL[rule.status],
+            note: rule.note ?? '',
+            verified: rule.verified
+          })
+          if (out.length >= 60) break
+        }
       }
     }
-    return out
   } catch {
-    return []
+    // 가이드 미적용/오류 — 조용히 생략
   }
+
+  // ② 유병자 인수예외질환 표 (간편심사 예외 인정 기준)
+  try {
+    const res = await listExceptionsCached()
+    if (res.ok) {
+      let added = 0
+      for (const r of res.data) {
+        const names = [r.disease, ...r.searchTerms].map((n) => n.trim()).filter((n) => n.length >= 2)
+        if (!names.some((n) => text.includes(n))) continue
+        out.push({
+          disease: r.disease,
+          insurer: r.insurer,
+          status: `유병자 예외인정 (가능상품 ${r.productClass || '미지정'})`,
+          note: exceptionNote(r),
+          verified: r.verified
+        })
+        added += 1
+        if (added >= 40) break
+      }
+    }
+  } catch {
+    // 예외질환 표 미적용/오류 — 조용히 생략
+  }
+
+  return out
 }
 
 // ── 저장/조회 (underwriting_analyses) ────────────────────────────────────────
