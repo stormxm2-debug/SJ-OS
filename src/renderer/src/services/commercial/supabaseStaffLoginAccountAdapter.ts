@@ -108,6 +108,36 @@ export const supabaseStaffLoginAccountAdapter = {
     return { ok: true, data: mapAccount(data) }
   },
 
+  async updateRole(id: string, role: StaffRole, teamId?: string): Promise<AdapterResult<StaffLoginAccount>> {
+    const client = await getClient()
+    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
+    const patch: Record<string, unknown> = { role, updated_at: new Date().toISOString() }
+    if (teamId !== undefined) patch.team_id = teamId ?? null
+    const { data, error } = await client
+      .from('staff_login_accounts')
+      .update(patch)
+      .eq('id', id)
+      .select(ACCT_COLS)
+      .single()
+    if (error) return err('error', '역할 변경에 실패했습니다.')
+    const acct = mapAccount(data)
+    // 이미 첫 로그인(claim)한 계정은 profiles.role이 고정돼 있으므로 함께 갱신한다.
+    // RLS(profiles_admin_manage: is_owner_or_admin)로 owner/admin만 이 갱신이 허용된다.
+    if (acct.profileId) {
+      const profilePatch: Record<string, unknown> = { role }
+      if (teamId !== undefined) profilePatch.team_id = teamId ?? null
+      const { error: pErr } = await client.from('profiles').update(profilePatch).eq('id', acct.profileId)
+      if (pErr) {
+        return err(
+          'error',
+          '직원 계정 역할은 바꿨지만, 이미 로그인한 계정의 프로필 권한 반영에 실패했습니다. (관리자 권한/RLS 확인 필요)'
+        )
+      }
+    }
+    return { ok: true, data: acct }
+  },
+
   async updateStatus(id: string, status: StaffLoginStatus): Promise<AdapterResult<StaffLoginAccount>> {
     const client = await getClient()
     if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')

@@ -14,6 +14,7 @@ import {
   deactivateStaffLoginAccount,
   listPasswordResetRequests,
   listStaffLoginAccounts,
+  updateStaffLoginRole,
   updateStaffLoginStatus,
   type StaffAdminDataMode
 } from '@renderer/services/commercial/staffLoginAccountService'
@@ -32,6 +33,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
   const [mode, setMode] = useState<StaffAdminDataMode>('local-mock')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
+  const [notice, setNotice] = useState<string | undefined>()
 
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -73,6 +75,13 @@ export default function StaffLoginAdminPage(): JSX.Element {
     if (!res.ok) { setError(res.error); return }
     void load()
   }
+  const changeRole = async (id: string, newRole: StaffRole): Promise<void> => {
+    setError(undefined); setNotice(undefined)
+    const res = await updateStaffLoginRole(id, newRole)
+    if (!res.ok) { setError(res.error); return }
+    setNotice(`역할을 "${ROLE_LABEL[newRole]}"(으)로 변경했습니다. (해당 직원이 로그인 중이면 다시 로그인해야 반영됩니다)`)
+    void load()
+  }
 
   const pending = resets.filter((r) => r.status === 'pending')
 
@@ -87,6 +96,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
       <p className="text-xs text-slate-500">등록된 휴대폰 번호만 SJ OS에 접속할 수 있습니다. 여기서는 허용 번호만 등록하며, 실제 계정 생성/비밀번호 설정은 서버 함수(claim-phone-account)에서 처리됩니다. (service_role은 서버에만 저장)</p>
 
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600">{error}</div> : null}
+      {notice ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700">{notice}</div> : null}
 
       {/* Server function status */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -158,7 +168,20 @@ export default function StaffLoginAdminPage(): JSX.Element {
                   <tr key={a.id} className="border-b border-slate-50">
                     <td className="py-1.5 pr-2 font-medium text-slate-300">{a.name}</td>
                     <td className="py-1.5 pr-2 font-mono text-slate-500">{maskKoreanPhoneDisplay(a.normalizedPhone)}</td>
-                    <td className="py-1.5 pr-2 text-slate-500">{ROLE_LABEL[a.role]}</td>
+                    <td className="py-1.5 pr-2">
+                      {session.role === 'owner' || a.role !== 'owner' ? (
+                        <select
+                          value={a.role}
+                          onChange={(e) => void changeRole(a.id, e.target.value as StaffRole)}
+                          className="rounded border border-slate-200 px-1.5 py-1 text-[11px] text-slate-600 focus:outline-none"
+                          title="역할(권한) 변경"
+                        >
+                          {roleOptions.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                        </select>
+                      ) : (
+                        <span className="text-slate-500">{ROLE_LABEL[a.role]}</span>
+                      )}
+                    </td>
                     <td className="py-1.5 pr-2 text-slate-500">{a.teamName ?? '-'}</td>
                     <td className="py-1.5 pr-2"><span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{STAFF_LOGIN_STATUS_LABEL[a.status]}</span></td>
                     <td className="py-1.5 pr-2 text-slate-500">{PASSWORD_STATUS_LABEL[a.passwordStatus]}</td>
