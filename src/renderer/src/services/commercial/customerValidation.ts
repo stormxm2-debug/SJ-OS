@@ -32,6 +32,9 @@ export const CUSTOMER_STATUS_LABEL: Record<CustomerStatus, string> = {
 /** 유입경로 선택지 (저장값 = 라벨 그대로). */
 export const CUSTOMER_SOURCES = ['지인', '돌방', '소개', 'DB'] as const
 
+/** 고객당 첨부 최대 개수 (사진·PDF·음성 합산). */
+export const MAX_CUSTOMER_ATTACHMENTS = 8
+
 /** 가족 관계 선택지 (세대주 = 본인). */
 export const RELATION_OPTIONS = ['배우자', '자녀', '부모', '형제자매', '기타'] as const
 
@@ -124,7 +127,7 @@ export function validateCustomerInput(input: CustomerInput): ValidationResult {
   if (input.weightKg !== undefined && input.weightKg !== null && input.weightKg !== 0) {
     if (input.weightKg < 20 || input.weightKg > 300) errors.push('몸무게는 20~300kg 범위로 입력해주세요.')
   }
-  if ((input.attachments ?? []).length > 5) errors.push('첨부는 고객당 최대 5개입니다.')
+  if ((input.attachments ?? []).length > MAX_CUSTOMER_ATTACHMENTS) errors.push(`첨부는 고객당 최대 ${MAX_CUSTOMER_ATTACHMENTS}개입니다.`)
   if (!CUSTOMER_STATUSES.includes(input.status)) errors.push('상태 값이 올바르지 않습니다.')
   return { ok: errors.length === 0, errors }
 }

@@ -71,7 +71,7 @@ export interface CustomerRecord {
   householdId?: string
   /** 세대주와의 관계: 본인/배우자/자녀/부모/기타. */
   relation?: string
-  /** 첨부(사진·PDF) — Storage 경로 목록 (최대 5개). */
+  /** 첨부(사진·PDF·음성) — Storage 경로 목록 (최대 8개). */
   attachments: CustomerAttachment[]
   /** 고객등록 완료된 보험사 목록 (관리자 처리 시 병합). */
   registeredInsurers: string[]
@@ -82,7 +82,9 @@ export interface CustomerRecord {
 export interface CustomerAttachment {
   path: string
   name: string
-  kind: 'image' | 'pdf'
+  kind: 'image' | 'pdf' | 'audio'
+  /** 업로드 일시(ISO) — 상담 녹취의 증거력 확보용. 구버전 첨부에는 없다. */
+  uploadedAt?: string
 }
 
 export interface ConsultationRecord {

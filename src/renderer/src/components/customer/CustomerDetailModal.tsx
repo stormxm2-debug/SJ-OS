@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { UserRound, X, Phone, Pencil, Paperclip, FileText, Image as ImageIcon, ExternalLink } from 'lucide-react'
+import { UserRound, X, Phone, Pencil, Paperclip, FileText, Image as ImageIcon, ExternalLink, Mic } from 'lucide-react'
 import type { CustomerRecord } from '@shared/commercial/models'
 import { signedUrlsFor } from '@renderer/services/commercial/customerFilesStorage'
 import { parseRrn, bmiOf } from '@renderer/services/commercial/customerValidation'
@@ -111,16 +111,16 @@ export default function CustomerDetailModal({
           </div>
         ) : null}
 
-        {/* 첨부 서류 */}
+        {/* 첨부 서류 · 음성 */}
         <div className="mt-3">
           <div className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
-            <Paperclip className="h-3 w-3" /> 첨부 서류 {customer.attachments.length}건
+            <Paperclip className="h-3 w-3" /> 첨부 {customer.attachments.length}건
           </div>
           {customer.attachments.length === 0 ? (
             <p className="text-[12px] text-slate-500">첨부된 서류가 없습니다.</p>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {customer.attachments.map((a) => {
+              {customer.attachments.filter((a) => a.kind !== 'audio').map((a) => {
                 const url = urls.get(a.path)
                 return (
                   <a
@@ -149,6 +149,31 @@ export default function CustomerDetailModal({
               })}
             </div>
           )}
+          {/* 음성 녹취 — 인라인 재생 (민원 대응 시 바로 확인) */}
+          {customer.attachments.some((a) => a.kind === 'audio') ? (
+            <div className="mt-2 space-y-1.5">
+              {customer.attachments.filter((a) => a.kind === 'audio').map((a) => {
+                const url = urls.get(a.path)
+                return (
+                  <div key={a.path} className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="inline-flex items-center gap-1 truncate text-[11px] font-semibold text-slate-100">
+                        <Mic className="h-3 w-3 shrink-0 text-[#b0821f]" /> {a.name}
+                      </span>
+                      {a.uploadedAt ? (
+                        <span className="text-[10px] text-slate-500">{new Date(a.uploadedAt).toLocaleString('ko-KR')} 업로드</span>
+                      ) : null}
+                    </div>
+                    {url ? (
+                      <audio controls preload="none" src={url} className="mt-1.5 h-8 w-full" />
+                    ) : (
+                      <p className="mt-1 text-[11px] text-slate-500">재생 URL을 불러오는 중…</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

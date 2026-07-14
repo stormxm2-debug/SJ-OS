@@ -16,7 +16,9 @@ import {
   HeartPulse,
   UsersRound,
   Trash2,
-  Pencil
+  Pencil,
+  Mic,
+  Square
 } from 'lucide-react'
 import type { CustomerAttachment, CustomerRecord } from '@shared/commercial/models'
 import {
@@ -57,7 +59,8 @@ import { setUnderwritingPrefill } from '@renderer/services/underwriting-ai/under
  *
  *  - 생년월일·태그·상태 입력 없음. 주민번호에서 나이·성별·생년월일 자동 계산.
  *  - 유입경로 칩 4종(지인/돌방/소개/DB), 병력, 키/몸무게(BMI 자동), 주소.
- *  - 첨부: 사진+PDF 고객당 최대 5개 (비공개 버킷 + 서명 URL 표시).
+ *  - 첨부: 사진+PDF+음성 고객당 최대 8개 (비공개 버킷 + 서명 URL 표시).
+ *    음성 = 통화·상담 녹취(추후 민원 방지 증거) — 파일 업로드 + 인앱 녹음 지원.
  *  - 가족 추가: 가족도 각각 정식 고객으로 저장하되 household로 묶어 카드에 표시.
  *    가족 주소를 비우면 세대주 주소를 자동 상속.
  * RLS(본인 고객)가 실제 접근 경계. 주민번호·병력 등 PII는 로깅하지 않는다.
@@ -135,6 +138,13 @@ export default function SupabaseCustomerManager(): JSX.Element {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [attachUrls, setAttachUrls] = useState<Map<string, string>>(new Map())
+
+  // 인앱 음성 녹음 (상담 동의 녹취 — 추후 민원 방지 증거)
+  const [recording, setRecording] = useState(false)
+  const [recSec, setRecSec] = useState(0)
+  const recRef = useRef<MediaRecorder | null>(null)
+  const recChunksRef = useRef<Blob[]>([])
+  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // 고객등록(보험사) 요청 — 수정 화면에서 사용
   const [regPick, setRegPick] = useState<string[]>([])
@@ -279,7 +289,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
     setFormErrors([])
     for (const f of files) {
       if (!attachmentKindOf(f)) {
-        setFormErrors((prev) => [...prev, `${f.name}: 사진/PDF만 가능합니다.`])
+        setFormErrors((prev) => [...prev, `${f.name}: 사진/PDF/음성만 가능합니다.`])
         continue
       }
       const res = await uploadCustomerFile(f)
@@ -296,6 +306,93 @@ export default function SupabaseCustomerManager(): JSX.Element {
     setForm((prev) => ({ ...prev, attachments: prev.attachments.filter((a) => a.path !== att.path) }))
     void deleteCustomerFile(att.path)
   }
+
+  const stopRecTimer = (): void => {
+    if (recTimerRef.current) {
+      clearInterval(recTimerRef.current)
+      recTimerRef.current = null
+    }
+  }
+
+  /** 녹음 시작 — 정지 시 파일로 만들어 기존 업로드 경로 재사용. */
+  const startRecording = async (): Promise<void> => {
+    if (recording) return
+    if (form.attachments.length >= MAX_CUSTOMER_ATTACHMENTS) {
+      setFormErrors([`첨부는 고객당 최대 ${MAX_CUSTOMER_ATTACHMENTS}개입니다.`])
+      return
+    }
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setFormErrors(['이 기기에서는 녹음을 지원하지 않습니다. 녹음 파일을 업로드해 주세요.'])
+      return
+    }
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch {
+      setFormErrors(['마이크 권한을 허용해야 녹음할 수 있습니다.'])
+      return
+    }
+    const mimeType = ['audio/webm', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t))
+    const rec = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+    recChunksRef.current = []
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) recChunksRef.current.push(e.data)
+    }
+    rec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop())
+      const type = rec.mimeType || 'audio/webm'
+      const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm'
+      const now = new Date()
+      const pad = (n: number): string => String(n).padStart(2, '0')
+      const fname = `상담녹음_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.${ext}`
+      const file = new File([new Blob(recChunksRef.current, { type })], fname, { type })
+      recChunksRef.current = []
+      setUploading(true)
+      void uploadCustomerFile(file).then((res) => {
+        setUploading(false)
+        if (res.ok) setForm((prev) => ({ ...prev, attachments: [...prev.attachments, res.attachment] }))
+        else setFormErrors((prev) => [...prev, `${fname}: ${res.error}`])
+      })
+    }
+    recRef.current = rec
+    rec.start()
+    setRecSec(0)
+    setRecording(true)
+    recTimerRef.current = setInterval(() => setRecSec((s) => s + 1), 1000)
+  }
+
+  /** 녹음 정지 → onstop에서 업로드. */
+  const stopRecording = (): void => {
+    stopRecTimer()
+    setRecording(false)
+    const rec = recRef.current
+    recRef.current = null
+    if (rec && rec.state !== 'inactive') rec.stop()
+  }
+
+  /** 업로드 없이 폐기 — 폼 닫힘/화면 이탈 시. */
+  const discardRecording = (): void => {
+    stopRecTimer()
+    setRecording(false)
+    const rec = recRef.current
+    recRef.current = null
+    if (rec && rec.state !== 'inactive') {
+      rec.onstop = null
+      rec.ondataavailable = null
+      try {
+        rec.stop()
+      } catch {
+        /* ignore */
+      }
+      rec.stream.getTracks().forEach((t) => t.stop())
+    }
+  }
+
+  useEffect(() => {
+    if (!showForm) discardRecording()
+    return discardRecording
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm])
 
   const buildInput = (over?: Partial<CustomerInput>): CustomerInput => ({
     name: form.name,
@@ -578,9 +675,9 @@ export default function SupabaseCustomerManager(): JSX.Element {
 
           {/* 첨부 */}
           <div className="mb-3">
-            <Field label={`사진 / 서류 첨부 (${form.attachments.length}/${MAX_CUSTOMER_ATTACHMENTS})`}>
+            <Field label={`사진 / 서류 / 음성 첨부 (${form.attachments.length}/${MAX_CUSTOMER_ATTACHMENTS})`}>
               <div className="flex flex-wrap items-center gap-2">
-                {form.attachments.map((a) => {
+                {form.attachments.filter((a) => a.kind !== 'audio').map((a) => {
                   const url = attachUrls.get(a.path)
                   return (
                     <span key={a.path} className="group relative">
@@ -618,9 +715,72 @@ export default function SupabaseCustomerManager(): JSX.Element {
                     {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                   </button>
                 ) : null}
-                <span className="text-[11px] text-slate-500">증권·신분증·검진결과 등 (사진/PDF, 폰 카메라 촬영 가능)</span>
+                {form.attachments.length < MAX_CUSTOMER_ATTACHMENTS || recording ? (
+                  recording ? (
+                    <button
+                      type="button"
+                      onClick={stopRecording}
+                      className="flex h-14 min-w-14 animate-pulse flex-col items-center justify-center gap-0.5 rounded-lg bg-rose-500 px-1.5 text-white"
+                    >
+                      <Square className="h-4 w-4 fill-current" />
+                      <span className="text-[9px] font-bold tabular-nums">
+                        {Math.floor(recSec / 60)}:{String(recSec % 60).padStart(2, '0')}
+                      </span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void startRecording()}
+                      disabled={uploading}
+                      aria-label="음성 녹음"
+                      className="flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-slate-700 text-slate-500 transition hover:border-rose-400 hover:text-rose-500 disabled:opacity-50"
+                    >
+                      <Mic className="h-4 w-4" />
+                      <span className="text-[8px] font-semibold">녹음</span>
+                    </button>
+                  )
+                ) : null}
+                <span className="text-[11px] text-slate-500">
+                  증권·신분증·검진결과·통화 녹음 등 (사진/PDF/음성) — 상담 녹취는 추후 민원 방지 증거가 됩니다
+                </span>
               </div>
-              <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple onChange={(e) => void onPickFiles(e)} className="hidden" />
+              {form.attachments.some((a) => a.kind === 'audio') ? (
+                <div className="mt-2 space-y-1.5">
+                  {form.attachments.filter((a) => a.kind === 'audio').map((a) => {
+                    const url = attachUrls.get(a.path)
+                    return (
+                      <div key={a.path} className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-2.5 py-1.5">
+                        <Mic className="h-4 w-4 shrink-0 text-[#b0821f]" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline gap-x-2">
+                            <span className="truncate text-[11px] font-semibold text-slate-100">{a.name}</span>
+                            {a.uploadedAt ? (
+                              <span className="text-[10px] text-slate-500">{new Date(a.uploadedAt).toLocaleString('ko-KR')} 업로드</span>
+                            ) : null}
+                          </div>
+                          {url ? <audio controls preload="none" src={url} className="mt-1 h-8 w-full" /> : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(a)}
+                          aria-label="음성 첨부 삭제"
+                          className="shrink-0 rounded-lg p-1 text-slate-500 hover:text-rose-500"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,application/pdf,audio/*,.m4a,.mp3,.wav,.aac,.amr,.ogg,.3gp"
+                multiple
+                onChange={(e) => void onPickFiles(e)}
+                className="hidden"
+              />
             </Field>
           </div>
 
