@@ -12,7 +12,11 @@ import {
   todayDate,
   monthOfDate,
   CATEGORY_LABEL,
+  CHANNEL_LABEL,
+  CHANNEL_OPTIONS,
   SHORT_TERM_RATE,
+  summarizeChannels,
+  type ContractChannel,
   type ContractEntry,
   type PerformanceEntry,
   type PerformanceCategory
@@ -34,6 +38,13 @@ const CATEGORY_CHIP: Record<PerformanceCategory, string> = {
   life: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'non-life': 'bg-sky-50 text-sky-700 border-sky-200',
   'short-term': 'bg-amber-50 text-amber-700 border-amber-200'
+}
+
+/** 계약 출처(지인/소개/DB) 칩 — 분류 칩과 겹치지 않는 색 계열. */
+const CHANNEL_CHIP: Record<ContractChannel, string> = {
+  acquaintance: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  referral: 'bg-violet-50 text-violet-700 border-violet-200',
+  db: 'bg-cyan-50 text-cyan-700 border-cyan-200'
 }
 
 function comma(n: number): string {
@@ -63,6 +74,7 @@ export default function MobilePerformance(): JSX.Element {
   const [formOpen, setFormOpen] = useState(false)
   const [date, setDate] = useState(todayDate())
   const [category, setCategory] = useState<PerformanceCategory>('life')
+  const [channel, setChannel] = useState<ContractChannel | ''>('') // 계약 출처 — 필수 선택
   const [amount, setAmount] = useState('')
   const [memo, setMemo] = useState('')
   const [busy, setBusy] = useState(false)
@@ -94,24 +106,30 @@ export default function MobilePerformance(): JSX.Element {
     () => entries.filter((e) => e.staffId === session.id).sort((a, b) => b.entryDate.localeCompare(a.entryDate)),
     [entries, session.id]
   )
+  const myChannels = useMemo(() => summarizeChannels(myEntries), [myEntries])
   const ranked = useMemo(() => [...effective].sort((a, b) => weightedTotal(b) - weightedTotal(a)), [effective])
   const avg = effective.length > 0 ? Math.round(effective.reduce((s, e) => s + weightedTotal(e), 0) / effective.length) : 0
   const diff = myTotal - avg
 
   const submit = async (): Promise<void> => {
+    if (!channel) {
+      setError('계약 출처(지인/소개/DB)를 선택해 주세요.')
+      return
+    }
     const amt = Number(amount.replace(/[^0-9]/g, ''))
     if (!amt) {
       setError('보험료 금액을 입력해 주세요.')
       return
     }
     setBusy(true)
-    const r = await addEntry({ entryDate: date, category, amount: amt, memo: memo.trim() || undefined })
+    const r = await addEntry({ entryDate: date, category, channel, amount: amt, memo: memo.trim() || undefined })
     setBusy(false)
     if (!r.ok) {
       setError(r.message)
       return
     }
     setError(null)
+    setChannel('') // 다음 건도 의식적으로 선택하도록 초기화
     setAmount('')
     setMemo('')
     setFormOpen(false)
@@ -288,6 +306,25 @@ export default function MobilePerformance(): JSX.Element {
               </button>
             ))}
           </div>
+          <div className="mb-1 text-[11px] font-semibold text-slate-300">
+            계약 출처 <span className="text-rose-600">*</span>
+          </div>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {CHANNEL_OPTIONS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setChannel(c)}
+                className={[
+                  'rounded-full border px-3 py-1.5 text-[12px] font-semibold transition',
+                  CHANNEL_CHIP[c],
+                  channel === c ? 'ring-2 ring-indigo-400' : 'opacity-60'
+                ].join(' ')}
+              >
+                {CHANNEL_LABEL[c]}계약
+              </button>
+            ))}
+          </div>
           <div className="mb-2 grid grid-cols-2 gap-2">
             <input
               type="date"
@@ -332,6 +369,20 @@ export default function MobilePerformance(): JSX.Element {
         <div className="mb-2 text-[12px] font-bold text-slate-100">
           내 계약 내역 <span className="font-medium text-slate-500">({myEntries.length}건)</span>
         </div>
+        {myEntries.length > 0 ? (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+            {CHANNEL_OPTIONS.map((c) => (
+              <span key={c} className={['rounded-full border px-2 py-0.5 font-bold', CHANNEL_CHIP[c]].join(' ')}>
+                {CHANNEL_LABEL[c]} {myChannels[c].count}건
+              </span>
+            ))}
+            {myChannels.unclassified.count > 0 ? (
+              <span className="rounded-full border border-slate-800 bg-white px-2 py-0.5 font-medium text-slate-500">
+                미분류 {myChannels.unclassified.count}건
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {loading ? (
           <div className="flex items-center gap-2 py-4 text-[12px] text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" /> 불러오는 중…
@@ -348,6 +399,13 @@ export default function MobilePerformance(): JSX.Element {
                 <span className={['shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold', CATEGORY_CHIP[e.category]].join(' ')}>
                   {CATEGORY_LABEL[e.category]}
                 </span>
+                {e.channel ? (
+                  <span className={['shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold', CHANNEL_CHIP[e.channel]].join(' ')}>
+                    {CHANNEL_LABEL[e.channel]}
+                  </span>
+                ) : (
+                  <span className="shrink-0 rounded-full border border-slate-800 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500">미분류</span>
+                )}
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-bold tabular-nums text-slate-100">{comma(e.amount)}원</span>
                   {e.memo ? <span className="block truncate text-[10px] text-slate-500">{e.memo}</span> : null}

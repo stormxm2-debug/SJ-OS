@@ -25,6 +25,8 @@ import {
   adminApplyExcelRows,
   buildEffectiveMonthly,
   CATEGORY_LABEL,
+  CHANNEL_LABEL,
+  CHANNEL_OPTIONS,
   currentMonth,
   deleteEntry,
   listEntriesMonth,
@@ -33,9 +35,11 @@ import {
   monthOfDate,
   SHORT_TERM_RATE,
   summarize,
+  summarizeChannels,
   todayDate,
   updateEntry,
   weightedTotal,
+  type ContractChannel,
   type ContractEntry,
   type PerformanceCategory,
   type PerformanceEntry,
@@ -84,6 +88,18 @@ const CATEGORY_BADGE: Record<PerformanceCategory, string> = {
   'short-term': 'bg-amber-50 text-amber-700'
 }
 
+/** 계약 출처(지인/소개/DB) 배지 색 — 분류 배지와 겹치지 않는 계열. */
+const CHANNEL_BADGE: Record<ContractChannel, string> = {
+  acquaintance: 'bg-emerald-50 text-emerald-600',
+  referral: 'bg-violet-50 text-violet-600',
+  db: 'bg-cyan-50 text-cyan-700'
+}
+const CHANNEL_TEXT: Record<ContractChannel, string> = {
+  acquaintance: 'text-emerald-600',
+  referral: 'text-violet-600',
+  db: 'text-cyan-700'
+}
+
 function comma(n: number): string {
   return Math.round(n).toLocaleString('ko-KR')
 }
@@ -122,6 +138,21 @@ export default function PerformancePage(): JSX.Element {
   const effective = useMemo(() => buildEffectiveMonthly(excelRows, entries), [excelRows, entries])
   const totals = useMemo(() => summarize(effective), [effective])
   const ranking = useMemo(() => effective.slice().sort((a, b) => weightedTotal(b) - weightedTotal(a)), [effective])
+  // 계약 출처 집계 — 건별 입력 기준 (엑셀 월 총액에는 출처 정보가 없음)
+  const channelTotals = useMemo(() => summarizeChannels(entries), [entries])
+  const channelByStaff = useMemo(() => {
+    const m = new Map<string, Record<ContractChannel, number>>()
+    for (const e of entries) {
+      if (!e.channel) continue
+      let c = m.get(e.staffId)
+      if (!c) {
+        c = { acquaintance: 0, referral: 0, db: 0 }
+        m.set(e.staffId, c)
+      }
+      c[e.channel] += 1
+    }
+    return m
+  }, [entries])
 
   const myEntries = useMemo(() => entries.filter((e) => e.staffId === session.id), [entries, session.id])
   const myExcel = excelRows.find((e) => e.staffId === session.id)
@@ -158,6 +189,22 @@ export default function PerformancePage(): JSX.Element {
           <Metric label="총 매출 합계" value={`${won(totals.total)}원`} sub={`${comma(totals.total)}원`} tone="gold" strong />
           <Metric label="계약 건수" value={`${totals.contractCount}건`} sub={`직원 ${totals.staffCount}명 집계`} tone="emerald" />
         </div>
+        {entries.length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="font-semibold text-slate-300">계약 출처</span>
+            {CHANNEL_OPTIONS.map((c) => (
+              <span key={c} className={['rounded-full px-2 py-0.5 font-bold', CHANNEL_BADGE[c]].join(' ')}>
+                {CHANNEL_LABEL[c]} {channelTotals[c].count}건 · {won(channelTotals[c].amount)}원
+              </span>
+            ))}
+            {channelTotals.unclassified.count > 0 ? (
+              <span className="rounded-full border border-slate-800 bg-white px-2 py-0.5 font-medium text-slate-500">
+                미분류 {channelTotals.unclassified.count}건
+              </span>
+            ) : null}
+            <span className="text-slate-500">(건별 입력 기준)</span>
+          </div>
+        ) : null}
         <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
           <Info className="h-3 w-3" />
           총 매출 = 생명보험 + 손해보험 + 단기납종신×{Math.round(SHORT_TERM_RATE * 100)}% · 관리자 엑셀 실적이 있으면 그 값이 우선 적용됩니다.
@@ -186,6 +233,7 @@ export default function PerformancePage(): JSX.Element {
                     <th className="py-2 pr-3 text-right font-medium">단기납종신(60%)</th>
                     <th className="py-2 pr-3 text-right font-medium">총 매출</th>
                     <th className="py-2 pr-3 text-right font-medium">계약</th>
+                    <th className="py-2 pr-3 text-right font-medium">지인·소개·DB</th>
                     <th className="py-2 pr-0 text-right font-medium">출처</th>
                   </tr>
                 </thead>
@@ -204,6 +252,21 @@ export default function PerformancePage(): JSX.Element {
                         {comma(weightedTotal(e))}
                       </td>
                       <td className="py-2 pr-3 text-right tabular-nums text-slate-300">{e.contractCount}</td>
+                      <td className="py-2 pr-3 text-right text-xs tabular-nums" title="지인·소개·DB 계약 건수 (건별 입력 기준)">
+                        {(() => {
+                          const c = channelByStaff.get(e.staffId)
+                          if (!c) return <span className="text-slate-500">-</span>
+                          return (
+                            <>
+                              <span className={CHANNEL_TEXT.acquaintance}>{c.acquaintance}</span>
+                              <span className="text-slate-500">·</span>
+                              <span className={CHANNEL_TEXT.referral}>{c.referral}</span>
+                              <span className="text-slate-500">·</span>
+                              <span className={CHANNEL_TEXT.db}>{c.db}</span>
+                            </>
+                          )
+                        })()}
+                      </td>
                       <td className="py-2 pr-0 text-right">
                         <SourceBadge source={e.source} />
                       </td>
@@ -238,6 +301,7 @@ function MyContractSection({
   const defaultDate = monthOfDate(todayDate()) === month ? todayDate() : `${month}-01`
   const [date, setDate] = useState(defaultDate)
   const [category, setCategory] = useState<PerformanceCategory>('life')
+  const [channel, setChannel] = useState<ContractChannel | ''>('') // 필수 — 매 건 직접 선택
   const [amount, setAmount] = useState('')
   const [memo, setMemo] = useState('')
   const [busy, setBusy] = useState(false)
@@ -247,6 +311,7 @@ function MyContractSection({
   const [editId, setEditId] = useState<string | null>(null)
   const [editDate, setEditDate] = useState('')
   const [editCategory, setEditCategory] = useState<PerformanceCategory>('life')
+  const [editChannel, setEditChannel] = useState<ContractChannel | ''>('')
   const [editAmount, setEditAmount] = useState('')
   const [editMemo, setEditMemo] = useState('')
 
@@ -265,8 +330,13 @@ function MyContractSection({
     }
     return { ...s, total: weightedTotal(s), count: myEntries.length }
   }, [myEntries])
+  const myChannels = useMemo(() => summarizeChannels(myEntries), [myEntries])
 
   const add = async (): Promise<void> => {
+    if (!channel) {
+      setMsg({ ok: false, text: '계약 출처(지인/소개/DB)를 선택해주세요.' })
+      return
+    }
     const amt = parseAmountInput(amount)
     if (amt <= 0) {
       setMsg({ ok: false, text: '금액을 입력해주세요.' })
@@ -274,9 +344,10 @@ function MyContractSection({
     }
     setBusy(true)
     setMsg(undefined)
-    const r = await addEntry({ entryDate: date, category, amount: amt, memo })
+    const r = await addEntry({ entryDate: date, category, channel, amount: amt, memo })
     setBusy(false)
     if (r.ok) {
+      setChannel('') // 다음 건도 의식적으로 선택하도록 초기화
       setAmount('')
       setMemo('')
       setMsg({ ok: true, text: '계약 1건이 추가되었습니다.' })
@@ -290,6 +361,7 @@ function MyContractSection({
     setEditId(e.id)
     setEditDate(e.entryDate)
     setEditCategory(e.category)
+    setEditChannel(e.channel ?? '') // 미분류 건은 수정 시 선택을 강제해 백필
     setEditAmount(comma(e.amount))
     setEditMemo(e.memo ?? '')
     setMsg(undefined)
@@ -297,13 +369,17 @@ function MyContractSection({
 
   const saveEdit = async (): Promise<void> => {
     if (!editId) return
+    if (!editChannel) {
+      setMsg({ ok: false, text: '계약 출처(지인/소개/DB)를 선택해주세요.' })
+      return
+    }
     const amt = parseAmountInput(editAmount)
     if (amt <= 0) {
       setMsg({ ok: false, text: '금액을 입력해주세요.' })
       return
     }
     setBusy(true)
-    const r = await updateEntry(editId, { entryDate: editDate, category: editCategory, amount: amt, memo: editMemo })
+    const r = await updateEntry(editId, { entryDate: editDate, category: editCategory, channel: editChannel, amount: amt, memo: editMemo })
     setBusy(false)
     if (r.ok) {
       setEditId(null)
@@ -340,7 +416,7 @@ function MyContractSection({
       ) : null}
 
       {/* 빠른 추가: 계약 들어올 때마다 한 건씩 */}
-      <div className="grid grid-cols-1 gap-2 rounded-2xl border border-slate-800 bg-slate-950 p-3 sm:grid-cols-[150px_150px_1fr_1fr_auto]">
+      <div className="grid grid-cols-1 gap-2 rounded-2xl border border-slate-800 bg-slate-950 p-3 sm:grid-cols-[150px_140px_110px_1fr_1fr_auto]">
         <label className="block">
           <span className="mb-1 block text-[10px] font-medium text-slate-500">계약일</span>
           <input
@@ -361,6 +437,21 @@ function MyContractSection({
               <option key={c} value={c}>
                 {CATEGORY_LABEL[c]}
                 {c === 'short-term' ? ` (${Math.round(SHORT_TERM_RATE * 100)}% 반영)` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-medium text-slate-500">출처 (필수)</span>
+          <select
+            value={channel}
+            onChange={(e) => setChannel(e.target.value as ContractChannel | '')}
+            className="w-full rounded-lg border border-slate-800 bg-white px-2 py-2 text-xs font-medium text-slate-200 focus:outline-none"
+          >
+            <option value="">선택</option>
+            {CHANNEL_OPTIONS.map((c) => (
+              <option key={c} value={c}>
+                {CHANNEL_LABEL[c]}계약
               </option>
             ))}
           </select>
@@ -415,6 +506,21 @@ function MyContractSection({
             <b style={{ color: GOLD }}>합계 {comma(mySummary.total)}원</b>
           </span>
         </div>
+        {mySummary.count > 0 ? (
+          <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="text-slate-500">출처별</span>
+            {CHANNEL_OPTIONS.map((c) => (
+              <span key={c} className={['rounded-full px-2 py-0.5 font-bold', CHANNEL_BADGE[c]].join(' ')}>
+                {CHANNEL_LABEL[c]} {myChannels[c].count}건 · {won(myChannels[c].amount)}원
+              </span>
+            ))}
+            {myChannels.unclassified.count > 0 ? (
+              <span className="rounded-full border border-slate-800 bg-white px-2 py-0.5 font-medium text-slate-500">
+                미분류 {myChannels.unclassified.count}건 — 수정에서 출처를 선택해주세요
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {myEntries.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-700 py-5 text-center text-[12px] text-slate-500">
             아직 입력한 계약이 없습니다. 위에서 계약이 들어올 때마다 한 건씩 추가하세요.
@@ -423,7 +529,7 @@ function MyContractSection({
           <div className="space-y-1.5">
             {myEntries.map((e) =>
               editId === e.id ? (
-                <div key={e.id} className="grid grid-cols-1 gap-2 rounded-xl border border-indigo-300 bg-indigo-50/50 p-2.5 sm:grid-cols-[140px_140px_1fr_1fr_auto]">
+                <div key={e.id} className="grid grid-cols-1 gap-2 rounded-xl border border-indigo-300 bg-indigo-50/50 p-2.5 sm:grid-cols-[140px_130px_100px_1fr_1fr_auto]">
                   <input
                     type="date"
                     value={editDate}
@@ -438,6 +544,18 @@ function MyContractSection({
                     {CATEGORY_OPTIONS.map((c) => (
                       <option key={c} value={c}>
                         {CATEGORY_LABEL[c]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={editChannel}
+                    onChange={(ev) => setEditChannel(ev.target.value as ContractChannel | '')}
+                    className="rounded-lg border border-slate-800 bg-white px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+                  >
+                    <option value="">출처 선택</option>
+                    {CHANNEL_OPTIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {CHANNEL_LABEL[c]}계약
                       </option>
                     ))}
                   </select>
@@ -480,6 +598,13 @@ function MyContractSection({
                   <span className={['rounded-full px-2 py-0.5 text-[10px] font-bold', CATEGORY_BADGE[e.category]].join(' ')}>
                     {CATEGORY_LABEL[e.category]}
                   </span>
+                  {e.channel ? (
+                    <span className={['rounded-full px-2 py-0.5 text-[10px] font-bold', CHANNEL_BADGE[e.channel]].join(' ')}>
+                      {CHANNEL_LABEL[e.channel]}
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-slate-800 bg-white px-2 py-0.5 text-[10px] font-medium text-slate-500">출처 미분류</span>
+                  )}
                   <span className="text-sm font-semibold tabular-nums text-slate-100">{comma(e.amount)}원</span>
                   {e.category === 'short-term' ? (
                     <span className="text-[10px] text-amber-700">→ {comma(Math.round(e.amount * SHORT_TERM_RATE))}원 반영</span>

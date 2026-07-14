@@ -28,6 +28,21 @@ export const CATEGORY_LABEL: Record<PerformanceCategory, string> = {
   'short-term': '단기납종신'
 }
 
+/** 계약 출처 — 지인/소개/DB. 입력 시 필수, 컬럼 추가 이전 행은 undefined(미분류). */
+export type ContractChannel = 'acquaintance' | 'referral' | 'db'
+
+export const CHANNEL_OPTIONS: ContractChannel[] = ['acquaintance', 'referral', 'db']
+
+export const CHANNEL_LABEL: Record<ContractChannel, string> = {
+  acquaintance: '지인',
+  referral: '소개',
+  db: 'DB'
+}
+
+function parseChannel(v: unknown): ContractChannel | undefined {
+  return v === 'acquaintance' || v === 'referral' || v === 'db' ? v : undefined
+}
+
 /** 월 단위 유효 실적(엑셀 행 또는 건별 합산) — 화면 표시용. */
 export interface PerformanceEntry {
   id: string
@@ -52,6 +67,7 @@ export interface ContractEntry {
   entryDate: string // YYYY-MM-DD
   month: string // YYYY-MM
   category: PerformanceCategory
+  channel?: ContractChannel // undefined = 미분류(컬럼 추가 이전 입력분)
   amount: number
   memo?: string
   updatedAt: string
@@ -60,6 +76,7 @@ export interface ContractEntry {
 export interface ContractEntryInput {
   entryDate: string // YYYY-MM-DD
   category: PerformanceCategory
+  channel: ContractChannel // 지인/소개/DB — 필수
   amount: number
   memo?: string
 }
@@ -125,7 +142,7 @@ export function monthOfDate(date: string): string {
 
 // --- 건별 실적 (performance_entries) ----------------------------------------
 
-const ENTRY_COLS = 'id, staff_id, team_id, entry_date, month, category, amount, memo, updated_at, staff:profiles(id, name, team_id)'
+const ENTRY_COLS = 'id, staff_id, team_id, entry_date, month, category, channel, amount, memo, updated_at, staff:profiles(id, name, team_id)'
 
 function mapEntry(row: Record<string, any>): ContractEntry {
   const staff = (row.staff as Record<string, any> | null) ?? null
@@ -137,6 +154,7 @@ function mapEntry(row: Record<string, any>): ContractEntry {
     entryDate: String(row.entry_date ?? ''),
     month: String(row.month ?? ''),
     category: (row.category as PerformanceCategory) ?? 'life',
+    channel: parseChannel(row.channel),
     amount: Number(row.amount ?? 0),
     memo: (row.memo as string | null) ?? undefined,
     updatedAt: String(row.updated_at ?? '')
@@ -171,12 +189,14 @@ export async function addEntry(input: ContractEntryInput): Promise<AdapterResult
   const month = monthOfDate(input.entryDate)
   if (!isValidMonth(month)) return err('error', '날짜 형식이 올바르지 않습니다.')
   if (!(input.amount > 0)) return err('error', '금액을 입력해주세요.')
+  if (!parseChannel(input.channel)) return err('error', '계약 출처(지인/소개/DB)를 선택해주세요.')
   try {
     const { error } = await client.from('performance_entries').insert({
       staff_id: uid,
       entry_date: input.entryDate,
       month,
       category: input.category,
+      channel: input.channel,
       amount: Math.round(input.amount),
       memo: input.memo?.trim() || null
     })
@@ -195,6 +215,7 @@ export async function updateEntry(id: string, input: ContractEntryInput): Promis
   const month = monthOfDate(input.entryDate)
   if (!isValidMonth(month)) return err('error', '날짜 형식이 올바르지 않습니다.')
   if (!(input.amount > 0)) return err('error', '금액을 입력해주세요.')
+  if (!parseChannel(input.channel)) return err('error', '계약 출처(지인/소개/DB)를 선택해주세요.')
   try {
     const { error } = await client
       .from('performance_entries')
@@ -202,6 +223,7 @@ export async function updateEntry(id: string, input: ContractEntryInput): Promis
         entry_date: input.entryDate,
         month,
         category: input.category,
+        channel: input.channel,
         amount: Math.round(input.amount),
         memo: input.memo?.trim() || null,
         updated_at: new Date().toISOString()
@@ -389,6 +411,42 @@ export interface PerformanceTotals {
   total: number
   contractCount: number
   staffCount: number
+}
+
+/** 채널(지인/소개/DB)별 건수·매출 — 건별 입력(performance_entries) 기준. */
+export interface ChannelBucket {
+  count: number
+  /** 매출 반영액(단기납 60% 환산 적용). */
+  amount: number
+}
+
+export interface ChannelTotals {
+  acquaintance: ChannelBucket
+  referral: ChannelBucket
+  db: ChannelBucket
+  /** 컬럼 추가 이전 입력분(channel 없음). */
+  unclassified: ChannelBucket
+}
+
+/** 건별 실적의 매출 반영액(단기납종신은 60% 환산). */
+export function entryWeightedAmount(e: Pick<ContractEntry, 'category' | 'amount'>): number {
+  return Math.round(e.category === 'short-term' ? e.amount * SHORT_TERM_RATE : e.amount)
+}
+
+/** 계약 출처별 집계. 엑셀(월 총액) 실적에는 출처 정보가 없어 건별 입력만 집계한다. */
+export function summarizeChannels(entries: ContractEntry[]): ChannelTotals {
+  const t: ChannelTotals = {
+    acquaintance: { count: 0, amount: 0 },
+    referral: { count: 0, amount: 0 },
+    db: { count: 0, amount: 0 },
+    unclassified: { count: 0, amount: 0 }
+  }
+  for (const e of entries) {
+    const bucket = e.channel ? t[e.channel] : t.unclassified
+    bucket.count += 1
+    bucket.amount += entryWeightedAmount(e)
+  }
+  return t
 }
 
 /** 분류별 합계 + 총 매출(단기납 60% 반영). */
