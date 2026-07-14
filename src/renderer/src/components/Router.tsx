@@ -15,6 +15,7 @@ import WorkersPage from '@renderer/pages/WorkersPage'
 import WorkerDetailPage from '@renderer/pages/WorkerDetailPage'
 import SalesActivityWorkspacePage from '@renderer/pages/SalesActivityWorkspacePage'
 import PerformancePage from '@renderer/pages/PerformancePage'
+import FcOsPage from '@renderer/pages/FcOsPage'
 import TeamLeaderPage from '@renderer/pages/TeamLeaderPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
@@ -78,6 +79,8 @@ export default function Router(): JSX.Element {
       return <NoticePage />
     case 'dashboard':
       return <Dashboard />
+    case 'fcos':
+      return <FcOsPage />
     case 'customer':
       return <SupabaseCustomerManager />
     case 'birthdays':

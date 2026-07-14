@@ -23,6 +23,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
 export const STAFF_ROUTES: ViewName[] = [
   'staff-home',
   'attendance',
+  'fcos',
   'customer',
   'birthdays',
   'stats-report',
