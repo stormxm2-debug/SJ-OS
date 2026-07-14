@@ -165,6 +165,9 @@ function defaultForm(day: Date): FormState {
   }
 }
 
+/** 자동 확정 알림톡 on/off — 기기별 localStorage (기본 켬). */
+const AUTO_TALK_KEY = 'sj-schedule-auto-alimtalk-v1'
+
 export default function SupabaseScheduleManager(): JSX.Element {
   const { session } = useSession()
   const admin = isAdminRole(session.role)
@@ -185,6 +188,42 @@ export default function SupabaseScheduleManager(): JSX.Element {
   const [form, setForm] = useState<FormState>(() => defaultForm(startOfDay(new Date())))
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | undefined>()
+
+  // 자동 확정 알림톡 — 등록 직후 고객에게 예약 확정 카톡 자동 발송 (기기별 기억)
+  const [autoTalk, setAutoTalk] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(AUTO_TALK_KEY) !== 'off'
+    } catch {
+      return true
+    }
+  })
+  const [autoTalkNote, setAutoTalkNote] = useState<string | undefined>()
+  const toggleAutoTalk = (on: boolean): void => {
+    setAutoTalk(on)
+    try {
+      window.localStorage.setItem(AUTO_TALK_KEY, on ? 'on' : 'off')
+    } catch {
+      /* 저장 실패해도 이번 세션 값은 유지 */
+    }
+  }
+  /**
+   * 등록 직후 자동 확정 카톡. Supabase 저장분(실제 일정)만 대상 — 서버가 일정→고객
+   * 전화번호를 직접 조회하므로 번호는 클라이언트를 거치지 않는다. 실패해도 일정
+   * 등록은 이미 완료 상태라 안내만 남긴다.
+   */
+  const autoSendConfirm = async (created?: ScheduleWithCustomer, mode?: string): Promise<void> => {
+    if (!autoTalk || !created?.id || !created.customerId || mode !== 'supabase') return
+    const who = created.customerName ?? '고객'
+    const res = await sendMeetingAlimtalk(created.id, 'confirm')
+    setAutoTalkNote(
+      res.ok
+        ? `${who}님에게 예약 확정 카톡을 자동 발송했습니다.`
+        : res.notConfigured
+          ? '알림톡 설정 전이라 자동 발송을 건너뛰었습니다 — 일정 카드의 [카톡 공유]로 보내주세요.'
+          : `자동 카톡 발송 실패: ${res.message}`
+    )
+    window.setTimeout(() => setAutoTalkNote(undefined), 8000)
+  }
 
   // AI 한줄 등록
   const [aiText, setAiText] = useState('')
@@ -326,6 +365,8 @@ export default function SupabaseScheduleManager(): JSX.Element {
       setFormError(res.error ?? '일정 저장에 실패했습니다.')
       return
     }
+    // 신규 등록 + 고객 연결 시 예약 확정 카톡 자동 발송 (등록은 이미 완료 — 실패해도 안내만)
+    if (!form.editingId) void autoSendConfirm(res.event, res.mode)
     setShowForm(false)
     pickDay(startOfDay(starts))
     void load()
@@ -371,6 +412,8 @@ export default function SupabaseScheduleManager(): JSX.Element {
       setAiError(res.error ?? '등록에 실패했습니다.')
       return
     }
+    // AI 등록도 고객이 목록과 매칭된 경우 동일하게 자동 확정 카톡
+    void autoSendConfirm(res.event, res.mode)
     setAiText('')
     setAiPreview(undefined)
     pickDay(startOfDay(starts))
@@ -488,6 +531,13 @@ export default function SupabaseScheduleManager(): JSX.Element {
                   </button>
                 </span>
               </div>
+              {/* 고객이 내 목록과 매칭되면 등록 즉시 확정 카톡이 나간다 — 여기서 끄고 켤 수 있게 */}
+              {aiPreview.customerName && myCustomers.some((c) => c.name === aiPreview.customerName) ? (
+                <label className="mt-1.5 flex cursor-pointer items-center gap-1.5 text-[10px] text-[#8a6a1f]">
+                  <input type="checkbox" checked={autoTalk} onChange={(e) => toggleAutoTalk(e.target.checked)} className="h-3 w-3 accent-[#c6982f]" />
+                  등록하면 {aiPreview.customerName}님에게 예약 확정 카톡 자동 발송 (건당 소액 요금)
+                </label>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -559,6 +609,14 @@ export default function SupabaseScheduleManager(): JSX.Element {
 
         {showMonth ? <MonthCalendar eventsOf={eventsOf} onPick={(d) => pickDay(d)} /> : null}
       </div>
+
+      {/* 자동 확정 카톡 결과 안내 (등록 직후 잠깐 표시) */}
+      {autoTalkNote ? (
+        <div className="flex items-start gap-2 rounded-xl border border-[#c6982f]/40 bg-[#fdf7ea] px-3 py-2.5 text-[12px] font-semibold text-[#8a6a1f]">
+          <MessageCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          {autoTalkNote}
+        </div>
+      ) : null}
 
       {/* 등록/수정 폼 */}
       {showForm ? (
@@ -702,6 +760,24 @@ export default function SupabaseScheduleManager(): JSX.Element {
               </button>
             ))}
           </div>
+
+          {/* 신규 등록 + 목록 고객 선택 시: 예약 확정 카톡 자동 발송 옵션 */}
+          {!form.editingId && form.customerMode === 'list' && form.customerId ? (
+            <label className="mb-3 flex cursor-pointer items-start gap-2 rounded-xl border border-[#c6982f]/40 bg-[#fdf7ea] px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={autoTalk}
+                onChange={(e) => toggleAutoTalk(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[#c6982f]"
+              />
+              <span className="text-[12px] leading-snug text-[#8a6a1f]">
+                <b>등록하면 고객에게 예약 확정 카톡 자동 발송</b>
+                <span className="block text-[10px] font-normal opacity-80">
+                  미용실 예약 알림처럼 일시·장소가 카톡으로 안내됩니다. (알림톡, 건당 소액 요금 · 고객 전화번호 필요)
+                </span>
+              </span>
+            </label>
+          ) : null}
 
           {formError ? <p className="mb-2 text-[12px] text-rose-600">{formError}</p> : null}
           <button
