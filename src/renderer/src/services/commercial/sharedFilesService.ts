@@ -4,7 +4,9 @@ import { getSupabaseClient, initSupabaseClient, getSupabaseConfigStatus } from '
  * 자료실 (shared_files + shared-files 버킷).
  *
  * - 공유(company): 전 직원 열람, 대표·관리자만 업로드/삭제.
- * - 개인(personal): 올린 본인만 열람/삭제 — 관리자도 못 본다 ("자기만" 원칙, RLS 강제).
+ * - 개인(personal): 올린 본인만 열람/관리. **대표(관리자)는 전 회원 개인 파일을 열람·관리
+ *   할 수 있다** (오버사이트). 삭제는 소프트삭제(서버 보존) — 회원 화면에선 사라지지만
+ *   대표는 '삭제됨(보관)'에서 계속 보고 복원·영구삭제할 수 있다. 영구삭제는 대표만.
  * 파일 원본은 비공개 버킷에, 목록 메타데이터는 shared_files 테이블에 저장.
  * 열람은 1시간짜리 서명 URL — 링크가 새어도 만료되면 무효.
  *
@@ -16,6 +18,8 @@ import { getSupabaseClient, initSupabaseClient, getSupabaseConfigStatus } from '
 const BUCKET = 'shared-files'
 
 export type SharedFileScope = 'company' | 'personal'
+/** 개인함 뷰: 활성(기본) / 삭제됨(대표만 — 소프트삭제 보관함). */
+export type SharedFileView = 'active' | 'deleted'
 
 export interface SharedFileItem {
   id: string
@@ -27,6 +31,10 @@ export interface SharedFileItem {
   mime?: string
   sizeBytes: number
   createdAt: string
+  /** 소프트삭제 시각 (null = 활성). */
+  deletedAt?: string | null
+  /** 삭제 주체 라벨: 'member'(회원) | 'owner'(대표). */
+  deletedByRole?: string | null
 }
 
 export const SHARED_FILE_MAX_BYTES = 20 * 1024 * 1024
@@ -84,20 +92,28 @@ function mapRow(r: Record<string, unknown>): SharedFileItem {
     path: String(r.path ?? ''),
     mime: (r.mime as string | null) ?? undefined,
     sizeBytes: Number(r.size_bytes ?? 0),
-    createdAt: String(r.created_at ?? '')
+    createdAt: String(r.created_at ?? ''),
+    deletedAt: (r.deleted_at as string | null) ?? null,
+    deletedByRole: (r.deleted_by_role as string | null) ?? null
   }
 }
 
 const NOT_CONFIGURED = '서버 연결 후 사용할 수 있습니다.'
 const NOT_READY = '자료실 준비 중입니다 — 관리자에게 문의해 주세요. (DB 스키마 미적용)'
 
-export async function listSharedFiles(scope: SharedFileScope): Promise<{ ok: boolean; items: SharedFileItem[]; error?: string }> {
+export async function listSharedFiles(
+  scope: SharedFileScope,
+  view: SharedFileView = 'active'
+): Promise<{ ok: boolean; items: SharedFileItem[]; error?: string }> {
   if (!getSupabaseConfigStatus().isConfigured) return { ok: false, items: [], error: NOT_CONFIGURED }
   const client = await getClient()
   if (!client) return { ok: false, items: [], error: NOT_CONFIGURED }
   if (!(await currentUid(client))) return { ok: false, items: [], error: '로그인 후 사용할 수 있습니다.' }
   try {
-    const { data, error } = await client.from('shared_files').select('*').eq('scope', scope).order('created_at', { ascending: false })
+    let q = client.from('shared_files').select('*').eq('scope', scope)
+    // 활성=삭제 안 된 것(회원·대표 공통 기본), 삭제됨=대표 보관함(소프트삭제분).
+    q = view === 'deleted' ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null)
+    const { data, error } = await q.order('created_at', { ascending: false })
     if (error) return { ok: false, items: [], error: NOT_READY }
     return { ok: true, items: ((data ?? []) as Record<string, unknown>[]).map(mapRow) }
   } catch {
@@ -156,6 +172,47 @@ export async function uploadSharedFile(
   }
 }
 
+/**
+ * 소프트삭제 — 개인 파일을 '삭제됨'으로 표시(서버 보존). 회원 화면에선 사라지지만
+ * 대표는 보관함에서 계속 본다. asOwner=대표가 지운 경우(라벨용). RLS: 회원=본인 활성분,
+ * 대표=전체.
+ */
+export async function softDeleteFile(item: SharedFileItem, asOwner: boolean): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, error: NOT_CONFIGURED }
+  const uid = await currentUid(client)
+  try {
+    const { error } = await client
+      .from('shared_files')
+      .update({ deleted_at: new Date().toISOString(), deleted_by: uid, deleted_by_role: asOwner ? 'owner' : 'member' })
+      .eq('id', item.id)
+    if (error) return { ok: false, error: '삭제 권한이 없거나 실패했습니다.' }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '삭제 중 오류가 발생했습니다.' }
+  }
+}
+
+/** 복원 — 소프트삭제된 파일을 다시 활성으로 (대표만, RLS 강제). */
+export async function restoreFile(item: SharedFileItem): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, error: NOT_CONFIGURED }
+  try {
+    const { error } = await client
+      .from('shared_files')
+      .update({ deleted_at: null, deleted_by: null, deleted_by_role: null })
+      .eq('id', item.id)
+    if (error) return { ok: false, error: '복원 권한이 없거나 실패했습니다.' }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '복원 중 오류가 발생했습니다.' }
+  }
+}
+
+/**
+ * 영구삭제 — DB 행 + 원본까지 완전히 제거 (되돌릴 수 없음). RLS상 대표/관리자만
+ * (개인 파일 하드삭제는 대표만). 공유(company) 자료의 관리자 삭제에도 사용.
+ */
 export async function deleteSharedFile(item: SharedFileItem): Promise<{ ok: boolean; error?: string }> {
   const client = await getClient()
   if (!client) return { ok: false, error: NOT_CONFIGURED }

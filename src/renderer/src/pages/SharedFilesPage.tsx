@@ -11,7 +11,10 @@ import {
   Image as ImageIcon,
   FileSpreadsheet,
   File as FileIcon,
-  PenLine
+  PenLine,
+  RotateCcw,
+  ShieldAlert,
+  Archive
 } from 'lucide-react'
 // PDF 편집기는 열 때만 내려받는다 — pdf-lib/폰트가 메인 번들에 실리지 않게 (첫 로딩 속도)
 const PdfFillEditor = lazy(() => import('@renderer/components/files/PdfFillEditor'))
@@ -22,11 +25,14 @@ import {
   listSharedFiles,
   uploadSharedFile,
   deleteSharedFile,
+  softDeleteFile,
+  restoreFile,
   sharedFileUrl,
   formatFileSize,
   extOf,
   type SharedFileItem,
-  type SharedFileScope
+  type SharedFileScope,
+  type SharedFileView
 } from '@renderer/services/commercial/sharedFilesService'
 
 /**
@@ -48,6 +54,7 @@ export default function SharedFilesPage(): JSX.Element {
   const admin = isAdminRole(session.role)
 
   const [scope, setScope] = useState<SharedFileScope>('company')
+  const [personalView, setPersonalView] = useState<SharedFileView>('active') // 대표 전용: 활성/삭제됨(보관)
   const [items, setItems] = useState<SharedFileItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
@@ -62,23 +69,25 @@ export default function SharedFilesPage(): JSX.Element {
   const [fillLoading, setFillLoading] = useState<string | null>(null)
   const pdfPickRef = useRef<HTMLInputElement>(null)
 
-  const canUpload = scope === 'personal' || admin
+  // 대표가 개인함의 '삭제됨(보관)'을 보는 중 = 보관함 뷰 (업로드/소프트삭제 없음)
+  const isArchive = scope === 'personal' && admin && personalView === 'deleted'
+  const canUpload = scope === 'company' ? admin : !isArchive
 
   const load = useCallback(
-    async (s: SharedFileScope = scope): Promise<void> => {
+    async (s: SharedFileScope = scope, v: SharedFileView = personalView): Promise<void> => {
       setLoading(true)
-      const res = await listSharedFiles(s)
+      const res = await listSharedFiles(s, s === 'personal' ? v : 'active')
       setItems(res.items)
       setError(res.ok ? undefined : res.error)
       setLoading(false)
     },
-    [scope]
+    [scope, personalView]
   )
 
   useEffect(() => {
-    void load(scope)
+    void load(scope, personalView)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope])
+  }, [scope, personalView])
 
   const handleFiles = async (files: File[]): Promise<void> => {
     if (files.length === 0 || !canUpload) return
@@ -106,16 +115,36 @@ export default function SharedFilesPage(): JSX.Element {
   }
 
   const remove = async (item: SharedFileItem): Promise<void> => {
-    if (typeof window !== 'undefined' && !window.confirm(`"${item.name}" 파일을 삭제할까요?\n삭제하면 되돌릴 수 없습니다.`)) return
-    const res = await deleteSharedFile(item)
-    if (!res.ok) {
-      setNotes([res.error ?? '삭제에 실패했습니다.'])
-      return
+    if (item.scope === 'company') {
+      // 공유 자료: 관리자 영구삭제 (되돌릴 수 없음)
+      if (typeof window !== 'undefined' && !window.confirm(`"${item.name}" 파일을 삭제할까요?\n삭제하면 되돌릴 수 없습니다.`)) return
+      const res = await deleteSharedFile(item)
+      if (!res.ok) return setNotes([res.error ?? '삭제에 실패했습니다.'])
+      return void load()
     }
-    void load(scope)
+    // 개인 파일: 소프트삭제 (서버 보존 — 대표는 '삭제됨'에서 복원 가능)
+    if (typeof window !== 'undefined' && !window.confirm(`"${item.name}" 파일을 삭제할까요?\n(서버에는 보관되며, 대표는 '삭제됨'에서 복원할 수 있어요)`)) return
+    const res = await softDeleteFile(item, admin)
+    if (!res.ok) return setNotes([res.error ?? '삭제에 실패했습니다.'])
+    void load()
   }
 
-  const canDelete = (item: SharedFileItem): boolean => (item.scope === 'personal' ? item.ownerId === session.id : admin)
+  const doRestore = async (item: SharedFileItem): Promise<void> => {
+    const res = await restoreFile(item)
+    if (!res.ok) return setNotes([res.error ?? '복원에 실패했습니다.'])
+    void load()
+  }
+
+  const doPurge = async (item: SharedFileItem): Promise<void> => {
+    if (typeof window !== 'undefined' && !window.confirm(`"${item.name}" 파일을 영구삭제할까요?\n서버에서도 완전히 사라지며 되돌릴 수 없습니다.`)) return
+    const res = await deleteSharedFile(item)
+    if (!res.ok) return setNotes([res.error ?? '영구삭제에 실패했습니다.'])
+    void load()
+  }
+
+  // 활성 뷰에서만 삭제 버튼: 개인=본인 or 대표 / 공유=관리자.
+  const canDelete = (item: SharedFileItem): boolean =>
+    item.scope === 'company' ? admin : item.ownerId === session.id || admin
 
   /** 자료실 PDF → 바이트 내려받아 채우기 편집기 열기. */
   const openFill = async (item: SharedFileItem): Promise<void> => {
@@ -187,24 +216,52 @@ export default function SharedFilesPage(): JSX.Element {
         <div className="mt-3 flex overflow-hidden rounded-xl border border-slate-800">
           <button
             type="button"
-            onClick={() => setScope('company')}
+            onClick={() => {
+              setScope('company')
+              setPersonalView('active')
+            }}
             className={['flex-1 px-3 py-2 text-xs font-bold transition', scope === 'company' ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-white text-slate-500'].join(' ')}
           >
             공유 자료
           </button>
           <button
             type="button"
-            onClick={() => setScope('personal')}
+            onClick={() => {
+              setScope('personal')
+              setPersonalView('active')
+            }}
             className={['flex-1 px-3 py-2 text-xs font-bold transition', scope === 'personal' ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-white text-slate-500'].join(' ')}
           >
-            내 파일
+            {admin ? '회원 파일' : '내 파일'}
           </button>
         </div>
         <p className="mt-1.5 text-[11px] text-slate-500">
           {scope === 'company'
             ? '전 직원이 볼 수 있는 회사 자료입니다 · 업로드/삭제는 대표·관리자만'
-            : '나만 볼 수 있는 개인 보관함입니다 — 관리자도 열람할 수 없어요'}
+            : admin
+              ? '전 회원의 개인 파일입니다 · 열람·관리 가능 · 삭제는 서버에 보관되어 복원할 수 있어요'
+              : '내 개인 보관함입니다 · 나만 올리고 관리해요 (회사 규정상 대표는 열람·관리할 수 있어요)'}
         </p>
+
+        {/* 대표 전용: 활성 ↔ 삭제됨(보관) 전환 */}
+        {scope === 'personal' && admin ? (
+          <div className="mt-2 flex overflow-hidden rounded-lg border border-slate-800 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setPersonalView('active')}
+              className={['flex-1 px-2 py-1.5 font-bold transition', personalView === 'active' ? 'bg-slate-800 text-slate-100' : 'bg-white text-slate-500'].join(' ')}
+            >
+              정상 파일
+            </button>
+            <button
+              type="button"
+              onClick={() => setPersonalView('deleted')}
+              className={['flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 font-bold transition', personalView === 'deleted' ? 'bg-rose-900/40 text-rose-200' : 'bg-white text-slate-500'].join(' ')}
+            >
+              <Archive className="h-3 w-3" /> 삭제됨 (보관)
+            </button>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
@@ -253,7 +310,9 @@ export default function SharedFilesPage(): JSX.Element {
           </div>
         ) : (
           <div className="mt-3 rounded-xl border border-dashed border-slate-700 bg-white/50 px-3 py-2.5 text-center text-[11px] text-slate-500">
-            공유 자료 업로드는 대표·관리자만 가능합니다 — 개인 파일은 [내 파일] 탭에 올려주세요
+            {isArchive
+              ? '삭제되어 보관 중인 파일입니다. 복원하거나 영구삭제할 수 있어요.'
+              : '공유 자료 업로드는 대표·관리자만 가능합니다 — 개인 파일은 [내 파일] 탭에 올려주세요'}
           </div>
         )}
         <input
@@ -276,19 +335,33 @@ export default function SharedFilesPage(): JSX.Element {
             </div>
           ) : items.length === 0 && !error ? (
             <div className="rounded-xl border border-dashed border-slate-700 py-6 text-center text-[12px] text-slate-500">
-              {scope === 'company' ? '아직 공유 자료가 없습니다.' : '아직 올린 파일이 없습니다.'}
+              {isArchive
+                ? '삭제되어 보관 중인 파일이 없습니다.'
+                : scope === 'company'
+                  ? '아직 공유 자료가 없습니다.'
+                  : admin
+                    ? '아직 회원이 올린 개인 파일이 없습니다.'
+                    : '아직 올린 파일이 없습니다.'}
             </div>
           ) : (
             items.map((item) => (
-              <div key={item.id} className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-white px-3 py-2.5">
+              <div key={item.id} className={['flex items-center gap-2.5 rounded-xl border px-3 py-2.5', isArchive ? 'border-rose-200 bg-rose-50/50' : 'border-slate-800 bg-white'].join(' ')}>
                 <span className="shrink-0">{iconFor(item.name)}</span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-semibold text-slate-100">{item.name}</div>
                   <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
                     <span>{formatFileSize(item.sizeBytes)}</span>
                     <span>{item.createdAt ? new Date(item.createdAt).toLocaleDateString('ko-KR') : ''}</span>
-                    {scope === 'company' && item.ownerName ? (
+                    {/* 소유 회원 (공유 자료 + 대표가 보는 개인 파일) */}
+                    {(scope === 'company' || admin) && item.ownerName ? (
                       <span className="rounded-full bg-slate-950 px-1.5 py-0.5 font-semibold text-slate-400">{item.ownerName}</span>
+                    ) : null}
+                    {/* 삭제 보관: 누가 지웠는지 */}
+                    {item.deletedAt ? (
+                      <span className="rounded-full bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-600">
+                        {item.deletedByRole === 'owner' ? '대표가 삭제' : '회원이 삭제'}
+                        {` · ${new Date(item.deletedAt).toLocaleDateString('ko-KR')}`}
+                      </span>
                     ) : null}
                   </div>
                 </div>
@@ -300,7 +373,7 @@ export default function SharedFilesPage(): JSX.Element {
                 >
                   {opening === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />} 열기
                 </button>
-                {extOf(item.name) === 'pdf' ? (
+                {!isArchive && extOf(item.name) === 'pdf' ? (
                   <button
                     type="button"
                     onClick={() => void openFill(item)}
@@ -310,7 +383,25 @@ export default function SharedFilesPage(): JSX.Element {
                     {fillLoading === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <PenLine className="h-3 w-3" />} 채우기
                   </button>
                 ) : null}
-                {canDelete(item) ? (
+                {isArchive ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void doRestore(item)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-emerald-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-50"
+                    >
+                      <RotateCcw className="h-3 w-3" /> 복원
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void doPurge(item)}
+                      aria-label={`${item.name} 영구삭제`}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-300 bg-white px-2 py-1.5 text-[11px] font-bold text-rose-600 transition hover:bg-rose-50"
+                    >
+                      <ShieldAlert className="h-3 w-3" /> 영구삭제
+                    </button>
+                  </>
+                ) : canDelete(item) ? (
                   <button
                     type="button"
                     onClick={() => void remove(item)}
