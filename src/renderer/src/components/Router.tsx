@@ -29,6 +29,7 @@ import QaCenterPage from '@renderer/pages/QaCenterPage'
 import ReleaseCenterPage from '@renderer/pages/ReleaseCenterPage'
 import DevOpsCenterPage from '@renderer/pages/DevOpsCenterPage'
 import DevelopmentOsPage from '@renderer/pages/DevelopmentOsPage'
+import SecurityCenterPage from '@renderer/pages/SecurityCenterPage'
 import PmPlannerPage from '@renderer/pages/PmPlannerPage'
 import ProductBacklogPage from '@renderer/pages/ProductBacklogPage'
 import ProjectManagerPage from '@renderer/pages/ProjectManagerPage'
@@ -107,6 +108,8 @@ export default function Router(): JSX.Element {
       return <AutopilotPage />
     case 'devos':
       return <DevelopmentOsPage />
+    case 'security-center':
+      return <SecurityCenterPage />
     case 'pm':
       return <PmPlannerPage />
     case 'backlog':

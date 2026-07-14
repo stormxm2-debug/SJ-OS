@@ -33,7 +33,8 @@ import {
   LogOut,
   ChevronDown,
   ChevronRight,
-  ReceiptText
+  ReceiptText,
+  Radar
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -122,6 +123,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'autopilot', label: '오토파일럿', icon: Rocket, view: { name: 'autopilot' }, match: ['autopilot'] },
       { key: 'app-builder', label: '범용 앱 빌더', icon: Boxes, view: { name: 'app-builder' }, match: ['app-builder'] },
       { key: 'devos', label: '개발 OS', icon: Cpu, view: { name: 'devos' }, match: ['devos'] },
+      { key: 'security-center', label: '보안 모듈 학습', icon: Radar, view: { name: 'security-center' }, match: ['security-center'] },
       { key: 'workers', label: 'AI 워커', icon: Users, view: { name: 'workers' }, match: ['workers', 'worker'] },
       { key: 'backlog', label: '제품 백로그', icon: ClipboardList, view: { name: 'backlog' }, match: ['backlog'] },
       { key: 'projects', label: '프로젝트', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] }

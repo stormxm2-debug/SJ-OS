@@ -74,6 +74,16 @@ import {
   getAiGatewayStatus,
   transcribeAudio
 } from './services/ai-gateway'
+import {
+  beginSession as secLearnBeginSession,
+  captureAfter as secLearnCaptureAfter,
+  endSession as secLearnEndSession,
+  getDependencyGraph as secLearnGetGraph,
+  getState as secLearnGetState,
+  listInsurers as secLearnListInsurers,
+  listLearned as secLearnListLearned,
+  setSecurityLearningEmitter
+} from './securityLearning'
 import type { CodingExecRequest } from '@shared/providers'
 import type { AiTranscribeRequest } from '@shared/aiGateway'
 import type { ClaudeExportRequest, ClaudeRunRequest } from '@shared/claudeCode'
@@ -386,6 +396,21 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude-parallel:merge', (_e, sourceJobId: string) =>
     mergeApprovedWorktree(sourceJobId)
   )
+
+  // 자동 보안 모듈 탐지 및 학습 엔진 (관찰·학습 전용; 종료/제어 채널 없음).
+  // 상태 변경은 모든 창에 broadcast. 시스템 접근은 메인의 고정 PowerShell 스크립트뿐.
+  setSecurityLearningEmitter((state) => {
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('sj-seclearn:state', state))
+  })
+  ipcMain.handle('sj-seclearn:status', () => secLearnGetState())
+  ipcMain.handle('sj-seclearn:list-insurers', () => secLearnListInsurers())
+  ipcMain.handle('sj-seclearn:learned', (_e, insurerId?: string) => secLearnListLearned(insurerId))
+  ipcMain.handle('sj-seclearn:graph', (_e, insurerId: string) => secLearnGetGraph(insurerId))
+  ipcMain.handle('sj-seclearn:begin-session', (_e, args: { insurerId: string; insurerName?: string }) =>
+    secLearnBeginSession(args.insurerId, args.insurerName)
+  )
+  ipcMain.handle('sj-seclearn:capture-after', () => secLearnCaptureAfter())
+  ipcMain.handle('sj-seclearn:end-session', () => secLearnEndSession())
 
   createWindow()
 

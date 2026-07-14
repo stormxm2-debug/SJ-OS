@@ -26,6 +26,7 @@ export type View =
   | { name: 'devops' }
   | { name: 'autopilot' }
   | { name: 'devos' }
+  | { name: 'security-center' }
   | { name: 'pm' }
   | { name: 'backlog' }
   | { name: 'workers' }
