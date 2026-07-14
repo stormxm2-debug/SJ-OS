@@ -20,6 +20,7 @@ export type View =
   | { name: 'consultation' }
   | { name: 'insurance-analysis' }
   | { name: 'claim-assistant' }
+  | { name: 'exemptions' }
   | { name: 'wiki' }
   | { name: 'underwriting'; q?: string }
   | { name: 'pre-underwriting' }

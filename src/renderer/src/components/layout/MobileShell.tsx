@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Home, Clock, UserRound, CalendarDays, Menu, ShieldAlert, RefreshCw } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Home, Clock, UserRound, CalendarDays, Menu, ShieldAlert, RefreshCw, Camera, Loader2 } from 'lucide-react'
+import { captureAndShareElement } from '@renderer/services/share/screenCapture'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useSession } from '@renderer/navigation/SessionContext'
@@ -24,6 +25,7 @@ import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import TodayContactsPage from '@renderer/pages/TodayContactsPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
+import ExemptionsPage from '@renderer/pages/ExemptionsPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
@@ -57,6 +59,19 @@ export default function MobileShell(): JSX.Element {
   // 폰 절전/백그라운드 복귀 시 전체 재조회 (잠들었다 깨어난 화면의 옛 데이터 문제 해결)
   const { wakeKey, lastSyncAt, refresh } = useWakeKey()
 
+  // 화면 캡처 → 카톡 공유 (현재 콘텐츠 영역을 이미지로 떠서 공유창으로)
+  const mainRef = useRef<HTMLElement>(null)
+  const [snapBusy, setSnapBusy] = useState(false)
+  const [snapNote, setSnapNote] = useState<string | null>(null)
+  const snap = async (): Promise<void> => {
+    if (!mainRef.current || snapBusy) return
+    setSnapBusy(true)
+    const res = await captureAndShareElement(mainRef.current)
+    setSnapBusy(false)
+    setSnapNote(res.message ?? null)
+    if (res.message) window.setTimeout(() => setSnapNote(null), 5000)
+  }
+
   // Interaction watchdog (same guarantee as desktop): never leave the app unclickable.
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -85,19 +100,38 @@ export default function MobileShell(): JSX.Element {
           <BrandLogo markClassName="h-7" wordmarkClassName="text-base" />
           <span className="truncate text-[10px] text-slate-500">{session.name || '직원'} · {ROLE_LABEL[session.role]}</span>
         </div>
-        <button
-          type="button"
-          onClick={refresh}
-          className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 active:bg-indigo-100"
-          aria-label="새로고침"
-        >
-          <RefreshCw className="h-3 w-3" />
-          {lastSyncAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void snap()}
+            disabled={snapBusy}
+            className="flex items-center gap-1 rounded-full border border-[#c6982f] bg-[#fdf7ea] px-2 py-1 text-[10px] font-bold text-[#8a6a1f] active:brightness-95 disabled:opacity-60"
+            aria-label="화면 캡처해서 공유"
+          >
+            {snapBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
+            캡처
+          </button>
+          <button
+            type="button"
+            onClick={refresh}
+            className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 active:bg-indigo-100"
+            aria-label="새로고침"
+          >
+            <RefreshCw className="h-3 w-3" />
+            {lastSyncAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+          </button>
+        </div>
       </header>
 
+      {/* 캡처 결과 안내 (폴백/실패 시에만) */}
+      {snapNote ? (
+        <div className="fixed inset-x-4 top-14 z-[60] rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-center text-[11px] font-semibold text-amber-800 shadow-lg">
+          {snapNote}
+        </div>
+      ) : null}
+
       {/* Content — wakeKey 리마운트로 복귀 시 모든 화면 재조회 */}
-      <main key={wakeKey} className="flex-1 overflow-y-auto overflow-x-hidden p-3 pb-24">
+      <main ref={mainRef} key={wakeKey} className="flex-1 overflow-y-auto overflow-x-hidden p-3 pb-24">
         <MobileContent routeName={route.name} role={session.role} />
       </main>
 
@@ -175,6 +209,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <MobilePerformance />
     case 'claim-assistant':
       return <InsuranceClaimAssistantPage />
+    case 'exemptions':
+      return <ExemptionsPage />
     case 'wiki':
       return <InsuranceWikiPage />
     case 'underwriting':

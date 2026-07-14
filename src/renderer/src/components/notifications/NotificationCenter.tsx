@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, X, ClipboardCheck, PhoneCall, ShieldCheck } from 'lucide-react'
+import { Bell, X, ClipboardCheck, PhoneCall, ShieldCheck, Hourglass } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
@@ -24,7 +24,7 @@ interface Toast {
   id: number
   title: string
   body: string
-  target: 'registration-admin' | 'customer' | 'leads' | 'claim-assistant'
+  target: 'registration-admin' | 'customer' | 'leads' | 'claim-assistant' | 'exemptions'
 }
 
 let toastSeq = 1
@@ -135,6 +135,20 @@ export default function NotificationCenter(): JSX.Element | null {
             target: 'leads'
           })
       })
+      // 면책 종료 임박/도래 → 담당 FC 본인에게만 (cron 이 exemption_alerts 생성).
+      channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'exemption_alerts' }, (payload: any) => {
+        const row = payload?.new ?? {}
+        if (String(row.staff_id ?? '') !== meRef.current) return
+        const who = row.customer_name ? String(row.customer_name) : '고객'
+        const what = [row.insurer, row.coverage].filter(Boolean).join(' ')
+        const due = String(row.kind ?? '') === 'due'
+        if (active)
+          push({
+            title: due ? '면책 종료 · 보장 시작 🔔' : '면책 종료 임박 (D-7 이내)',
+            body: `${who}${what ? ` · ${what}` : ''}`,
+            target: 'exemptions'
+          })
+      })
       channel.subscribe((status: string) => {
         // 소켓 오류/타임아웃이면 잠시 후 재구독 (useRealtimeSync와 같은 방어).
         if (!active) return
@@ -181,6 +195,8 @@ export default function NotificationCenter(): JSX.Element | null {
               <PhoneCall className="h-4 w-4" />
             ) : t.target === 'claim-assistant' ? (
               <ShieldCheck className="h-4 w-4" />
+            ) : t.target === 'exemptions' ? (
+              <Hourglass className="h-4 w-4" />
             ) : (
               <Bell className="h-4 w-4" />
             )}

@@ -21,7 +21,8 @@ import {
   Cake,
   TrendingUp,
   UserPlus,
-  PhoneCall
+  PhoneCall,
+  Hourglass
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -66,6 +67,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     items: [
       { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' } },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: FileText, view: { name: 'claim-assistant' } },
+      { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' } },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' } },
       { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' } },
       { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' } },

@@ -20,6 +20,7 @@ import PerformancePage from '@renderer/pages/PerformancePage'
 import TeamLeaderPage from '@renderer/pages/TeamLeaderPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
+import ExemptionsPage from '@renderer/pages/ExemptionsPage'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
@@ -105,6 +106,8 @@ export default function Router(): JSX.Element {
       return <InsuranceAnalysisPage />
     case 'claim-assistant':
       return <InsuranceClaimAssistantPage />
+    case 'exemptions':
+      return <ExemptionsPage />
     case 'wiki':
       return <InsuranceWikiPage />
     case 'underwriting':
