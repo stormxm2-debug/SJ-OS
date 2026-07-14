@@ -31,6 +31,7 @@ import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
+import MorningBriefing from '@renderer/components/notifications/MorningBriefing'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
 import NoticePage from '@renderer/pages/NoticePage'
 import BirthdayPage from '@renderer/pages/BirthdayPage'
@@ -173,6 +174,8 @@ export default function MobileShell(): JSX.Element {
       <JarvisClapListener />
       {/* wakeKey로 함께 리마운트 — 복귀 시 realtime 알림 구독을 새로 맺는다. */}
       <NotificationCenter key={`nc-${wakeKey}`} />
+      {/* 하루 첫 접속 시 "오늘 접촉할 고객 N명" 브리핑 (자체생산 루틴 시작점) */}
+      <MorningBriefing />
       <ResolutionLockGate key={`rg-${wakeKey}`} />
     </div>
   )

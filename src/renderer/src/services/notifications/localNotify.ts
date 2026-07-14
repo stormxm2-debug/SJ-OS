@@ -10,7 +10,7 @@ export interface LocalNotice {
   title: string
   body: string
   /** 토스트/OS 알림 클릭 시 이동할 라우트. */
-  target: 'claim-assistant' | 'registration-admin' | 'customer' | 'leads'
+  target: 'claim-assistant' | 'registration-admin' | 'customer' | 'leads' | 'today-contacts'
 }
 
 type Listener = (n: LocalNotice) => void

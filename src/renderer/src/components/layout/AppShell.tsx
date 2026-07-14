@@ -5,6 +5,7 @@ import Router from '../Router'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
 import JarvisClapListener from '@renderer/components/jarvis/JarvisClapListener'
 import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
+import MorningBriefing from '@renderer/components/notifications/MorningBriefing'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
 import { useWakeKey } from '@renderer/services/commercial/wakeResync'
 
@@ -48,6 +49,8 @@ export default function AppShell(): JSX.Element {
       {/* 우하단 알림 (고객등록 요청/처리) + 출근 후 다짐 잠금 — wakeKey로 함께
           리마운트해 realtime 구독도 복귀 시 새로 맺는다. */}
       <NotificationCenter key={`nc-${wakeKey}`} />
+      {/* 하루 첫 접속 시 "오늘 접촉할 고객 N명" 브리핑 (자체생산 루틴 시작점) */}
+      <MorningBriefing />
       <ResolutionLockGate key={`rg-${wakeKey}`} />
     </div>
   )

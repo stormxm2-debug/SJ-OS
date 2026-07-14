@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, X, ClipboardCheck, PhoneCall, ShieldCheck, Hourglass } from 'lucide-react'
+import { Bell, X, ClipboardCheck, PhoneCall, ShieldCheck, Hourglass, Sunrise } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
@@ -24,7 +24,7 @@ interface Toast {
   id: number
   title: string
   body: string
-  target: 'registration-admin' | 'customer' | 'leads' | 'claim-assistant' | 'exemptions'
+  target: 'registration-admin' | 'customer' | 'leads' | 'claim-assistant' | 'exemptions' | 'today-contacts'
 }
 
 let toastSeq = 1
@@ -197,6 +197,8 @@ export default function NotificationCenter(): JSX.Element | null {
               <ShieldCheck className="h-4 w-4" />
             ) : t.target === 'exemptions' ? (
               <Hourglass className="h-4 w-4" />
+            ) : t.target === 'today-contacts' ? (
+              <Sunrise className="h-4 w-4" />
             ) : (
               <Bell className="h-4 w-4" />
             )}
