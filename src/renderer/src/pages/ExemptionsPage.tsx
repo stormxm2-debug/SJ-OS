@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Hourglass, Plus, Trash2, Loader2, AlertTriangle, Search, X, CalendarClock, UploadCloud, Sparkles, BadgeCheck, FileText } from 'lucide-react'
+import { Hourglass, Plus, Trash2, Loader2, AlertTriangle, Search, X, CalendarClock, UploadCloud, Sparkles, BadgeCheck, FileText, Share2, Send } from 'lucide-react'
 import {
   listExemptions,
   createExemption,
@@ -14,6 +14,11 @@ import {
   type ExemptionExtraction,
   type ExtractedExemptionItem
 } from '@renderer/services/commercial/exemptionExtractService'
+import {
+  sendExemptionAlimtalk,
+  buildExemptionShareText,
+  shareExemptionText
+} from '@renderer/services/commercial/exemptionNotifyService'
 import { listCustomers } from '@renderer/services/commercial/customerService'
 import { INSURERS } from '@renderer/services/commercial/registrationService'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
@@ -112,6 +117,8 @@ export default function ExemptionsPage(): JSX.Element {
 
 function ExemptionCard({ e, onDeleted }: { e: PolicyExemption; onDeleted: () => void }): JSX.Element {
   const st = exemptionStatus(e.waitingEnd)
+  const [notifyBusy, setNotifyBusy] = useState(false)
+  const [notifyMsg, setNotifyMsg] = useState('')
   const tone =
     st.key === 'ended'
       ? 'bg-emerald-50 text-emerald-700'
@@ -122,6 +129,18 @@ function ExemptionCard({ e, onDeleted }: { e: PolicyExemption; onDeleted: () => 
     if (typeof window !== 'undefined' && !window.confirm(`${e.customerName} · ${e.insurer} 면책 기록을 삭제할까요?`)) return
     const r = await deleteExemption(e.id)
     if (r.ok) onDeleted()
+  }
+  const share = async (): Promise<void> => {
+    const r = await shareExemptionText(buildExemptionShareText(e))
+    setNotifyMsg(r.message)
+    window.setTimeout(() => setNotifyMsg(''), 4000)
+  }
+  const alimtalk = async (): Promise<void> => {
+    setNotifyBusy(true)
+    const r = await sendExemptionAlimtalk(e.id)
+    setNotifyBusy(false)
+    setNotifyMsg(r.message)
+    window.setTimeout(() => setNotifyMsg(''), 6000)
   }
   return (
     <div className="rounded-xl border border-slate-800 bg-white p-3">
@@ -148,6 +167,27 @@ function ExemptionCard({ e, onDeleted }: { e: PolicyExemption; onDeleted: () => 
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
+      {/* 임박/도래 시 고객 연락 — 무료 카톡 공유 + 알림톡(설정 후) */}
+      {st.key !== 'active' ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void share()}
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-[11px] font-bold text-slate-200 hover:border-[#c6982f]/60"
+          >
+            <Share2 className="h-3 w-3 text-[#b0821f]" /> 카톡 공유
+          </button>
+          <button
+            type="button"
+            disabled={notifyBusy}
+            onClick={() => void alimtalk()}
+            className="inline-flex items-center gap-1 rounded-lg bg-[#0e1e3a] px-2.5 py-1.5 text-[11px] font-bold text-[#e6c877] hover:brightness-125 disabled:opacity-50"
+          >
+            {notifyBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />} 고객에게 카톡 안내
+          </button>
+          {notifyMsg ? <span className="text-[11px] font-medium text-slate-400">{notifyMsg}</span> : null}
+        </div>
+      ) : null}
       {e.memo ? <p className="mt-1.5 text-[12px] text-slate-400">{e.memo}</p> : null}
     </div>
   )
