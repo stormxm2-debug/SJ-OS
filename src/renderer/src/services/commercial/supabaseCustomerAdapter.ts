@@ -47,11 +47,23 @@ async function currentUserId(client: any): Promise<string | null> {
   }
 }
 
-function mapRow(row: Record<string, unknown>): CustomerRecord {
+/** owner_staff_id → profiles.name 일괄 조회 (실패 시 빈 맵 — 표시만 빠지고 목록은 정상). */
+async function ownerNamesFor(client: any, rows: Array<Record<string, unknown>>): Promise<Map<string, string>> {
+  const ids = Array.from(new Set(rows.map((r) => String(r.owner_staff_id ?? '')).filter(Boolean)))
+  if (ids.length === 0) return new Map()
+  try {
+    const { data } = await client.from('profiles').select('id, name').in('id', ids)
+    return new Map(((data ?? []) as Array<{ id: string; name: string | null }>).map((p) => [String(p.id), String(p.name ?? '')]))
+  } catch {
+    return new Map()
+  }
+}
+
+function mapRow(row: Record<string, unknown>, ownerNames?: Map<string, string>): CustomerRecord {
   return {
     id: String(row.id),
     ownerStaffId: String(row.owner_staff_id ?? ''),
-    ownerStaffName: '', // resolved via profiles elsewhere; not needed for display here
+    ownerStaffName: ownerNames?.get(String(row.owner_staff_id ?? '')) ?? '',
     teamId: (row.team_id as string | null) ?? undefined,
     name: String(row.name ?? ''),
     phone: (row.phone as string | null) ?? undefined,
@@ -81,7 +93,9 @@ export const supabaseCustomerAdapter = {
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await client.from('customers').select(SELECT_COLS).order('updated_at', { ascending: false })
     if (error) return err('error', '고객 목록을 불러오지 못했습니다.')
-    return { ok: true, data: (data ?? []).map(mapRow) }
+    const rows = (data ?? []) as Array<Record<string, unknown>>
+    const ownerNames = await ownerNamesFor(client, rows)
+    return { ok: true, data: rows.map((r) => mapRow(r, ownerNames)) }
   },
 
   async getCustomer(id: string): Promise<AdapterResult<CustomerRecord | null>> {
@@ -89,7 +103,9 @@ export const supabaseCustomerAdapter = {
     if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
     const { data, error } = await client.from('customers').select(SELECT_COLS).eq('id', id).maybeSingle()
     if (error) return err('error', '고객 정보를 불러오지 못했습니다.')
-    return { ok: true, data: data ? mapRow(data) : null }
+    if (!data) return { ok: true, data: null }
+    const ownerNames = await ownerNamesFor(client, [data as Record<string, unknown>])
+    return { ok: true, data: mapRow(data, ownerNames) }
   },
 
   async createCustomer(input: CustomerInput): Promise<AdapterResult<CustomerRecord>> {

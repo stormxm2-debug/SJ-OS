@@ -775,6 +775,11 @@ export default function SupabaseCustomerManager(): JSX.Element {
                       <UserRound className="h-4 w-4 text-slate-500" />
                       <span className="text-sm font-bold text-slate-100 hover:text-indigo-700">{head.name}</span>
                     </button>
+                    {elevated && scope === 'staff' ? (
+                      <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-[#e6c877]">
+                        담당 {head.ownerStaffName || '미확인'}
+                      </span>
+                    ) : null}
                     {info ? (
                       <span className="text-[11px] text-slate-500">
                         만 {info.age}세 · {info.gender}
@@ -851,9 +856,6 @@ export default function SupabaseCustomerManager(): JSX.Element {
                     </div>
                   ) : null}
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-                    {elevated && scope === 'staff' && head.ownerStaffName ? (
-                      <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-[#e6c877]">담당 {head.ownerStaffName}</span>
-                    ) : null}
                     {head.phone ? <span>{head.phone}</span> : null}
                     {head.address ? (
                       <span className="inline-flex flex-wrap items-center gap-1.5">
