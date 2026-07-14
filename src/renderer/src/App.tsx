@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { NavigationProvider } from './navigation/NavigationContext'
 import { AppModeProvider } from './navigation/AppModeContext'
 import { SessionProvider, useSession } from './navigation/SessionContext'
@@ -28,6 +29,20 @@ function isPublicApply(): boolean {
 }
 
 export default function App(): JSX.Element {
+  // 전역 드롭 가드 — 드롭존 밖에 파일을 놓아도 브라우저/Electron이 파일을 열거나
+  // 페이지를 떠나지 않게 한다. 각 업로드 영역의 FileDropZone이 존 내부 드롭을 처리.
+  useEffect(() => {
+    const prevent = (e: Event): void => {
+      e.preventDefault()
+    }
+    window.addEventListener('dragover', prevent)
+    window.addEventListener('drop', prevent)
+    return () => {
+      window.removeEventListener('dragover', prevent)
+      window.removeEventListener('drop', prevent)
+    }
+  }, [])
+
   if (isPublicApply()) return <PublicApplyPage />
   return (
     <SessionProvider>

@@ -20,6 +20,7 @@ import {
   shareExemptionText
 } from '@renderer/services/commercial/exemptionNotifyService'
 import { listCustomers } from '@renderer/services/commercial/customerService'
+import FileDropZone from '@renderer/components/ui/FileDropZone'
 import { INSURERS } from '@renderer/services/commercial/registrationService'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import type { CustomerRecord } from '@shared/commercial/models'
@@ -303,13 +304,25 @@ function PolicyAutoRegister({ onSaved }: { onSaved: () => void }): JSX.Element {
 
       {/* 2) 증권 파일 */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[12px] font-semibold text-slate-200 hover:border-[#c6982f]/60"
+        <FileDropZone
+          className="inline-block"
+          accept="application/pdf,image/*"
+          dropLabel="놓으면 증권이 추가됩니다"
+          onFiles={(fs) =>
+            setFiles((prev) => {
+              const seen = new Set(prev.map((f) => `${f.name}:${f.size}`))
+              return [...prev, ...fs.filter((f) => !seen.has(`${f.name}:${f.size}`))]
+            })
+          }
         >
-          <UploadCloud className="h-3.5 w-3.5 text-[#b0821f]" /> 증권 파일 선택 (PDF·사진)
-        </button>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[12px] font-semibold text-slate-200 hover:border-[#c6982f]/60"
+          >
+            <UploadCloud className="h-3.5 w-3.5 text-[#b0821f]" /> 증권 파일 선택·드롭 (PDF·사진)
+          </button>
+        </FileDropZone>
         <input
           ref={fileRef}
           type="file"

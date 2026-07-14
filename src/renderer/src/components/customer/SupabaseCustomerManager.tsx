@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import FileDropZone from '@renderer/components/ui/FileDropZone'
 import {
   Users,
   Plus,
@@ -280,6 +281,11 @@ export default function SupabaseCustomerManager(): JSX.Element {
   const onPickFiles = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const files = Array.from(e.target.files ?? [])
     e.target.value = ''
+    await addAttachmentFiles(files)
+  }
+
+  /** 파일 선택·드롭 공용 첨부 처리 (개수 제한 + 종류 검사 + 업로드). */
+  const addAttachmentFiles = async (files: File[]): Promise<void> => {
     if (files.length === 0) return
     if (form.attachments.length + files.length > MAX_CUSTOMER_ATTACHMENTS) {
       setFormErrors([`첨부는 고객당 최대 ${MAX_CUSTOMER_ATTACHMENTS}개입니다.`])
@@ -673,9 +679,15 @@ export default function SupabaseCustomerManager(): JSX.Element {
           {/* 병력 → 인수 가능 보험사 자동 매칭 (매칭 없으면 렌더링 안 함) */}
           <CustomerUnderwritingHint medicalHistory={form.medicalHistory} />
 
-          {/* 첨부 */}
+          {/* 첨부 — 클릭 선택 + 파일 드래그&드롭 */}
           <div className="mb-3">
-            <Field label={`사진 / 서류 / 음성 첨부 (${form.attachments.length}/${MAX_CUSTOMER_ATTACHMENTS})`}>
+            <FileDropZone
+              accept="image/*,application/pdf,audio/*,.m4a,.mp3,.wav,.aac,.amr,.ogg,.3gp"
+              disabled={uploading}
+              dropLabel="놓으면 고객 첨부로 업로드됩니다"
+              onFiles={(fs) => void addAttachmentFiles(fs)}
+            >
+            <Field label={`사진 / 서류 / 음성 첨부 (${form.attachments.length}/${MAX_CUSTOMER_ATTACHMENTS}) — 파일을 끌어다 놔도 됩니다`}>
               <div className="flex flex-wrap items-center gap-2">
                 {form.attachments.filter((a) => a.kind !== 'audio').map((a) => {
                   const url = attachUrls.get(a.path)
@@ -782,6 +794,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
                 className="hidden"
               />
             </Field>
+            </FileDropZone>
           </div>
 
           {/* 고객등록 (보험사) — 저장된 고객에서만, 추후 추가 요청도 여기서 */}

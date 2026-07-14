@@ -19,6 +19,7 @@ import {
 // PDF 편집기는 열 때만 내려받는다 — pdf-lib/폰트가 메인 번들에 실리지 않게 (첫 로딩 속도)
 const PdfFillEditor = lazy(() => import('@renderer/components/files/PdfFillEditor'))
 import Card from '@renderer/components/ui/Card'
+import FileDropZone from '@renderer/components/ui/FileDropZone'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
 import {
@@ -194,13 +195,21 @@ export default function SharedFilesPage(): JSX.Element {
         </p>
 
         {/* PDF 양식 채우기 — 자료실 PDF의 [채우기] 또는 기기에서 직접 선택 */}
-        <button
-          type="button"
-          onClick={() => pdfPickRef.current?.click()}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-[#c6982f] bg-[#fdf7ea] px-3 py-2 text-xs font-bold text-[#8a6a1f] transition hover:brightness-95"
+        <FileDropZone
+          className="mt-2 inline-block"
+          accept=".pdf,application/pdf"
+          multiple={false}
+          dropLabel="놓으면 편집기로 열립니다"
+          onFiles={(fs) => void pickLocalPdf(fs[0] ?? null)}
         >
-          <PenLine className="h-3.5 w-3.5" /> 기기에서 PDF 열어 채우기
-        </button>
+          <button
+            type="button"
+            onClick={() => pdfPickRef.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#c6982f] bg-[#fdf7ea] px-3 py-2 text-xs font-bold text-[#8a6a1f] transition hover:brightness-95"
+          >
+            <PenLine className="h-3.5 w-3.5" /> 기기에서 PDF 열어 채우기 (드롭 가능)
+          </button>
+        </FileDropZone>
         <input
           ref={pdfPickRef}
           type="file"

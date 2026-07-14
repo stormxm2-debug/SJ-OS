@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react'
+import FileDropZone from '@renderer/components/ui/FileDropZone'
 import {
   ShieldCheck,
   Loader2,
@@ -644,18 +645,26 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
                   ) : (
                     <p className="mb-3 text-[11px] text-slate-500">아직 등록된 약관이 없습니다. 자주 다루는 상품 약관을 등록해 두면 분석이 훨씬 빨라집니다.</p>
                   )}
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-                    <input value={regInsurer} onChange={(e) => setRegInsurer(e.target.value)} placeholder="보험사 (예: 삼성화재)" className="rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[12px] text-slate-100 outline-none placeholder:text-slate-500" />
-                    <input value={regProduct} onChange={(e) => setRegProduct(e.target.value)} placeholder="상품명 (예: 마이헬스파트너)" className="rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[12px] text-slate-100 outline-none placeholder:text-slate-500" />
-                    <button
-                      type="button"
-                      disabled={regBusy || !regInsurer.trim() || !regProduct.trim()}
-                      onClick={() => termsFileRef.current?.click()}
-                      className={['inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-bold', regBusy || !regInsurer.trim() || !regProduct.trim() ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-[#0e1e3a] text-[#e6c877] hover:brightness-125'].join(' ')}
-                    >
-                      {regBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />} 약관 PDF 등록
-                    </button>
-                  </div>
+                  <FileDropZone
+                    accept="application/pdf,image/*"
+                    multiple={false}
+                    disabled={regBusy || !regInsurer.trim() || !regProduct.trim()}
+                    dropLabel="놓으면 약관으로 등록됩니다"
+                    onFiles={(fs) => void registerTerms(fs[0] ?? null)}
+                  >
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                      <input value={regInsurer} onChange={(e) => setRegInsurer(e.target.value)} placeholder="보험사 (예: 삼성화재)" className="rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[12px] text-slate-100 outline-none placeholder:text-slate-500" />
+                      <input value={regProduct} onChange={(e) => setRegProduct(e.target.value)} placeholder="상품명 (예: 마이헬스파트너)" className="rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[12px] text-slate-100 outline-none placeholder:text-slate-500" />
+                      <button
+                        type="button"
+                        disabled={regBusy || !regInsurer.trim() || !regProduct.trim()}
+                        onClick={() => termsFileRef.current?.click()}
+                        className={['inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-bold', regBusy || !regInsurer.trim() || !regProduct.trim() ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-[#0e1e3a] text-[#e6c877] hover:brightness-125'].join(' ')}
+                      >
+                        {regBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />} 약관 PDF 등록
+                      </button>
+                    </div>
+                  </FileDropZone>
                   <input ref={termsFileRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => { void registerTerms(e.target.files?.[0] ?? null); e.target.value = '' }} />
                   {regMsg ? <p className="mt-2 text-[11px] font-medium text-slate-400">{regMsg}</p> : null}
                 </div>

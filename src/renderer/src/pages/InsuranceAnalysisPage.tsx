@@ -34,6 +34,7 @@ import { listCustomers } from '@renderer/services/commercial/customerService'
 import { parseRrn } from '@renderer/services/commercial/customerValidation'
 import { getHubCustomer, setHubCustomer, subscribeHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
 import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
+import FileDropZone from '@renderer/components/ui/FileDropZone'
 import type { CustomerRecord } from '@shared/commercial/models'
 
 /**
@@ -118,7 +119,7 @@ export default function InsuranceAnalysisPage(): JSX.Element {
     return customers.filter((c) => c.name.includes(q) || (c.phone ?? '').includes(q)).slice(0, 8)
   }, [customers, customerQuery])
 
-  const addFiles = (list: FileList | null): void => {
+  const addFiles = (list: FileList | File[] | null): void => {
     if (!list) return
     const next = [...files, ...Array.from(list)].slice(0, 6)
     setFiles(next)
@@ -337,15 +338,17 @@ export default function InsuranceAnalysisPage(): JSX.Element {
               <UploadCloud className="h-4 w-4 text-[#b0821f]" />
               <h2 className="text-sm font-bold text-slate-100">증권 올리기 — 여러 장 가능 (최대 6장)</h2>
             </div>
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700 bg-slate-950 py-8 transition hover:border-[#c6982f]/60 hover:bg-[#c6982f]/5"
-            >
-              <UploadCloud className="h-6 w-6 text-[#b0821f]" />
-              <span className="text-[13px] font-semibold text-slate-200">증권 사진 · PDF 선택</span>
-              <span className="text-[11px] text-slate-500">가입증명서·보험증권·가입내역서 모두 가능</span>
-            </button>
+            <FileDropZone onFiles={addFiles} accept="image/*,application/pdf" dropLabel="놓으면 증권이 추가됩니다">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700 bg-slate-950 py-8 transition hover:border-[#c6982f]/60 hover:bg-[#c6982f]/5"
+              >
+                <UploadCloud className="h-6 w-6 text-[#b0821f]" />
+                <span className="text-[13px] font-semibold text-slate-200">증권 사진 · PDF — 드래그하거나 클릭해서 선택</span>
+                <span className="text-[11px] text-slate-500">가입증명서·보험증권·가입내역서 모두 가능</span>
+              </button>
+            </FileDropZone>
             <input ref={fileRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => addFiles(e.target.files)} />
 
             {files.length > 0 ? (
