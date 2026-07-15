@@ -45,6 +45,7 @@ export default function MobileHome(): JSX.Element {
                   type="button"
                   onClick={() => {
                     if (item.action === 'jarvis') jarvisService.open()
+                    else if (item.href) window.open(item.href, '_blank', 'noopener')
                     else if (item.view) navigate(item.view)
                   }}
                   className="flex flex-col items-center gap-1 rounded-2xl border border-slate-800 bg-slate-950 py-3 text-slate-300 transition active:bg-white"

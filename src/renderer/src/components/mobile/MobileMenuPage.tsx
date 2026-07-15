@@ -64,6 +64,7 @@ export default function MobileMenuPage({
                       type="button"
                       onClick={() => {
                         if (item.action === 'jarvis') onJarvis()
+                        else if (item.href) window.open(item.href, '_blank', 'noopener')
                         else if (item.view) onNavigate(item.view)
                       }}
                       className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-300 transition active:bg-slate-950"

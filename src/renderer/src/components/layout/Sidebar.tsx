@@ -45,7 +45,8 @@ import {
   UserPlus,
   PhoneCall,
   Hourglass,
-  Briefcase
+  Briefcase,
+  ExternalLink
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -60,8 +61,10 @@ type NavItem = {
   key: string
   label: string
   icon: typeof LayoutDashboard
-  view: View
-  match: ViewName[]
+  view?: View
+  match?: ViewName[]
+  /** 외부 사이트 바로가기 — 새 탭(웹)/기본 브라우저(데스크톱)로 연다. */
+  href?: string
 }
 
 type NavGroup = {
@@ -96,6 +99,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
       { key: 'consultation', label: '상담 관리', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
+      { key: 'bojang114', label: '보장114 (삼성 보장분석)', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
       { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
@@ -183,6 +187,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] },
   { key: 'consultation', label: '상담', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
+  { key: 'bojang114', label: '보장114 (삼성 보장분석)', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
@@ -208,6 +213,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
   { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
   { key: 'consultation', label: '상담기록', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
+  { key: 'bojang114', label: '보장114 (삼성 보장분석)', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
@@ -245,7 +251,7 @@ export default function Sidebar(): JSX.Element {
   // staff menu, land the user on the staff home so the sidebar stays coherent.
   const switchMode = (next: AppMode): void => {
     setMode(next)
-    if (next === 'staff' && !STAFF_NAV.some((item) => item.match.includes(route.name))) {
+    if (next === 'staff' && !STAFF_NAV.some((item) => item.match?.includes(route.name))) {
       navigate({ name: 'staff-home' })
     }
   }
@@ -254,13 +260,16 @@ export default function Sidebar(): JSX.Element {
   const staffNav: NavItem[] =
     session.role === 'team-leader' ? [...STAFF_NAV_MVP, TEAM_LEADER_EXTRA] : STAFF_NAV_MVP
 
-  const renderItem = ({ key, label, icon: Icon, view, match }: NavItem): JSX.Element => {
-    const active = match.includes(route.name)
+  const renderItem = ({ key, label, icon: Icon, view, match, href }: NavItem): JSX.Element => {
+    const active = match?.includes(route.name) ?? false
     return (
       <button
         key={key}
         type="button"
-        onClick={() => navigate(view)}
+        onClick={() => {
+          if (href) window.open(href, '_blank', 'noopener')
+          else if (view) navigate(view)
+        }}
         className={[
           'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition',
           active
@@ -313,7 +322,7 @@ export default function Sidebar(): JSX.Element {
         ) : (
           <div className="space-y-4">
             {NAV_GROUPS.map((group) => {
-              const hasActive = group.items.some((it) => it.match.includes(route.name))
+              const hasActive = group.items.some((it) => it.match?.includes(route.name))
               const isCollapsed = !!group.collapsible && collapsed[group.label] && !hasActive
               return (
                 <div key={group.label} className="space-y-1">

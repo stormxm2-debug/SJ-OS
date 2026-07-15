@@ -25,7 +25,8 @@ import {
   Hourglass,
   FileSearch,
   Calculator,
-  HeartPulse
+  HeartPulse,
+  ExternalLink
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -44,6 +45,8 @@ export interface MobileMenuItem {
   icon: LucideIcon
   view?: View
   action?: 'jarvis'
+  /** 외부 사이트 바로가기 — 새 탭(웹)/기본 브라우저(데스크톱)로 연다. */
+  href?: string
   adminOnly?: boolean
 }
 
@@ -70,6 +73,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     items: [
       { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' } },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' } },
+      { key: 'bojang114', label: '보장114 (삼성 보장분석)', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: FileText, view: { name: 'claim-assistant' } },
       { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' } },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' } },
