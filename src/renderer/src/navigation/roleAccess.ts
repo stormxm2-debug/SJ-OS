@@ -43,6 +43,7 @@ export const STAFF_ROUTES: ViewName[] = [
   'leads',
   'referrals',
   'today-contacts',
+  'plan-request',
   'files',
   'notice',
   'assistant' // 자비스 / 경영 비서 — available to all roles

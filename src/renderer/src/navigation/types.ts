@@ -29,6 +29,7 @@ export type View =
   | { name: 'leads' }
   | { name: 'referrals' }
   | { name: 'today-contacts' }
+  | { name: 'plan-request' }
   | { name: 'files' }
   | { name: 'app-builder' }
   | { name: 'devprompt' }

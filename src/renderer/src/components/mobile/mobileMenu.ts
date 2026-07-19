@@ -26,7 +26,8 @@ import {
   FileSearch,
   Calculator,
   HeartPulse,
-  ExternalLink
+  ExternalLink,
+  FileSignature
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -72,6 +73,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     title: '영업 도구',
     items: [
       { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' } },
+      { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' } },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' } },
       { key: 'bojang114', label: '보장114 (삼성 보장분석)', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: FileText, view: { name: 'claim-assistant' } },

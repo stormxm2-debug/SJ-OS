@@ -26,6 +26,7 @@ import ExceptionDiseasePage from '@renderer/pages/ExceptionDiseasePage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import TodayContactsPage from '@renderer/pages/TodayContactsPage'
+import PlanRequestPage from '@renderer/pages/PlanRequestPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import ExemptionsPage from '@renderer/pages/ExemptionsPage'
@@ -235,6 +236,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <ReferralEnginePage />
     case 'today-contacts':
       return <TodayContactsPage />
+    case 'plan-request':
+      return <PlanRequestPage />
     case 'contacts':
       return <ManagerContactsPage />
     case 'files':

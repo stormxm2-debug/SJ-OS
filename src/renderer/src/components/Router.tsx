@@ -29,6 +29,7 @@ import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import TodayContactsPage from '@renderer/pages/TodayContactsPage'
+import PlanRequestPage from '@renderer/pages/PlanRequestPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
 import DeveloperPromptCenterPage from '@renderer/pages/DeveloperPromptCenterPage'
@@ -123,6 +124,8 @@ export default function Router(): JSX.Element {
       return <ReferralEnginePage />
     case 'today-contacts':
       return <TodayContactsPage />
+    case 'plan-request':
+      return <PlanRequestPage />
     case 'contacts':
       return <ManagerContactsPage />
     case 'files':

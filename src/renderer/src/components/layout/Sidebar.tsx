@@ -46,7 +46,8 @@ import {
   PhoneCall,
   Hourglass,
   Briefcase,
-  ExternalLink
+  ExternalLink,
+  FileSignature
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -97,6 +98,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
       { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
       { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
+      { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' }, match: ['plan-request'] },
       { key: 'consultation', label: '상담 관리', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
       { key: 'bojang114', label: '보장114 (삼성 보장분석)', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
@@ -181,6 +183,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
   { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
+  { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' }, match: ['plan-request'] },
   { key: 'sales-activity', label: '영업활동', icon: ActivityIcon, view: { name: 'sales-activity' }, match: ['sales-activity'] },
   { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' }, match: ['salary'] },
@@ -212,6 +215,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
   { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
+  { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' }, match: ['plan-request'] },
   { key: 'consultation', label: '상담기록', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'bojang114', label: '보장114 (삼성 보장분석)', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
