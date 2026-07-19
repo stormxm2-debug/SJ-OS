@@ -122,7 +122,10 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
   const termsFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    void listPolicyTerms().then(setTerms)
+    void listPolicyTerms().then((r) => {
+      setTerms(r.items)
+      setTermsLoadErr(!r.ok)
+    })
   }, [])
 
   const registerTerms = async (file: File | null): Promise<void> => {
@@ -156,10 +159,16 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setTerms((prev) => prev.filter((x) => x.id !== t.id))
   }
 
+  // 조회 실패 무통보 방지 플래그 — 고객/이력/약관 각각 안내를 띄운다.
+  const [custLoadErr, setCustLoadErr] = useState(false)
+  const [pastLoadErr, setPastLoadErr] = useState(false)
+  const [termsLoadErr, setTermsLoadErr] = useState(false)
+
   // 고객 목록 (선택은 옵션 — 선택 시 결과가 고객 기록에 저장된다)
   useEffect(() => {
     void listCustomers().then((r) => {
       if (r.ok) setCustomers(r.customers)
+      setCustLoadErr(!r.ok)
     })
     return subscribeHubCustomer(setCustomer)
   }, [])
@@ -168,9 +177,13 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
   useEffect(() => {
     if (!customer) {
       setPast([])
+      setPastLoadErr(false)
       return
     }
-    void listClaimAnalyses(customer.id).then((r) => setPast(r.items))
+    void listClaimAnalyses(customer.id).then((r) => {
+      setPast(r.items)
+      setPastLoadErr(!r.ok)
+    })
   }, [customer])
 
   const filteredCustomers = useMemo(() => {
@@ -229,8 +242,15 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setRejection('')
     setPhase('result')
     // 백그라운드에서 자동 보관된 웹 약관·고객 기록이 생겼을 수 있으니 갱신
-    void listPolicyTerms().then(setTerms)
-    if (j.customerId) void listClaimAnalyses(j.customerId).then((r) => setPast(r.items))
+    void listPolicyTerms().then((r) => {
+      setTerms(r.items)
+      setTermsLoadErr(!r.ok)
+    })
+    if (j.customerId)
+      void listClaimAnalyses(j.customerId).then((r) => {
+        setPast(r.items)
+        setPastLoadErr(!r.ok)
+      })
   }
 
   // 페이지 재진입 복원: 안 본 완료 결과가 있으면 자동으로 열고, 진행 중이면 진행 화면으로
@@ -548,6 +568,9 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
                       className="w-full bg-transparent text-[13px] text-slate-100 outline-none placeholder:text-slate-500"
                     />
                   </div>
+                  {custLoadErr ? (
+                    <p className="mt-1 text-[11px] text-rose-600">고객 목록을 불러오지 못했습니다 — 네트워크 확인 후 새로고침해 주세요.</p>
+                  ) : null}
                   {pickerOpen && filteredCustomers.length > 0 ? (
                     <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-800 bg-white shadow-lg">
                       {filteredCustomers.map((c) => (
@@ -578,6 +601,9 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
                 </>
               )}
               {/* 지난 분석 이력 */}
+              {pastLoadErr ? (
+                <p className="mt-2 text-[11px] text-rose-600">지난 분석 이력을 불러오지 못했습니다 — 새로고침 후 다시 확인해 주세요.</p>
+              ) : null}
               {customer && past.length > 0 ? (
                 <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950">
                   <button
@@ -622,6 +648,9 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
               </button>
               {termsOpen ? (
                 <div className="border-t border-[#c6982f]/20 px-3 py-3">
+                  {termsLoadErr ? (
+                    <p className="mb-2 text-[11px] text-rose-600">약관 보관함을 불러오지 못했습니다 — 새로고침 후 다시 확인해 주세요.</p>
+                  ) : null}
                   {terms.length > 0 ? (
                     <div className="mb-3 flex flex-wrap gap-1.5">
                       {terms.map((t) => {

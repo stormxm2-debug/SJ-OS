@@ -22,7 +22,9 @@ export function NavigationProvider({
 }: {
   children: ReactNode
 }): JSX.Element {
-  const [route, setRoute] = useState<View>({ name: 'assistant' })
+  // 시작 화면 = 홈. (구: 'assistant' — 경영 비서가 관리자 전용이 되면서 직원 첫
+  // 화면이 접근거부로 뜨는 문제를 막기 위해 역할 무관 홈으로 통일, 2026-07-20)
+  const [route, setRoute] = useState<View>({ name: 'staff-home' })
   const routeRef = useRef(route)
   routeRef.current = route
 

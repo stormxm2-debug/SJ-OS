@@ -231,7 +231,7 @@ async function pump(): Promise<void> {
       // 웹에서 확인한 약관 → 보관함 자동 저장 (다음 분석부터 즉시 적용)
       if ((res.webTerms ?? []).length > 0) {
         try {
-          const existing = await listPolicyTerms()
+          const existing = (await listPolicyTerms()).items
           const added: PolicyTerm[] = await saveWebTerms(res.webTerms as unknown[], existing)
           if (added.length > 0) {
             job.autoSavedTermLabels = added.map((t) => `${t.insurer} · ${t.productName}`)

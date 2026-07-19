@@ -55,16 +55,20 @@ function rowToTerm(r: any): PolicyTerm {
   }
 }
 
-/** 보관함 전체 목록 (최신순). */
-export async function listPolicyTerms(): Promise<PolicyTerm[]> {
+/**
+ * 보관함 전체 목록 (최신순). 조회 실패를 빈 목록과 구분해 돌려준다 —
+ * 실패를 삼키면 화면이 "보관함 0개"로 보여 무통보 유실로 이어진다.
+ * (미설정 환경은 오류가 아니라 빈 보관함으로 취급.)
+ */
+export async function listPolicyTerms(): Promise<{ ok: boolean; items: PolicyTerm[] }> {
   const client = await db()
-  if (!client) return []
+  if (!client) return { ok: true, items: [] }
   const { data, error } = await client
     .from('policy_terms')
     .select('id, insurer, product_name, version_note, file_path, summary, created_at')
     .order('created_at', { ascending: false })
-  if (error || !Array.isArray(data)) return []
-  return (data as any[]).map(rowToTerm)
+  if (error || !Array.isArray(data)) return { ok: false, items: [] }
+  return { ok: true, items: (data as any[]).map(rowToTerm) }
 }
 
 function fileToBase64(blob: Blob): Promise<string> {

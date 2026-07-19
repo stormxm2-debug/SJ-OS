@@ -90,9 +90,13 @@ export default function InsuranceAnalysisPage(): JSX.Element {
   const [past, setPast] = useState<SavedInsuranceAnalysis[]>([])
   const [pastOpen, setPastOpen] = useState(false)
 
+  const [custLoadErr, setCustLoadErr] = useState(false)
+
   useEffect(() => {
     void listCustomers().then((res) => {
       if (res.ok) setCustomers(res.customers)
+      // 실패 무통보 방지 — 고객 미선택으로 진행하면 결과가 기록에 저장되지 않는다.
+      setCustLoadErr(!res.ok)
     })
     return subscribeHubCustomer(setCustomer)
   }, [])
@@ -280,6 +284,9 @@ export default function InsuranceAnalysisPage(): JSX.Element {
                     className="w-full bg-transparent text-[13px] text-slate-100 outline-none placeholder:text-slate-500"
                   />
                 </div>
+                {custLoadErr ? (
+                  <p className="mt-1 text-[11px] text-rose-600">고객 목록을 불러오지 못했습니다 — 네트워크 확인 후 새로고침해 주세요.</p>
+                ) : null}
                 {pickerOpen && filteredCustomers.length > 0 ? (
                   <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-800 bg-white shadow-lg">
                     {filteredCustomers.map((c) => (

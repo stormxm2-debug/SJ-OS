@@ -206,6 +206,7 @@ function ExemptionCard({ e, onDeleted }: { e: PolicyExemption; onDeleted: () => 
 function PolicyAutoRegister({ onSaved }: { onSaved: () => void }): JSX.Element {
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [q, setQ] = useState('')
+  const [custLoadErr, setCustLoadErr] = useState(false)
   const [customer, setCustomer] = useState<CustomerRecord | null>(null)
   const [files, setFiles] = useState<File[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
@@ -222,6 +223,8 @@ function PolicyAutoRegister({ onSaved }: { onSaved: () => void }): JSX.Element {
   useEffect(() => {
     void listCustomers().then((r) => {
       if (r.ok) setCustomers(r.customers)
+      // 실패 무통보 방지 — 목록이 비면 고객 연결 없이 저장돼 결과가 유실된다.
+      setCustLoadErr(!r.ok)
     })
   }, [])
 
@@ -293,6 +296,9 @@ function PolicyAutoRegister({ onSaved }: { onSaved: () => void }): JSX.Element {
             <Search className="h-3.5 w-3.5 text-slate-500" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="고객 이름/전화 검색" className="w-full bg-transparent text-[12px] text-slate-100 outline-none placeholder:text-slate-500" />
           </div>
+          {custLoadErr ? (
+            <p className="mt-1 text-[11px] text-rose-600">고객 목록을 불러오지 못했습니다 — 네트워크 확인 후 새로고침해 주세요.</p>
+          ) : null}
           {filtered.length > 0 ? (
             <div className="mt-1 space-y-0.5">
               {filtered.map((c) => (
@@ -429,6 +435,7 @@ function PolicyAutoRegister({ onSaved }: { onSaved: () => void }): JSX.Element {
 function ExemptionForm({ onSaved }: { onSaved: () => void }): JSX.Element {
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [q, setQ] = useState('')
+  const [custLoadErr, setCustLoadErr] = useState(false)
   const [customer, setCustomer] = useState<CustomerRecord | null>(null)
   const [insurer, setInsurer] = useState<string>(INSURERS[0])
   const [product, setProduct] = useState('')
@@ -442,6 +449,8 @@ function ExemptionForm({ onSaved }: { onSaved: () => void }): JSX.Element {
   useEffect(() => {
     void listCustomers().then((r) => {
       if (r.ok) setCustomers(r.customers)
+      // 실패 무통보 방지 — 목록이 비면 고객 연결 없이 저장돼 결과가 유실된다.
+      setCustLoadErr(!r.ok)
     })
   }, [])
 
@@ -489,6 +498,9 @@ function ExemptionForm({ onSaved }: { onSaved: () => void }): JSX.Element {
             <Search className="h-3.5 w-3.5 text-slate-500" />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="고객 이름/전화 검색" className="w-full bg-transparent text-[12px] text-slate-100 outline-none placeholder:text-slate-500" />
           </div>
+          {custLoadErr ? (
+            <p className="mt-1 text-[11px] text-rose-600">고객 목록을 불러오지 못했습니다 — 네트워크 확인 후 새로고침해 주세요.</p>
+          ) : null}
           {filtered.length > 0 ? (
             <div className="mt-1 space-y-0.5">
               {filtered.map((c) => (
