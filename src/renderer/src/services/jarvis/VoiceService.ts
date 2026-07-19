@@ -104,6 +104,38 @@ export interface VoiceDiagnostics {
 
 const LANG_KO = 'ko-KR'
 
+/** 자비스 TTS 목소리 설정 — 기기별 저장 (설치된 음성이 기기마다 다르므로). */
+export interface JarvisVoiceSettings {
+  /** 선택한 SpeechSynthesisVoice.voiceURI — null이면 첫 한국어 음성 자동. */
+  voiceURI: string | null
+  /** 말 속도 (0.5~2, 기본 1). */
+  rate: number
+  /** 톤 높낮이 (0~2, 기본 1). */
+  pitch: number
+}
+
+const VOICE_SETTINGS_KEY = 'sjos.jarvis.voice.v1'
+const DEFAULT_VOICE_SETTINGS: JarvisVoiceSettings = { voiceURI: null, rate: 1, pitch: 1 }
+
+function clamp(n: number, min: number, max: number): number {
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : 1
+}
+
+function loadVoiceSettings(): JarvisVoiceSettings {
+  try {
+    const raw = window.localStorage.getItem(VOICE_SETTINGS_KEY)
+    if (!raw) return { ...DEFAULT_VOICE_SETTINGS }
+    const parsed = JSON.parse(raw) as Partial<JarvisVoiceSettings>
+    return {
+      voiceURI: typeof parsed.voiceURI === 'string' ? parsed.voiceURI : null,
+      rate: clamp(Number(parsed.rate ?? 1), 0.5, 2),
+      pitch: clamp(Number(parsed.pitch ?? 1), 0, 2)
+    }
+  } catch {
+    return { ...DEFAULT_VOICE_SETTINGS }
+  }
+}
+
 /** Korean, UI-ready messages for each classified recognition error code. */
 const RECOGNITION_ERROR_MESSAGES: Record<VoiceErrorCode, string> = {
   network:
@@ -157,6 +189,8 @@ export class VoiceService {
   private listening = false
   // 자비스 음성 출력 기본 ON (대표 승인) — 미지원 환경에서는 speak()가 조용히 무시.
   private outputEnabled = true
+  // 목소리 설정 (음성·속도·톤) — 기기별 localStorage 저장.
+  private voiceSettings: JarvisVoiceSettings = loadVoiceSettings()
   private callbacks: VoiceListenCallbacks = {}
   // 말하는 중 상태 구독 (오브 연출용) — 리스너 오류가 음성을 깨지 않게 격리.
   private speaking = false
@@ -228,6 +262,40 @@ export class VoiceService {
     this.outputEnabled = enabled && this.isSynthesisSupported()
     if (!this.outputEnabled) this.stopSpeaking()
     return this.outputEnabled
+  }
+
+  /** 현재 목소리 설정 (복사본). */
+  getVoiceSettings(): JarvisVoiceSettings {
+    return { ...this.voiceSettings }
+  }
+
+  /** 목소리 설정 변경 — 즉시 저장(기기별), 다음 speak부터 적용. */
+  updateVoiceSettings(patch: Partial<JarvisVoiceSettings>): JarvisVoiceSettings {
+    this.voiceSettings = {
+      voiceURI: patch.voiceURI !== undefined ? patch.voiceURI : this.voiceSettings.voiceURI,
+      rate: patch.rate !== undefined ? clamp(patch.rate, 0.5, 2) : this.voiceSettings.rate,
+      pitch: patch.pitch !== undefined ? clamp(patch.pitch, 0, 2) : this.voiceSettings.pitch
+    }
+    try {
+      window.localStorage.setItem(VOICE_SETTINGS_KEY, JSON.stringify(this.voiceSettings))
+    } catch {
+      /* 저장 실패해도 세션 중에는 적용됨 */
+    }
+    return this.getVoiceSettings()
+  }
+
+  /**
+   * 이 기기에서 쓸 수 있는 한국어 음성 목록. getVoices()는 초기 로드 직후 비어
+   * 있을 수 있으므로, UI는 voiceschanged 후 재호출하거나 잠시 뒤 재시도한다.
+   */
+  listKoreanVoices(): SpeechSynthesisVoice[] {
+    if (!this.isSynthesisSupported()) return []
+    return window.speechSynthesis.getVoices().filter((v) => v.lang?.toLowerCase().startsWith('ko'))
+  }
+
+  /** 설정 반영 발화 — 미리듣기는 음성 출력 OFF여도 들리게 한다. */
+  previewVoice(sample = '안녕하세요 대표님, 자비스입니다. 이 목소리로 말씀드릴게요.'): void {
+    this.speakInternal(sample)
   }
 
   /**
@@ -403,7 +471,13 @@ export class VoiceService {
    * preferred when available; otherwise the utterance still requests ko-KR.
    */
   speak(text: string): void {
-    if (!this.outputEnabled || !this.isSynthesisSupported()) return
+    if (!this.outputEnabled) return
+    this.speakInternal(text)
+  }
+
+  /** 실제 발화 — 목소리 설정(선택 음성·속도·톤)을 적용한다. */
+  private speakInternal(text: string): void {
+    if (!this.isSynthesisSupported()) return
     const clean = text.trim()
     if (!clean) return
 
@@ -411,8 +485,13 @@ export class VoiceService {
     synth.cancel()
     const utterance = new SpeechSynthesisUtterance(clean)
     utterance.lang = LANG_KO
-    const koVoice = synth.getVoices().find((voice) => voice.lang?.toLowerCase().startsWith('ko'))
+    const voices = synth.getVoices()
+    // 선택한 음성 우선 — 없어졌으면(기기 변경 등) 첫 한국어 음성으로 폴백.
+    const chosen = this.voiceSettings.voiceURI ? voices.find((v) => v.voiceURI === this.voiceSettings.voiceURI) : undefined
+    const koVoice = chosen ?? voices.find((voice) => voice.lang?.toLowerCase().startsWith('ko'))
     if (koVoice) utterance.voice = koVoice
+    utterance.rate = this.voiceSettings.rate
+    utterance.pitch = this.voiceSettings.pitch
     // 오브 '말하는 중' 연출용 상태 — onstart가 안 오는 브라우저 대비 즉시 true.
     utterance.onstart = () => this.setSpeaking(true)
     utterance.onend = () => this.setSpeaking(false)

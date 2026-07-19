@@ -43,7 +43,8 @@ import { voiceService } from '@renderer/services/jarvis/VoiceService'
 import type {
   VoiceStatus,
   VoiceEngineMode,
-  VoiceDiagnostics
+  VoiceDiagnostics,
+  JarvisVoiceSettings
 } from '@renderer/services/jarvis/VoiceService'
 import { AudioRecorder } from '@renderer/services/jarvis/AudioRecorder'
 import { sttProxyClient } from '@renderer/services/jarvis/SttProxyClient'
@@ -245,6 +246,9 @@ export default function JarvisPanel(): JSX.Element | null {
   // 답변을 한 글자씩 흘리는 중 — 오브 맥동(하트비트) 동기화.
   const [typing, setTyping] = useState(false)
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics>(() => voice.getDiagnostics())
+  // 목소리 설정 (음성·속도·톤) — 설정 시트의 '목소리' 섹션.
+  const [voiceSettings, setVoiceSettingsState] = useState<JarvisVoiceSettings>(() => voice.getVoiceSettings())
+  const [koVoices, setKoVoices] = useState<SpeechSynthesisVoice[]>([])
   const [lastCommand, setLastCommand] = useState('')
   const [promptCopied, setPromptCopied] = useState(false)
   // Fast-UX command session + progressive timeline reveal.
@@ -318,6 +322,25 @@ export default function JarvisPanel(): JSX.Element | null {
   // 홀로 UI: 설정·진단 시트 + 대화 기록 접기.
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+
+  // 설정 시트를 열면 이 기기의 한국어 음성 목록 로드 — getVoices()가 늦게
+  // 채워지는 환경(voiceschanged) 대비 재시도까지.
+  useEffect(() => {
+    if (!settingsOpen) return
+    const load = (): void => setKoVoices(voice.listKoreanVoices())
+    load()
+    const t = window.setTimeout(load, 400)
+    if ('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = load
+    return () => {
+      window.clearTimeout(t)
+      if ('speechSynthesis' in window) window.speechSynthesis.onvoiceschanged = null
+    }
+  }, [settingsOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** 목소리 설정 변경 적용 (저장 + 상태 반영). */
+  const applyVoiceSettings = (patch: Partial<JarvisVoiceSettings>): void => {
+    setVoiceSettingsState(voice.updateVoiceSettings(patch))
+  }
   // 박수로 열기 토글 상태 (설정 시트에서 제어, 루트 리스너와 localStorage 공유).
   const [clapOn, setClapOn] = useState<boolean>(() => getClapEnabled())
   const lastAutoBuildJob = lastAutoBuildJobId
@@ -1985,6 +2008,62 @@ export default function JarvisPanel(): JSX.Element | null {
               </p>
             </SheetSection>
 
+            {/* 목소리 (TTS 음성·속도·톤) */}
+            <SheetSection
+              title="목소리"
+              action={
+                <button
+                  type="button"
+                  onClick={() => voice.previewVoice()}
+                  disabled={!synthesisSupported}
+                  className="rounded-full border px-2.5 py-1 text-[11px] font-bold transition hover:brightness-150 disabled:opacity-40"
+                  style={{ borderColor: 'rgba(103,232,249,0.3)', color: '#9adcff' }}
+                >
+                  미리듣기
+                </button>
+              }
+            >
+              {koVoices.length > 0 ? (
+                <select
+                  value={voiceSettings.voiceURI ?? ''}
+                  onChange={(e) => applyVoiceSettings({ voiceURI: e.target.value || null })}
+                  className="w-full rounded-xl border px-2.5 py-2 text-[12px] outline-none"
+                  style={{ background: 'rgba(8,20,40,0.9)', borderColor: 'rgba(103,232,249,0.25)', color: '#eaf6ff' }}
+                  aria-label="자비스 음성 선택"
+                >
+                  <option value="">자동 (첫 한국어 음성)</option>
+                  {koVoices.map((v) => (
+                    <option key={v.voiceURI} value={v.voiceURI}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-[11px]" style={{ color: 'rgba(150,190,235,0.6)' }}>
+                  이 기기에서 한국어 음성을 찾지 못했습니다. Windows 설정 → 시간 및 언어 → 음성에서 한국어 음성을 추가하면 여기서 고를 수 있습니다.
+                </p>
+              )}
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-bold" style={{ color: 'rgba(150,190,235,0.7)' }}>속도</span>
+                {([['느리게', 0.85], ['보통', 1], ['빠르게', 1.15]] as const).map(([label, r]) => (
+                  <SheetToggle key={label} onClick={() => applyVoiceSettings({ rate: r })} active={Math.abs(voiceSettings.rate - r) < 0.01}>
+                    {label}
+                  </SheetToggle>
+                ))}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-bold" style={{ color: 'rgba(150,190,235,0.7)' }}>톤</span>
+                {([['낮게', 0.8], ['보통', 1], ['높게', 1.2]] as const).map(([label, p]) => (
+                  <SheetToggle key={label} onClick={() => applyVoiceSettings({ pitch: p })} active={Math.abs(voiceSettings.pitch - p) < 0.01}>
+                    {label}
+                  </SheetToggle>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px]" style={{ color: 'rgba(150,190,235,0.55)' }}>
+                기기에 설치된 음성만 표시됩니다 · 설정은 이 기기에 저장되어 다음에도 유지됩니다.
+              </p>
+            </SheetSection>
+
             {/* Electron AI Gateway 진단 */}
             {voiceEngine === 'electron-gateway' ? (
               <SheetSection
@@ -2210,7 +2289,7 @@ function SheetToggle({
   onClick: () => void
   active?: boolean
   disabled?: boolean
-  icon: JSX.Element
+  icon?: JSX.Element
   children: React.ReactNode
 }): JSX.Element {
   return (
@@ -2225,7 +2304,7 @@ function SheetToggle({
           : { borderColor: 'rgba(103,232,249,0.25)', color: 'rgba(180,220,255,0.85)', background: 'rgba(56,189,248,0.05)' }
       }
     >
-      {icon}
+      {icon ?? null}
       {children}
     </button>
   )
