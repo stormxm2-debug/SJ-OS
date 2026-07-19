@@ -66,6 +66,8 @@ export default function PlanRequestPage(): JSX.Element {
   const [coverages, setCoverages] = useState<CoverageItem[]>([])
   const [customCov, setCustomCov] = useState('')
   const [extra, setExtra] = useState('')
+  /** 직접 수정한 문자(메모). null = 자동 생성 문안 사용. 수정 후에도 되돌리기 가능. */
+  const [editedMessage, setEditedMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState<'copied' | 'shared' | 'saved' | 'failed' | null>(null)
 
@@ -124,6 +126,8 @@ export default function PlanRequestPage(): JSX.Element {
       }),
     [name, profile, driving, kind, coverages, extra]
   )
+  /** 실제 복사·공유·저장에 쓰는 최종 문안 — 직접 수정본이 있으면 그것을 우선. */
+  const finalMessage = editedMessage ?? message
 
   /** 체크 시 보장분석표 순서(카테고리→담보)대로 정렬 유지 — 문안 그룹 출력의 기반. */
   const sortCoverages = (list: CoverageItem[]): CoverageItem[] => {
@@ -173,7 +177,7 @@ export default function PlanRequestPage(): JSX.Element {
         coverages,
         driving,
         extraRequest: extra,
-        messageText: message
+        messageText: finalMessage
       },
       { id: session.id, name: session.name }
     )
@@ -199,12 +203,12 @@ export default function PlanRequestPage(): JSX.Element {
 
   /** 복사 + 자동 저장 — 매니저에게 보내는 순간이 곧 요청 시점. */
   const copyAndSave = async (): Promise<void> => {
-    await copyText(message)
+    await copyText(finalMessage)
     if (name.trim()) await save()
   }
 
   const shareKakao = async (): Promise<void> => {
-    const outcome = await shareMeetingText(message)
+    const outcome = await shareMeetingText(finalMessage)
     showFlash(outcome === 'failed' ? 'failed' : outcome === 'shared' ? 'shared' : 'copied')
     if (outcome !== 'failed' && name.trim()) await save()
   }
@@ -462,14 +466,30 @@ export default function PlanRequestPage(): JSX.Element {
       <div className="rounded-2xl border border-slate-800 bg-white p-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-slate-100">3. 문자 미리보기</h2>
-          <span className="text-[11px] text-slate-500">체크하는 대로 실시간 반영</span>
+          {editedMessage !== null ? (
+            <span className="flex items-center gap-1.5">
+              <span className="rounded-full bg-[#c6982f]/15 px-2 py-0.5 text-[10px] font-bold text-[#8a6a1e]">직접 수정됨</span>
+              <button
+                type="button"
+                onClick={() => setEditedMessage(null)}
+                className="text-[11px] font-bold text-slate-500 underline-offset-2 hover:text-[#8a6a1e] hover:underline"
+              >
+                자동 문안으로 되돌리기
+              </button>
+            </span>
+          ) : (
+            <span className="text-[11px] text-slate-500">체크하는 대로 실시간 반영 · 눌러서 직접 수정 가능</span>
+          )}
         </div>
-        <pre
-          className="mt-2 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl p-4 font-mono text-[12.5px] leading-6 text-[#e6c877]"
+        <textarea
+          value={finalMessage}
+          onChange={(e) => setEditedMessage(e.target.value)}
+          rows={14}
+          spellCheck={false}
+          aria-label="설계요청 문자 직접 수정"
+          className="mt-2 w-full resize-y rounded-xl p-4 font-mono text-[12.5px] leading-6 text-[#e6c877] outline-none focus:ring-1 focus:ring-[#c6982f]/60"
           style={{ background: 'linear-gradient(150deg, #0b1830, #10233f)' }}
-        >
-          {message}
-        </pre>
+        />
         <div className="mt-3 grid grid-cols-3 gap-2">
           <button
             type="button"

@@ -80,24 +80,24 @@ export interface CoverageGroup {
  * (출처: '보장분석 이전이후 원본' 엑셀 — 카테고리·담보명 동일 유지)
  */
 export const COVERAGE_GROUPS: CoverageGroup[] = [
-  { category: '사망', items: ['일반/재해 사망'] },
-  { category: '후유장해', items: ['상해후유장해', '질병후유장해'] },
+  // 사망 4종: 일반사망(생보) · 질병사망(손보) · 상해사망 · 후유장해(3%) — 대표 지시
+  { category: '사망', items: ['일반사망(생보)', '질병사망(손보)', '상해사망', '후유장해(3%)'] },
   { category: '암 진단비', items: ['일반암', '유사암', '항암방사선치료', '항암약물치료', '표적항암치료'] },
   { category: '뇌 진단비', items: ['뇌혈관 진단', '뇌졸중 진단', '뇌출혈 진단비'] },
   { category: '심장', items: ['허혈성 진단', '급성심근경색'] },
-  { category: '입원비', items: ['간병인지원비', '상해 입원비', '질병 입원비'], small: true },
+  { category: '입원비', items: ['간병인지원비', '간병인사용일당', '상해 입원비', '질병 입원비'], small: true },
   {
     category: '수술비',
-    items: ['1~5종 수술비', '질병 수술비', '상해 수술비', '뇌심질병수술비'],
+    items: ['1~5종 수술비', '질병 수술비', '상해 수술비', '뇌수술비', '심장수술비'],
     small: true
   },
   { category: '암 수술비', items: ['암 수술비'], small: true },
-  { category: '암 입원비', items: ['암 입원비'], small: true },
   { category: '골절', items: ['골절 수술비', '깁스 치료비', '골절 진단비'], small: true },
   { category: '화상', items: ['화상 진단비'], small: true },
   { category: '실손의료비', items: ['실비'] },
   { category: '일배책', items: ['일상배상책임'] },
-  { category: '운전자', items: ['부상 11급', '부상 14급'], small: true },
+  // 운전자 3종 + 자부상(급수 구분 없이 단일) — 고액 담보라 small 아님
+  { category: '운전자', items: ['변호사선임비용', '교통사고처리지원금', '형사합의금', '자부상(자동차부상치료비)'] },
   { category: '질병수술', items: ['N대수술'], small: true },
   { category: '치아', items: ['치아보장'], small: true }
 ]
