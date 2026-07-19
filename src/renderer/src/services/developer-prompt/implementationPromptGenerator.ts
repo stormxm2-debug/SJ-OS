@@ -32,9 +32,9 @@ const WORKSPACE_LABEL: Record<string, string> = {
 /** Likely files/areas to inspect first, per target workspace. */
 const INSPECT_PATHS: Record<string, string[]> = {
   customer: ['src/renderer/src/components/customer/SupabaseCustomerManager.tsx', 'src/renderer/src/services/commercial/'],
-  'sales-activity': ['src/renderer/src/pages/SalesActivityWorkspacePage.tsx', 'src/renderer/src/services/'],
+  'sales-activity': ['src/renderer/src/pages/SalesActivityWorkspacePage.tsx', 'src/renderer/src/services/commercial/salesActivityLiveService.ts'],
   schedule: ['src/renderer/src/components/schedule/SupabaseScheduleManager.tsx', 'src/renderer/src/services/commercial/'],
-  performance: ['src/renderer/src/pages/PerformancePage.tsx', 'src/renderer/src/services/performance/'],
+  performance: ['src/renderer/src/pages/PerformancePage.tsx', 'src/renderer/src/services/commercial/performanceRecordsService.ts'],
   'team-leader': ['src/renderer/src/pages/TeamLeaderPage.tsx', 'src/renderer/src/services/'],
   consultation: ['src/renderer/src/components/consultation/SupabaseConsultationManager.tsx', 'src/renderer/src/services/commercial/'],
   'insurance-analysis': ['src/renderer/src/pages/InsuranceAnalysisPage.tsx', 'src/renderer/src/services/'],

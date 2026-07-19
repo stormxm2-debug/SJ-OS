@@ -21,36 +21,56 @@ function won(value: number): string {
 }
 
 export default class AnswerService {
-  /** Answer a fine-grained business intent, or null if unsupported. */
-  answer(intent: string): JarvisAnswerResult | null {
-    switch (intent) {
-      case 'fc-attendance':
-        return this.fcAttendance()
-      case 'performance':
-        return this.performance()
-      case 'team-performance':
-        return this.teamPerformance()
-      case 'today-schedule':
-        return this.todaySchedule()
-      case 'pending-activities':
-        return this.pendingActivities()
-      case 'closing-customers':
-        return this.closingCustomers()
-      case 'today-contacts':
-        return this.todayContacts()
-      case 'customer-search':
-        return this.customerSearch()
-      case 'consultation-status':
-        return this.consultationStatus()
-      case 'insurance-needed':
-        return this.insuranceNeeded()
-      default:
-        return null
+  /**
+   * 폴백 답변 데모 라벨 — 이 서비스는 Claude 브레인(실데이터) 미연결 시에만
+   * 쓰이는 로컬 목업 폴백이므로, 수치가 실제 실적으로 오해되지 않게 출처와
+   * 요약에 명시한다 (목업 청산 정책: 가짜 수치는 반드시 표기).
+   */
+  private tagDemo(r: JarvisAnswerResult): JarvisAnswerResult {
+    return {
+      ...r,
+      sourceWorkspace: `${r.sourceWorkspace} · 로컬 데모 데이터`,
+      summary: `${r.summary} ※ 로컬 데모 데이터 기준 — 실데이터 답변은 브레인 연결 시 제공됩니다.`
     }
   }
 
-  /** A cross-workspace daily briefing. */
+  /** Answer a fine-grained business intent, or null if unsupported. */
+  answer(intent: string): JarvisAnswerResult | null {
+    const result = ((): JarvisAnswerResult | null => {
+      switch (intent) {
+        case 'fc-attendance':
+          return this.fcAttendance()
+        case 'performance':
+          return this.performance()
+        case 'team-performance':
+          return this.teamPerformance()
+        case 'today-schedule':
+          return this.todaySchedule()
+        case 'pending-activities':
+          return this.pendingActivities()
+        case 'closing-customers':
+          return this.closingCustomers()
+        case 'today-contacts':
+          return this.todayContacts()
+        case 'customer-search':
+          return this.customerSearch()
+        case 'consultation-status':
+          return this.consultationStatus()
+        case 'insurance-needed':
+          return this.insuranceNeeded()
+        default:
+          return null
+      }
+    })()
+    return result ? this.tagDemo(result) : null
+  }
+
+  /** A cross-workspace daily briefing (데모 라벨 포함). */
   briefing(): JarvisAnswerResult {
+    return this.tagDemo(this.briefingRaw())
+  }
+
+  private briefingRaw(): JarvisAnswerResult {
     const fc = fcRepository.getSummary()
     const perf = performanceRepository.getSummary()
     const schedule = scheduleRepository.getSummary()
