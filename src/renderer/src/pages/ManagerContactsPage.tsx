@@ -18,29 +18,45 @@ import {
 
 /**
  * 매니저 연락처 — 보험사 설계매니저·부지점장·지점장 연락망.
- * 엑셀(「설계매니저」 양식)을 업로드하면 자동 인식·등록된다. 검색·필터·내보내기 지원.
+ * 엑셀(「설계매니저」 양식)을 업로드하면 자동 인식·등록된다.
+ * 카테고리(손해/생명)·직급(설계매니저/부지점장/지점장) 분리 + 검색 지원.
  *
  * 저장: Supabase 팀 공유(public.company_contacts) — 전 직원이 같은 목록을 실시간으로
- * 공유하고, 업로드/수정은 대표·관리자만 가능(RLS). Supabase 미설정 시 브라우저 localStorage.
+ * 공유·수정한다(RLS authenticated 허용). Supabase 미설정 시 브라우저 localStorage.
  *
  * 색상 주의: 이 앱은 slate 스케일을 반전 리맵(tailwind.config.js)한다 —
  * 어두운 본문 글씨는 text-slate-100/200/300, 밝은 면은 bg-white / bg-slate-950.
  */
 
 type StatusKind = 'ok' | 'err'
+type RankKey = 'all' | 'manager' | 'vice' | 'head'
 
 const EMPTY: ContactsData = { sonbo: [], saengbo: [] }
+
+const RANK_LABEL: Record<Exclude<RankKey, 'all'>, string> = {
+  manager: '설계매니저',
+  vice: '부지점장',
+  head: '지점장'
+}
+
+interface PersonRow {
+  no: number
+  company: string
+  rank: Exclude<RankKey, 'all'>
+  name: string
+  phone: string
+}
 
 export default function ManagerContactsPage(): JSX.Element {
   const mode = contactsStorageMode()
   const shared = mode === 'shared'
-  // 팀 공유 목록은 로그인한 전 직원이 조회·수정할 수 있다(RLS 도 authenticated 전체 허용).
-  const canEdit = true
+  const canEdit = true // 팀 공유 목록은 로그인한 전 직원이 수정 가능(RLS도 authenticated 허용)
 
   const [data, setData] = useState<ContactsData>(EMPTY)
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | Category>('all')
+  const [catFilter, setCatFilter] = useState<'all' | Category>('all')
+  const [rankFilter, setRankFilter] = useState<RankKey>('all')
   const [replaceMode, setReplaceMode] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -58,7 +74,6 @@ export default function ManagerContactsPage(): JSX.Element {
     }
   }, [])
 
-  // 최초 로드 + 팀 공유 실시간 동기화(다른 사용자의 변경 자동 반영).
   useEffect(() => {
     void reload()
     const unsub = subscribeContacts(() => {
@@ -117,15 +132,34 @@ export default function ManagerContactsPage(): JSX.Element {
     setStatus({ kind: 'ok', msg: `전체 삭제되었습니다.${shared ? ' 팀 전체에 반영됨' : ''}` })
   }
 
-  const matches = (co: CompanyContacts, q: string): boolean => {
+  const q = query.trim().toLowerCase()
+  const cats: Category[] = catFilter === 'all' ? ['sonbo', 'saengbo'] : [catFilter]
+
+  // 회사 단위 검색(직급 전체 보기용)
+  const companyMatches = (co: CompanyContacts): boolean => {
     if (!q) return true
     const hay = [co.company, co.vice, co.vicePhone, co.head, co.headPhone]
     co.managers.forEach((m) => hay.push(m.name, m.phone))
-    return hay.join(' ').toLowerCase().includes(q.toLowerCase())
+    return hay.join(' ').toLowerCase().includes(q)
   }
 
-  const cats: Category[] = filter === 'all' ? ['sonbo', 'saengbo'] : [filter]
-  const q = query.trim()
+  // 직급별 보기: 한 카테고리에서 선택 직급의 사람 목록(검색 반영)
+  const peopleOf = (cat: Category, rank: Exclude<RankKey, 'all'>): PersonRow[] => {
+    const rows: PersonRow[] = []
+    let n = 0
+    for (const co of data[cat]) {
+      const add = (name: string, phone: string): void => {
+        if (!name) return
+        n += 1
+        if (q && !`${co.company} ${name} ${phone}`.toLowerCase().includes(q)) return
+        rows.push({ no: n, company: co.company, rank, name, phone })
+      }
+      if (rank === 'manager') co.managers.forEach((m) => add(m.name, m.phone))
+      else if (rank === 'vice') add(co.vice, co.vicePhone)
+      else add(co.head, co.headPhone)
+    }
+    return rows
+  }
 
   return (
     <div className="space-y-4">
@@ -165,7 +199,8 @@ export default function ManagerContactsPage(): JSX.Element {
       </div>
 
       {/* 업로드 — 팀 공유 목록은 로그인한 전 직원이 수정할 수 있습니다 */}
-      <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+      {canEdit ? (
+        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
           <div className="text-sm font-semibold text-slate-100">엑셀 업로드로 자동 등록</div>
           <div className="mt-0.5 text-[12px] text-slate-500">
             「설계매니저」 양식(손보사·생보사 표)을 그대로 인식합니다.
@@ -236,50 +271,65 @@ export default function ManagerContactsPage(): JSX.Element {
               {status.msg}
             </div>
           ) : null}
-      </div>
-
-      {/* 툴바 */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
-          <span className="rounded-full border border-slate-800 bg-white px-2.5 py-1 font-semibold text-slate-200 shadow-sm">
-            설계매니저 {counts.managers}명
-          </span>
-          <span className="rounded-full border border-slate-800 bg-white px-2.5 py-1 font-semibold text-slate-200 shadow-sm">
-            보험사 {counts.companies}곳
-          </span>
-          <span className="rounded-full border border-slate-800 bg-white px-2.5 py-1 font-semibold text-slate-200 shadow-sm">
-            전체 인원 {counts.managers + counts.leaders}명
-          </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
+      ) : null}
+
+      {/* 필터/검색 */}
+      <div className="space-y-2.5 rounded-2xl border border-slate-800 bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {/* 카테고리(손해/생명) */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-500">구분</span>
+            <Segmented
+              value={catFilter}
+              onChange={(v) => setCatFilter(v as 'all' | Category)}
+              options={[
+                { key: 'all', label: '전체' },
+                { key: 'sonbo', label: '손해(손보)' },
+                { key: 'saengbo', label: '생명(생보)' }
+              ]}
+            />
+          </div>
+          {/* 직급 */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-500">직급</span>
+            <Segmented
+              value={rankFilter}
+              onChange={(v) => setRankFilter(v as RankKey)}
+              options={[
+                { key: 'all', label: '전체' },
+                { key: 'manager', label: '설계매니저' },
+                { key: 'vice', label: '부지점장' },
+                { key: 'head', label: '지점장' }
+              ]}
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="이름 · 보험사 · 연락처 검색"
-              className="w-56 rounded-lg border border-slate-700 bg-white py-2 pl-8 pr-3 text-[13px] text-slate-200 outline-none placeholder:text-slate-500 focus:border-indigo-400"
+              className="w-full rounded-lg border border-slate-700 bg-white py-2 pl-8 pr-3 text-[13px] text-slate-200 outline-none placeholder:text-slate-500 focus:border-indigo-400"
             />
           </div>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as 'all' | Category)}
-            className="rounded-lg border border-slate-700 bg-white px-2.5 py-2 text-[13px] text-slate-200 outline-none focus:border-indigo-400"
-          >
-            <option value="all">전체 구분</option>
-            <option value="sonbo">손해보험(손보사)</option>
-            <option value="saengbo">생명보험(생보사)</option>
-          </select>
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={() => void clearAll()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-[12px] font-semibold text-rose-500 transition hover:bg-rose-50"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> 전체 삭제
-            </button>
-          ) : null}
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
+              설계매니저 {counts.managers} · 부지점장/지점장 {counts.leaders}
+            </span>
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => void clearAll()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-[12px] font-semibold text-rose-500 transition hover:bg-rose-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> 전체 삭제
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -293,68 +343,173 @@ export default function ManagerContactsPage(): JSX.Element {
           등록된 연락처가 없습니다.{canEdit ? ' 위에서 엑셀 파일을 업로드해 주세요.' : ''}
         </div>
       ) : (
-        cats.map((cat) => {
-          const companies = data[cat].filter((co) => matches(co, q))
-          if (companies.length === 0) return null
-          const mgrCount = companies.reduce((n, c) => n + c.managers.length, 0)
-          return (
-            <div key={cat} className="space-y-2">
-              <div className="flex items-center gap-2 px-1">
-                <span
-                  className={[
-                    'rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white',
-                    cat === 'sonbo' ? 'bg-blue-600' : 'bg-emerald-600'
-                  ].join(' ')}
+        (() => {
+          let anyShown = false
+          const blocks = cats.map((cat) => {
+            if (rankFilter === 'all') {
+              const companies = data[cat].filter(companyMatches)
+              if (companies.length === 0) return null
+              anyShown = true
+              const mgrCount = companies.reduce((n, c) => n + c.managers.length, 0)
+              return (
+                <CategoryBlock
+                  key={cat}
+                  cat={cat}
+                  countText={`보험사 ${companies.length} · 설계매니저 ${mgrCount}명`}
                 >
-                  {CATEGORY_SHORT[cat]}
-                </span>
-                <h2 className="text-sm font-bold text-slate-100">{CATEGORY_LABEL[cat]}</h2>
-                <span className="text-[12px] text-slate-500">
-                  · 보험사 {companies.length} · 설계매니저 {mgrCount}명
-                </span>
-              </div>
-              <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-white shadow-sm">
-                <table className="w-full min-w-[720px] text-left text-[13px]">
-                  <thead>
-                    <tr className="border-b border-slate-800 bg-slate-950 text-[11px] text-slate-500">
-                      <th className="px-3 py-2.5 font-semibold">No</th>
-                      <th className="px-3 py-2.5 font-semibold">보험사</th>
-                      <th className="px-3 py-2.5 font-semibold">설계매니저</th>
-                      <th className="px-3 py-2.5 font-semibold">부지점장</th>
-                      <th className="px-3 py-2.5 font-semibold">지점장</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {companies.map((co, i) => (
-                      <tr key={`${co.company}-${i}`} className="border-b border-slate-800 last:border-0 hover:bg-slate-950">
-                        <td className="px-3 py-2.5 align-top tabular-nums text-slate-500">{co.no}</td>
-                        <td className="px-3 py-2.5 align-top font-bold text-slate-100">{co.company}</td>
-                        <td className="px-3 py-2.5 align-top">
-                          {co.managers.length ? (
-                            <div className="space-y-1">
-                              {co.managers.map((m, k) => (
-                                <PersonLine key={k} name={m.name} phone={m.phone} />
-                              ))}
-                            </div>
-                          ) : (
-                            <Dash />
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
-                          <PersonLine name={co.vice} phone={co.vicePhone} />
-                        </td>
-                        <td className="px-3 py-2.5 align-top">
-                          <PersonLine name={co.head} phone={co.headPhone} />
-                        </td>
+                  <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-white shadow-sm">
+                    <table className="w-full min-w-[720px] text-left text-[13px]">
+                      <thead>
+                        <tr className="border-b border-slate-800 bg-slate-950 text-[11px] text-slate-500">
+                          <th className="px-3 py-2.5 font-semibold">No</th>
+                          <th className="px-3 py-2.5 font-semibold">보험사</th>
+                          <th className="px-3 py-2.5 font-semibold">설계매니저</th>
+                          <th className="px-3 py-2.5 font-semibold">부지점장</th>
+                          <th className="px-3 py-2.5 font-semibold">지점장</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {companies.map((co, i) => (
+                          <tr key={`${co.company}-${i}`} className="border-b border-slate-800 last:border-0 hover:bg-slate-950">
+                            <td className="px-3 py-2.5 align-top tabular-nums text-slate-500">{co.no}</td>
+                            <td className="px-3 py-2.5 align-top font-bold text-slate-100">{co.company}</td>
+                            <td className="px-3 py-2.5 align-top">
+                              {co.managers.length ? (
+                                <div className="space-y-1">
+                                  {co.managers.map((m, k) => (
+                                    <PersonLine key={k} name={m.name} phone={m.phone} />
+                                  ))}
+                                </div>
+                              ) : (
+                                <Dash />
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 align-top">
+                              <PersonLine name={co.vice} phone={co.vicePhone} />
+                            </td>
+                            <td className="px-3 py-2.5 align-top">
+                              <PersonLine name={co.head} phone={co.headPhone} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CategoryBlock>
+              )
+            }
+            // 직급별 보기
+            const people = peopleOf(cat, rankFilter)
+            if (people.length === 0) return null
+            anyShown = true
+            return (
+              <CategoryBlock key={cat} cat={cat} countText={`${RANK_LABEL[rankFilter]} ${people.length}명`}>
+                <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-white shadow-sm">
+                  <table className="w-full min-w-[420px] text-left text-[13px]">
+                    <thead>
+                      <tr className="border-b border-slate-800 bg-slate-950 text-[11px] text-slate-500">
+                        <th className="px-3 py-2.5 font-semibold">No</th>
+                        <th className="px-3 py-2.5 font-semibold">보험사</th>
+                        <th className="px-3 py-2.5 font-semibold">{RANK_LABEL[rankFilter]}</th>
+                        <th className="px-3 py-2.5 font-semibold">연락처</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {people.map((p, i) => {
+                        const digits = p.phone.replace(/[^0-9+]/g, '')
+                        return (
+                          <tr key={`${p.company}-${p.name}-${i}`} className="border-b border-slate-800 last:border-0 hover:bg-slate-950">
+                            <td className="px-3 py-2.5 tabular-nums text-slate-500">{p.no}</td>
+                            <td className="px-3 py-2.5 font-bold text-slate-100">{p.company}</td>
+                            <td className="px-3 py-2.5 font-semibold text-slate-200">{p.name}</td>
+                            <td className="px-3 py-2.5">
+                              {p.phone ? (
+                                <a href={`tel:${digits}`} className="tabular-nums text-indigo-600 hover:underline">
+                                  {p.phone}
+                                </a>
+                              ) : (
+                                <Dash />
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CategoryBlock>
+            )
+          })
+          if (!anyShown) {
+            return (
+              <div className="rounded-2xl border border-slate-800 bg-white p-10 text-center text-sm text-slate-500">
+                검색 결과가 없습니다.
               </div>
-            </div>
-          )
-        })
+            )
+          }
+          return <div className="space-y-4">{blocks}</div>
+        })()
       )}
+    </div>
+  )
+}
+
+function CategoryBlock({
+  cat,
+  countText,
+  children
+}: {
+  cat: Category
+  countText: string
+  children: React.ReactNode
+}): JSX.Element {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 px-1">
+        <span
+          className={[
+            'rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white',
+            cat === 'sonbo' ? 'bg-blue-600' : 'bg-emerald-600'
+          ].join(' ')}
+        >
+          {CATEGORY_SHORT[cat]}
+        </span>
+        <h2 className="text-sm font-bold text-slate-100">{CATEGORY_LABEL[cat]}</h2>
+        <span className="text-[12px] text-slate-500">· {countText}</span>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Segmented({
+  value,
+  onChange,
+  options
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: { key: string; label: string }[]
+}): JSX.Element {
+  return (
+    <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-0.5">
+      {options.map((o) => {
+        const active = value === o.key
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            aria-pressed={active}
+            className={[
+              'rounded-md px-2.5 py-1 text-[12px] font-semibold transition',
+              active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-200'
+            ].join(' ')}
+          >
+            {o.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
