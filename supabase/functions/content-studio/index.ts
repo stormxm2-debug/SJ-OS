@@ -19,6 +19,49 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
 }
 
+/** 문자열/이스케이프를 인지하며 괄호 스택을 계산해, 잘린 JSON을 자동으로 닫는다 (claim-expert와 동일). */
+function autoClose(fragment: string): string {
+  const stack: string[] = []
+  let inStr = false
+  let esc = false
+  for (const ch of fragment) {
+    if (esc) {
+      esc = false
+      continue
+    }
+    if (inStr) {
+      if (ch === '\\') esc = true
+      else if (ch === '"') inStr = false
+      continue
+    }
+    if (ch === '"') inStr = true
+    else if (ch === '{') stack.push('}')
+    else if (ch === '[') stack.push(']')
+    else if (ch === '}' || ch === ']') stack.pop()
+  }
+  let out = fragment
+  if (inStr) out += '"'
+  while (stack.length > 0) out += stack.pop()
+  return out
+}
+
+/** 모델 응답에서 JSON 파싱 — 앞뒤 잡음·코드펜스·잘림 전부 방어. */
+function parseModelJson(text: string): Record<string, unknown> | null {
+  const start = text.indexOf('{')
+  if (start < 0) return null
+  const frag = text.slice(start, text.lastIndexOf('}') > start ? text.lastIndexOf('}') + 1 : undefined)
+  try {
+    return JSON.parse(frag) as Record<string, unknown>
+  } catch {
+    /* repair */
+  }
+  try {
+    return JSON.parse(autoClose(text.slice(start))) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
 type Kind = 'reels' | 'sns' | 'blog' | 'notice'
 
 const KIND_SPEC: Record<Kind, string> = {
@@ -44,7 +87,7 @@ const KIND_SPEC: Record<Kind, string> = {
 
 const SYSTEM_PROMPT = [
   '당신은 대한민국 보험 영업(GA·삼성화재 계열) 전문 콘텐츠 마케터입니다.',
-  '설계사(FC)가 쓸 콘텐츠 초안을 아래 JSON 형식으로만 답하세요 (다른 텍스트·마크다운 금지):',
+  '설계사(FC)가 쓸 콘텐츠 초안을 아래 JSON 형식으로만 답하세요 (다른 텍스트·마크다운 금지). 응답의 첫 글자는 반드시 { 여야 합니다:',
   '{"title":"콘텐츠 제목 한 줄","sections":[{"label":"구간 이름","text":"내용"}],"hashtags":["#태그",...]}',
   '',
   '공통 규칙:',
@@ -105,7 +148,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       },
       body: JSON.stringify({
         model: Deno.env.get('CONTENT_STUDIO_MODEL') || 'claude-sonnet-5',
-        max_tokens: 2000,
+        max_tokens: 3000,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: user }]
       }),
@@ -114,13 +157,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const data = await r.json().catch(() => ({}))
     if (!r.ok) return json({ success: false, error: data?.error?.message || `AI 오류 (HTTP ${r.status}).` }, 502)
 
-    const raw = String(data?.content?.[0]?.text ?? '')
-    // 모델이 코드펜스로 감싸는 경우 방어
-    const jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '')
-    let parsed: { title?: unknown; sections?: unknown; hashtags?: unknown } = {}
-    try {
-      parsed = JSON.parse(jsonText)
-    } catch {
+    // 모든 text 블록 합산 (thinking 등 비-text 블록 무시) + 잡음·잘림 방어 파서
+    const blocks = (data as { content?: { type?: string; text?: string }[] }).content ?? []
+    const raw = blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('')
+    const parsed = (parseModelJson(raw) ?? {}) as { title?: unknown; sections?: unknown; hashtags?: unknown }
+    if (!parsed.sections) {
       return json({ success: false, error: '생성 결과 형식 오류 — 다시 시도해 주세요.' }, 502)
     }
     const sections = Array.isArray(parsed.sections)
