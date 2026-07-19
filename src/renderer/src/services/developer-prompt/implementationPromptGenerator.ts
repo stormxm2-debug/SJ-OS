@@ -31,12 +31,12 @@ const WORKSPACE_LABEL: Record<string, string> = {
 
 /** Likely files/areas to inspect first, per target workspace. */
 const INSPECT_PATHS: Record<string, string[]> = {
-  customer: ['src/renderer/src/pages/CustomerWorkspacePage.tsx', 'src/renderer/src/services/customer/'],
+  customer: ['src/renderer/src/components/customer/SupabaseCustomerManager.tsx', 'src/renderer/src/services/commercial/'],
   'sales-activity': ['src/renderer/src/pages/SalesActivityWorkspacePage.tsx', 'src/renderer/src/services/'],
-  schedule: ['src/renderer/src/pages/SchedulePage.tsx', 'src/renderer/src/services/schedule/'],
+  schedule: ['src/renderer/src/components/schedule/SupabaseScheduleManager.tsx', 'src/renderer/src/services/commercial/'],
   performance: ['src/renderer/src/pages/PerformancePage.tsx', 'src/renderer/src/services/performance/'],
   'team-leader': ['src/renderer/src/pages/TeamLeaderPage.tsx', 'src/renderer/src/services/'],
-  consultation: ['src/renderer/src/pages/ConsultationPage.tsx', 'src/renderer/src/services/'],
+  consultation: ['src/renderer/src/components/consultation/SupabaseConsultationManager.tsx', 'src/renderer/src/services/commercial/'],
   'insurance-analysis': ['src/renderer/src/pages/InsuranceAnalysisPage.tsx', 'src/renderer/src/services/'],
   jarvis: ['src/renderer/src/components/jarvis/', 'src/renderer/src/services/jarvis/'],
   autopilot: ['src/renderer/src/pages/AutopilotPage.tsx', 'src/renderer/src/services/autopilot/']
