@@ -22,6 +22,7 @@ import { listCustomers, type CustomerDataMode } from '@renderer/services/commerc
 import type { CustomerRecord } from '@shared/commercial/models'
 import { supabaseScheduleAdapter, type ScheduleWithCustomer } from '@renderer/services/commercial/supabaseScheduleAdapter'
 import { shareMeetingText } from '@renderer/services/share/meetingShare'
+import { copyText } from '@renderer/services/share/clipboard'
 import {
   listReferrals,
   createReferralAsk,
@@ -206,12 +207,9 @@ export default function ReferralEnginePage(): JSX.Element {
   }
 
   const copyLink = async (key: string, link: string): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(link)
-      flashLink(key, 'copied')
-    } catch {
-      flashLink(key, 'failed')
-    }
+    // 인앱 브라우저(카톡 등)에서 표준 API가 막히면 execCommand 폴백까지 시도한다.
+    const ok = await copyText(link)
+    flashLink(key, ok ? 'copied' : 'failed')
   }
 
   const shareLink = async (key: string, link: string): Promise<void> => {

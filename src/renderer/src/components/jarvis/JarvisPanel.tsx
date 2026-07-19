@@ -73,6 +73,7 @@ import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { useAppMode } from '@renderer/navigation/AppModeContext'
 import { getClapEnabled, setClapEnabled } from '@renderer/services/jarvis/clapSettings'
 import { LOW_PERF } from '@renderer/services/system/perf'
+import { copyText } from '@renderer/services/share/clipboard'
 import type { View } from '@renderer/navigation/types'
 
 /** Simple, arg-free views a Jarvis navigation target can jump to. */
@@ -963,11 +964,8 @@ export default function JarvisPanel(): JSX.Element | null {
       ) as HTMLTextAreaElement | null
       field?.select()
     }
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(prompt).then(done).catch(selectFallback)
-      return
-    }
-    selectFallback()
+    // 공용 유틸(표준 API → execCommand 폴백)까지 실패하면 텍스트를 선택해 직접 복사하게.
+    void copyText(prompt).then((ok) => (ok ? done() : selectFallback()))
   }
 
   // The command session with per-step statuses resolved for the current reveal

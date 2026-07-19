@@ -33,6 +33,7 @@ import { isAdminRole, ROLE_LABEL } from '@renderer/navigation/roleAccess'
 import { isElectronRuntime, useIsMobile } from '@renderer/navigation/appTarget'
 import { useDeveloperPrompt } from '@renderer/services/developer-prompt/useDeveloperPrompt'
 import { developerPromptRepository } from '@renderer/services/developer-prompt/DeveloperPromptRepository'
+import { copyText } from '@renderer/services/share/clipboard'
 import type {
   DeveloperPromptPacket,
   DeveloperPromptRiskLevel,
@@ -120,17 +121,14 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
   const isAdmin = isAdminRole(session.role)
   const isDesktopApp = isElectronRuntime() && !isMobile
 
+  // 인앱 브라우저에서 표준 API가 막히면 execCommand 폴백까지 시도. 실제 복사됐을 때만 표시.
   const copy = (packet: DeveloperPromptPacket): void => {
-    const done = (): void => {
+    developerPromptRepository.markCopied(packet.id)
+    void copyText(packet.promptText).then((ok) => {
+      if (!ok) return
       setCopiedId(packet.id)
       window.setTimeout(() => setCopiedId((id) => (id === packet.id ? null : id)), 2000)
-    }
-    developerPromptRepository.markCopied(packet.id)
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(packet.promptText).then(done).catch(done)
-    } else {
-      done()
-    }
+    })
   }
 
   // FC/팀장 차단 — 자비스 자동개발은 대표/관리자 전용.

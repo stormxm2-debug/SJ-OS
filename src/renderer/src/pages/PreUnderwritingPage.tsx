@@ -37,6 +37,7 @@ import { listCustomers } from '@renderer/services/commercial/customerService'
 import { bmiOf, parseRrn } from '@renderer/services/commercial/customerValidation'
 import { getHubCustomer, setHubCustomer, subscribeHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
 import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
+import { copyText } from '@renderer/services/share/clipboard'
 import type { CustomerRecord } from '@shared/commercial/models'
 
 /**
@@ -291,13 +292,11 @@ export default function PreUnderwritingPage(): JSX.Element {
 
   const copyMessage = async (): Promise<void> => {
     if (!result?.customerMessage) return
-    try {
-      await navigator.clipboard.writeText(result.customerMessage)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      /* 클립보드 미지원 환경 — 사용자가 직접 드래그 복사 */
-    }
+    // 인앱 브라우저(카톡 등)에서 표준 API가 막히면 execCommand 폴백까지 시도한다.
+    const ok = await copyText(result.customerMessage)
+    if (!ok) return // 실패하면 '복사됨' 표시하지 않는다 (직접 드래그 복사)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1500)
   }
 
   const openPast = (item: SavedUnderwritingAi): void => {

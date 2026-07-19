@@ -5,6 +5,7 @@ import {
   initSupabaseClient
 } from './supabaseClient'
 import type { PolicyExemption } from './exemptionService'
+import { copyText } from '@renderer/services/share/clipboard'
 
 /**
  * 면책 종료(보장 시작) 고객 안내 — exemption-notify edge function 호출 + 무료 공유문.
@@ -101,10 +102,8 @@ export async function shareExemptionText(text: string): Promise<{ ok: boolean; m
     /* 사용자가 공유를 취소해도 클립보드 폴백으로 넘어가지 않고 조용히 종료 */
     return { ok: false, message: '공유가 취소되었습니다.' }
   }
-  try {
-    await navigator.clipboard.writeText(text)
-    return { ok: true, message: '안내문을 복사했습니다 — 카톡에 붙여넣어 보내세요.' }
-  } catch {
-    return { ok: false, message: '복사에 실패했습니다.' }
-  }
+  // 인앱 브라우저(카톡 등)에서 표준 클립보드가 막히면 execCommand 폴백까지 시도한다.
+  return (await copyText(text))
+    ? { ok: true, message: '안내문을 복사했습니다 — 카톡에 붙여넣어 보내세요.' }
+    : { ok: false, message: '복사가 차단됐습니다. 화면의 글을 길게 눌러 직접 복사해 주세요.' }
 }

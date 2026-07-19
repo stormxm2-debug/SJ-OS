@@ -1,4 +1,5 @@
 import type { ScheduleWithCustomer } from '@renderer/services/commercial/supabaseScheduleAdapter'
+import { copyText } from './clipboard'
 
 /**
  * 미팅 일정 → 카톡 공유 (무료 · 즉시 사용).
@@ -58,10 +59,6 @@ export async function shareMeetingText(text: string): Promise<ShareOutcome> {
       if (e instanceof DOMException && e.name === 'AbortError') return 'failed'
     }
   }
-  try {
-    await navigator.clipboard.writeText(text)
-    return 'copied'
-  } catch {
-    return 'failed'
-  }
+  // 인앱 브라우저(카톡 등)에서 표준 클립보드가 막히면 execCommand 폴백까지 시도한다.
+  return (await copyText(text)) ? 'copied' : 'failed'
 }

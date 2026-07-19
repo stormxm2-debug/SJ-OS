@@ -4,6 +4,7 @@ import type {
   ClaudeRunRequest,
   ClaudeRunResult
 } from '@shared/claudeCode'
+import { copyText } from '@renderer/services/share/clipboard'
 import { scanPromptText } from '@shared/claudeCode'
 import type { ClaudeCodeSafetyChecks } from './types'
 
@@ -57,15 +58,8 @@ export async function exportClaudePrompt(request: ClaudeExportRequest): Promise<
 
 /** Copy any text to the clipboard (guarded). Returns true on success. */
 export async function copyPromptToClipboard(text: string): Promise<boolean> {
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text)
-      return true
-    } catch {
-      return false
-    }
-  }
-  return false
+  // 공용 유틸 — 인앱 브라우저에서 표준 API가 막히면 execCommand 폴백까지 시도.
+  return copyText(text)
 }
 
 /**

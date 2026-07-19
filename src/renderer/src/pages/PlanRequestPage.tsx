@@ -6,6 +6,7 @@ import { isAdminRole } from '@renderer/navigation/roleAccess'
 import { listCustomers, type CustomerDataMode } from '@renderer/services/commercial/customerService'
 import type { CustomerRecord } from '@shared/commercial/models'
 import { shareMeetingText } from '@renderer/services/share/meetingShare'
+import { copyText as copyToClipboard } from '@renderer/services/share/clipboard'
 import {
   INSURANCE_KINDS,
   DRIVING_OPTIONS,
@@ -193,12 +194,9 @@ export default function PlanRequestPage(): JSX.Element {
   }
 
   const copyText = async (text: string): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(text)
-      showFlash('copied')
-    } catch {
-      showFlash('failed')
-    }
+    // 인앱 브라우저(카톡 등)에서 표준 API가 막히면 execCommand 폴백까지 시도한다.
+    const ok = await copyToClipboard(text)
+    showFlash(ok ? 'copied' : 'failed')
   }
 
   /** 복사 + 자동 저장 — 매니저에게 보내는 순간이 곧 요청 시점. */

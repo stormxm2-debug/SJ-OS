@@ -26,6 +26,7 @@ import type {
   UniversalRiskLevel
 } from '@renderer/services/universal-builder/types'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
+import { copyText } from '@renderer/services/share/clipboard'
 
 const RISK_TONE: Record<UniversalRiskLevel, string> = {
   low: 'text-slate-300',
@@ -78,14 +79,13 @@ export default function UniversalAppBuilderPage(): JSX.Element {
   const selected =
     snapshot.projects.find((p) => p.id === snapshot.selectedProjectId) ?? snapshot.projects[0] ?? null
 
+  // 인앱 브라우저에서 표준 API가 막히면 execCommand 폴백까지 시도. 실제 복사됐을 때만 표시.
   const copyPrompt = (project: UniversalBuildProject): void => {
-    const done = (): void => {
+    void copyText(project.generatedDeveloperPrompt).then((ok) => {
+      if (!ok) return
       setCopiedId(project.id)
       window.setTimeout(() => setCopiedId(null), 2000)
-    }
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(project.generatedDeveloperPrompt).then(done).catch(() => undefined)
-    }
+    })
   }
 
   const handleReset = (): void => {

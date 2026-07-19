@@ -10,6 +10,7 @@ import {
   type GeneratedContent,
   type ContentHistoryEntry
 } from '@renderer/services/content-studio/contentStudioService'
+import { copyText } from '@renderer/services/share/clipboard'
 
 /**
  * AI 콘텐츠 스튜디오 — 주제 입력 → 릴스 대본·SNS 문구·블로그·고객 안내문 초안 생성
@@ -66,14 +67,19 @@ export default function ContentStudioPage(): JSX.Element {
     setHistory(pushHistory({ kind, topic: topic.trim(), content: res.content }))
   }
 
+  /**
+   * 복사 — 표준 Clipboard API가 막힌 인앱 브라우저(카톡 등)에서는 execCommand 폴백까지
+   * 시도한다(services/share/clipboard). 실제 성공했을 때만 '복사됨'을 표시한다.
+   */
   const copy = async (key: string, text: string): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(key)
-      window.setTimeout(() => setCopied((c) => (c === key ? undefined : c)), 2500)
-    } catch {
-      setError('복사에 실패했습니다 — 텍스트를 직접 선택해 주세요.')
+    const ok = await copyText(text)
+    if (!ok) {
+      setError('복사가 차단됐습니다. 카톡 등 앱 안의 브라우저면 우측 상단 메뉴에서 "다른 브라우저로 열기" 후 다시 시도하거나, 아래 글을 길게 눌러 직접 복사해 주세요.')
+      return
     }
+    setError(undefined)
+    setCopied(key)
+    window.setTimeout(() => setCopied((c) => (c === key ? undefined : c)), 2500)
   }
 
   const openHistory = (h: ContentHistoryEntry): void => {

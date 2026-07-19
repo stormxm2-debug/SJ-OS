@@ -54,6 +54,7 @@ import { getHubCustomer, setHubCustomer, subscribeHubCustomer } from '@renderer/
 import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
 import type { CustomerRecord } from '@shared/commercial/models'
 import ClaimFaxPanel from '@renderer/components/insurance-claim/ClaimFaxPanel'
+import { copyText } from '@renderer/services/share/clipboard'
 
 /**
  * 보험금 청구비서 완전판 — Claude 기반 보상전문가.
@@ -1233,14 +1234,15 @@ function AnalyzingPanel({
 }
 
 /** Copy text to the clipboard and flash a "copied" flag for 2s. */
+/**
+ * 복사 — 인앱 브라우저(카톡 등)에서 표준 API가 막히면 execCommand 폴백까지 시도.
+ * ⚠ 이전 버전은 실패해도 '복사됨'을 표시해 사용자를 속였다(붙여넣으면 빈 값).
+ * 이제 **실제 성공했을 때만** 체크 표시를 켠다.
+ */
 function writeClipboard(text: string, setFlag: (v: boolean) => void): void {
-  const done = (): void => {
+  void copyText(text).then((ok) => {
+    if (!ok) return
     setFlag(true)
     window.setTimeout(() => setFlag(false), 2000)
-  }
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    void navigator.clipboard.writeText(text).then(done).catch(done)
-  } else {
-    done()
-  }
+  })
 }
