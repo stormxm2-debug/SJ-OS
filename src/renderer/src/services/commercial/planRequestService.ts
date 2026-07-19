@@ -34,6 +34,8 @@ export interface CoverageItem {
   name: string
   /** 표시 문자열 그대로 (예: '5,000만원', '1억'). */
   amount: string
+  /** 보장범위 카테고리 (보장분석표 기준 — 문안에서 그룹 헤더로 사용). */
+  category?: string
 }
 
 export interface PlanRequest {
@@ -66,24 +68,52 @@ export const INSURANCE_KINDS = [
 
 export const DRIVING_OPTIONS = ['자가용 운전', '영업용 운전', '비운전', '미확인'] as const
 
-/** 자주 쓰는 특약 프리셋 — 체크 후 금액만 고르면 된다. */
-export const COVERAGE_PRESETS: string[] = [
-  '일반암 진단비',
-  '유사암 진단비',
-  '뇌혈관질환 진단비',
-  '허혈성심장질환 진단비',
-  '뇌졸중 진단비',
-  '급성심근경색 진단비',
-  '질병 수술비',
-  '상해 수술비',
-  '질병 입원일당',
-  '상해 입원일당',
-  '표적항암약물치료비',
-  '후유장해(3% 이상)'
+export interface CoverageGroup {
+  category: string
+  items: string[]
+  /** true면 소액 담보(수술비·일당류) — 금액 칩을 만원 단위로 보여준다. */
+  small?: boolean
+}
+
+/**
+ * 특약 구성 — 사내 보장분석표(보장범위×담보내용) 분류 그대로.
+ * (출처: '보장분석 이전이후 원본' 엑셀 — 카테고리·담보명 동일 유지)
+ */
+export const COVERAGE_GROUPS: CoverageGroup[] = [
+  { category: '사망', items: ['일반/재해 사망'] },
+  { category: '후유장해', items: ['상해후유장해', '질병후유장해'] },
+  { category: '암 진단비', items: ['일반암', '유사암', '항암방사선치료', '항암약물치료', '표적항암치료'] },
+  { category: '뇌 진단비', items: ['뇌혈관 진단', '뇌졸중 진단', '뇌출혈 진단비'] },
+  { category: '심장', items: ['허혈성 진단', '급성심근경색'] },
+  { category: '입원비', items: ['간병인지원비', '상해 입원비', '질병 입원비'], small: true },
+  {
+    category: '수술비',
+    items: ['1종 수술비', '2종 수술비', '3종 수술비', '4종 수술비', '5종 수술비', '질병 수술비', '상해 수술비', '뇌심질병수술비'],
+    small: true
+  },
+  { category: '암 수술비', items: ['암 수술비'], small: true },
+  { category: '암 입원비', items: ['암 입원비'], small: true },
+  { category: '골절', items: ['골절 수술비', '깁스 치료비', '골절 진단비'], small: true },
+  { category: '화상', items: ['화상 진단비'], small: true },
+  { category: '실손의료비', items: ['실비'] },
+  { category: '일배책', items: ['일상배상책임'] },
+  { category: '운전자', items: ['부상 11급', '부상 14급'], small: true },
+  { category: '질병수술', items: ['N대수술'], small: true },
+  { category: '치아', items: ['치아보장'], small: true }
 ]
 
-/** 금액 빠른 선택 칩. */
-export const AMOUNT_PRESETS = ['1,000만원', '2,000만원', '3,000만원', '5,000만원', '1억', '2만원', '3만원', '5만원']
+/** 금액 빠른 선택 칩 — 진단비류(고액). */
+export const AMOUNT_PRESETS = ['1,000만원', '2,000만원', '3,000만원', '5,000만원', '1억', '2억']
+
+/** 금액 빠른 선택 칩 — 수술비·입원일당류(소액). */
+export const AMOUNT_PRESETS_SMALL = ['10만원', '20만원', '30만원', '50만원', '100만원', '300만원', '500만원', '1,000만원']
+
+/** 카테고리별 기본 금액·칩 세트. */
+export function amountPresetsFor(category?: string): { presets: string[]; defaultAmount: string } {
+  const group = COVERAGE_GROUPS.find((g) => g.category === category)
+  if (group?.small) return { presets: AMOUNT_PRESETS_SMALL, defaultAmount: '30만원' }
+  return { presets: AMOUNT_PRESETS, defaultAmount: '3,000만원' }
+}
 
 /* ---------- 보험연령 (상령일) ---------- */
 
@@ -146,7 +176,15 @@ export function buildPlanRequestMessage(input: PlanMessageInput): string {
   if (input.coverages.length === 0) {
     lines.push('- (특약 미지정 — 추천 구성 부탁드립니다)')
   } else {
-    for (const c of input.coverages) lines.push(`- ${c.name}: ${c.amount}`)
+    // 보장분석표와 같은 보장범위 그룹으로 출력 (카테고리 없는 항목은 뒤에 평문).
+    let lastCategory: string | undefined
+    for (const c of input.coverages) {
+      if (c.category && c.category !== lastCategory) {
+        lines.push(`[${c.category}]`)
+        lastCategory = c.category
+      }
+      lines.push(`- ${c.name}: ${c.amount}`)
+    }
   }
   lines.push('')
   lines.push('■ 기타 요청사항')

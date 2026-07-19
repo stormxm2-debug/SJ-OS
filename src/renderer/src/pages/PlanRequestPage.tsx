@@ -9,8 +9,8 @@ import { shareMeetingText } from '@renderer/services/share/meetingShare'
 import {
   INSURANCE_KINDS,
   DRIVING_OPTIONS,
-  COVERAGE_PRESETS,
-  AMOUNT_PRESETS,
+  COVERAGE_GROUPS,
+  amountPresetsFor,
   customerProfileInfo,
   insuranceAge,
   buildPlanRequestMessage,
@@ -125,22 +125,34 @@ export default function PlanRequestPage(): JSX.Element {
     [name, profile, driving, kind, coverages, extra]
   )
 
-  const toggleCoverage = (covName: string): void => {
-    setCoverages((prev) => {
-      const exists = prev.find((c) => c.name === covName)
-      if (exists) return prev.filter((c) => c.name !== covName)
-      return [...prev, { name: covName, amount: AMOUNT_PRESETS[3] }]
+  /** 체크 시 보장분석표 순서(카테고리→담보)대로 정렬 유지 — 문안 그룹 출력의 기반. */
+  const sortCoverages = (list: CoverageItem[]): CoverageItem[] => {
+    const order = new Map<string, number>()
+    let i = 0
+    for (const g of COVERAGE_GROUPS) for (const item of g.items) order.set(`${g.category}:${item}`, i++)
+    return [...list].sort((a, b) => {
+      const oa = order.get(`${a.category ?? ''}:${a.name}`) ?? 9999
+      const ob = order.get(`${b.category ?? ''}:${b.name}`) ?? 9999
+      return oa - ob
     })
   }
 
-  const setAmount = (covName: string, amount: string): void => {
-    setCoverages((prev) => prev.map((c) => (c.name === covName ? { ...c, amount } : c)))
+  const toggleCoverage = (category: string, covName: string): void => {
+    setCoverages((prev) => {
+      const exists = prev.find((c) => c.name === covName && c.category === category)
+      if (exists) return prev.filter((c) => !(c.name === covName && c.category === category))
+      return sortCoverages([...prev, { name: covName, amount: amountPresetsFor(category).defaultAmount, category }])
+    })
+  }
+
+  const setAmount = (category: string | undefined, covName: string, amount: string): void => {
+    setCoverages((prev) => prev.map((c) => (c.name === covName && c.category === category ? { ...c, amount } : c)))
   }
 
   const addCustom = (): void => {
     const n = customCov.trim()
     if (!n || coverages.some((c) => c.name === n)) return
-    setCoverages((prev) => [...prev, { name: n, amount: AMOUNT_PRESETS[3] }])
+    setCoverages((prev) => [...prev, { name: n, amount: amountPresetsFor(undefined).defaultAmount }])
     setCustomCov('')
   }
 
@@ -363,39 +375,63 @@ export default function PlanRequestPage(): JSX.Element {
           ))}
         </div>
 
-        <div className="mt-3 space-y-1.5">
-          {COVERAGE_PRESETS.map((covName) => {
-            const picked = coverages.find((c) => c.name === covName)
+        <div className="mt-3 space-y-2.5">
+          {COVERAGE_GROUPS.map((group) => {
+            const pickedCount = coverages.filter((c) => c.category === group.category).length
             return (
-              <div key={covName} className={['rounded-xl border px-3 py-2', picked ? 'border-[#c6982f]/50 bg-[#c6982f]/5' : 'border-slate-800 bg-white'].join(' ')}>
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input type="checkbox" checked={!!picked} onChange={() => toggleCoverage(covName)} className="h-4 w-4 accent-[#c6982f]" />
-                  <span className={['text-sm font-semibold', picked ? 'text-slate-100' : 'text-slate-400'].join(' ')}>{covName}</span>
-                  {picked ? <span className="ml-auto text-[12px] font-bold text-[#8a6a1e]">{picked.amount}</span> : null}
-                </label>
-                {picked ? (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {AMOUNT_PRESETS.map((a) => (
-                      <button
-                        key={a}
-                        type="button"
-                        onClick={() => setAmount(covName, a)}
-                        className={[
-                          'rounded-full px-2 py-1 text-[11px] font-bold transition',
-                          picked.amount === a ? 'bg-[#c6982f] text-[#201603]' : 'bg-slate-950 text-slate-400 ring-1 ring-slate-800'
-                        ].join(' ')}
+              <div key={group.category}>
+                <div className="mb-1 flex items-center gap-1.5">
+                  <span className="text-[11px] font-black tracking-wide text-[#8a6a1e]">{group.category}</span>
+                  {pickedCount > 0 ? (
+                    <span className="rounded-full bg-[#c6982f] px-1.5 py-0.5 text-[9px] font-bold text-[#201603]">{pickedCount}</span>
+                  ) : null}
+                </div>
+                <div className="space-y-1">
+                  {group.items.map((covName) => {
+                    const picked = coverages.find((c) => c.name === covName && c.category === group.category)
+                    const { presets } = amountPresetsFor(group.category)
+                    return (
+                      <div
+                        key={covName}
+                        className={['rounded-xl border px-3 py-2', picked ? 'border-[#c6982f]/50 bg-[#c6982f]/5' : 'border-slate-800 bg-white'].join(' ')}
                       >
-                        {a}
-                      </button>
-                    ))}
-                    <input
-                      value={picked.amount}
-                      onChange={(e) => setAmount(covName, e.target.value)}
-                      className="w-24 rounded-full border border-slate-800 bg-white px-2 py-1 text-[11px] text-slate-100 outline-none focus:border-[#c6982f]"
-                      aria-label={`${covName} 금액 직접 입력`}
-                    />
-                  </div>
-                ) : null}
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={!!picked}
+                            onChange={() => toggleCoverage(group.category, covName)}
+                            className="h-4 w-4 accent-[#c6982f]"
+                          />
+                          <span className={['text-sm font-semibold', picked ? 'text-slate-100' : 'text-slate-400'].join(' ')}>{covName}</span>
+                          {picked ? <span className="ml-auto text-[12px] font-bold text-[#8a6a1e]">{picked.amount}</span> : null}
+                        </label>
+                        {picked ? (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {presets.map((a) => (
+                              <button
+                                key={a}
+                                type="button"
+                                onClick={() => setAmount(group.category, covName, a)}
+                                className={[
+                                  'rounded-full px-2 py-1 text-[11px] font-bold transition',
+                                  picked.amount === a ? 'bg-[#c6982f] text-[#201603]' : 'bg-slate-950 text-slate-400 ring-1 ring-slate-800'
+                                ].join(' ')}
+                              >
+                                {a}
+                              </button>
+                            ))}
+                            <input
+                              value={picked.amount}
+                              onChange={(e) => setAmount(group.category, covName, e.target.value)}
+                              className="w-24 rounded-full border border-slate-800 bg-white px-2 py-1 text-[11px] text-slate-100 outline-none focus:border-[#c6982f]"
+                              aria-label={`${covName} 금액 직접 입력`}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )
           })}
