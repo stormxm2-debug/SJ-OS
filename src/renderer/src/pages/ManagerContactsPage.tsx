@@ -10,7 +10,8 @@ import {
   X,
   Loader2,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Search
 } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
@@ -31,6 +32,29 @@ import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 /** Tables whose changes should live-refresh this screen (stable ref for the hook). */
 const RT_TABLES = ['company_contacts']
 
+type InsurerSector = '생보' | '손보' | '기타'
+
+/** 보험사명 → 생보/손보 구분 (이름 규칙: '생명'=생보, '화재/해상/손해'=손보, 그 외=기타). */
+function insurerSector(insurer: string): InsurerSector {
+  if (insurer.includes('생명')) return '생보'
+  if (insurer.includes('화재') || insurer.includes('해상') || insurer.includes('손해')) return '손보'
+  return '기타'
+}
+
+/** 직급 정렬 — 높은 직급 먼저. '부지점장'이 '지점장'에 오매칭되지 않게 목록 순서로 검사. */
+const TITLE_RANKS: [string, number][] = [
+  ['본부장', 0],
+  ['센터장', 1],
+  ['부지점장', 3],
+  ['지점장', 2],
+  ['팀장', 4],
+  ['매니저', 5]
+]
+function titleRank(title: string): number {
+  for (const [t, r] of TITLE_RANKS) if (title.includes(t)) return r
+  return 6
+}
+
 /**
  * 매니저 연락처 — 각 보험사 담당 매니저 연락처를 서버에서 중앙 관리한다.
  * 직원: 목록 조회 + 앱에서 바로 통화/문자 + vCard로 내 폰 주소록 저장(단건/전체).
@@ -48,6 +72,8 @@ export default function ManagerContactsPage(): JSX.Element {
   const [, setSavedTick] = useState(0)
   const [editing, setEditing] = useState<CompanyContact | null>(null)
   const [creating, setCreating] = useState(false)
+  const [q, setQ] = useState('')
+  const [sector, setSector] = useState<InsurerSector>('손보')
 
   const load = async (): Promise<void> => {
     const res = await listCompanyContacts()
@@ -68,6 +94,41 @@ export default function ManagerContactsPage(): JSX.Element {
   }, [notice])
 
   const staleCount = useMemo(() => items.filter(isStaleOnPhone).length, [items])
+
+  const sectorCounts = useMemo(() => {
+    const n: Record<InsurerSector, number> = { 생보: 0, 손보: 0, 기타: 0 }
+    for (const c of items) n[insurerSector(c.insurer)]++
+    return n
+  }, [items])
+
+  const searching = q.trim().length > 0
+
+  /**
+   * 보험사별 그룹 목록 — 검색 중이면 생·손 구분 없이 전체에서 찾고,
+   * 아니면 선택한 구분(생보/손보/기타)만. 회사 안에서는 직급 순 정렬.
+   */
+  const groups = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    const base = t
+      ? items.filter((c) =>
+          [c.insurer, c.managerName, c.title, c.phone, c.officePhone ?? '', c.email ?? '', c.memo ?? ''].some((v) =>
+            v.toLowerCase().includes(t)
+          )
+        )
+      : items.filter((c) => insurerSector(c.insurer) === sector)
+    const out: { insurer: string; list: CompanyContact[] }[] = []
+    for (const c of base) {
+      const g = out[out.length - 1]
+      if (g && g.insurer === c.insurer) g.list.push(c)
+      else out.push({ insurer: c.insurer, list: [c] })
+    }
+    for (const g of out) {
+      g.list.sort((a, b) => titleRank(a.title) - titleRank(b.title) || a.managerName.localeCompare(b.managerName, 'ko'))
+    }
+    return out
+  }, [items, q, sector])
+
+  const sectorTabs: InsurerSector[] = sectorCounts.기타 > 0 ? ['생보', '손보', '기타'] : ['생보', '손보']
 
   const saveToPhone = async (targets: CompanyContact[], filename: string): Promise<void> => {
     const res = await saveVcfToPhone(targets, filename)
@@ -124,6 +185,43 @@ export default function ManagerContactsPage(): JSX.Element {
       ) : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600"><AlertTriangle className="mr-1 inline h-3 w-3" />{error}</div> : null}
 
+      {/* 검색 — 이름·보험사·직급·번호·메모 (검색 중엔 생/손 구분 없이 전체에서 찾음) */}
+      <div className="flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 shadow-sm">
+        <Search className="h-4 w-4 shrink-0 text-slate-400" />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="이름 · 보험사 · 직급 · 번호 검색"
+          className="w-full bg-transparent py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-400"
+        />
+        {searching ? (
+          <button type="button" onClick={() => setQ('')} aria-label="검색 지우기" className="rounded-lg p-1 text-slate-400 active:bg-slate-50">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+      </div>
+
+      {/* 생보/손보 탭 (검색 중에는 숨김 — 전체 검색) */}
+      {!searching ? (
+        <div className="flex overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {sectorTabs.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSector(s)}
+              className="flex-1 py-2.5 text-sm font-bold transition"
+              style={
+                sector === s
+                  ? { backgroundColor: '#0e1e3a', color: '#e6c877' }
+                  : { backgroundColor: 'transparent', color: '#94a3b8' }
+              }
+            >
+              {s === '생보' ? '생명보험사' : s === '손보' ? '손해보험사' : '기타'} {sectorCounts[s]}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {admin ? (
         creating ? (
           <ContactForm
@@ -146,22 +244,42 @@ export default function ManagerContactsPage(): JSX.Element {
           등록된 매니저 연락처가 없습니다.
           {admin ? ' 위의 [매니저 등록]으로 추가해주세요.' : ' 관리자가 등록하면 여기에 표시됩니다.'}
         </div>
+      ) : groups.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+          {searching ? `'${q.trim()}' 검색 결과가 없습니다.` : `${sector === '생보' ? '생명보험사' : sector === '손보' ? '손해보험사' : '기타'} 매니저가 아직 없습니다.`}
+        </div>
       ) : (
-        <div className="space-y-2">
-          {items.map((c) =>
-            editing?.id === c.id ? (
-              <ContactForm
-                key={c.id}
-                initial={c}
-                onDone={(saved) => {
-                  setEditing(null)
-                  if (saved) void load()
-                }}
-              />
-            ) : (
-              <ContactCard key={c.id} c={c} admin={admin} onSave={() => void saveToPhone([c], `${contactDisplayName(c)}.vcf`)} onEdit={() => setEditing(c)} onDelete={() => void remove(c)} />
-            )
-          )}
+        <div className="space-y-4">
+          {groups.map((g) => (
+            <div key={g.insurer}>
+              {/* 보험사 그룹 헤더 — 안에서는 직급 높은 순 */}
+              <div className="mb-1.5 flex items-center gap-1.5 px-1">
+                <span className="text-[13px] font-black text-slate-100">{g.insurer}</span>
+                <span className="rounded-full bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{g.list.length}명</span>
+                {searching ? (
+                  <span className="rounded-full border px-1.5 py-0.5 text-[9px] font-bold" style={{ borderColor: '#c6982f', color: '#a07a1f' }}>
+                    {insurerSector(g.insurer) === '생보' ? '생명' : insurerSector(g.insurer) === '손보' ? '손해' : '기타'}
+                  </span>
+                ) : null}
+              </div>
+              <div className="space-y-2">
+                {g.list.map((c) =>
+                  editing?.id === c.id ? (
+                    <ContactForm
+                      key={c.id}
+                      initial={c}
+                      onDone={(saved) => {
+                        setEditing(null)
+                        if (saved) void load()
+                      }}
+                    />
+                  ) : (
+                    <ContactCard key={c.id} c={c} admin={admin} onSave={() => void saveToPhone([c], `${contactDisplayName(c)}.vcf`)} onEdit={() => setEditing(c)} onDelete={() => void remove(c)} />
+                  )
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
