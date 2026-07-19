@@ -1,5 +1,11 @@
 import * as XLSX from 'xlsx'
 import { MANAGER_CONTACTS_SEED } from './managerContactsSeed'
+import {
+  managerContactsRemoteEnabled,
+  remoteList,
+  remoteReplaceAll,
+  remoteSubscribe
+} from './managerContactsAdapter'
 
 /**
  * 매니저 연락처 — 보험사 설계매니저·부지점장·지점장 연락망.
@@ -82,6 +88,45 @@ export function saveContacts(data: ContactsData): void {
   } catch {
     /* storage unavailable — keep in-memory only */
   }
+}
+
+/** 저장 위치: Supabase(팀 공유) 설정 시 'shared', 아니면 브라우저 'local'. */
+export type StorageMode = 'shared' | 'local'
+
+export function contactsStorageMode(): StorageMode {
+  return managerContactsRemoteEnabled() ? 'shared' : 'local'
+}
+
+/**
+ * 팀 공유(Supabase) 설정이면 서버에서, 아니면 브라우저 localStorage 에서 불러온다.
+ * 서버 조회 실패 시(네트워크/세션 없음) 로컬 캐시로 폴백한다.
+ */
+export async function loadContactsAsync(): Promise<ContactsData> {
+  if (contactsStorageMode() === 'shared') {
+    try {
+      return await remoteList()
+    } catch {
+      return loadContacts()
+    }
+  }
+  return loadContacts()
+}
+
+/** 팀 공유면 서버에 원자적으로 교체 저장, 아니면 localStorage 에 저장한다. */
+export async function saveContactsAsync(data: ContactsData): Promise<void> {
+  if (contactsStorageMode() === 'shared') {
+    await remoteReplaceAll(data)
+    // 로컬에도 캐시(오프라인/재접속 시 폴백용)
+    saveContacts(data)
+    return
+  }
+  saveContacts(data)
+}
+
+/** 팀 공유 모드에서 다른 사용자의 변경을 실시간 구독한다. 로컬 모드면 no-op. */
+export function subscribeContacts(onChange: () => void): () => void {
+  if (contactsStorageMode() !== 'shared') return () => {}
+  return remoteSubscribe(onChange)
 }
 
 export function countContacts(d: ContactsData): { companies: number; managers: number; leaders: number } {

@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState } from 'react'
-import { UploadCloud, UsersRound, Search, Download, Trash2, Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { UploadCloud, UsersRound, Search, Download, Trash2, Loader2, RefreshCw, Users2, Lock } from 'lucide-react'
 import {
-  loadContacts,
-  saveContacts,
+  loadContactsAsync,
+  saveContactsAsync,
+  subscribeContacts,
+  contactsStorageMode,
   parseWorkbook,
   mergeContacts,
   exportContacts,
@@ -13,22 +15,33 @@ import {
   type ContactsData,
   type CompanyContacts
 } from '@renderer/services/commercial/managerContacts'
+import { useSession } from '@renderer/navigation/SessionContext'
+import { isAdminRole } from '@renderer/navigation/roleAccess'
 
 /**
  * 매니저 연락처 — 보험사 설계매니저·부지점장·지점장 연락망.
  * 엑셀(「설계매니저」 양식)을 업로드하면 자동 인식·등록된다. 검색·필터·내보내기 지원.
- * 데이터는 브라우저에만 저장되며 서버로 전송되지 않는다.
+ *
+ * 저장: Supabase 팀 공유(public.company_contacts) — 전 직원이 같은 목록을 실시간으로
+ * 공유하고, 업로드/수정은 대표·관리자만 가능(RLS). Supabase 미설정 시 브라우저 localStorage.
  *
  * 색상 주의: 이 앱은 slate 스케일을 반전 리맵(tailwind.config.js)한다 —
- * 높은 숫자일수록 밝은 면, 낮은 숫자일수록 어두운 글씨. 그래서 어두운 본문 글씨는
- * text-slate-100/200/300, 밝은 면은 bg-white / bg-slate-950, 옅은 경계선은
- * border-slate-700/800 을 쓴다.
+ * 어두운 본문 글씨는 text-slate-100/200/300, 밝은 면은 bg-white / bg-slate-950.
  */
 
 type StatusKind = 'ok' | 'err'
 
+const EMPTY: ContactsData = { sonbo: [], saengbo: [] }
+
 export default function ManagerContactsPage(): JSX.Element {
-  const [data, setData] = useState<ContactsData>(() => loadContacts())
+  const { session } = useSession()
+  const mode = contactsStorageMode()
+  const shared = mode === 'shared'
+  // 팀 공유 모드: 대표/관리자만 수정. 로컬(데모) 모드: 제한 없음.
+  const canEdit = !shared || isAdminRole(session.role)
+
+  const [data, setData] = useState<ContactsData>(EMPTY)
+  const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'all' | Category>('all')
   const [replaceMode, setReplaceMode] = useState(false)
@@ -39,10 +52,23 @@ export default function ManagerContactsPage(): JSX.Element {
 
   const counts = useMemo(() => countContacts(data), [data])
 
-  const persist = (next: ContactsData): void => {
-    setData(next)
-    saveContacts(next)
-  }
+  const reload = useCallback(async (): Promise<void> => {
+    setLoading(true)
+    try {
+      setData(await loadContactsAsync())
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // 최초 로드 + 팀 공유 실시간 동기화(다른 사용자의 변경 자동 반영).
+  useEffect(() => {
+    void reload()
+    const unsub = subscribeContacts(() => {
+      void loadContactsAsync().then(setData)
+    })
+    return unsub
+  }, [reload])
 
   const handleFile = async (file: File): Promise<void> => {
     setParsing(true)
@@ -58,10 +84,16 @@ export default function ManagerContactsPage(): JSX.Element {
         return
       }
       const next = replaceMode ? parsed.data : mergeContacts(data, parsed.data)
-      persist(next)
+      try {
+        await saveContactsAsync(next)
+      } catch (e) {
+        setStatus({ kind: 'err', msg: (e as Error).message })
+        return
+      }
+      setData(next)
       setStatus({
         kind: 'ok',
-        msg: `「${file.name}」 등록 완료 — 보험사 ${parsed.companies}곳, 설계매니저 ${parsed.managers}명 (${replaceMode ? '덮어쓰기' : '병합'})`
+        msg: `「${file.name}」 등록 완료 — 보험사 ${parsed.companies}곳, 설계매니저 ${parsed.managers}명 (${replaceMode ? '덮어쓰기' : '병합'})${shared ? ' · 팀 전체에 반영됨' : ''}`
       })
     } catch (e) {
       setStatus({ kind: 'err', msg: `파일을 읽는 중 오류가 발생했습니다: ${(e as Error).message}` })
@@ -76,10 +108,16 @@ export default function ManagerContactsPage(): JSX.Element {
     e.target.value = ''
   }
 
-  const clearAll = (): void => {
+  const clearAll = async (): Promise<void> => {
     if (!window.confirm('등록된 모든 매니저 연락처를 삭제할까요? 이 작업은 되돌릴 수 없습니다.')) return
-    persist({ sonbo: [], saengbo: [] })
-    setStatus({ kind: 'ok', msg: '전체 삭제되었습니다.' })
+    try {
+      await saveContactsAsync(EMPTY)
+    } catch (e) {
+      setStatus({ kind: 'err', msg: (e as Error).message })
+      return
+    }
+    setData(EMPTY)
+    setStatus({ kind: 'ok', msg: `전체 삭제되었습니다.${shared ? ' 팀 전체에 반영됨' : ''}` })
   }
 
   const matches = (co: CompanyContacts, q: string): boolean => {
@@ -96,94 +134,119 @@ export default function ManagerContactsPage(): JSX.Element {
     <div className="space-y-4">
       {/* 헤더 */}
       <div className="flex items-center justify-between rounded-2xl border border-slate-800 bg-[#0e1e3a] px-4 py-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <UsersRound className="h-4 w-4 text-[#e6c877]" />
           <h1 className="text-sm font-extrabold text-white">매니저 연락처</h1>
           <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/80">
             보험사 {counts.companies} · 설계매니저 {counts.managers}
           </span>
+          {shared ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
+              <Users2 className="h-3 w-3" /> 팀 공유 · 실시간
+            </span>
+          ) : (
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/70">이 기기 저장</span>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={() => exportContacts(data)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-white/10"
-        >
-          <Download className="h-3.5 w-3.5" /> 엑셀 내보내기
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void reload()}
+            title="새로고침"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-white/10"
+          >
+            <RefreshCw className={['h-3.5 w-3.5', loading ? 'animate-spin' : ''].join(' ')} /> 새로고침
+          </button>
+          <button
+            type="button"
+            onClick={() => exportContacts(data)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-white/10"
+          >
+            <Download className="h-3.5 w-3.5" /> 엑셀 내보내기
+          </button>
+        </div>
       </div>
 
-      {/* 업로드 */}
-      <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
-        <div className="text-sm font-semibold text-slate-100">엑셀 업로드로 자동 등록</div>
-        <div className="mt-0.5 text-[12px] text-slate-500">
-          「설계매니저」 양식(손보사·생보사 표)을 그대로 인식합니다. 파일은 이 브라우저에서만 처리되며 서버로 전송되지 않습니다.
-        </div>
-
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => fileRef.current?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click()
-          }}
-          onDragOver={(e) => {
-            e.preventDefault()
-            setDragOver(true)
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setDragOver(false)
-            const f = e.dataTransfer.files?.[0]
-            if (f) void handleFile(f)
-          }}
-          className={[
-            'mt-3 flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed px-6 py-8 text-center transition',
-            dragOver
-              ? 'border-indigo-500 bg-indigo-50'
-              : 'border-slate-700 bg-slate-950 hover:border-indigo-400 hover:bg-indigo-50/40'
-          ].join(' ')}
-        >
-          <UploadCloud className={['h-8 w-8', dragOver ? 'text-indigo-600' : 'text-slate-500'].join(' ')} />
-          <div className="text-sm font-semibold text-slate-200">
-            엑셀 파일을 드래그하거나 <span className="text-indigo-600">클릭해서 선택</span>
+      {/* 업로드 (수정 권한 있을 때만) */}
+      {canEdit ? (
+        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+          <div className="text-sm font-semibold text-slate-100">엑셀 업로드로 자동 등록</div>
+          <div className="mt-0.5 text-[12px] text-slate-500">
+            「설계매니저」 양식(손보사·생보사 표)을 그대로 인식합니다.
+            {shared ? ' 업로드하면 팀 전체 목록이 즉시 갱신됩니다.' : ' 파일은 이 브라우저에서만 처리됩니다.'}
           </div>
-          <div className="text-[11px] text-slate-500">.xlsx · .xls · .csv</div>
-        </div>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onPick} className="hidden" />
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-slate-500">
-            <input
-              type="checkbox"
-              checked={replaceMode}
-              onChange={(e) => setReplaceMode(e.target.checked)}
-              className="h-3.5 w-3.5 accent-indigo-600"
-            />
-            업로드 시 기존 목록을 <b className="font-semibold text-slate-200">덮어쓰기</b> (해제 시 병합)
-          </label>
-        </div>
-
-        {parsing ? (
-          <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
-            <Loader2 className="h-4 w-4 animate-spin" /> 엑셀을 읽는 중…
-          </div>
-        ) : null}
-
-        {status ? (
           <div
+            role="button"
+            tabIndex={0}
+            onClick={() => fileRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click()
+            }}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragOver(true)
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragOver(false)
+              const f = e.dataTransfer.files?.[0]
+              if (f) void handleFile(f)
+            }}
             className={[
-              'mt-3 rounded-xl px-3 py-2.5 text-[13px] font-medium',
-              status.kind === 'ok'
-                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border border-rose-200 bg-rose-50 text-rose-600'
+              'mt-3 flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed px-6 py-8 text-center transition',
+              dragOver
+                ? 'border-indigo-500 bg-indigo-50'
+                : 'border-slate-700 bg-slate-950 hover:border-indigo-400 hover:bg-indigo-50/40'
             ].join(' ')}
           >
-            {status.kind === 'ok' ? '✅ ' : '⚠️ '}
-            {status.msg}
+            <UploadCloud className={['h-8 w-8', dragOver ? 'text-indigo-600' : 'text-slate-500'].join(' ')} />
+            <div className="text-sm font-semibold text-slate-200">
+              엑셀 파일을 드래그하거나 <span className="text-indigo-600">클릭해서 선택</span>
+            </div>
+            <div className="text-[11px] text-slate-500">.xlsx · .xls · .csv</div>
           </div>
-        ) : null}
-      </div>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={onPick} className="hidden" />
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <label className="flex cursor-pointer items-center gap-2 text-[12px] text-slate-500">
+              <input
+                type="checkbox"
+                checked={replaceMode}
+                onChange={(e) => setReplaceMode(e.target.checked)}
+                className="h-3.5 w-3.5 accent-indigo-600"
+              />
+              업로드 시 기존 목록을 <b className="font-semibold text-slate-200">덮어쓰기</b> (해제 시 병합)
+            </label>
+          </div>
+
+          {parsing ? (
+            <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin" /> 엑셀을 읽는 중…
+            </div>
+          ) : null}
+
+          {status ? (
+            <div
+              className={[
+                'mt-3 rounded-xl px-3 py-2.5 text-[13px] font-medium',
+                status.kind === 'ok'
+                  ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border border-rose-200 bg-rose-50 text-rose-600'
+              ].join(' ')}
+            >
+              {status.kind === 'ok' ? '✅ ' : '⚠️ '}
+              {status.msg}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-white px-4 py-3 text-[12px] text-slate-500">
+          <Lock className="h-3.5 w-3.5 text-slate-500" />
+          팀 공유 목록입니다. 목록 수정(엑셀 업로드·삭제)은 대표·관리자만 할 수 있습니다. 연락처 조회와 전화 걸기는 모두 가능합니다.
+        </div>
+      )}
 
       {/* 툴바 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -218,20 +281,26 @@ export default function ManagerContactsPage(): JSX.Element {
             <option value="sonbo">손해보험(손보사)</option>
             <option value="saengbo">생명보험(생보사)</option>
           </select>
-          <button
-            type="button"
-            onClick={clearAll}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-[12px] font-semibold text-rose-500 transition hover:bg-rose-50"
-          >
-            <Trash2 className="h-3.5 w-3.5" /> 전체 삭제
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => void clearAll()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-[12px] font-semibold text-rose-500 transition hover:bg-rose-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> 전체 삭제
+            </button>
+          ) : null}
         </div>
       </div>
 
       {/* 목록 */}
-      {counts.companies === 0 ? (
+      {loading ? (
+        <div className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-white p-8 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" /> 매니저 연락처를 불러오는 중…
+        </div>
+      ) : counts.companies === 0 ? (
         <div className="rounded-2xl border border-slate-800 bg-white p-10 text-center text-sm text-slate-500">
-          등록된 연락처가 없습니다. 위에서 엑셀 파일을 업로드해 주세요.
+          등록된 연락처가 없습니다.{canEdit ? ' 위에서 엑셀 파일을 업로드해 주세요.' : ''}
         </div>
       ) : (
         cats.map((cat) => {
