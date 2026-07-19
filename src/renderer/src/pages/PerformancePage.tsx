@@ -126,8 +126,9 @@ export default function PerformancePage(): JSX.Element {
   const load = useCallback(async (): Promise<void> => {
     const [en, ex] = await Promise.all([listEntriesMonth(month), listExcelMonth(month)])
     if (en.ok) setEntries(en.data)
-    if (ex.ok) setExcelRows(ex.data)
-    setLoadErr(en.ok ? undefined : en.message)
+    // 엑셀 실패 시 반드시 비운다 — 이전 달 엑셀이 이번 달 실적으로 둔갑하는 것 방지.
+    setExcelRows(ex.ok ? ex.data : [])
+    setLoadErr(!en.ok ? en.message : !ex.ok ? `엑셀 실적을 불러오지 못했습니다: ${ex.message}` : undefined)
   }, [month])
 
   useEffect(() => {
@@ -857,7 +858,7 @@ function AdminExcelUpload({ month, onApplied }: { month: string; onApplied: () =
                         {m.name}
                         <span className="ml-1 text-[10px] text-slate-500">({m.matchedBy === 'phone' ? '번호' : '이름'})</span>
                         {m.mergedRows ? (
-                          <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">{m.mergedRows}행 합산</span>
+                          <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">{m.mergedRows}행 합산</span>
                         ) : null}
                       </td>
                       <td className="px-2 py-1.5 text-slate-400">{m.month}</td>

@@ -120,7 +120,7 @@ export default function MobileShell(): JSX.Element {
           <button
             type="button"
             onClick={refresh}
-            className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 active:bg-indigo-100"
+            className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 active:bg-[#e0e7ff]"
             aria-label="새로고침"
           >
             <RefreshCw className="h-3 w-3" />
@@ -262,7 +262,7 @@ function MobileAccessDenied(): JSX.Element {
   const { navigate } = useNavigation()
   return (
     <div className="mt-8 rounded-2xl border border-slate-800 bg-white p-6 text-center shadow-sm">
-      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100">
+      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50">
         <ShieldAlert className="h-6 w-6 text-amber-600" />
       </div>
       <h2 className="text-base font-bold text-slate-100">관리자 기능</h2>

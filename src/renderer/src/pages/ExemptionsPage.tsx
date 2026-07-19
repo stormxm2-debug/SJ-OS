@@ -66,7 +66,7 @@ export default function ExemptionsPage(): JSX.Element {
           <Hourglass className="h-5 w-5 text-[#e6c877]" />
           <h1 className="text-lg font-extrabold">면책기간 알람</h1>
         </div>
-        <p className="mt-1 text-[13px] leading-5 text-slate-300">
+        <p className="mt-1 text-[13px] leading-5 text-white/70">
           보장개시일과 면책기간을 등록하면 <b className="text-[#e6c877]">면책 종료가 임박(D-7)·도래</b>할 때 담당자에게 알림이 갑니다.
           면책이 끝나면 고객에게 “이제 보장이 시작됐다”고 안내할 좋은 타이밍입니다.
         </p>
@@ -130,6 +130,10 @@ function ExemptionCard({ e, onDeleted }: { e: PolicyExemption; onDeleted: () => 
     if (typeof window !== 'undefined' && !window.confirm(`${e.customerName} · ${e.insurer} 면책 기록을 삭제할까요?`)) return
     const r = await deleteExemption(e.id)
     if (r.ok) onDeleted()
+    else {
+      setNotifyMsg(r.error ?? '삭제에 실패했습니다. 다시 시도해 주세요.')
+      window.setTimeout(() => setNotifyMsg(''), 5000)
+    }
   }
   const share = async (): Promise<void> => {
     const r = await shareExemptionText(buildExemptionShareText(e))
@@ -150,7 +154,7 @@ function ExemptionCard({ e, onDeleted }: { e: PolicyExemption; onDeleted: () => 
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-sm font-bold text-slate-100">{e.customerName || '고객'}</span>
             <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-[#e6c877]">{e.insurer}</span>
-            {e.source === 'ai' ? <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">AI 판독</span> : null}
+            {e.source === 'ai' ? <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">AI 판독</span> : null}
           </div>
           <div className="mt-0.5 text-[12px] text-slate-500">
             {[e.productName, e.coverage].filter(Boolean).join(' · ') || '상품·담보 미기재'}
@@ -279,9 +283,9 @@ function PolicyAutoRegister({ onSaved }: { onSaved: () => void }): JSX.Element {
       {customer ? (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-[#0e1e3a] px-3 py-2">
           <span className="text-[13px] font-bold text-white">
-            {customer.name} <span className="text-[11px] text-slate-300">{customer.phone ?? ''}</span>
+            {customer.name} <span className="text-[11px] text-white/60">{customer.phone ?? ''}</span>
           </span>
-          <button type="button" onClick={() => setCustomer(null)} className="text-[11px] text-slate-300 hover:text-white">변경</button>
+          <button type="button" onClick={() => setCustomer(null)} className="text-[11px] text-white/60 hover:text-white">변경</button>
         </div>
       ) : (
         <div className="mb-2">
@@ -389,7 +393,7 @@ function PolicyAutoRegister({ onSaved }: { onSaved: () => void }): JSX.Element {
                   <span className="flex flex-wrap items-center gap-1.5">
                     <b className="text-[12px] text-slate-100">{it.coverage}</b>
                     <span className="text-[11px] font-bold text-[#b0821f]">면책 {it.waitingDays}일</span>
-                    <span className={['rounded-full px-1.5 py-0.5 text-[9px] font-bold', it.basis === 'policy' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'].join(' ')}>
+                    <span className={['rounded-full px-1.5 py-0.5 text-[9px] font-bold', it.basis === 'policy' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'].join(' ')}>
                       {it.basis === 'policy' ? '증권 기재' : '표준 기준'}
                     </span>
                   </span>
@@ -476,8 +480,8 @@ function ExemptionForm({ onSaved }: { onSaved: () => void }): JSX.Element {
       {/* 고객 선택 */}
       {customer ? (
         <div className="flex items-center justify-between rounded-lg bg-[#0e1e3a] px-3 py-2">
-          <span className="text-[13px] font-bold text-white">{customer.name} <span className="text-[11px] text-slate-300">{customer.phone ?? ''}</span></span>
-          <button type="button" onClick={() => setCustomer(null)} className="text-[11px] text-slate-300 hover:text-white">변경</button>
+          <span className="text-[13px] font-bold text-white">{customer.name} <span className="text-[11px] text-white/60">{customer.phone ?? ''}</span></span>
+          <button type="button" onClick={() => setCustomer(null)} className="text-[11px] text-white/60 hover:text-white">변경</button>
         </div>
       ) : (
         <div>

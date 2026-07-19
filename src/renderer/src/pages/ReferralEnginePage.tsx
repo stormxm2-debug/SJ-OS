@@ -285,16 +285,18 @@ export default function ReferralEnginePage(): JSX.Element {
     const next = nextReferralStatus(r.status)
     if (!next || busy) return
     setBusy(true)
-    await updateReferralStatus(r.id, next)
+    const res = await updateReferralStatus(r.id, next)
     setBusy(false)
+    if (!res.ok) setError(res.error ?? '단계 변경에 실패했습니다. 다시 시도해 주세요.')
     await refreshReferrals()
   }
 
   const markFailed = async (r: Referral): Promise<void> => {
     if (busy) return
     setBusy(true)
-    await updateReferralStatus(r.id, 'failed')
+    const res = await updateReferralStatus(r.id, 'failed')
     setBusy(false)
+    if (!res.ok) setError(res.error ?? '처리에 실패했습니다. 다시 시도해 주세요.')
     await refreshReferrals()
   }
 
@@ -302,8 +304,9 @@ export default function ReferralEnginePage(): JSX.Element {
     if (busy) return
     if (!window.confirm(`'${r.referredName ?? r.referrerName}' 소개 기록을 삭제할까요?`)) return
     setBusy(true)
-    await deleteReferral(r.id)
+    const res = await deleteReferral(r.id)
     setBusy(false)
+    if (!res.ok) setError(res.error ?? '삭제에 실패했습니다. 다시 시도해 주세요.')
     await refreshReferrals()
   }
 
@@ -674,7 +677,7 @@ export default function ReferralEnginePage(): JSX.Element {
                             setConvertId(r.id)
                             setConvert({ referredName: '', referredPhone: '', relation: '' })
                           }}
-                          className="mt-2 inline-flex items-center gap-1 rounded-xl bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 ring-1 ring-indigo-200 transition hover:bg-indigo-100"
+                          className="mt-2 inline-flex items-center gap-1 rounded-xl bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 ring-1 ring-indigo-200 transition hover:bg-[#e0e7ff]"
                         >
                           소개받았어요 <ChevronRight className="h-3.5 w-3.5" />
                         </button>
@@ -696,7 +699,7 @@ export default function ReferralEnginePage(): JSX.Element {
                             type="button"
                             onClick={() => void markFailed(r)}
                             disabled={busy}
-                            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-100 disabled:opacity-40"
+                            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-[#ffe4e6] disabled:opacity-40"
                           >
                             무산
                           </button>

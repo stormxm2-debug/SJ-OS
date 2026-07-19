@@ -271,7 +271,7 @@ export default function SupabaseConsultationManager(): JSX.Element {
       {/* 통계 칩 */}
       <div className="mb-3 flex flex-wrap gap-1.5 text-[11px]">
         <span className="rounded-full bg-slate-950 px-2.5 py-1 font-bold text-slate-300">이번 주 {stats.thisWeek}건</span>
-        <span className={['rounded-full px-2.5 py-1 font-bold', stats.pending > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-950 text-slate-400'].join(' ')}>
+        <span className={['rounded-full px-2.5 py-1 font-bold', stats.pending > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-950 text-slate-400'].join(' ')}>
           <Zap className="mr-0.5 inline h-3 w-3" />
           액션 대기 {stats.pending}건
         </span>

@@ -52,10 +52,10 @@ import {
 const RT_TABLES = ['leads', 'lead_db_types']
 
 const STATUS_CHIP: Record<LeadStatus, string> = {
-  new: 'bg-slate-100 text-slate-600',
-  called: 'bg-sky-100 text-sky-700',
-  contracted: 'bg-emerald-100 text-emerald-700',
-  fail: 'bg-rose-100 text-rose-700'
+  new: 'bg-slate-800 text-slate-300',
+  called: 'bg-sky-50 text-sky-700',
+  contracted: 'bg-emerald-50 text-emerald-700',
+  fail: 'bg-rose-50 text-rose-700'
 }
 
 /** 남은 콜 시간 표시 문구. */
@@ -205,13 +205,16 @@ export default function LeadDistributionPage(): JSX.Element {
   const doStatus = async (lead: Lead, status: LeadStatus): Promise<void> => {
     const res = await updateLeadStatus(lead.id, status)
     if (res.ok) await load()
+    else setError(res.error ?? '상태 변경에 실패했습니다. 다시 시도해 주세요.')
   }
 
   const doReassign = async (lead: Lead, fcId: string): Promise<void> => {
     const s = staff.find((x) => x.id === fcId)
     if (!s) return
     const res = await reassignLead(lead.id, s.id, s.name)
-    if (res.ok) await load()
+    // 실패 시에도 load()로 셀렉트를 원래 담당자로 되돌린다 — 화면이 성공한 척하지 않게.
+    await load()
+    if (!res.ok) setError(res.error ?? '재배정에 실패했습니다. 다시 시도해 주세요.')
   }
 
   /** 리드 → 고객 전환. 같은 전화번호 고객이 이미 있으면 새로 만들지 않고 연결만 한다. */
@@ -379,7 +382,7 @@ export default function LeadDistributionPage(): JSX.Element {
           <div className="space-y-1.5">
             {overdue.slice(0, 12).map((l) => (
               <div key={l.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[12px]">
-                <span className="font-semibold text-slate-700">
+                <span className="font-semibold text-slate-100">
                   {l.name} <span className="font-normal text-slate-500">· {l.assignedFcName ?? '미배정'}</span>
                 </span>
                 <span className={remainLabel(l).tone}>{remainLabel(l).text}</span>

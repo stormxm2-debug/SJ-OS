@@ -47,10 +47,10 @@ import type { CustomerRecord } from '@shared/commercial/models'
 type Phase = 'input' | 'analyzing' | 'result'
 
 const ADEQ_META: Record<Adequacy, { label: string; chip: string; dot: string }> = {
-  sufficient: { label: '충분', chip: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
-  partial: { label: '부분', chip: 'bg-sky-100 text-sky-700', dot: 'bg-sky-500' },
-  insufficient: { label: '부족', chip: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
-  none: { label: '미가입', chip: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' }
+  sufficient: { label: '충분', chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+  partial: { label: '부분', chip: 'bg-sky-50 text-sky-700', dot: 'bg-sky-500' },
+  insufficient: { label: '부족', chip: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
+  none: { label: '미가입', chip: 'bg-rose-50 text-rose-700', dot: 'bg-rose-500' }
 }
 
 const SEV_META: Record<GapSeverity, { label: string; chip: string }> = {
@@ -103,7 +103,8 @@ export default function InsuranceAnalysisPage(): JSX.Element {
       return
     }
     void listInsuranceAnalyses(customer.id).then((res) => {
-      if (res.ok) setPast(res.items)
+      // 실패 시에도 비운다 — 직전 고객의 이력이 새 고객 것처럼 남는 것 방지.
+      setPast(res.ok ? res.items : [])
     })
   }, [customer?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 

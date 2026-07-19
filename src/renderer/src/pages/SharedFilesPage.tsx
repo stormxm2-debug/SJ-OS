@@ -367,7 +367,7 @@ export default function SharedFilesPage(): JSX.Element {
                     ) : null}
                     {/* 삭제 보관: 누가 지웠는지 */}
                     {item.deletedAt ? (
-                      <span className="rounded-full bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-600">
+                      <span className="rounded-full bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-600">
                         {item.deletedByRole === 'owner' ? '대표가 삭제' : '회원이 삭제'}
                         {` · ${new Date(item.deletedAt).toLocaleDateString('ko-KR')}`}
                       </span>

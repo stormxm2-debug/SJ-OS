@@ -26,11 +26,11 @@ import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
 
 /** 상태별 색 칩 스타일 — slate 토큰은 반전 리매핑되어 있어 회색 계열만 slate 사용. */
 const STATUS_CHIP: Record<UnderwritingStatus, string> = {
-  standard: 'bg-emerald-100 text-emerald-700',
-  simplified: 'bg-sky-100 text-sky-700',
-  exclusion: 'bg-amber-100 text-amber-700',
-  loading: 'bg-orange-100 text-orange-700',
-  decline: 'bg-rose-100 text-rose-700',
+  standard: 'bg-emerald-50 text-emerald-700',
+  simplified: 'bg-sky-50 text-sky-700',
+  exclusion: 'bg-amber-50 text-amber-700',
+  loading: 'bg-orange-50 text-orange-700',
+  decline: 'bg-rose-50 text-rose-700',
   unknown: 'border border-slate-800 bg-white text-slate-500'
 }
 
@@ -220,7 +220,7 @@ export default function UnderwritingGuidePage(): JSX.Element {
         </p>
 
         {hasUnverified && (
-          <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-100 px-3 py-2.5">
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <p className="text-[11px] leading-4 text-amber-700">
               <b>검수전</b> 배지가 붙은 기준은 AI가 채운 참고용 초기값입니다. 관리자가 실제 인수 지침으로 수정·저장하면 배지가
@@ -354,7 +354,7 @@ export default function UnderwritingGuidePage(): JSX.Element {
             </div>
           )}
           {!loading && error && (
-            <div className="flex items-center gap-2 rounded-xl bg-rose-100 px-3 py-2.5 text-[12px] text-rose-700">
+            <div className="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-[12px] text-rose-700">
               <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
             </div>
           )}
@@ -398,7 +398,7 @@ export default function UnderwritingGuidePage(): JSX.Element {
                           void removeDisease(d)
                         }
                       }}
-                      className="ml-auto rounded-lg p-1.5 text-rose-600 hover:bg-rose-100"
+                      className="ml-auto rounded-lg p-1.5 text-rose-600 hover:bg-rose-50"
                       aria-label="질병 삭제"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -434,7 +434,7 @@ export default function UnderwritingGuidePage(): JSX.Element {
                             <div className="flex items-center justify-between gap-1">
                               <span className="truncate text-[11px] font-semibold text-slate-300">{insurer}</span>
                               {rule && status !== 'unknown' && !rule.verified && (
-                                <span className="shrink-0 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-semibold text-amber-700">
+                                <span className="shrink-0 rounded bg-amber-50 px-1 py-0.5 text-[9px] font-semibold text-amber-700">
                                   검수전
                                 </span>
                               )}

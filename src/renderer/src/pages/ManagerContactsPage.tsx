@@ -194,10 +194,10 @@ function ContactCard({ c, admin, onSave, onEdit, onDelete }: { c: CompanyContact
       {c.email ? <div className="mt-0.5 text-[11px] text-slate-500">{c.email}</div> : null}
       {c.memo ? <div className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">{c.memo}</div> : null}
       <div className="mt-3 flex gap-1.5">
-        <a href={telHref(c.phone)} className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-[12px] font-bold text-emerald-700 active:bg-emerald-100">
+        <a href={telHref(c.phone)} className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-[12px] font-bold text-emerald-700 active:bg-[#d1fae5]">
           <Phone className="h-3.5 w-3.5" /> 통화
         </a>
-        <a href={smsHref(c.phone)} className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 py-2 text-[12px] font-bold text-indigo-600 active:bg-indigo-100">
+        <a href={smsHref(c.phone)} className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-indigo-200 bg-indigo-50 py-2 text-[12px] font-bold text-indigo-600 active:bg-[#e0e7ff]">
           <MessageSquare className="h-3.5 w-3.5" /> 문자
         </a>
         <button

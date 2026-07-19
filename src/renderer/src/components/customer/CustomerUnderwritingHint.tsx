@@ -24,11 +24,11 @@ import {
  */
 
 const CHIP: Record<UnderwritingStatus, string> = {
-  standard: 'bg-emerald-100 text-emerald-700',
-  simplified: 'bg-sky-100 text-sky-700',
-  exclusion: 'bg-amber-100 text-amber-700',
-  loading: 'bg-orange-100 text-orange-700',
-  decline: 'bg-rose-100 text-rose-700',
+  standard: 'bg-emerald-50 text-emerald-700',
+  simplified: 'bg-sky-50 text-sky-700',
+  exclusion: 'bg-amber-50 text-amber-700',
+  loading: 'bg-orange-50 text-orange-700',
+  decline: 'bg-rose-50 text-rose-700',
   unknown: 'border border-slate-800 bg-white text-slate-500'
 }
 

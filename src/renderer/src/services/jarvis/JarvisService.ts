@@ -246,10 +246,13 @@ export class JarvisService {
           result = this.handleUniversalBuild(command)
           break
         case 'briefing':
-          result = this.handleAnswer('daily-briefing', classification, true)
+          // 실데이터 우선: Claude 브레인(사내 스냅샷 포함)이 살아 있으면 그쪽으로.
+          // 구 AnswerService는 로컬 목업(빈 저장소)이라 운영에서 0원/0건을 확답하는
+          // 문제가 있었음 — 브레인 비활성(데모·미연결)일 때만 로컬 폴백.
+          result = (await this.handleBrain(command)) ?? this.handleAnswer('daily-briefing', classification, true)
           break
         case 'answer':
-          result = this.handleAnswer(classification.intent, classification, false)
+          result = (await this.handleBrain(command)) ?? this.handleAnswer(classification.intent, classification, false)
           break
         case 'navigation':
           result = this.handleNavigation(classification)

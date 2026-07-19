@@ -101,7 +101,7 @@ export default function StaffHomePage(): JSX.Element {
               type="button"
               onClick={() => useCommand(cmd)}
               title="자비스 입력창에 넣기"
-              className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 transition hover:bg-indigo-100"
+              className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 transition hover:bg-[#e0e7ff]"
             >
               {copied === cmd ? <Check className="h-3.5 w-3.5" /> : <ArrowRight className="h-3.5 w-3.5" />}
               {cmd}

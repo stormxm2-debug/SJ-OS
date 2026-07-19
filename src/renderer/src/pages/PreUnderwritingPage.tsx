@@ -63,9 +63,9 @@ const GRADE_META: Record<UnderwritingGrade, { label: string; chip: string }> = {
 }
 
 const VERDICT_CHIP: Record<string, string> = {
-  가능: 'bg-emerald-100 text-emerald-700',
-  조건부: 'bg-amber-100 text-amber-700',
-  어려움: 'bg-rose-100 text-rose-700',
+  가능: 'bg-emerald-50 text-emerald-700',
+  조건부: 'bg-amber-50 text-amber-700',
+  어려움: 'bg-rose-50 text-rose-700',
   정보필요: 'border border-slate-800 bg-white text-slate-500'
 }
 
@@ -205,7 +205,8 @@ export default function PreUnderwritingPage(): JSX.Element {
       return
     }
     void listUnderwritingAi(customer.id).then((res) => {
-      if (res.ok) setPast(res.items)
+      // 실패 시에도 비운다 — 직전 고객의 이력이 새 고객 것처럼 남는 것 방지.
+      setPast(res.ok ? res.items : [])
     })
   }, [customer?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 

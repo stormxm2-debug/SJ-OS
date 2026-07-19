@@ -23,7 +23,7 @@ export default function MapNavButtons({ location }: { location: string }): JSX.E
       </a>
       <a
         href={`tmap://search?name=${enc}`}
-        className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-bold text-sky-700 transition hover:bg-sky-100"
+        className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-bold text-sky-700 transition hover:bg-[#e0f2fe]"
       >
         <Navigation className="h-3 w-3" /> 티맵
       </a>

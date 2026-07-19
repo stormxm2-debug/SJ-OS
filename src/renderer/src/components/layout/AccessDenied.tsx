@@ -9,7 +9,7 @@ export default function AccessDenied(): JSX.Element {
   const { navigate } = useNavigation()
   return (
     <div className="mx-auto mt-10 max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50">
         <ShieldAlert className="h-7 w-7 text-amber-600" />
       </div>
       <h2 className="text-lg font-bold text-slate-100">접근 권한이 없습니다</h2>

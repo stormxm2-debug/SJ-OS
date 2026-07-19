@@ -92,7 +92,7 @@ export default function RegistrationAdminPage(): JSX.Element {
             {pending.map((r) => (
               <div key={r.id} className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">대기</span>
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">대기</span>
                   <span className="text-sm font-bold text-slate-100">{r.customerName || '(고객)'}</span>
                   <span className="text-[12px] text-slate-500">{r.staffName || '(직원)'} 요청 · {fmt(r.requestedAt)}</span>
                   <span className="ml-auto flex gap-1.5">
