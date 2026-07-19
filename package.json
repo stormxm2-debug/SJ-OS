@@ -48,11 +48,11 @@
       "target": "nsis"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "SJ INVEST"
+      "shortcutName": "SJ INVEST",
+      "runAfterFinish": true
     }
   },
   "dependencies": {
