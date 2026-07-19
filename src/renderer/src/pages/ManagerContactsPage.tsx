@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { UploadCloud, UsersRound, Search, Download, Trash2, Loader2, RefreshCw, Users2, Lock } from 'lucide-react'
+import { UploadCloud, UsersRound, Search, Download, Trash2, Loader2, RefreshCw, Users2 } from 'lucide-react'
 import {
   loadContactsAsync,
   saveContactsAsync,
@@ -15,8 +15,6 @@ import {
   type ContactsData,
   type CompanyContacts
 } from '@renderer/services/commercial/managerContacts'
-import { useSession } from '@renderer/navigation/SessionContext'
-import { isAdminRole } from '@renderer/navigation/roleAccess'
 
 /**
  * 매니저 연락처 — 보험사 설계매니저·부지점장·지점장 연락망.
@@ -34,11 +32,10 @@ type StatusKind = 'ok' | 'err'
 const EMPTY: ContactsData = { sonbo: [], saengbo: [] }
 
 export default function ManagerContactsPage(): JSX.Element {
-  const { session } = useSession()
   const mode = contactsStorageMode()
   const shared = mode === 'shared'
-  // 팀 공유 모드: 대표/관리자만 수정. 로컬(데모) 모드: 제한 없음.
-  const canEdit = !shared || isAdminRole(session.role)
+  // 팀 공유 목록은 로그인한 전 직원이 조회·수정할 수 있다(RLS 도 authenticated 전체 허용).
+  const canEdit = true
 
   const [data, setData] = useState<ContactsData>(EMPTY)
   const [loading, setLoading] = useState(true)
@@ -167,9 +164,8 @@ export default function ManagerContactsPage(): JSX.Element {
         </div>
       </div>
 
-      {/* 업로드 (수정 권한 있을 때만) */}
-      {canEdit ? (
-        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+      {/* 업로드 — 팀 공유 목록은 로그인한 전 직원이 수정할 수 있습니다 */}
+      <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
           <div className="text-sm font-semibold text-slate-100">엑셀 업로드로 자동 등록</div>
           <div className="mt-0.5 text-[12px] text-slate-500">
             「설계매니저」 양식(손보사·생보사 표)을 그대로 인식합니다.
@@ -240,13 +236,7 @@ export default function ManagerContactsPage(): JSX.Element {
               {status.msg}
             </div>
           ) : null}
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-white px-4 py-3 text-[12px] text-slate-500">
-          <Lock className="h-3.5 w-3.5 text-slate-500" />
-          팀 공유 목록입니다. 목록 수정(엑셀 업로드·삭제)은 대표·관리자만 할 수 있습니다. 연락처 조회와 전화 걸기는 모두 가능합니다.
-        </div>
-      )}
+      </div>
 
       {/* 툴바 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
