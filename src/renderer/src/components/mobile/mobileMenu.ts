@@ -77,7 +77,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' } },
       { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' } },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' } },
-      { key: 'bojang114', label: '보장114 (삼성 보장분석)', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
+      { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: FileText, view: { name: 'claim-assistant' } },
       { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' } },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' } },
