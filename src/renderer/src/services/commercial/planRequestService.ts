@@ -88,7 +88,7 @@ export const COVERAGE_GROUPS: CoverageGroup[] = [
   { category: '입원비', items: ['간병인지원비', '상해 입원비', '질병 입원비'], small: true },
   {
     category: '수술비',
-    items: ['1종 수술비', '2종 수술비', '3종 수술비', '4종 수술비', '5종 수술비', '질병 수술비', '상해 수술비', '뇌심질병수술비'],
+    items: ['1~5종 수술비', '질병 수술비', '상해 수술비', '뇌심질병수술비'],
     small: true
   },
   { category: '암 수술비', items: ['암 수술비'], small: true },
