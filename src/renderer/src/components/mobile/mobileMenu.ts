@@ -128,7 +128,11 @@ export function listFavorites(): string[] {
     const raw = window.localStorage.getItem(FAV_KEY)
     const arr: unknown = raw ? JSON.parse(raw) : []
     if (!Array.isArray(arr)) return []
-    return arr.filter((k): k is string => typeof k === 'string' && Boolean(findMenuItem(k)))
+    // 저장소에 같은 키가 중복으로 들어와도(외부 오염 등) 그대로 돌려주면 홈
+    // 즐겨찾기 줄이 React key 충돌("same key" 경고)을 일으키므로 중복을 제거한다.
+    // toggleFavorite도 이 결과로 다시 저장하므로 다음 토글 때 저장소도 정리된다.
+    const valid = arr.filter((k): k is string => typeof k === 'string' && Boolean(findMenuItem(k)))
+    return valid.filter((k, i) => valid.indexOf(k) === i)
   } catch {
     return []
   }
