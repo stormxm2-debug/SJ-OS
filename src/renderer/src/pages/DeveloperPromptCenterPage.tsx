@@ -21,6 +21,7 @@ import Card from '@renderer/components/ui/Card'
 import ClaudeCodeBridgePanel from '@renderer/components/claude-code/ClaudeCodeBridgePanel'
 import ClaudeCodeRunnerPanel from '@renderer/components/claude-code/ClaudeCodeRunnerPanel'
 import ClaudeAutoBuildPanel from '@renderer/components/claude-auto-build/ClaudeAutoBuildPanel'
+import TicketBoardPanel from '@renderer/components/claude-auto-build/TicketBoardPanel'
 import ClaudeParallelPanel from '@renderer/components/claude-auto-build/ClaudeParallelPanel'
 import ClaudeRepairPanel from '@renderer/components/claude-auto-build/ClaudeRepairPanel'
 import ClaudeCommitPushPanel from '@renderer/components/claude-auto-build/ClaudeCommitPushPanel'
@@ -178,6 +179,9 @@ export default function DeveloperPromptCenterPage(): JSX.Element {
           ))}
         </div>
       </Card>
+
+      {/* 티켓 파이프라인 (디렉터 → 개발자 → 검토) — 완료 기준 기반 작업 관리 */}
+      <TicketBoardPanel />
 
       {/* Primary flow (Jarvis → Claude Code Auto Builder) */}
       <ClaudeAutoBuildPanel advanced={showAdvanced} />

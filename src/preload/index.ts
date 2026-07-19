@@ -49,6 +49,11 @@ import type {
   PackageRunUpdate
 } from '@shared/electronPackage'
 import type { ReleaseSnapshot, SnapshotMeta } from '@shared/releaseSnapshot'
+import type {
+  CreateJarvisTicketInput,
+  JarvisTicket,
+  UpdateJarvisTicketInput
+} from '@shared/jarvisTickets'
 import type { PackageOutputInspection, RegisteredPackageInfo } from '@shared/distributionPackage'
 
 /**
@@ -118,6 +123,18 @@ const api = {
     /** Open the exported-prompts folder in the OS file explorer. */
     openPromptsFolder: (): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('sj-claude:open-prompts-folder')
+  },
+  tickets: {
+    /**
+     * 자비스 작업 티켓 (디렉터→개발자→리뷰어). 파일(.sj-os/tickets/) rw만 —
+     * 경로는 main이 조립하고 taskId는 검증된다. 실행은 claudeBuild가 담당.
+     */
+    list: (): Promise<JarvisTicket[]> => ipcRenderer.invoke('sj-tickets:list'),
+    create: (input: CreateJarvisTicketInput): Promise<JarvisTicket> =>
+      ipcRenderer.invoke('sj-tickets:create', input),
+    update: (taskId: string, patch: UpdateJarvisTicketInput): Promise<JarvisTicket | null> =>
+      ipcRenderer.invoke('sj-tickets:update', taskId, patch),
+    remove: (taskId: string): Promise<boolean> => ipcRenderer.invoke('sj-tickets:delete', taskId)
   },
   claudeBuild: {
     /**

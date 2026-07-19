@@ -30,6 +30,7 @@ import {
   smokeTestRunner,
   runSafeCheck
 } from './claudeAutoBuild'
+import { registerJarvisTicketIpc } from './jarvisTicketStore'
 import {
   commitWorktreeJob,
   getParallelJob,
@@ -304,6 +305,8 @@ app.whenReady().then(() => {
   ipcMain.handle('sj-claude-build:cancel', (_e, id: string) => cancelAutoBuildJob(id))
   ipcMain.handle('sj-claude-build:get', (_e, id: string) => getAutoBuildJob(id))
   ipcMain.handle('sj-claude-build:list', () => listAutoBuildJobs())
+  // 자비스 작업 티켓 (디렉터→개발자→리뷰어 파이프라인) — 파일 rw만, 셸 실행 없음.
+  registerJarvisTicketIpc()
   // Runner environment diagnostics (fixed checks only; no renderer commands).
   ipcMain.handle('sj-claude-build:check-env', () => checkRunnerEnvironment())
   ipcMain.handle('sj-claude-build:smoke-test', () => smokeTestRunner())
