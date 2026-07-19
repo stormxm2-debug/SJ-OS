@@ -1,5 +1,3 @@
-import { contextBuilder } from './ContextBuilder'
-import type { SjOsSnapshot } from './ContextBuilder'
 import { detectProxyStatus, primaryProxyUrl, activeProxyUrl, getLastWorkingUrl } from './proxyConfig'
 
 /**
@@ -159,22 +157,18 @@ export class JarvisGptBrainService {
   }
 
   /**
-   * Ask the GPT brain. Builds a sanitized snapshot, calls the proxy with a
-   * timeout, and returns a normalized result. Never throws.
+   * Ask the GPT brain. Calls the proxy with a timeout and returns a normalized
+   * result. Never throws.
+   *
+   * 스냅샷 미주입: 과거 ContextBuilder가 로컬 목업 저장소 수치를 "현황"으로
+   * 주입했으나, 실데이터 질의는 Claude 브레인(jarvis-brain)이 담당하므로
+   * 가짜 수치가 답변 근거로 쓰이지 않게 제거했다 (2026-07 목업 청산).
    */
   async ask(command: string, mode?: GptMode): Promise<GptBrainResult> {
     const resolvedMode = mode ?? this.selectMode(command)
     const config = this.getConfig()
     if (!config.enabled) {
       return this.disabledResult(resolvedMode)
-    }
-
-    let snapshot: SjOsSnapshot | null = null
-    try {
-      snapshot = contextBuilder.buildSnapshot()
-    } catch {
-      // Snapshot is best-effort context; proceed without it if it fails.
-      snapshot = null
     }
 
     // Target the auto-detected reachable proxy. Detect once if we haven't yet,
@@ -192,13 +186,14 @@ export class JarvisGptBrainService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // GPT prompt contract (Sprint 4): context is an object with app/role/snapshot.
+        // snapshot은 목업 수치 청산 이후 항상 빈 객체 (프록시 계약 형태만 유지).
         body: JSON.stringify({
           message: command,
           mode: resolvedMode,
           context: {
             app: 'SJ OS',
             role: 'CEO command center',
-            snapshot: snapshot ?? {}
+            snapshot: {}
           }
         }),
         signal: controller.signal
