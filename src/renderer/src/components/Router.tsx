@@ -54,6 +54,7 @@ import StaffTablePage from '@renderer/pages/StaffTablePage'
 import SharedSchedulePage from '@renderer/pages/SharedSchedulePage'
 import BirthdayPage from '@renderer/pages/BirthdayPage'
 import StatsReportPage from '@renderer/pages/StatsReportPage'
+import ContentStudioPage from '@renderer/pages/ContentStudioPage'
 
 /** Renders the active view chosen by the navigation state. */
 export default function Router(): JSX.Element {
@@ -90,6 +91,8 @@ export default function Router(): JSX.Element {
       return <BirthdayPage />
     case 'stats-report':
       return <StatsReportPage />
+    case 'content-studio':
+      return <ContentStudioPage />
     case 'sales-activity':
       return <SalesActivityWorkspacePage />
     case 'schedule':

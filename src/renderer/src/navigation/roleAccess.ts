@@ -43,6 +43,7 @@ export const STAFF_ROUTES: ViewName[] = [
   'leads',
   'referrals',
   'today-contacts',
+  'content-studio',
   'plan-request',
   'files',
   'notice',

@@ -47,7 +47,8 @@ import {
   Hourglass,
   Briefcase,
   ExternalLink,
-  FileSignature
+  FileSignature,
+  Clapperboard
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -105,6 +106,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
       { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
+      { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
       { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
       { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
       { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
@@ -194,6 +196,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
+  { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
   { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
@@ -221,6 +224,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
+  { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
   { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },

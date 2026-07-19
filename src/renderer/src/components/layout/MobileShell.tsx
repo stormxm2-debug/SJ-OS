@@ -40,6 +40,7 @@ import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGa
 import NoticePage from '@renderer/pages/NoticePage'
 import BirthdayPage from '@renderer/pages/BirthdayPage'
 import StatsReportPage from '@renderer/pages/StatsReportPage'
+import ContentStudioPage from '@renderer/pages/ContentStudioPage'
 import { useWakeKey } from '@renderer/services/commercial/wakeResync'
 
 /**
@@ -206,6 +207,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <BirthdayPage />
     case 'stats-report':
       return <StatsReportPage />
+    case 'content-studio':
+      return <ContentStudioPage />
     case 'consultation':
       return <SupabaseConsultationManager />
     case 'schedule':
