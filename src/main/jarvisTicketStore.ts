@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import type {
   CreateJarvisTicketInput,
   JarvisTicket,
+  JarvisTicketReview,
   JarvisTicketStatus,
   UpdateJarvisTicketInput
 } from '@shared/jarvisTickets'
@@ -48,6 +49,24 @@ function clipList(v: unknown): string[] {
 
 const STATUSES: JarvisTicketStatus[] = ['requested', 'developing', 'reviewing', 'approved', 'rejected', 'done']
 
+function readReview(v: unknown): JarvisTicketReview | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const r = v as Partial<JarvisTicketReview>
+  if (r.verdict !== 'approved' && r.verdict !== 'rejected') return undefined
+  return {
+    verdict: r.verdict,
+    summary: clip(r.summary, 1000),
+    criteria: Array.isArray(r.criteria)
+      ? r.criteria
+          .filter((c): c is { criterion: string; met: boolean; note?: string } => !!c && typeof c === 'object')
+          .map((c) => ({ criterion: clip(c.criterion, 500), met: c.met === true, note: c.note ? clip(c.note, 500) : undefined }))
+          .filter((c) => c.criterion)
+          .slice(0, MAX_LIST_ITEMS)
+      : [],
+    reviewedAt: clip(r.reviewedAt, 40)
+  }
+}
+
 function readTicketFile(path: string): JarvisTicket | null {
   try {
     const raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<JarvisTicket>
@@ -63,6 +82,7 @@ function readTicketFile(path: string): JarvisTicket | null {
       acceptanceCriteria: clipList(raw.acceptanceCriteria),
       status: STATUSES.includes(raw.status as JarvisTicketStatus) ? (raw.status as JarvisTicketStatus) : 'requested',
       jobId: typeof raw.jobId === 'string' ? raw.jobId : undefined,
+      review: readReview(raw.review),
       history: Array.isArray(raw.history)
         ? raw.history
             .filter((h): h is { at: string; event: string } => !!h && typeof h.at === 'string' && typeof h.event === 'string')
@@ -133,6 +153,7 @@ export function updateTicket(taskId: string, patch: UpdateJarvisTicketInput): Ja
     ...cur,
     status: patch.status && STATUSES.includes(patch.status) ? patch.status : cur.status,
     jobId: patch.jobId !== undefined ? clip(patch.jobId, 100) : cur.jobId,
+    review: patch.review !== undefined ? readReview(patch.review) : cur.review,
     history: [...cur.history, { at: now, event: clip(patch.event, 300) || '변경' }].slice(-MAX_HISTORY),
     updatedAt: now
   }

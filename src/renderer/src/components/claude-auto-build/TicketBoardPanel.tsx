@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ClipboardList, Loader2, Play, Plus, RefreshCw, Trash2, X, CheckCircle2, RotateCcw } from 'lucide-react'
+import { ClipboardList, Loader2, Play, Plus, RefreshCw, Trash2, X, CheckCircle2, RotateCcw, ShieldCheck } from 'lucide-react'
 import type { JarvisTicket, JarvisTicketStatus } from '@shared/jarvisTickets'
 import {
   buildDeveloperPromptFromTicket,
@@ -48,6 +48,7 @@ export default function TicketBoardPanel(): JSX.Element {
   const [draft, setDraft] = useState<DraftState | null>(null)
   const [command, setCommand] = useState('')
   const [openId, setOpenId] = useState<string | undefined>()
+  const [reviewingIds, setReviewingIds] = useState<Set<string>>(new Set())
   // 같은 잡 상태 전환을 중복 반영하지 않기 위한 처리 기록
   const handledRef = useRef<Set<string>>(new Set())
 
@@ -66,7 +67,28 @@ export default function TicketBoardPanel(): JSX.Element {
     void reload()
   }, [reload])
 
-  // 개발 잡 상태 → 티켓 상태 자동 전환 (성공=검토 대기, 실패=반려)
+  /** 리뷰어 AI 실행 — 판정(승인/반려)까지 자동 반영. 실패 시 검토 대기 유지 + 수동 버튼. */
+  const runReview = useCallback(
+    async (taskId: string): Promise<void> => {
+      const bridge = ticketApi()
+      if (!bridge) return
+      setReviewingIds((s) => new Set(s).add(taskId))
+      try {
+        const res = await bridge.review(taskId)
+        if (!res.ok && res.error) setError(`리뷰어 AI: ${res.error}`)
+      } finally {
+        setReviewingIds((s) => {
+          const n = new Set(s)
+          n.delete(taskId)
+          return n
+        })
+        void reload()
+      }
+    },
+    [reload]
+  )
+
+  // 개발 잡 상태 → 티켓 자동 전환: 성공 = 검토 대기 + 리뷰어 AI 자동 실행, 실패 = 반려
   useEffect(() => {
     const bridge = ticketApi()
     if (!bridge) return
@@ -78,13 +100,16 @@ export default function TicketBoardPanel(): JSX.Element {
       if (handledRef.current.has(key)) continue
       if (job.status === 'succeeded') {
         handledRef.current.add(key)
-        void bridge.update(t.taskId, { status: 'reviewing', event: '개발 잡 성공 — 검토 대기 (typecheck·build 통과)' }).then(reload)
+        void bridge
+          .update(t.taskId, { status: 'reviewing', event: '개발 잡 성공 (typecheck·build 통과) — 리뷰어 AI 검토 시작' })
+          .then(reload)
+          .then(() => runReview(t.taskId))
       } else if (['failed', 'timed-out', 'blocked', 'cancelled'].includes(job.status)) {
         handledRef.current.add(key)
         void bridge.update(t.taskId, { status: 'rejected', event: `개발 잡 실패 (${job.status}) — 재실행 필요` }).then(reload)
       }
     }
-  }, [jobs, tickets, reload])
+  }, [jobs, tickets, reload, runReview])
 
   /** 디렉터: 명령 → 완료 기준이 채워진 티켓 초안 (편집 후 저장). */
   const makeDraft = (): void => {
@@ -317,11 +342,31 @@ export default function TicketBoardPanel(): JSX.Element {
                         </button>
                         {open ? (
                           <div className="mt-2 border-t border-slate-800 pt-2">
-                            <ul className="space-y-0.5 text-[10px] text-slate-500">
-                              {t.acceptanceCriteria.map((c, i) => (
-                                <li key={i}>· {c}</li>
-                              ))}
-                            </ul>
+                            {t.review ? (
+                              <div className="mb-1.5 rounded-lg bg-slate-950 p-2">
+                                <div className="flex items-center gap-1.5">
+                                  <ShieldCheck className={`h-3 w-3 ${t.review.verdict === 'approved' ? 'text-emerald-500' : 'text-rose-500'}`} />
+                                  <span className={`text-[10px] font-bold ${t.review.verdict === 'approved' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    리뷰어 AI: {t.review.verdict === 'approved' ? '승인' : '반려'}
+                                  </span>
+                                </div>
+                                {t.review.summary ? <div className="mt-1 text-[10px] text-slate-400">{t.review.summary}</div> : null}
+                                <ul className="mt-1 space-y-0.5 text-[10px]">
+                                  {t.review.criteria.map((c, i) => (
+                                    <li key={i} className={c.met ? 'text-emerald-600' : 'text-rose-600'}>
+                                      {c.met ? '✓' : '✗'} {c.criterion}
+                                      {c.note ? <span className="text-slate-500"> — {c.note}</span> : null}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : (
+                              <ul className="space-y-0.5 text-[10px] text-slate-500">
+                                {t.acceptanceCriteria.map((c, i) => (
+                                  <li key={i}>· {c}</li>
+                                ))}
+                              </ul>
+                            )}
                             {t.history.length > 0 ? (
                               <div className="mt-1.5 text-[9px] text-slate-500">{t.history[t.history.length - 1].event}</div>
                             ) : null}
@@ -340,22 +385,35 @@ export default function TicketBoardPanel(): JSX.Element {
                             </button>
                           ) : null}
                           {t.status === 'reviewing' ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => void setStatus(t, 'done', '검토 승인 — 완료 (커밋은 자동개발 패널에서 진행)')}
-                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:brightness-110"
-                              >
-                                <CheckCircle2 className="h-3 w-3" /> 승인
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void setStatus(t, 'rejected', '검토 반려 — 수정 후 재실행 필요')}
-                                className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:brightness-110"
-                              >
-                                <RotateCcw className="h-3 w-3" /> 반려
-                              </button>
-                            </>
+                            reviewingIds.has(t.taskId) ? (
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-[#0e1e3a] px-2 py-1 text-[10px] font-bold text-[#e6c877]">
+                                <Loader2 className="h-3 w-3 animate-spin" /> 리뷰어 AI 검토 중…
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => void runReview(t.taskId)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-[#0e1e3a] px-2 py-1 text-[10px] font-bold text-[#e6c877] transition hover:brightness-125"
+                                >
+                                  <ShieldCheck className="h-3 w-3" /> AI 검토
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void setStatus(t, 'done', '사람 검토 승인 — 완료 (커밋은 자동개발 패널에서 진행)')}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:brightness-110"
+                                >
+                                  <CheckCircle2 className="h-3 w-3" /> 승인
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void setStatus(t, 'rejected', '사람 검토 반려 — 수정 후 재실행 필요')}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:brightness-110"
+                                >
+                                  <RotateCcw className="h-3 w-3" /> 반려
+                                </button>
+                              </>
+                            )
                           ) : null}
                           <button
                             type="button"

@@ -134,7 +134,10 @@ const api = {
       ipcRenderer.invoke('sj-tickets:create', input),
     update: (taskId: string, patch: UpdateJarvisTicketInput): Promise<JarvisTicket | null> =>
       ipcRenderer.invoke('sj-tickets:update', taskId, patch),
-    remove: (taskId: string): Promise<boolean> => ipcRenderer.invoke('sj-tickets:delete', taskId)
+    remove: (taskId: string): Promise<boolean> => ipcRenderer.invoke('sj-tickets:delete', taskId),
+    /** 리뷰어 AI 실행 (읽기 전용 검증자) — 판정까지 수 분 걸릴 수 있음. */
+    review: (taskId: string): Promise<{ ok: boolean; ticket: JarvisTicket | null; error?: string }> =>
+      ipcRenderer.invoke('sj-tickets:review-run', taskId)
   },
   claudeBuild: {
     /**

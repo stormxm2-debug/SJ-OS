@@ -27,6 +27,21 @@ export interface JarvisTicketHistoryEntry {
   event: string
 }
 
+/** 리뷰어 AI의 기준별 판정. */
+export interface JarvisReviewCriterion {
+  criterion: string
+  met: boolean
+  note?: string
+}
+
+/** 리뷰어 AI 판정 결과 (티켓에 저장). */
+export interface JarvisTicketReview {
+  verdict: 'approved' | 'rejected'
+  summary: string
+  criteria: JarvisReviewCriterion[]
+  reviewedAt: string
+}
+
 export interface JarvisTicket {
   /** TASK-001 형식. */
   taskId: string
@@ -44,6 +59,8 @@ export interface JarvisTicket {
   status: JarvisTicketStatus
   /** 연결된 claudeAutoBuild 잡 id (개발 실행 후). */
   jobId?: string
+  /** 리뷰어 AI 최신 판정 (재검토 시 덮어씀; 이력은 history에 남음). */
+  review?: JarvisTicketReview
   history: JarvisTicketHistoryEntry[]
   createdAt: string
   updatedAt: string
@@ -60,6 +77,7 @@ export interface CreateJarvisTicketInput {
 export interface UpdateJarvisTicketInput {
   status?: JarvisTicketStatus
   jobId?: string
+  review?: JarvisTicketReview
   /** history에 남길 한 줄 (필수 — 모든 변경은 기록을 남긴다). */
   event: string
 }
@@ -79,6 +97,101 @@ export function suggestAcceptanceCriteria(command: string): string[] {
   if (has(['직원', 'fc', '관리자', '권한'])) out.push('내 것 기본 + 직원 것 별도 원칙 적용 (FC는 본인 것만)')
   if (has(['색', '디자인', '테마', '카드'])) out.push('slate 토큰 반전 규칙 준수 (어두운 카드는 명시적 hex)')
   return out
+}
+
+/** 리뷰어에게 전달하는 변경 증거 — main이 고정 명령으로 수집한다. */
+export interface JarvisReviewEvidence {
+  /** 개발 잡의 typecheck 검증 결과 (passed/failed/…). */
+  typecheck: string
+  /** 개발 잡의 build 검증 결과. */
+  build: string
+  gitStatusShort: string
+  diffStat: string
+  /** git diff 본문 (길면 잘림). */
+  diff: string
+  diffTruncated: boolean
+}
+
+export const REVIEW_JSON_OPEN = '<REVIEW_JSON>'
+export const REVIEW_JSON_CLOSE = '</REVIEW_JSON>'
+
+/**
+ * 티켓 + 증거 → 리뷰어(검증자) 프롬프트.
+ * 리뷰어는 기본 권한 모드로 실행된다: Read/Grep 등 읽기 도구만 자동 허용되고
+ * 파일 수정·Bash는 승인자가 없어 실행될 수 없다 (생성자·검증자 분리).
+ */
+export function buildReviewerPromptFromTicket(ticket: JarvisTicket, ev: JarvisReviewEvidence): string {
+  return [
+    `너는 SJ-OS 리뷰어 AI다 — 개발자와 분리된 독립 검증자. 아래 작업 티켓의 완료 기준을 실제 변경 증거와 대조해 판정하라.`,
+    '',
+    '## 판정 규칙',
+    '- AI의 주장이 아니라 증거(diff·검증 결과·실제 파일)로만 판단한다.',
+    '- 필요하면 Read/Grep 도구로 실제 파일을 열어 확인해도 된다.',
+    '- Bash·Edit·Write 등 실행/수정 도구는 절대 사용하지 말 것 — 승인자가 없어 멈추고, 너의 역할도 아니다.',
+    '- diff에는 다른 작업의 변경이 섞여 있을 수 있다. 이 티켓의 목표와 관련된 변경만 평가하라.',
+    '- 기준을 증거로 확인할 수 없으면 met=false로 두고 note에 "증거 부족"과 이유를 적어라.',
+    '- verdict는 모든 기준이 충족될 때만 approved. 하나라도 미충족이면 rejected.',
+    '',
+    `## 작업 티켓 ${ticket.taskId}: ${ticket.title}`,
+    `목표: ${ticket.objective}`,
+    '',
+    '완료 기준:',
+    ...ticket.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`),
+    '',
+    '## 변경 증거',
+    `- typecheck(개발 잡 검증): ${ev.typecheck}`,
+    `- build(개발 잡 검증): ${ev.build}`,
+    '- git status --short:',
+    '```',
+    ev.gitStatusShort || '(변경 없음)',
+    '```',
+    '- git diff --stat:',
+    '```',
+    ev.diffStat || '(없음)',
+    '```',
+    `- git diff${ev.diffTruncated ? ' (길어서 일부만 — 나머지는 Read로 파일을 직접 확인하라)' : ''}:`,
+    '```diff',
+    ev.diff || '(없음)',
+    '```',
+    '',
+    '## 출력 형식 (다른 말 없이 반드시 아래 형식만)',
+    REVIEW_JSON_OPEN,
+    '{"verdict":"approved 또는 rejected","summary":"한두 문장 총평","criteria":[{"criterion":"기준 원문","met":true,"note":"근거 한 줄"}]}',
+    REVIEW_JSON_CLOSE
+  ].join('\n')
+}
+
+/** 리뷰어 출력에서 판정 JSON을 추출·검증. 실패 시 null. */
+export function parseReviewOutput(output: string): JarvisTicketReview | null {
+  try {
+    const start = output.lastIndexOf(REVIEW_JSON_OPEN)
+    const end = output.lastIndexOf(REVIEW_JSON_CLOSE)
+    if (start === -1 || end === -1 || end <= start) return null
+    const raw = JSON.parse(output.slice(start + REVIEW_JSON_OPEN.length, end).trim()) as {
+      verdict?: unknown
+      summary?: unknown
+      criteria?: unknown
+    }
+    if (raw.verdict !== 'approved' && raw.verdict !== 'rejected') return null
+    const criteria: JarvisReviewCriterion[] = Array.isArray(raw.criteria)
+      ? raw.criteria
+          .filter((c): c is { criterion?: unknown; met?: unknown; note?: unknown } => !!c && typeof c === 'object')
+          .map((c) => ({
+            criterion: String(c.criterion ?? '').slice(0, 500),
+            met: c.met === true,
+            note: c.note ? String(c.note).slice(0, 500) : undefined
+          }))
+          .filter((c) => c.criterion)
+      : []
+    return {
+      verdict: raw.verdict,
+      summary: String(raw.summary ?? '').slice(0, 1000),
+      criteria,
+      reviewedAt: new Date().toISOString()
+    }
+  } catch {
+    return null
+  }
 }
 
 /** 티켓 → 개발자(claudeAutoBuild) 프롬프트. 완료 기준을 명시적으로 주입한다. */
