@@ -13,6 +13,12 @@
 
 export type JarvisTicketStatus = 'requested' | 'developing' | 'reviewing' | 'approved' | 'rejected' | 'done'
 
+/** 반려 주체 — 자동 재시도는 리뷰어 반려에만 적용한다 (사람 반려 = 사람 판단). */
+export type TicketRejectSource = 'reviewer' | 'human' | 'dev-fail'
+
+/** 티켓당 최대 개발 실행 횟수 (최초 1회 + 리뷰어 반려 자동 재시도 2회). */
+export const MAX_TICKET_DEV_ATTEMPTS = 3
+
 export const TICKET_STATUS_LABEL: Record<JarvisTicketStatus, string> = {
   requested: '요청',
   developing: '개발 중',
@@ -61,6 +67,10 @@ export interface JarvisTicket {
   jobId?: string
   /** 리뷰어 AI 최신 판정 (재검토 시 덮어씀; 이력은 history에 남음). */
   review?: JarvisTicketReview
+  /** 개발 실행 누적 횟수 (자동 재시도 한도 판단). */
+  attempts?: number
+  /** 마지막 반려 주체 — 상태가 developing으로 돌아가면 저장소가 자동으로 지운다. */
+  rejectSource?: TicketRejectSource
   history: JarvisTicketHistoryEntry[]
   createdAt: string
   updatedAt: string
@@ -78,6 +88,8 @@ export interface UpdateJarvisTicketInput {
   status?: JarvisTicketStatus
   jobId?: string
   review?: JarvisTicketReview
+  attempts?: number
+  rejectSource?: TicketRejectSource
   /** history에 남길 한 줄 (필수 — 모든 변경은 기록을 남긴다). */
   event: string
 }
@@ -195,6 +207,92 @@ export function parseReviewOutput(output: string): JarvisTicketReview | null {
 }
 
 /** 티켓 → 개발자(claudeAutoBuild) 프롬프트. 완료 기준을 명시적으로 주입한다. */
+/**
+ * 리뷰어 반려 → 재개발(재시도) 프롬프트. 개발자 프롬프트에 반려 사유
+ * (미충족 기준 + 근거)를 주입해 "실패 분석 → 수정" 루프를 닫는다.
+ */
+export function buildRetryPromptFromTicket(ticket: JarvisTicket): string {
+  const base = buildDeveloperPromptFromTicket(ticket)
+  if (!ticket.review || ticket.review.verdict !== 'rejected') return base
+  const unmet = ticket.review.criteria.filter((c) => !c.met)
+  return [
+    base,
+    '',
+    '## ⚠ 이전 시도 반려 (리뷰어 AI 판정) — 이번에는 아래 미충족 기준을 반드시 해결하라',
+    ticket.review.summary ? `총평: ${ticket.review.summary}` : '',
+    ...unmet.map((c) => `- [미충족] ${c.criterion}${c.note ? ` — ${c.note}` : ''}`),
+    '',
+    '- 이미 충족된 부분은 불필요하게 다시 고치지 말 것.',
+    '- 미충족 기준을 해결한 뒤 관련 파일을 다시 확인해 근거를 남길 것.'
+  ]
+    .filter((l) => l !== '')
+    .join('\n')
+}
+
+// ---------- 디렉터 AI (명령 → 티켓 설계) ----------
+
+export const TICKET_JSON_OPEN = '<TICKET_JSON>'
+export const TICKET_JSON_CLOSE = '</TICKET_JSON>'
+
+/** 디렉터 AI가 설계한 티켓 초안 (대표가 수정 후 저장 = 사람 승인). */
+export interface DirectorDraft {
+  title: string
+  objective: string
+  inputFiles: string[]
+  acceptanceCriteria: string[]
+}
+
+/**
+ * 디렉터 프롬프트 — 읽기 전용(기본 권한 모드)으로 실행되어 코드 구조를
+ * 확인하며 티켓을 설계할 수 있지만 수정은 구조적으로 불가능하다.
+ */
+export function buildDirectorPrompt(command: string): string {
+  return [
+    '너는 SJ-OS 디렉터 AI다. 대표의 명령을 분석해 개발자 에이전트에게 줄 작업 티켓 1건을 설계하라.',
+    '',
+    '## 규칙',
+    '- 필요하면 Read/Grep 도구로 프로젝트 구조를 확인해도 된다 (수정 도구는 절대 사용 금지 — 승인자가 없어 멈춘다).',
+    '- objective는 개발자가 바로 구현할 수 있게 구체적으로 (관련 파일·서비스가 보이면 언급).',
+    '- acceptanceCriteria는 검증 가능한 문장으로 3~7개. 다음 사내 규칙이 해당되면 반드시 포함:',
+    '  · "npm run typecheck 통과 (오류 0건)" (항상 포함)',
+    '  · 새 화면이면 "등록 6곳 완료 (types·roleAccess·Router·MobileShell·mobileMenu·Sidebar 3배열)"',
+    '  · DB 변경이면 "SQL은 docs/supabase/에 파일로만 작성 (DB 직접 적용 금지)"',
+    '  · 직원 데이터 화면이면 "내 것 기본 + 직원 것 별도 (FC는 본인 것만)"',
+    '  · 어두운 카드 UI면 "slate 토큰 반전 주의 — 명시적 hex 사용"',
+    '- inputFiles에는 개발자가 먼저 읽어야 할 파일 경로 0~5개.',
+    '',
+    '## 대표 명령',
+    command,
+    '',
+    '## 출력 형식 (다른 말 없이 반드시 아래 형식만)',
+    TICKET_JSON_OPEN,
+    '{"title":"짧은 제목","objective":"구현 목표 상세","inputFiles":["경로"],"acceptanceCriteria":["기준"]}',
+    TICKET_JSON_CLOSE
+  ].join('\n')
+}
+
+/** 디렉터 출력에서 티켓 초안 JSON 추출·검증. 실패 시 null (규칙 기반 폴백). */
+export function parseDirectorOutput(output: string): DirectorDraft | null {
+  try {
+    const start = output.lastIndexOf(TICKET_JSON_OPEN)
+    const end = output.lastIndexOf(TICKET_JSON_CLOSE)
+    if (start === -1 || end === -1 || end <= start) return null
+    const raw = JSON.parse(output.slice(start + TICKET_JSON_OPEN.length, end).trim()) as Partial<DirectorDraft>
+    const list = (v: unknown, itemMax: number, listMax: number): string[] =>
+      Array.isArray(v) ? v.map((x) => String(x ?? '').slice(0, itemMax).trim()).filter(Boolean).slice(0, listMax) : []
+    const draft: DirectorDraft = {
+      title: String(raw.title ?? '').slice(0, 200).trim(),
+      objective: String(raw.objective ?? '').slice(0, 4000).trim(),
+      inputFiles: list(raw.inputFiles, 300, 5),
+      acceptanceCriteria: list(raw.acceptanceCriteria, 500, 10)
+    }
+    if (!draft.objective || draft.acceptanceCriteria.length === 0) return null
+    return draft
+  } catch {
+    return null
+  }
+}
+
 export function buildDeveloperPromptFromTicket(ticket: JarvisTicket): string {
   const lines: string[] = [
     `[자비스 작업 티켓 ${ticket.taskId}] ${ticket.title}`,

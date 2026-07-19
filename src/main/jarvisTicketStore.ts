@@ -6,6 +6,7 @@ import type {
   JarvisTicket,
   JarvisTicketReview,
   JarvisTicketStatus,
+  TicketRejectSource,
   UpdateJarvisTicketInput
 } from '@shared/jarvisTickets'
 
@@ -83,6 +84,10 @@ function readTicketFile(path: string): JarvisTicket | null {
       status: STATUSES.includes(raw.status as JarvisTicketStatus) ? (raw.status as JarvisTicketStatus) : 'requested',
       jobId: typeof raw.jobId === 'string' ? raw.jobId : undefined,
       review: readReview(raw.review),
+      attempts: Number.isFinite(Number(raw.attempts)) && Number(raw.attempts) > 0 ? Math.min(Number(raw.attempts), 99) : undefined,
+      rejectSource: (['reviewer', 'human', 'dev-fail'] as TicketRejectSource[]).includes(raw.rejectSource as TicketRejectSource)
+        ? (raw.rejectSource as TicketRejectSource)
+        : undefined,
       history: Array.isArray(raw.history)
         ? raw.history
             .filter((h): h is { at: string; event: string } => !!h && typeof h.at === 'string' && typeof h.event === 'string')
@@ -149,11 +154,23 @@ export function updateTicket(taskId: string, patch: UpdateJarvisTicketInput): Ja
   const cur = readTicketFile(path)
   if (!cur) return null
   const now = new Date().toISOString()
+  const status = patch.status && STATUSES.includes(patch.status) ? patch.status : cur.status
   const next: JarvisTicket = {
     ...cur,
-    status: patch.status && STATUSES.includes(patch.status) ? patch.status : cur.status,
+    status,
     jobId: patch.jobId !== undefined ? clip(patch.jobId, 100) : cur.jobId,
     review: patch.review !== undefined ? readReview(patch.review) : cur.review,
+    attempts:
+      patch.attempts !== undefined && Number.isFinite(patch.attempts) && patch.attempts > 0
+        ? Math.min(Math.floor(patch.attempts), 99)
+        : cur.attempts,
+    // 개발로 돌아가면 반려 주체 표시는 지운다 (새 사이클 시작)
+    rejectSource:
+      status === 'developing'
+        ? undefined
+        : patch.rejectSource !== undefined
+          ? patch.rejectSource
+          : cur.rejectSource,
     history: [...cur.history, { at: now, event: clip(patch.event, 300) || '변경' }].slice(-MAX_HISTORY),
     updatedAt: now
   }

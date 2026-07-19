@@ -32,6 +32,7 @@ import {
 } from './claudeAutoBuild'
 import { registerJarvisTicketIpc } from './jarvisTicketStore'
 import { registerJarvisReviewerIpc } from './jarvisReviewer'
+import { registerJarvisDirectorIpc } from './jarvisDirector'
 import {
   commitWorktreeJob,
   getParallelJob,
@@ -310,6 +311,8 @@ app.whenReady().then(() => {
   registerJarvisTicketIpc()
   // 리뷰어 AI — 기본 권한 모드 claude -p (읽기 전용), 생성자와 분리된 검증자.
   registerJarvisReviewerIpc()
+  // 디렉터 AI — 같은 읽기 전용 러너로 명령→티켓 초안 설계 (확정은 사람).
+  registerJarvisDirectorIpc()
   // Runner environment diagnostics (fixed checks only; no renderer commands).
   ipcMain.handle('sj-claude-build:check-env', () => checkRunnerEnvironment())
   ipcMain.handle('sj-claude-build:smoke-test', () => smokeTestRunner())

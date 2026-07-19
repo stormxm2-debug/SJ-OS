@@ -55,8 +55,14 @@ function collectEvidence(ticket: JarvisTicket): JarvisReviewEvidence {
   }
 }
 
-/** 리뷰어 Claude 실행 — 기본 권한 모드(-p만, bypassPermissions 없음). */
-function runReviewerClaude(prompt: string): Promise<{ output: string; error?: string; timedOut: boolean }> {
+/**
+ * 읽기 전용 Claude 실행 — 기본 권한 모드(-p만, bypassPermissions 없음).
+ * 리뷰어·디렉터가 공용으로 사용: Read/Grep만 동작, 수정·Bash는 구조적 불가.
+ */
+export function runReadOnlyClaude(
+  prompt: string,
+  timeoutMs: number = REVIEW_TIMEOUT_MS
+): Promise<{ output: string; error?: string; timedOut: boolean }> {
   return new Promise((resolveP) => {
     let out = ''
     let err = ''
@@ -87,7 +93,7 @@ function runReviewerClaude(prompt: string): Promise<{ output: string; error?: st
       } catch {
         /* already gone */
       }
-    }, REVIEW_TIMEOUT_MS)
+    }, timeoutMs)
     try {
       child.stdin?.write(prompt)
       child.stdin?.end()
@@ -105,7 +111,7 @@ function runReviewerClaude(prompt: string): Promise<{ output: string; error?: st
       finish({
         output: out,
         error: timedOut
-          ? '리뷰어 실행 시간(8분)이 초과되었습니다.'
+          ? `실행 시간(${Math.round(timeoutMs / 60000)}분)이 초과되었습니다.`
           : code !== 0
             ? `리뷰어 종료 코드 ${code}${err ? ` — ${err.slice(0, 300)}` : ''}`
             : undefined,
@@ -131,7 +137,7 @@ export async function runTicketReview(taskId: string): Promise<ReviewRunResult> 
   try {
     const evidence = collectEvidence(ticket)
     const prompt = buildReviewerPromptFromTicket(ticket, evidence)
-    const run = await runReviewerClaude(prompt)
+    const run = await runReadOnlyClaude(prompt)
     if (run.error && !run.output) {
       const t = updateTicket(taskId, { event: `리뷰어 실행 실패: ${run.error}` })
       return { ok: false, ticket: t, error: run.error }
@@ -146,6 +152,7 @@ export async function runTicketReview(taskId: string): Promise<ReviewRunResult> 
     const t = updateTicket(taskId, {
       status: review.verdict,
       review,
+      ...(review.verdict === 'rejected' ? { rejectSource: 'reviewer' as const } : {}),
       event: `리뷰어 AI 판정: ${review.verdict === 'approved' ? '승인' : '반려'} (기준 ${metCount}/${review.criteria.length} 충족)`
     })
     return { ok: true, ticket: t }

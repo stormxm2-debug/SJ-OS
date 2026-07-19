@@ -51,6 +51,7 @@ import type {
 import type { ReleaseSnapshot, SnapshotMeta } from '@shared/releaseSnapshot'
 import type {
   CreateJarvisTicketInput,
+  DirectorDraft,
   JarvisTicket,
   UpdateJarvisTicketInput
 } from '@shared/jarvisTickets'
@@ -137,7 +138,10 @@ const api = {
     remove: (taskId: string): Promise<boolean> => ipcRenderer.invoke('sj-tickets:delete', taskId),
     /** 리뷰어 AI 실행 (읽기 전용 검증자) — 판정까지 수 분 걸릴 수 있음. */
     review: (taskId: string): Promise<{ ok: boolean; ticket: JarvisTicket | null; error?: string }> =>
-      ipcRenderer.invoke('sj-tickets:review-run', taskId)
+      ipcRenderer.invoke('sj-tickets:review-run', taskId),
+    /** 디렉터 AI 티켓 초안 설계 (읽기 전용) — 확정은 사람이 보드에서 저장할 때. */
+    directorDraft: (command: string): Promise<{ ok: boolean; draft: DirectorDraft | null; error?: string }> =>
+      ipcRenderer.invoke('sj-tickets:director-draft', command)
   },
   claudeBuild: {
     /**

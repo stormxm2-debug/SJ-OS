@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ClipboardList, Loader2, Play, Plus, RefreshCw, Trash2, X, CheckCircle2, RotateCcw, ShieldCheck } from 'lucide-react'
+import { ClipboardList, Loader2, Play, Plus, RefreshCw, Trash2, X, CheckCircle2, RotateCcw, ShieldCheck, Sparkles } from 'lucide-react'
 import type { JarvisTicket, JarvisTicketStatus } from '@shared/jarvisTickets'
 import {
   buildDeveloperPromptFromTicket,
+  buildRetryPromptFromTicket,
+  MAX_TICKET_DEV_ATTEMPTS,
   suggestAcceptanceCriteria,
   TICKET_STATUS_LABEL
 } from '@shared/jarvisTickets'
@@ -49,6 +51,7 @@ export default function TicketBoardPanel(): JSX.Element {
   const [command, setCommand] = useState('')
   const [openId, setOpenId] = useState<string | undefined>()
   const [reviewingIds, setReviewingIds] = useState<Set<string>>(new Set())
+  const [directorBusy, setDirectorBusy] = useState(false)
   // 같은 잡 상태 전환을 중복 반영하지 않기 위한 처리 기록
   const handledRef = useRef<Set<string>>(new Set())
 
@@ -106,12 +109,46 @@ export default function TicketBoardPanel(): JSX.Element {
           .then(() => runReview(t.taskId))
       } else if (['failed', 'timed-out', 'blocked', 'cancelled'].includes(job.status)) {
         handledRef.current.add(key)
-        void bridge.update(t.taskId, { status: 'rejected', event: `개발 잡 실패 (${job.status}) — 재실행 필요` }).then(reload)
+        void bridge
+          .update(t.taskId, { status: 'rejected', rejectSource: 'dev-fail', event: `개발 잡 실패 (${job.status}) — 재실행 필요` })
+          .then(reload)
       }
     }
   }, [jobs, tickets, reload, runReview])
 
-  /** 디렉터: 명령 → 완료 기준이 채워진 티켓 초안 (편집 후 저장). */
+  // 리뷰어 반려 → 자동 재시도 루프 (반려 사유 주입 재개발). 한도: 최초 1회 + 재시도 2회.
+  // 사람 반려·개발 잡 실패는 자동 재시도하지 않는다 (사람 판단 / 별도 수리 절차).
+  useEffect(() => {
+    const bridge = ticketApi()
+    if (!bridge || !envReady) return
+    for (const t of tickets) {
+      if (t.status !== 'rejected' || t.rejectSource !== 'reviewer') continue
+      const prev = t.attempts ?? 1
+      if (prev >= MAX_TICKET_DEV_ATTEMPTS) continue
+      const key = `${t.taskId}:retry:${prev}`
+      if (handledRef.current.has(key)) continue
+      handledRef.current.add(key)
+      void (async () => {
+        const job = await createJobFromPrompt({
+          title: `[${t.taskId}][재시도 ${prev}] ${t.title}`,
+          prompt: buildRetryPromptFromTicket(t),
+          command: t.originalCommand,
+          source: 'developer-prompt-center'
+        })
+        if (!job) return
+        await bridge.update(t.taskId, {
+          status: 'developing',
+          jobId: job.id,
+          attempts: prev + 1,
+          event: `리뷰어 반려 → 자동 재시도 ${prev}/${MAX_TICKET_DEV_ATTEMPTS - 1} (반려 사유 주입)`
+        })
+        await runJob(job.id)
+        await reload()
+      })()
+    }
+  }, [tickets, envReady, createJobFromPrompt, runJob, reload])
+
+  /** 규칙 기반 초안 (즉시) — 디렉터 AI 실패 시 폴백으로도 사용. */
   const makeDraft = (): void => {
     const text = command.trim()
     if (!text) return
@@ -122,6 +159,40 @@ export default function TicketBoardPanel(): JSX.Element {
       inputFilesText: '',
       criteria: suggestAcceptanceCriteria(text)
     })
+  }
+
+  /** 디렉터 AI 설계 — 읽기 전용 Claude가 코드를 보고 티켓을 설계 (확정은 저장 시 사람). */
+  const makeAiDraft = async (): Promise<void> => {
+    const bridge = ticketApi()
+    const text = command.trim()
+    if (!text) return
+    if (!bridge) {
+      makeDraft()
+      return
+    }
+    setDirectorBusy(true)
+    setError(undefined)
+    try {
+      const res = await bridge.directorDraft(text)
+      if (!res.ok || !res.draft) {
+        setError(`디렉터 AI: ${res.error ?? '설계 실패'} — 규칙 기반 초안으로 대체합니다.`)
+        makeDraft()
+        return
+      }
+      const criteria = res.draft.acceptanceCriteria.slice()
+      if (!criteria.some((c) => c.toLowerCase().includes('typecheck'))) {
+        criteria.unshift('npm run typecheck 통과 (오류 0건)')
+      }
+      setDraft({
+        title: res.draft.title || deriveTitle(text),
+        objective: res.draft.objective,
+        originalCommand: text,
+        inputFilesText: res.draft.inputFiles.join(', '),
+        criteria
+      })
+    } finally {
+      setDirectorBusy(false)
+    }
   }
 
   const saveDraft = async (): Promise<void> => {
@@ -161,7 +232,12 @@ export default function TicketBoardPanel(): JSX.Element {
         setError('개발 잡 생성 실패 — 데스크톱 앱에서만 실행할 수 있습니다.')
         return
       }
-      await bridge.update(t.taskId, { status: 'developing', jobId: job.id, event: `개발 잡 실행 (${job.id})` })
+      await bridge.update(t.taskId, {
+        status: 'developing',
+        jobId: job.id,
+        attempts: (t.attempts ?? 0) + 1,
+        event: `개발 잡 실행 (${job.id})`
+      })
       await runJob(job.id)
       await reload()
     } finally {
@@ -219,23 +295,35 @@ export default function TicketBoardPanel(): JSX.Element {
 
       {/* 디렉터: 명령 입력 → 티켓 초안 */}
       {draft === null ? (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           <input
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') makeDraft()
+              if (e.key === 'Enter' && !directorBusy) void makeAiDraft()
             }}
+            disabled={directorBusy}
             placeholder="예: 고객 목록에 최근 상담일 표시해줘"
-            className="w-full rounded-xl border border-slate-800 bg-white px-3 py-2.5 text-sm text-slate-100 focus:outline-none"
+            className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-white px-3 py-2.5 text-sm text-slate-100 focus:outline-none disabled:opacity-60"
           />
           <button
             type="button"
-            onClick={makeDraft}
-            disabled={!command.trim()}
+            onClick={() => void makeAiDraft()}
+            disabled={!command.trim() || directorBusy}
+            title="디렉터 AI가 코드 구조를 보고 티켓을 설계합니다 (수 분 소요 가능)"
             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[#0e1e3a] px-3.5 py-2 text-xs font-bold text-[#e6c877] transition hover:brightness-125 disabled:opacity-50"
           >
-            <Plus className="h-3.5 w-3.5" /> 티켓 만들기
+            {directorBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {directorBusy ? '디렉터 AI 설계 중…' : 'AI 티켓 설계'}
+          </button>
+          <button
+            type="button"
+            onClick={makeDraft}
+            disabled={!command.trim() || directorBusy}
+            title="AI 없이 규칙 기반 초안을 바로 만듭니다"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-800 bg-white px-3 py-2 text-xs font-bold text-slate-400 transition hover:text-indigo-600 disabled:opacity-50"
+          >
+            <Plus className="h-3.5 w-3.5" /> 빠른 초안
           </button>
         </div>
       ) : (
@@ -331,14 +419,21 @@ export default function TicketBoardPanel(): JSX.Element {
                     return (
                       <div key={t.taskId} className="rounded-lg border border-slate-800 bg-white p-2.5">
                         <button type="button" onClick={() => setOpenId(open ? undefined : t.taskId)} className="block w-full text-left">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <span className="rounded bg-[#0e1e3a] px-1.5 py-0.5 text-[9px] font-bold text-[#e6c877]">{t.taskId}</span>
                             {t.status === 'rejected' ? (
                               <span className="rounded-full bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-600">{TICKET_STATUS_LABEL[t.status]}</span>
                             ) : null}
+                            {t.status === 'rejected' && t.rejectSource === 'reviewer' && (t.attempts ?? 1) >= MAX_TICKET_DEV_ATTEMPTS ? (
+                              <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">자동 재시도 소진 — 사람 확인</span>
+                            ) : null}
                           </div>
                           <div className="mt-1 text-[12px] font-bold leading-snug text-slate-100">{t.title}</div>
-                          <div className="mt-0.5 text-[10px] text-slate-500">완료 기준 {t.acceptanceCriteria.length}개{job ? ` · 잡 ${job.status}` : ''}</div>
+                          <div className="mt-0.5 text-[10px] text-slate-500">
+                            완료 기준 {t.acceptanceCriteria.length}개
+                            {(t.attempts ?? 0) > 1 ? ` · 시도 ${t.attempts}/${MAX_TICKET_DEV_ATTEMPTS}` : ''}
+                            {job ? ` · 잡 ${job.status}` : ''}
+                          </div>
                         </button>
                         {open ? (
                           <div className="mt-2 border-t border-slate-800 pt-2">
@@ -407,7 +502,11 @@ export default function TicketBoardPanel(): JSX.Element {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => void setStatus(t, 'rejected', '사람 검토 반려 — 수정 후 재실행 필요')}
+                                  onClick={() =>
+                                    void ticketApi()
+                                      ?.update(t.taskId, { status: 'rejected', rejectSource: 'human', event: '사람 검토 반려 — 수정 후 재실행 필요' })
+                                      .then(reload)
+                                  }
                                   className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:brightness-110"
                                 >
                                   <RotateCcw className="h-3 w-3" /> 반려
