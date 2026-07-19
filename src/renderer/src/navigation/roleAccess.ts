@@ -46,12 +46,13 @@ export const STAFF_ROUTES: ViewName[] = [
   'content-studio',
   'plan-request',
   'files',
-  'notice',
-  'assistant' // 자비스 / 경영 비서 — available to all roles
+  'notice'
+  // 'assistant'(경영 비서)는 관리자 전용 — 2026-07-20 대표 확정. 자비스 패널(jarvisService)은
+  // 라우트가 아니라 별개이므로 전 직원 그대로 사용 가능.
 ]
 
-/** Team-leader-only additional routes. */
-export const TEAM_ROUTES: ViewName[] = ['team-leader']
+/** Team-leader-only additional routes (팀 현황 라우트 제거로 현재 비어 있음). */
+export const TEAM_ROUTES: ViewName[] = []
 
 export type RouteCategory = 'staff' | 'team' | 'admin'
 

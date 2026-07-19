@@ -17,7 +17,6 @@ export type View =
   | { name: 'shared-schedule' }
   | { name: 'performance' }
   | { name: 'salary' }
-  | { name: 'team-leader' }
   | { name: 'consultation' }
   | { name: 'insurance-analysis' }
   | { name: 'claim-assistant' }
@@ -39,15 +38,12 @@ export type View =
   | { name: 'release' }
   | { name: 'devops' }
   | { name: 'autopilot' }
-  | { name: 'devos' }
   | { name: 'pm' }
   | { name: 'backlog' }
   | { name: 'workers' }
   | { name: 'worker'; workerId: string; tab: WorkerTab }
   | { name: 'projects' }
   | { name: 'approvals' }
-  | { name: 'activity' }
-  | { name: 'settings' }
   | { name: 'staff-login' }
   | { name: 'staff-team' }
   | { name: 'announcements' }

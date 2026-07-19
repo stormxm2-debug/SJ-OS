@@ -59,7 +59,7 @@ interface ScheduleDraft {
 const VALID_NAV: ViewName[] = [
   'staff-home', 'attendance', 'customer', 'consultation', 'schedule', 'shared-schedule',
   'performance', 'sales-activity', 'insurance-analysis', 'claim-assistant', 'wiki',
-  'underwriting', 'pre-underwriting', 'contacts', 'notice', 'dashboard', 'team-leader',
+  'underwriting', 'pre-underwriting', 'contacts', 'notice', 'dashboard',
   'referrals', 'today-contacts', 'birthdays', 'stats-report', 'leads', 'files'
 ]
 const VALID_NAV_SET = new Set<string>(VALID_NAV)

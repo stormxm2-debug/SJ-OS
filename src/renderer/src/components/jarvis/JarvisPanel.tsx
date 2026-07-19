@@ -79,9 +79,9 @@ import type { View } from '@renderer/navigation/types'
 /** Simple, arg-free views a Jarvis navigation target can jump to. */
 const NAV_VIEWS = new Set([
   'assistant', 'dashboard', 'customer', 'sales-activity', 'schedule',
-  'performance', 'team-leader', 'consultation', 'insurance-analysis', 'cto', 'qa', 'release',
-  'devops', 'autopilot', 'devos', 'pm', 'backlog', 'workers', 'projects', 'approvals',
-  'app-builder', 'devprompt', 'activity', 'settings',
+  'performance', 'consultation', 'insurance-analysis', 'cto', 'qa', 'release',
+  'devops', 'autopilot', 'pm', 'backlog', 'workers', 'projects', 'approvals',
+  'app-builder', 'devprompt',
   // 직원 업무 화면 + 자비스 브레인 이동 대상
   'staff-home', 'attendance', 'shared-schedule', 'claim-assistant', 'wiki', 'underwriting',
   'pre-underwriting', 'contacts', 'notice', 'staff-overview', 'staff-table', 'registration-admin'

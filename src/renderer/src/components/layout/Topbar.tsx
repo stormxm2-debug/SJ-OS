@@ -1,7 +1,7 @@
 import { Bell, Crown, Sparkles } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View } from '@renderer/navigation/types'
-import { approvals, getWorkerById } from '@renderer/data/mockManagement'
+import { getWorkerById } from '@renderer/data/mockManagement'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 
 function titleFor(route: View): { title: string; subtitle: string } {
@@ -20,10 +20,6 @@ function titleFor(route: View): { title: string; subtitle: string } {
       return { title: '프로젝트 매니저', subtitle: '프로젝트, 작업, 그리고 이를 만드는 팀.' }
     case 'approvals':
       return { title: '승인 센터', subtitle: 'CEO의 결정을 기다리는 항목.' }
-    case 'activity':
-      return { title: '회사 활동 로그', subtitle: '회사가 수행한 모든 활동.' }
-    case 'settings':
-      return { title: '회사 설정', subtitle: '프로바이더, 정책, 자율성 설정.' }
     default:
       return { title: 'SJ AI 컴퍼니', subtitle: '' }
   }
@@ -32,7 +28,6 @@ function titleFor(route: View): { title: string; subtitle: string } {
 export default function Topbar(): JSX.Element {
   const { route, navigate } = useNavigation()
   const { title, subtitle } = titleFor(route)
-  const pending = approvals.filter((a) => a.status === 'pending').length
 
   return (
     <header className="flex items-center justify-between border-b border-slate-800 bg-white px-6 py-4 shadow-sm">
@@ -61,11 +56,6 @@ export default function Topbar(): JSX.Element {
           aria-label="승인 센터"
         >
           <Bell className="h-5 w-5" />
-          {pending > 0 && (
-            <span className="absolute right-1 top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-indigo-500 px-1 text-[10px] font-semibold text-white">
-              {pending}
-            </span>
-          )}
         </button>
 
         <div className="flex items-center gap-2 rounded-lg bg-slate-800/70 px-3 py-1.5">

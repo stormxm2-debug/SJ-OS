@@ -17,7 +17,6 @@ import SalesActivityWorkspacePage from '@renderer/pages/SalesActivityWorkspacePa
 import PerformancePage from '@renderer/pages/PerformancePage'
 import SalaryCalculatorPage from '@renderer/pages/SalaryCalculatorPage'
 import FcOsPage from '@renderer/pages/FcOsPage'
-import TeamLeaderPage from '@renderer/pages/TeamLeaderPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import ExemptionsPage from '@renderer/pages/ExemptionsPage'
@@ -38,13 +37,10 @@ import CtoRoomPage from '@renderer/pages/CtoRoomPage'
 import QaCenterPage from '@renderer/pages/QaCenterPage'
 import ReleaseCenterPage from '@renderer/pages/ReleaseCenterPage'
 import DevOpsCenterPage from '@renderer/pages/DevOpsCenterPage'
-import DevelopmentOsPage from '@renderer/pages/DevelopmentOsPage'
 import PmPlannerPage from '@renderer/pages/PmPlannerPage'
 import ProductBacklogPage from '@renderer/pages/ProductBacklogPage'
 import ProjectManagerPage from '@renderer/pages/ProjectManagerPage'
 import ApprovalCenterPage from '@renderer/pages/ApprovalCenterPage'
-import CompanyActivityLogPage from '@renderer/pages/CompanyActivityLogPage'
-import CompanySettingsPage from '@renderer/pages/CompanySettingsPage'
 import StaffLoginAdminPage from '@renderer/pages/StaffLoginAdminPage'
 import StaffTeamManagementPage from '@renderer/pages/StaffTeamManagementPage'
 import AnnouncementAdminPage from '@renderer/pages/AnnouncementAdminPage'
@@ -103,8 +99,6 @@ export default function Router(): JSX.Element {
       return <PerformancePage />
     case 'salary':
       return <SalaryCalculatorPage />
-    case 'team-leader':
-      return <TeamLeaderPage />
     case 'consultation':
       return <SupabaseConsultationManager />
     case 'insurance-analysis':
@@ -147,8 +141,6 @@ export default function Router(): JSX.Element {
       return <DevOpsCenterPage />
     case 'autopilot':
       return <AutopilotPage />
-    case 'devos':
-      return <DevelopmentOsPage />
     case 'pm':
       return <PmPlannerPage />
     case 'backlog':
@@ -161,10 +153,6 @@ export default function Router(): JSX.Element {
       return <ProjectManagerPage />
     case 'approvals':
       return <ApprovalCenterPage />
-    case 'activity':
-      return <CompanyActivityLogPage />
-    case 'settings':
-      return <CompanySettingsPage />
     case 'staff-login':
       return <StaffLoginAdminPage />
     case 'staff-team':

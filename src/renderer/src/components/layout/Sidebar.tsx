@@ -121,8 +121,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'sales-activity', label: '영업활동', icon: ActivityIcon, view: { name: 'sales-activity' }, match: ['sales-activity'] },
       { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
       { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' }, match: ['salary'] },
-      { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] },
-      { key: 'team-leader', label: '팀 현황', icon: UsersRound, view: { name: 'team-leader' }, match: ['team-leader'] }
+      { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] }
     ]
   },
   {
@@ -135,7 +134,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: '설정 · 관리',
     collapsible: true,
     items: [
-      { key: 'settings', label: '설정', icon: Settings, view: { name: 'settings' }, match: ['settings'] },
       { key: 'staff-table', label: '전 직원 정리표', icon: UsersRound, view: { name: 'staff-table' }, match: ['staff-table'] },
       { key: 'staff-overview', label: '직원 현황', icon: UsersRound, view: { name: 'staff-overview' }, match: ['staff-overview'] },
       { key: 'shared-schedule', label: '공유 일정 (전 직원)', icon: Share2, view: { name: 'shared-schedule' }, match: ['shared-schedule'] },
@@ -153,7 +151,6 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'devprompt', label: '자비스 자동개발', icon: Terminal, view: { name: 'devprompt' }, match: ['devprompt'] },
       { key: 'autopilot', label: '오토파일럿', icon: Rocket, view: { name: 'autopilot' }, match: ['autopilot'] },
       { key: 'app-builder', label: '범용 앱 빌더', icon: Boxes, view: { name: 'app-builder' }, match: ['app-builder'] },
-      { key: 'devos', label: '개발 OS', icon: Cpu, view: { name: 'devos' }, match: ['devos'] },
       { key: 'workers', label: 'AI 워커', icon: Users, view: { name: 'workers' }, match: ['workers', 'worker'] },
       { key: 'backlog', label: '제품 백로그', icon: ClipboardList, view: { name: 'backlog' }, match: ['backlog'] },
       { key: 'projects', label: '프로젝트', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] }
@@ -167,8 +164,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'cto', label: 'CTO 룸', icon: Gauge, view: { name: 'cto' }, match: ['cto'] },
       { key: 'qa', label: 'QA 센터', icon: ClipboardCheck, view: { name: 'qa' }, match: ['qa'] },
       { key: 'release', label: '릴리즈 센터', icon: PackageCheck, view: { name: 'release' }, match: ['release'] },
-      { key: 'devops', label: 'DevOps 센터', icon: Server, view: { name: 'devops' }, match: ['devops'] },
-      { key: 'activity', label: '활동 로그', icon: Activity, view: { name: 'activity' }, match: ['activity'] }
+      { key: 'devops', label: 'DevOps 센터', icon: Server, view: { name: 'devops' }, match: ['devops'] }
     ]
   }
 ]
@@ -237,7 +233,6 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }
 ]
-const TEAM_LEADER_EXTRA: NavItem = { key: 'team-leader', label: '팀 현황', icon: UsersRound, view: { name: 'team-leader' }, match: ['team-leader'] }
 
 const MODE_LABEL: Record<AppMode, string> = { ceo: '대표 모드', staff: '직원 모드' }
 
@@ -264,9 +259,8 @@ export default function Sidebar(): JSX.Element {
     }
   }
 
-  // Menu for a non-admin role (FC / 팀장). Team leaders also get 팀 현황.
-  const staffNav: NavItem[] =
-    session.role === 'team-leader' ? [...STAFF_NAV_MVP, TEAM_LEADER_EXTRA] : STAFF_NAV_MVP
+  // Menu for a non-admin role (FC / 팀장) — 팀 현황 라우트 제거로 역할별 차이 없음.
+  const staffNav: NavItem[] = STAFF_NAV_MVP
 
   const renderItem = ({ key, label, icon: Icon, view, match, href }: NavItem): JSX.Element => {
     const active = match?.includes(route.name) ?? false
