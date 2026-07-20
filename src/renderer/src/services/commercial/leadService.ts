@@ -10,14 +10,45 @@ import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
  * RLS: 관리자 전체 / 직원은 본인 배정분만. leads · lead_db_types 테이블 참조.
  */
 
-export type LeadStatus = 'new' | 'called' | 'contracted' | 'fail'
+export type LeadStatus =
+  | 'new' // 미콜 (배정 직후)
+  | 'absent' // 부재중
+  | 'recall' // 재통화 예정
+  | 'called' // 통화완료
+  | 'appointment' // 약속잡힘(AP)
+  | 'consulting' // 상담중
+  | 'contracted' // 계약
+  | 'rejected' // 거절
+  | 'invalid' // 결번·무효 DB
+  | 'fail' // (구버전 호환 — 신규 UI에서는 거절/결번으로 대체)
 
 export const LEAD_STATUS_LABEL: Record<LeadStatus, string> = {
   new: '미콜',
-  called: '콜 완료',
+  absent: '부재중',
+  recall: '재통화 예정',
+  called: '통화완료',
+  appointment: '약속잡힘',
+  consulting: '상담중',
   contracted: '계약',
-  fail: '실패'
+  rejected: '거절',
+  invalid: '결번·무효',
+  fail: '실패(구)'
 }
+
+/** FC가 DB 진행하며 체크하는 카테고리 (표시 순서 — 표준 8단계). */
+export const LEAD_STATUS_FLOW: LeadStatus[] = [
+  'new',
+  'absent',
+  'recall',
+  'called',
+  'appointment',
+  'consulting',
+  'contracted',
+  'rejected',
+  'invalid'
+]
+
+const VALID_LEAD_STATUS = new Set<string>(LEAD_STATUS_FLOW.concat('fail'))
 
 export interface Lead {
   id: string
@@ -90,7 +121,7 @@ async function uid(client: any): Promise<string | null> {
 
 function mapLead(r: Record<string, any>): Lead {
   const raw = String(r.status ?? 'new')
-  const status: LeadStatus = raw === 'called' || raw === 'contracted' || raw === 'fail' ? raw : 'new'
+  const status: LeadStatus = VALID_LEAD_STATUS.has(raw) ? (raw as LeadStatus) : 'new'
   return {
     id: String(r.id),
     name: String(r.name ?? ''),
@@ -240,16 +271,63 @@ export async function markCalled(leadId: string): Promise<{ ok: boolean; error?:
   }
 }
 
-/** 상태 변경 (계약/실패 등). */
-export async function updateLeadStatus(leadId: string, status: LeadStatus): Promise<{ ok: boolean; error?: string }> {
+/**
+ * 상태 변경 (진행 카테고리 체크). stampFirstCall이면 첫 접촉 시각(first_call_at)도
+ * 함께 기록 — 미콜에서 벗어나는 첫 상태 변경 시 페이지가 켜서 호출한다.
+ */
+export async function updateLeadStatus(
+  leadId: string,
+  status: LeadStatus,
+  opts?: { stampFirstCall?: boolean }
+): Promise<{ ok: boolean; error?: string }> {
   const client = await getClient()
   if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
   try {
-    const { error } = await client.from('leads').update({ status }).eq('id', leadId)
+    const patch: Record<string, unknown> = { status }
+    if (opts?.stampFirstCall) patch.first_call_at = new Date().toISOString()
+    const { error } = await client.from('leads').update(patch).eq('id', leadId)
     if (error) return { ok: false, error: error.message }
     return { ok: true }
   } catch {
     return { ok: false, error: '처리 중 오류가 발생했습니다.' }
+  }
+}
+
+/**
+ * 관리자: 선택한 직원에게 직접 배정 — 업로드/붙여넣기 리드를 대표가 고른
+ * 직원 한 명에게 몰아서 배정한다 (자동 최소부하와 별개 경로).
+ */
+export async function assignLeadsTo(
+  inputs: LeadInput[],
+  fc: { id: string; name: string },
+  dbType?: string
+): Promise<{ ok: boolean; assigned: number; error?: string }> {
+  const clean = inputs.map((i) => ({ ...i, name: (i.name ?? '').trim() })).filter((i) => i.name)
+  if (clean.length === 0) return { ok: false, assigned: 0, error: '이름이 있는 리드가 없습니다.' }
+  const client = await getClient()
+  if (!client) return { ok: false, assigned: 0, error: '서버 연결 후 사용할 수 있습니다.' }
+  const me = await uid(client)
+  if (!me) return { ok: false, assigned: 0, error: '로그인 후 사용할 수 있습니다.' }
+  const nowIso = new Date().toISOString()
+  const type = dbType?.trim() || null
+  const rows = clean.map((lead) => ({
+    name: lead.name,
+    phone: lead.phone?.trim() || null,
+    source: lead.source?.trim() || null,
+    memo: lead.memo?.trim() || null,
+    status: 'new',
+    db_type: type,
+    assigned_fc_id: fc.id,
+    assigned_fc_name: fc.name,
+    assigned_at: nowIso,
+    created_by: me
+  }))
+  try {
+    const { error } = await client.from('leads').insert(rows)
+    if (error) return { ok: false, assigned: 0, error: error.message }
+    return { ok: true, assigned: rows.length }
+  } catch {
+    return { ok: false, assigned: 0, error: '배정 저장 중 오류가 발생했습니다.' }
   }
 }
 

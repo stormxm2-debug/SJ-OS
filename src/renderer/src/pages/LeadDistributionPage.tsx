@@ -30,6 +30,7 @@ import type { CustomerRecord } from '@shared/commercial/models'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import {
   distributeLeads,
+  assignLeadsTo,
   listAllLeads,
   listMyLeads,
   listSalesStaff,
@@ -42,21 +43,36 @@ import {
   addDbType,
   deleteDbType,
   LEAD_STATUS_LABEL,
+  LEAD_STATUS_FLOW,
   type Lead,
   type LeadInput,
   type LeadStatus,
   type LeadDbType,
   type SalesStaff
 } from '@renderer/services/commercial/leadService'
+import { parseLeadFile } from '@renderer/services/commercial/leadImport'
+import FileDropZone from '@renderer/components/ui/FileDropZone'
 
 const RT_TABLES = ['leads', 'lead_db_types']
 
 const STATUS_CHIP: Record<LeadStatus, string> = {
   new: 'bg-slate-800 text-slate-300',
+  absent: 'bg-amber-50 text-amber-700',
+  recall: 'bg-indigo-50 text-indigo-600',
   called: 'bg-sky-50 text-sky-700',
+  appointment: 'bg-violet-50 text-violet-700',
+  consulting: 'bg-cyan-50 text-cyan-700',
   contracted: 'bg-emerald-50 text-emerald-700',
+  rejected: 'bg-rose-50 text-rose-700',
+  invalid: 'bg-slate-100 text-slate-500',
   fail: 'bg-rose-50 text-rose-700'
 }
+
+/** FC가 진행하며 체크하는 카테고리 칩 (미콜은 초기 상태라 제외). */
+const PROGRESS_STATUSES: LeadStatus[] = LEAD_STATUS_FLOW.filter((s) => s !== 'new')
+
+/** 고객 전환을 제안할 상태 (통화가 성사된 이후 단계). */
+const CONVERTIBLE = new Set<LeadStatus>(['called', 'appointment', 'consulting', 'contracted'])
 
 /** 남은 콜 시간 표시 문구. */
 function remainLabel(lead: Lead): { text: string; tone: string } {
@@ -104,6 +120,11 @@ export default function LeadDistributionPage(): JSX.Element {
   const [paste, setPaste] = useState('')
   const [busy, setBusy] = useState(false)
   const [distMsg, setDistMsg] = useState('')
+  // 파일 업로드 판독 결과 (행별 선택 배정)
+  const [imported, setImported] = useState<{ row: LeadInput; checked: boolean }[]>([])
+  const [importSummary, setImportSummary] = useState('')
+  // 배정 방식: 'auto' = 최소부하 자동, 그 외 = 선택한 직원 id
+  const [assignMode, setAssignMode] = useState('auto')
 
   // 콜 완료한 내 리드 → 고객 전환 (보험 허브에 연결해 AI 도구로 직행)
   const [convertBusyId, setConvertBusyId] = useState<string | null>(null)
@@ -135,6 +156,11 @@ export default function LeadDistributionPage(): JSX.Element {
   }, [])
 
   const parsed = useMemo(() => parsePaste(paste), [paste])
+  /** 이번에 배정할 리드 = 붙여넣기 + 업로드에서 체크된 행. */
+  const pendingRows = useMemo(
+    () => [...parsed, ...imported.filter((i) => i.checked).map((i) => i.row)],
+    [parsed, imported]
+  )
   const overdue = useMemo(() => leads.filter(isOverdue), [leads])
   const byStaff = useMemo(() => {
     const m = new Map<string, { name: string; total: number; uncalled: number; overdue: number }>()
@@ -150,25 +176,57 @@ export default function LeadDistributionPage(): JSX.Element {
     return [...m.values()].sort((a, b) => b.overdue - a.overdue || b.uncalled - a.uncalled)
   }, [leads])
 
+  /** 파일 업로드 → 판독 → 미리보기(전체 체크 상태). */
+  const importFile = async (file: File): Promise<void> => {
+    setDistMsg('')
+    const res = await parseLeadFile(file)
+    if (!res.ok) {
+      setImportSummary('')
+      setImported([])
+      setDistMsg(res.error ?? '파일 판독에 실패했습니다.')
+      return
+    }
+    setImported(res.rows.map((row) => ({ row, checked: true })))
+    setImportSummary(res.summary ?? `${res.rows.length}건 판독`)
+  }
+
   const distribute = async (): Promise<void> => {
-    if (parsed.length === 0) {
-      setDistMsg('이름이 있는 리드를 입력해 주세요. (한 줄에 "이름, 전화, 유입경로")')
+    if (pendingRows.length === 0) {
+      setDistMsg('배정할 리드가 없습니다 — 파일을 올리거나 붙여넣어 주세요.')
       return
     }
     setBusy(true)
     setDistMsg('')
-    const res = await distributeLeads(parsed, selectedType || undefined)
-    setBusy(false)
-    if (!res.ok) {
-      setDistMsg(res.error ?? '분배에 실패했습니다.')
-      return
+    const typeTag = selectedType ? `[${selectedType}] ` : ''
+    if (assignMode === 'auto') {
+      const res = await distributeLeads(pendingRows, selectedType || undefined)
+      setBusy(false)
+      if (!res.ok) {
+        setDistMsg(res.error ?? '분배에 실패했습니다.')
+        return
+      }
+      const names = Object.entries(res.perStaff)
+        .map(([id, n]) => `${staff.find((s) => s.id === id)?.name ?? '직원'} ${n}건`)
+        .join(' · ')
+      setDistMsg(`✅ ${typeTag}${res.assigned}건을 자동 배정했습니다 — ${names}. 배정된 직원에게 알림이 전송됐어요.`)
+    } else {
+      const fc = staff.find((s) => s.id === assignMode)
+      if (!fc) {
+        setBusy(false)
+        setDistMsg('배정할 직원을 다시 선택해 주세요.')
+        return
+      }
+      const res = await assignLeadsTo(pendingRows, { id: fc.id, name: fc.name }, selectedType || undefined)
+      setBusy(false)
+      if (!res.ok) {
+        setDistMsg(res.error ?? '배정에 실패했습니다.')
+        return
+      }
+      setDistMsg(`✅ ${typeTag}${res.assigned}건을 ${fc.name}님에게 배정했습니다. 알림이 전송됐어요.`)
     }
     setPaste('')
-    const names = Object.entries(res.perStaff)
-      .map(([id, n]) => `${staff.find((s) => s.id === id)?.name ?? '직원'} ${n}건`)
-      .join(' · ')
-    const typeTag = selectedType ? `[${selectedType}] ` : ''
-    setDistMsg(`✅ ${typeTag}${res.assigned}건을 자동 배정했습니다 — ${names}. 배정된 직원에게 알림이 전송됐어요.`)
+    setImported([])
+    setImportSummary('')
     await load()
   }
 
@@ -203,7 +261,8 @@ export default function LeadDistributionPage(): JSX.Element {
   }
 
   const doStatus = async (lead: Lead, status: LeadStatus): Promise<void> => {
-    const res = await updateLeadStatus(lead.id, status)
+    // 미콜에서 벗어나는 첫 상태 변경이면 첫 접촉 시각도 함께 기록 (24h SLA 판정 근거).
+    const res = await updateLeadStatus(lead.id, status, { stampFirstCall: !lead.firstCallAt && status !== 'new' })
     if (res.ok) await load()
     else setError(res.error ?? '상태 변경에 실패했습니다. 다시 시도해 주세요.')
   }
@@ -339,11 +398,103 @@ export default function LeadDistributionPage(): JSX.Element {
             </div>
           </div>
 
+          {/* 파일 업로드 → 판독 → 행 선택 */}
+          <FileDropZone
+            accept=".xlsx,.xls,.csv"
+            multiple={false}
+            dropLabel="놓으면 DB 파일을 판독합니다"
+            onFiles={(fs) => void importFile(fs[0])}
+          >
+            <label className="mb-3 flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-700 bg-slate-950 px-4 py-5 text-center transition hover:border-[#c6982f]/60 hover:bg-[#c6982f]/5">
+              <UploadCloud className="h-6 w-6 text-[#b0821f]" />
+              <span className="text-[13px] font-semibold text-slate-200">DB 파일을 드래그하거나 클릭해서 선택 (.xlsx · .xls · .csv)</span>
+              <span className="text-[11px] text-slate-500">이름·전화 열을 자동으로 찾고, 나머지 열은 메모로 보존됩니다</span>
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void importFile(f)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </FileDropZone>
+
+          {imported.length > 0 ? (
+            <div className="mb-3 rounded-xl border border-[#c6982f]/40 bg-slate-950/60 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[12px] font-bold text-slate-200">
+                  📄 {importSummary} · 배정할 행 <b className="text-[#e6c877]">{imported.filter((i) => i.checked).length}</b>/{imported.length}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setImported((prev) => prev.map((i) => ({ ...i, checked: true })))}
+                    className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+                  >
+                    전체 선택
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImported((prev) => prev.map((i) => ({ ...i, checked: false })))}
+                    className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+                  >
+                    전체 해제
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImported([])
+                      setImportSummary('')
+                    }}
+                    className="rounded-lg border border-rose-300/40 px-2 py-1 text-[11px] text-rose-400 hover:bg-rose-500/10"
+                  >
+                    비우기
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-800">
+                <table className="w-full text-left text-[12px]">
+                  <thead className="sticky top-0 bg-slate-900">
+                    <tr className="text-[11px] text-slate-500">
+                      <th className="w-8 px-2 py-1.5"></th>
+                      <th className="px-2 py-1.5">이름</th>
+                      <th className="px-2 py-1.5">전화</th>
+                      <th className="px-2 py-1.5">메모</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {imported.map((item, idx) => (
+                      <tr key={idx} className={['border-t border-slate-800/60', item.checked ? '' : 'opacity-40'].join(' ')}>
+                        <td className="px-2 py-1.5">
+                          <input
+                            type="checkbox"
+                            checked={item.checked}
+                            onChange={() =>
+                              setImported((prev) => prev.map((it, i) => (i === idx ? { ...it, checked: !it.checked } : it)))
+                            }
+                            className="h-3.5 w-3.5 accent-[#c6982f]"
+                            aria-label={`${item.row.name} 배정 포함`}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5 font-semibold text-slate-100">{item.row.name}</td>
+                        <td className="px-2 py-1.5 text-slate-300">{item.row.phone ?? ''}</td>
+                        <td className="max-w-[280px] truncate px-2 py-1.5 text-slate-500">{item.row.memo ?? ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
           <textarea
             value={paste}
             onChange={(e) => setPaste(e.target.value)}
-            rows={5}
-            placeholder={'한 줄에 한 명씩:  이름, 전화번호, 유입경로\n예) 홍길동, 010-1234-5678, 페북광고\n김영희\t01098765432\tDB구매   (엑셀 붙여넣기도 됩니다)'}
+            rows={3}
+            placeholder={'또는 직접 붙여넣기 — 한 줄에 한 명씩:  이름, 전화번호, 유입경로\n예) 홍길동, 010-1234-5678, 페북광고'}
             className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 font-mono text-[12px] leading-5 text-slate-100 outline-none placeholder:text-slate-500 focus:border-[#c6982f]"
           />
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -358,16 +509,34 @@ export default function LeadDistributionPage(): JSX.Element {
                 <option key={t.id} value={t.name}>{t.name}</option>
               ))}
             </select>
+            <select
+              value={assignMode}
+              onChange={(e) => setAssignMode(e.target.value)}
+              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-[#c6982f]"
+              title="배정 방식 — 자동 또는 직원 직접 선택"
+            >
+              <option value="auto">자동 배정 (최소부하 균등)</option>
+              {staff.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}에게 배정
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={() => void distribute()}
-              disabled={busy || parsed.length === 0}
+              disabled={busy || pendingRows.length === 0}
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#0e1e3a] to-[#1b3a6b] px-4 py-2.5 text-sm font-bold text-[#e6c877] shadow-md transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}
-              {parsed.length > 0 ? `${parsed.length}건 자동 배정` : '자동 배정'}
+              {pendingRows.length > 0 ? `${pendingRows.length}건 배정` : '배정'}
             </button>
-            <span className="text-[12px] text-slate-500">활성 직원 {staff.length}명에게 최소부하 순으로 균등 배정{selectedType ? ` · [${selectedType}]` : ''}</span>
+            <span className="text-[12px] text-slate-500">
+              {assignMode === 'auto'
+                ? `활성 직원 ${staff.length}명에게 최소부하 순으로 균등 배정`
+                : `${staff.find((s) => s.id === assignMode)?.name ?? '선택 직원'}에게 전량 배정`}
+              {selectedType ? ` · [${selectedType}]` : ''}
+            </span>
           </div>
           {distMsg ? <p className="mt-2 text-[12px] leading-5 text-slate-300">{distMsg}</p> : null}
         </div>
@@ -436,6 +605,20 @@ export default function LeadDistributionPage(): JSX.Element {
             <span className="text-[12px] text-slate-500">{filteredLeads.length}건</span>
           </div>
         </div>
+        {/* 상태별 현황 요약 — 지금 DB들이 어느 단계에 있는지 한눈에 */}
+        {filteredLeads.length > 0 ? (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {LEAD_STATUS_FLOW.map((s) => {
+              const n = filteredLeads.filter((l) => l.status === s).length
+              if (n === 0) return null
+              return (
+                <span key={s} className={['rounded-full px-2 py-0.5 text-[10px] font-bold', STATUS_CHIP[s]].join(' ')}>
+                  {LEAD_STATUS_LABEL[s]} {n}
+                </span>
+              )
+            })}
+          </div>
+        ) : null}
         {loading ? (
           <div className="flex items-center gap-2 py-8 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" /> 불러오는 중…
@@ -469,6 +652,26 @@ export default function LeadDistributionPage(): JSX.Element {
                       <Clock className="h-3 w-3" /> {r.text}
                     </span>
                   </div>
+                  {/* 진행 상태 카테고리 — 본인 리드(또는 관리자)가 체크 */}
+                  {admin || l.assignedFcId === session.id ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                      {PROGRESS_STATUSES.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => void doStatus(l, s)}
+                          className={[
+                            'rounded-full px-2 py-1 text-[10px] font-bold transition',
+                            l.status === s
+                              ? STATUS_CHIP[s] + ' ring-1 ring-current'
+                              : 'border border-slate-700 bg-white text-slate-500 hover:border-[#c6982f]/50 hover:text-[#8a6a1e]'
+                          ].join(' ')}
+                        >
+                          {LEAD_STATUS_LABEL[s]}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {l.status === 'new' ? (
                       <button
@@ -480,17 +683,11 @@ export default function LeadDistributionPage(): JSX.Element {
                       </button>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600">
-                        <CheckCircle2 className="h-3 w-3" /> 콜함{l.firstCallAt ? ` · ${new Date(l.firstCallAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+                        <CheckCircle2 className="h-3 w-3" /> 첫 콜{l.firstCallAt ? ` · ${new Date(l.firstCallAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
                       </span>
                     )}
-                    {l.status !== 'new' ? (
-                      <>
-                        <button type="button" onClick={() => void doStatus(l, 'contracted')} className="rounded-lg border border-emerald-200 bg-white px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50">계약</button>
-                        <button type="button" onClick={() => void doStatus(l, 'fail')} className="rounded-lg border border-rose-200 bg-white px-2 py-1 text-[11px] font-semibold text-rose-600 hover:bg-rose-50">실패</button>
-                      </>
-                    ) : null}
-                    {/* 내 리드 콜 완료 후: 고객으로 전환 → 보험 허브 태워 AI 도구 직행 */}
-                    {(l.status === 'called' || l.status === 'contracted') && l.assignedFcId === session.id ? (
+                    {/* 내 리드 통화 성사 후: 고객으로 전환 → 보험 허브 태워 AI 도구 직행 */}
+                    {CONVERTIBLE.has(l.status) && l.assignedFcId === session.id ? (
                       converted[l.id] ? (
                         <>
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#b0821f]">
