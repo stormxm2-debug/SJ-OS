@@ -114,7 +114,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
       { key: 'leads', label: 'DB 배정', icon: ListChecks, view: { name: 'leads' }, match: ['leads'] },
       { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
-      { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] }
+      { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
+      { key: 'app-install', label: '앱 설치·배포', icon: Download, view: { name: 'app-install' }, match: ['app-install'] }
     ]
   },
   {
@@ -201,7 +202,8 @@ const STAFF_NAV: NavItem[] = [
   { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
   { key: 'leads', label: 'DB 배정', icon: ListChecks, view: { name: 'leads' }, match: ['leads'] },
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
-  { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] }
+  { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
+  { key: 'app-install', label: '앱 설치·배포', icon: Download, view: { name: 'app-install' }, match: ['app-install'] }
 ]
 
 /**
@@ -230,6 +232,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'leads', label: 'DB 배정', icon: ListChecks, view: { name: 'leads' }, match: ['leads'] },
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
+  { key: 'app-install', label: '앱 설치·배포', icon: Download, view: { name: 'app-install' }, match: ['app-install'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
   { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' }, match: ['salary'] },
