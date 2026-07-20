@@ -43,6 +43,7 @@ import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
+import UnderwritingPage from '@renderer/pages/UnderwritingPage'
 
 /** Renders the active view chosen by the navigation state. */
 export default function Router(): JSX.Element {
@@ -89,6 +90,8 @@ export default function Router(): JSX.Element {
       return <SupabaseConsultationManager />
     case 'manager-contacts':
       return <ManagerContactsPage />
+    case 'underwriting':
+      return <UnderwritingPage />
     case 'insurance-analysis':
       return <InsuranceAnalysisPage />
     case 'claim-assistant':

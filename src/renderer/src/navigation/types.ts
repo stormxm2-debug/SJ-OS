@@ -16,6 +16,7 @@ export type View =
   | { name: 'team-leader' }
   | { name: 'consultation' }
   | { name: 'manager-contacts' }
+  | { name: 'underwriting' }
   | { name: 'insurance-analysis' }
   | { name: 'claim-assistant' }
   | { name: 'wiki' }
