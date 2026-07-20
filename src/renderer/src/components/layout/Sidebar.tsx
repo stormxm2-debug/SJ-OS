@@ -82,6 +82,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'customer', label: '고객 관리', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
       { key: 'consultation', label: '상담 관리', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
       { key: 'manager-contacts', label: '매니저 연락처', icon: UsersRound, view: { name: 'manager-contacts' }, match: ['manager-contacts'] },
+      { key: 'underwriting', label: '고지의무 조회', icon: ShieldCheck, view: { name: 'underwriting' }, match: ['underwriting'] },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] }
@@ -157,6 +158,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'consultation', label: '상담', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'manager-contacts', label: '매니저 연락처', icon: UsersRound, view: { name: 'manager-contacts' }, match: ['manager-contacts'] },
+  { key: 'underwriting', label: '고지의무 조회', icon: ShieldCheck, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
@@ -176,6 +178,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'customer', label: '고객관리', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
   { key: 'consultation', label: '상담기록', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'manager-contacts', label: '매니저 연락처', icon: UsersRound, view: { name: 'manager-contacts' }, match: ['manager-contacts'] },
+  { key: 'underwriting', label: '고지의무 조회', icon: ShieldCheck, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
