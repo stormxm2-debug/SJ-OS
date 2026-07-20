@@ -19,7 +19,8 @@ import {
   History,
   ChevronDown,
   ChevronUp,
-  Wallet
+  Wallet,
+  FileSignature
 } from 'lucide-react'
 import {
   analyzeCoverage,
@@ -36,6 +37,9 @@ import { getHubCustomer, setHubCustomer, subscribeHubCustomer } from '@renderer/
 import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
 import FileDropZone from '@renderer/components/ui/FileDropZone'
 import { copyText } from '@renderer/services/share/clipboard'
+import { setPlanRequestPrefill } from '@renderer/services/commercial/planRequestPrefill'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
+import { COVERAGE_GROUPS, amountPresetsFor, type CoverageItem } from '@renderer/services/commercial/planRequestService'
 import type { CustomerRecord } from '@shared/commercial/models'
 
 /**
@@ -68,7 +72,25 @@ const ANALYZING_MESSAGES = [
 
 const won = (n: number): string => (n >= 10000 ? `${Math.round(n / 10000).toLocaleString('ko-KR')}만원` : `${n.toLocaleString('ko-KR')}원`)
 
+/** 공백·부족 카테고리 텍스트 → 설계 요청서 특약 그룹(보장분석표 카테고리) 매핑. */
+const GAP_TO_COVERAGE_CATEGORY: [RegExp, string][] = [
+  [/암/, '암 진단비'],
+  [/뇌/, '뇌 진단비'],
+  [/심근|심장|허혈|협심/, '심장'],
+  [/사망|종신|정기/, '사망'],
+  [/암.?수술/, '암 수술비'],
+  [/수술/, '수술비'],
+  [/입원|간병/, '입원비'],
+  [/실손|실비/, '실손의료비'],
+  [/배상/, '일배책'],
+  [/운전/, '운전자'],
+  [/골절/, '골절'],
+  [/화상/, '화상'],
+  [/치아/, '치아']
+]
+
 export default function InsuranceAnalysisPage(): JSX.Element {
+  const { navigate } = useNavigation()
   const [phase, setPhase] = useState<Phase>('input')
   const [files, setFiles] = useState<File[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
@@ -174,6 +196,38 @@ export default function InsuranceAnalysisPage(): JSX.Element {
     if (!ok) return // 실패하면 '복사됨' 표시하지 않는다 (직접 드래그 복사)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
+  }
+
+  /**
+   * 공백 보완 → 설계 요청서 직행. 부족/미가입 카테고리를 특약 그룹으로 매핑해
+   * 대표 담보를 미리 체크하고, 공백 요약을 기타 요청사항 초안으로 넘긴다.
+   */
+  const toPlanRequest = (): void => {
+    if (!result) return
+    const weakTexts = [
+      ...result.gaps.map((g) => g.title),
+      ...result.categories.filter((c) => c.adequacy === 'insufficient' || c.adequacy === 'none').map((c) => c.category)
+    ]
+    const matched: string[] = []
+    for (const [re, cat] of GAP_TO_COVERAGE_CATEGORY) {
+      if (matched.includes(cat)) continue
+      if (weakTexts.some((t) => re.test(t))) matched.push(cat)
+    }
+    const coverages: CoverageItem[] = []
+    for (const cat of matched) {
+      const g = COVERAGE_GROUPS.find((x) => x.category === cat)
+      if (g) coverages.push({ name: g.items[0], amount: amountPresetsFor(cat).defaultAmount, category: cat })
+    }
+    const gapTitles = result.gaps.map((g) => g.title).slice(0, 4).join(', ')
+    setPlanRequestPrefill({
+      customer: customer ?? undefined,
+      insuranceKind: '종합건강보험',
+      coverages,
+      extraRequest: gapTitles
+        ? `보장분석 공백 보완 요청 — ${gapTitles}`
+        : '보장분석 결과 부족한 보장 보완 설계 부탁드립니다.'
+    })
+    navigate({ name: 'plan-request' })
   }
 
   const reset = (): void => {
@@ -514,9 +568,18 @@ export default function InsuranceAnalysisPage(): JSX.Element {
           <div className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-[11px] leading-5 text-slate-500">
             본 분석은 업로드된 증권과 일반적 권장 기준에 기반한 <b>참고자료</b>입니다. 실제 보장·가입금액은 증권 원본과 약관으로 최종 확인하세요.
           </div>
-          <button type="button" onClick={reset} className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-300 hover:border-[#c6982f]/40">
-            <RotateCcw className="h-4 w-4" /> 새 보장분석
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={toPlanRequest}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0e1e3a] to-[#1b3a6b] px-4 py-2.5 text-[13px] font-bold text-[#e6c877] shadow-md transition hover:brightness-125"
+            >
+              <FileSignature className="h-4 w-4" /> 부족 보장 설계 요청
+            </button>
+            <button type="button" onClick={reset} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-300 hover:border-[#c6982f]/40">
+              <RotateCcw className="h-4 w-4" /> 새 보장분석
+            </button>
+          </div>
         </>
       ) : null}
     </div>

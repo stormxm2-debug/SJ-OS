@@ -18,6 +18,8 @@ export interface PlanRequestPrefill {
   extraRequest?: string
   /** 병력 고지 포함 여부 초깃값 (간편심사 유도 시 true). */
   includeMedical?: boolean
+  /** 병력 고지 초안 — 사전심사의 고지 문답이 고객 DB 병력보다 정확할 때 사용. */
+  medicalNotes?: string
 }
 
 let pending: PlanRequestPrefill | null = null

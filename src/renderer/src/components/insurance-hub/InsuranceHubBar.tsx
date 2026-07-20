@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, FileSearch, HeartPulse, Link2, ListChecks, ReceiptText, Search, ShieldQuestion, Stethoscope, User, X } from 'lucide-react'
+import { BookOpen, FileSearch, FileSignature, HeartPulse, Link2, ListChecks, ReceiptText, Search, ShieldQuestion, Stethoscope, User, X } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View } from '@renderer/navigation/types'
 import { listCustomers } from '@renderer/services/commercial/customerService'
@@ -14,13 +14,22 @@ import type { CustomerRecord } from '@shared/commercial/models'
  * 어두운 바이므로 slate 토큰 대신 명시적 hex(딥네이비+골드)·white 계열만 쓴다.
  */
 
-export type HubTool = 'insurance-analysis' | 'pre-underwriting' | 'underwriting' | 'disease-exceptions' | 'claim-assistant' | 'wiki' | 'leads'
+export type HubTool =
+  | 'insurance-analysis'
+  | 'pre-underwriting'
+  | 'underwriting'
+  | 'disease-exceptions'
+  | 'plan-request'
+  | 'claim-assistant'
+  | 'wiki'
+  | 'leads'
 
 const TOOLS: { key: HubTool; label: string; icon: typeof FileSearch; view: View }[] = [
   { key: 'insurance-analysis', label: '보장분석', icon: FileSearch, view: { name: 'insurance-analysis' } },
   { key: 'pre-underwriting', label: '사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' } },
   { key: 'underwriting', label: '인수가이드', icon: Stethoscope, view: { name: 'underwriting' } },
   { key: 'disease-exceptions', label: '예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' } },
+  { key: 'plan-request', label: '설계요청', icon: FileSignature, view: { name: 'plan-request' } },
   { key: 'claim-assistant', label: '청구비서', icon: ReceiptText, view: { name: 'claim-assistant' } },
   { key: 'wiki', label: '백과사전', icon: BookOpen, view: { name: 'wiki' } },
   { key: 'leads', label: 'DB배정', icon: ListChecks, view: { name: 'leads' } }

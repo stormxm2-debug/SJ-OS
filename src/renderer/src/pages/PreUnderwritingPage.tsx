@@ -19,7 +19,8 @@ import {
   BookOpenCheck,
   Lightbulb,
   ListChecks,
-  Pencil
+  Pencil,
+  FileSignature
 } from 'lucide-react'
 import {
   assessUnderwriting,
@@ -33,6 +34,8 @@ import {
   type UnderwritingGrade
 } from '@renderer/services/underwriting-ai/underwritingAiService'
 import { takeUnderwritingPrefill } from '@renderer/services/underwriting-ai/underwritingPrefill'
+import { setPlanRequestPrefill } from '@renderer/services/commercial/planRequestPrefill'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { listCustomers } from '@renderer/services/commercial/customerService'
 import { bmiOf, parseRrn } from '@renderer/services/commercial/customerValidation'
 import { getHubCustomer, setHubCustomer, subscribeHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
@@ -76,6 +79,18 @@ const IMPACT_DOT: Record<string, string> = {
 }
 
 const TARGET_AREAS = ['암보험', '뇌·심혈관', '건강(질병)', '실손의료비', '종신·정기', '운전자·상해', '치아', '어린이'] as const
+
+/** 사전심사 상품군 → 설계 요청서 보험 구분 매핑 (INSURANCE_KINDS 기준). */
+const AREA_TO_PLAN_KIND: Record<string, string> = {
+  암보험: '암보험',
+  '뇌·심혈관': '뇌·심장(2대질환)',
+  '건강(질병)': '종합건강보험',
+  실손의료비: '종합건강보험',
+  '종신·정기': '기타',
+  '운전자·상해': '운전자보험',
+  치아: '치아보험',
+  어린이: '어린이보험'
+}
 const SMOKING_OPTIONS = ['비흡연', '흡연 중', '금연 1년 이상'] as const
 const DRINKING_OPTIONS = ['안 마심', '가끔(주1~2회)', '자주(주3회 이상)'] as const
 
@@ -124,6 +139,7 @@ function chipCls(active: boolean): string {
 }
 
 export default function PreUnderwritingPage(): JSX.Element {
+  const { navigate } = useNavigation()
   const [phase, setPhase] = useState<Phase>('input')
 
   // 고객 선택
@@ -309,6 +325,35 @@ export default function PreUnderwritingPage(): JSX.Element {
     setSaveState('idle')
     setUsedRules(0)
     setPhase('result')
+  }
+
+  /**
+   * 심사 결과 → 설계 요청서로 직행. 상품군·조건 요약·병력 고지(고지 문답 포함)를
+   * 프리필로 넘긴다 — 조건부/거절 예상이면 간편심사(유병자) 구분을 제안.
+   */
+  const toPlanRequest = (): void => {
+    if (!result) return
+    const med = [
+      medicalHistory.trim(),
+      m3.has && m3.detail.trim() ? `최근3개월: ${m3.detail.trim()}` : '',
+      y1.has && y1.detail.trim() ? `최근1년 재검: ${y1.detail.trim()}` : '',
+      y5.has && y5.detail.trim() ? `최근5년 입원·수술·치료: ${y5.detail.trim()}` : '',
+      major.has && major.detail.trim() ? `중대질병: ${major.detail.trim()}` : ''
+    ]
+      .filter(Boolean)
+      .join('\n')
+    const simplified = result.overallGrade === 'conditional' || result.overallGrade === 'difficult'
+    const summary = result.byArea
+      .map((a) => `${a.area}: ${a.verdict}${a.condition ? `(${a.condition})` : ''}`)
+      .join(' / ')
+    setPlanRequestPrefill({
+      customer: customer ?? undefined,
+      insuranceKind: simplified ? '간편심사(유병자)' : AREA_TO_PLAN_KIND[targetAreas[0] ?? ''] ?? '종합건강보험',
+      extraRequest: summary ? `AI 사전심사 참고 — ${summary}` : '',
+      includeMedical: Boolean(med),
+      medicalNotes: med || undefined
+    })
+    navigate({ name: 'plan-request' })
   }
 
   const stepNow = phase === 'input' ? 1 : phase === 'analyzing' ? 2 : 3
@@ -769,6 +814,13 @@ export default function PreUnderwritingPage(): JSX.Element {
             심사 기준과 시점에 따라 달라질 수 있으며, 청약 시에는 반드시 정확한 고지가 이루어져야 합니다.
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={toPlanRequest}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0e1e3a] to-[#1b3a6b] px-4 py-2.5 text-[13px] font-bold text-[#e6c877] shadow-md transition hover:brightness-125"
+            >
+              <FileSignature className="h-4 w-4" /> 이 조건으로 설계 요청
+            </button>
             <button
               type="button"
               onClick={() => setPhase('input')}

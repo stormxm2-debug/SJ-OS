@@ -1,5 +1,23 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FileSignature, Search, Copy, Check, Share2, Save, Trash2, ChevronRight, Users, Info, Phone, X, Plus } from 'lucide-react'
+import {
+  FileSignature,
+  Search,
+  Copy,
+  Check,
+  Share2,
+  Save,
+  Trash2,
+  ChevronRight,
+  Users,
+  Info,
+  Phone,
+  X,
+  Plus,
+  Building2,
+  Bookmark,
+  BookmarkPlus,
+  HeartPulse
+} from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
@@ -7,10 +25,19 @@ import { listCustomers, type CustomerDataMode } from '@renderer/services/commerc
 import type { CustomerRecord } from '@shared/commercial/models'
 import { shareMeetingText } from '@renderer/services/share/meetingShare'
 import { copyText as copyToClipboard } from '@renderer/services/share/clipboard'
+import { INSURERS } from '@renderer/services/commercial/registrationService'
+import { listCompanyContacts, type CompanyContact } from '@renderer/services/commercial/companyContactsService'
+import { takePlanRequestPrefill } from '@renderer/services/commercial/planRequestPrefill'
+import { getHubCustomer, setHubCustomer, subscribeHubCustomer } from '@renderer/services/insurance-hub/insuranceHubStore'
+import InsuranceHubBar from '@renderer/components/insurance-hub/InsuranceHubBar'
 import {
   INSURANCE_KINDS,
   DRIVING_OPTIONS,
   COVERAGE_GROUPS,
+  BUDGET_PRESETS,
+  PAYMENT_TERM_OPTIONS,
+  MATURITY_OPTIONS,
+  RENEWAL_OPTIONS,
   amountPresetsFor,
   customerProfileInfo,
   insuranceAge,
@@ -20,10 +47,15 @@ import {
   updatePlanRequestStatus,
   deletePlanRequest,
   nextPlanStatus,
+  listPlanTemplates,
+  savePlanTemplate,
+  deletePlanTemplate,
   PLAN_STATUS_LABEL,
   type PlanRequest,
   type PlanDataMode,
   type PlanRequestStatus,
+  type PlanConditions,
+  type PlanTemplate,
   type CoverageItem
 } from '@renderer/services/commercial/planRequestService'
 
@@ -56,9 +88,9 @@ export default function PlanRequestPage(): JSX.Element {
   const [includeStaff, setIncludeStaff] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 폼 상태
+  // 폼 상태 — 고객은 보험 허브의 "현재 작업 중 고객"과 양방향 동기화
   const [q, setQ] = useState('')
-  const [customer, setCustomer] = useState<CustomerRecord | null>(null)
+  const [customer, setCustomer] = useState<CustomerRecord | null>(() => getHubCustomer())
   const [manualName, setManualName] = useState('')
   const [manualBirth, setManualBirth] = useState('')
   const [manualGender, setManualGender] = useState<'남' | '여' | ''>('')
@@ -67,6 +99,23 @@ export default function PlanRequestPage(): JSX.Element {
   const [coverages, setCoverages] = useState<CoverageItem[]>([])
   const [customCov, setCustomCov] = useState('')
   const [extra, setExtra] = useState('')
+
+  // v2 — 요청 대상(보험사·매니저), 계약자, 설계 조건, 병력 고지, 특약 세트
+  const [insurers, setInsurers] = useState<string[]>([])
+  const [managerName, setManagerName] = useState('')
+  const [contacts, setContacts] = useState<CompanyContact[]>([])
+  const [diffPolicyholder, setDiffPolicyholder] = useState(false)
+  const [policyholderName, setPolicyholderName] = useState('')
+  const [budget, setBudget] = useState('')
+  const [paymentTerm, setPaymentTerm] = useState('')
+  const [maturity, setMaturity] = useState('')
+  const [renewal, setRenewal] = useState('')
+  const [includeMedical, setIncludeMedical] = useState(false)
+  const [medicalNotes, setMedicalNotes] = useState('')
+  const [templates, setTemplates] = useState<PlanTemplate[]>([])
+  const [tplOpen, setTplOpen] = useState(false)
+  const [tplName, setTplName] = useState('')
+  const [tplSaving, setTplSaving] = useState(false)
   /** 직접 수정한 문자(메모). null = 자동 생성 문안 사용. 수정 후에도 되돌리기 가능. */
   const [editedMessage, setEditedMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -94,6 +143,38 @@ export default function PlanRequestPage(): JSX.Element {
     setRequests(res.ok ? res.requests : [])
   }
 
+  // v2 초기화 — 매니저 연락처부·특약 세트 로드, 보험 허브 동기화,
+  // 사전심사/보장분석에서 넘어온 프리필(1회용) 소비.
+  useEffect(() => {
+    void listCompanyContacts().then((r) => {
+      if (r.ok) setContacts(r.items)
+    })
+    void listPlanTemplates().then(setTemplates)
+    const unsub = subscribeHubCustomer(setCustomer)
+    const pre = takePlanRequestPrefill()
+    if (pre) {
+      if (pre.customer) setHubCustomer(pre.customer)
+      if (pre.insuranceKind) setKind(pre.insuranceKind)
+      if (pre.coverages && pre.coverages.length > 0) setCoverages(sortCoverages(pre.coverages))
+      if (pre.extraRequest) setExtra(pre.extraRequest)
+      if (pre.medicalNotes) setMedicalNotes(pre.medicalNotes)
+      if (pre.includeMedical) setIncludeMedical(true)
+    }
+    return unsub
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 간편심사(유병자) 선택 시 병력 고지 자동 포함 — 매니저가 되묻지 않게.
+  useEffect(() => {
+    if (kind !== '간편심사(유병자)' || includeMedical) return
+    const seed = medicalNotes || customer?.medicalHistory || ''
+    if (seed) {
+      setIncludeMedical(true)
+      if (!medicalNotes) setMedicalNotes(seed)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind])
+
   // 내 고객만 (폼 고객목록 원칙)
   const myCustomers = useMemo(() => {
     if (custMode !== 'supabase') return customers
@@ -113,6 +194,18 @@ export default function PlanRequestPage(): JSX.Element {
   }, [customer, manualBirth, manualGender])
 
   const name = customer ? customer.name : manualName
+
+  const conditions = useMemo<PlanConditions>(
+    () => ({
+      budget: budget.trim() || undefined,
+      paymentTerm: paymentTerm || undefined,
+      maturity: maturity || undefined,
+      renewal: renewal || undefined,
+      medicalNotes: includeMedical && medicalNotes.trim() ? medicalNotes.trim() : undefined
+    }),
+    [budget, paymentTerm, maturity, renewal, includeMedical, medicalNotes]
+  )
+
   const message = useMemo(
     () =>
       buildPlanRequestMessage({
@@ -123,9 +216,13 @@ export default function PlanRequestPage(): JSX.Element {
         driving,
         insuranceKind: kind,
         coverages,
-        extraRequest: extra
+        extraRequest: extra,
+        insurers,
+        managerName,
+        policyholderName: diffPolicyholder ? policyholderName : undefined,
+        conditions
       }),
-    [name, profile, driving, kind, coverages, extra]
+    [name, profile, driving, kind, coverages, extra, insurers, managerName, diffPolicyholder, policyholderName, conditions]
   )
   /** 실제 복사·공유·저장에 쓰는 최종 문안 — 직접 수정본이 있으면 그것을 우선. */
   const finalMessage = editedMessage ?? message
@@ -161,6 +258,55 @@ export default function PlanRequestPage(): JSX.Element {
     setCustomCov('')
   }
 
+  /* ---- 자주 쓰는 특약 세트 ---- */
+
+  const applyTemplate = (t: PlanTemplate): void => {
+    setKind(t.insuranceKind)
+    setCoverages(sortCoverages(t.coverages))
+    if (t.driving) setDriving(t.driving)
+    setBudget(t.conditions.budget ?? '')
+    setPaymentTerm(t.conditions.paymentTerm ?? '')
+    setMaturity(t.conditions.maturity ?? '')
+    setRenewal(t.conditions.renewal ?? '')
+    setEditedMessage(null)
+  }
+
+  const saveTemplate = async (): Promise<void> => {
+    if (tplSaving || !tplName.trim()) return
+    setTplSaving(true)
+    const res = await savePlanTemplate({
+      name: tplName,
+      insuranceKind: kind,
+      coverages,
+      driving,
+      conditions: {
+        budget: budget.trim() || undefined,
+        paymentTerm: paymentTerm || undefined,
+        maturity: maturity || undefined,
+        renewal: renewal || undefined
+      }
+    })
+    setTplSaving(false)
+    if (!res.ok) {
+      setError(res.error ?? '세트 저장에 실패했습니다.')
+      return
+    }
+    setTplName('')
+    setTemplates(await listPlanTemplates())
+  }
+
+  const removeTemplate = async (t: PlanTemplate): Promise<void> => {
+    if (!window.confirm(`'${t.name}' 세트를 삭제할까요?`)) return
+    await deletePlanTemplate(t.id)
+    setTemplates(await listPlanTemplates())
+  }
+
+  /** 매니저 후보 — 보험사를 골랐으면 그 회사 매니저만, 아니면 전체. */
+  const managerOptions = useMemo(
+    () => (insurers.length > 0 ? contacts.filter((c) => insurers.includes(c.insurer)) : contacts),
+    [contacts, insurers]
+  )
+
   const showFlash = (kindOf: typeof flash): void => {
     setFlash(kindOf)
     window.setTimeout(() => setFlash(null), 3000)
@@ -178,7 +324,11 @@ export default function PlanRequestPage(): JSX.Element {
         coverages,
         driving,
         extraRequest: extra,
-        messageText: finalMessage
+        messageText: finalMessage,
+        managerName: managerName.trim() || undefined,
+        insurers,
+        policyholderName: diffPolicyholder ? policyholderName : undefined,
+        conditions
       },
       { id: session.id, name: session.name }
     )
@@ -248,6 +398,7 @@ export default function PlanRequestPage(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
+      <InsuranceHubBar current="plan-request" />
       {/* 헤더 — 딥네이비 + 골드 */}
       <div
         className="relative overflow-hidden rounded-2xl p-5 text-white"
@@ -284,7 +435,7 @@ export default function PlanRequestPage(): JSX.Element {
                 ) : ''}
               </span>
             </div>
-            <button type="button" onClick={() => setCustomer(null)} className="rounded-lg p-1 text-slate-400 hover:text-slate-200" aria-label="고객 선택 해제">
+            <button type="button" onClick={() => setHubCustomer(null)} className="rounded-lg p-1 text-slate-400 hover:text-slate-200" aria-label="고객 선택 해제">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -303,7 +454,7 @@ export default function PlanRequestPage(): JSX.Element {
                       key={c.id}
                       type="button"
                       onClick={() => {
-                        setCustomer(c)
+                        setHubCustomer(c)
                         setQ('')
                       }}
                       className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm hover:bg-slate-950"
@@ -340,6 +491,29 @@ export default function PlanRequestPage(): JSX.Element {
           </>
         )}
 
+        {/* 계약자 ≠ 피보험자 (자녀·배우자 보험) */}
+        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5">
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-[12px] font-semibold text-slate-200">
+              계약자가 따로 있어요 <span className="text-[10px] font-normal text-slate-500">(자녀·배우자 보험 등 — 위 고객은 피보험자)</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={diffPolicyholder}
+              onChange={(e) => setDiffPolicyholder(e.target.checked)}
+              className="h-4 w-4 accent-[#c6982f]"
+            />
+          </label>
+          {diffPolicyholder ? (
+            <input
+              value={policyholderName}
+              onChange={(e) => setPolicyholderName(e.target.value)}
+              placeholder="계약자 이름 (예: 어머님 성함)"
+              className={`${input} mt-2`}
+            />
+          ) : null}
+        </div>
+
         {/* 운전 여부 */}
         <div className="mt-3 flex flex-wrap gap-1.5">
           {DRIVING_OPTIONS.map((d) => (
@@ -358,9 +532,103 @@ export default function PlanRequestPage(): JSX.Element {
         </div>
       </div>
 
-      {/* 2) 보험 구분 + 특약 */}
+      {/* 2) 요청 대상 — 보험사(복수=비교견적) + 매니저 (연락처부 연동) */}
       <div className="rounded-2xl border border-slate-800 bg-white p-4">
-        <h2 className="text-sm font-bold text-slate-100">2. 요청 보험 · 특약</h2>
+        <div className="flex items-center gap-1.5">
+          <Building2 className="h-4 w-4 text-[#c6982f]" />
+          <h2 className="text-sm font-bold text-slate-100">2. 요청 대상 — 보험사 · 매니저</h2>
+        </div>
+        <p className="mt-0.5 text-[11px] text-slate-500">여러 회사를 고르면 문자에 비교견적 요청이 붙습니다. 안 골라도 됩니다.</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {INSURERS.map((ins) => (
+            <button
+              key={ins}
+              type="button"
+              onClick={() => setInsurers((prev) => (prev.includes(ins) ? prev.filter((x) => x !== ins) : [...prev, ins]))}
+              className={[
+                'rounded-full px-3 py-1.5 text-[12px] font-bold transition',
+                insurers.includes(ins) ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-slate-950 text-slate-400 ring-1 ring-slate-800'
+              ].join(' ')}
+            >
+              {ins}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <select
+            value=""
+            onChange={(e) => {
+              if (e.target.value) setManagerName(e.target.value)
+            }}
+            className={input}
+            aria-label="매니저 연락처부에서 선택"
+          >
+            <option value="">매니저 연락처부에서 선택…</option>
+            {managerOptions.map((c) => (
+              <option key={c.id} value={`${c.insurer} ${c.managerName}`}>
+                {c.insurer} · {c.managerName} {c.title}
+              </option>
+            ))}
+          </select>
+          <input value={managerName} onChange={(e) => setManagerName(e.target.value)} placeholder="매니저 직접 입력 (선택)" className={input} />
+        </div>
+      </div>
+
+      {/* 3) 보험 구분 + 특약 + 자주 쓰는 세트 */}
+      <div className="rounded-2xl border border-slate-800 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-100">3. 요청 보험 · 특약</h2>
+          <button
+            type="button"
+            onClick={() => setTplOpen((v) => !v)}
+            className="flex items-center gap-1 text-[11px] font-bold text-[#8a6a1e] underline-offset-2 hover:underline"
+          >
+            <Bookmark className="h-3.5 w-3.5" /> 자주 쓰는 세트{templates.length > 0 ? ` ${templates.length}` : ''}
+          </button>
+        </div>
+        {tplOpen ? (
+          <div className="mt-2 rounded-xl border border-[#c6982f]/30 bg-[#c6982f]/5 p-3">
+            {templates.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {templates.map((t) => (
+                  <span
+                    key={t.id}
+                    className="inline-flex items-center gap-1 rounded-full border border-[#c6982f]/40 bg-white px-2 py-1 text-[11px] font-semibold text-[#8a6a1e]"
+                  >
+                    <button type="button" onClick={() => applyTemplate(t)} className="underline-offset-2 hover:underline" title={`${t.insuranceKind} · 특약 ${t.coverages.length}개 불러오기`}>
+                      {t.name}
+                    </button>
+                    <button type="button" onClick={() => void removeTemplate(t)} className="text-slate-500 hover:text-rose-600" aria-label={`${t.name} 세트 삭제`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-500">자주 쓰는 구성(보험 구분·특약·조건)을 세트로 저장해 두면 다음부터 한 번에 불러옵니다.</p>
+            )}
+            <div className="mt-2 flex gap-1.5">
+              <input
+                value={tplName}
+                onChange={(e) => setTplName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) void saveTemplate()
+                }}
+                placeholder="현재 구성을 세트로 저장 — 이름 (예: 40대 남성 표준)"
+                className={input}
+              />
+              <button
+                type="button"
+                onClick={() => void saveTemplate()}
+                disabled={tplSaving || !tplName.trim()}
+                className="shrink-0 rounded-xl bg-[#0e1e3a] px-3 text-[#e6c877] disabled:opacity-40"
+                aria-label="세트 저장"
+              >
+                <BookmarkPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="mt-2 flex flex-wrap gap-1.5">
           {INSURANCE_KINDS.map((k) => (
             <button
@@ -460,10 +728,127 @@ export default function PlanRequestPage(): JSX.Element {
         </div>
       </div>
 
-      {/* 3) 실시간 미리보기 */}
+      {/* 4) 설계 조건 + 병력 고지 */}
+      <div className="rounded-2xl border border-slate-800 bg-white p-4">
+        <h2 className="text-sm font-bold text-slate-100">4. 설계 조건 · 병력 고지</h2>
+        <p className="mt-0.5 text-[11px] text-slate-500">고른 것만 문자에 실립니다. 같은 칩을 다시 누르면 해제됩니다.</p>
+
+        <div className="mt-2">
+          <span className="mb-1 block text-[11px] font-bold text-slate-500">월 보험료 예산</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {BUDGET_PRESETS.map((b) => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => setBudget((prev) => (prev === b ? '' : b))}
+                className={[
+                  'rounded-full px-3 py-1.5 text-[12px] font-bold transition',
+                  budget === b ? 'bg-[#c6982f] text-[#201603]' : 'bg-slate-950 text-slate-400 ring-1 ring-slate-800'
+                ].join(' ')}
+              >
+                {b}
+              </button>
+            ))}
+            <input
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+              placeholder="직접 입력 (예: 월 12만원 내)"
+              className="w-44 rounded-full border border-slate-800 bg-white px-3 py-1.5 text-[12px] text-slate-100 outline-none placeholder:text-slate-500 focus:border-[#c6982f]"
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <span className="mb-1 block text-[11px] font-bold text-slate-500">납입기간</span>
+            <div className="flex flex-wrap gap-1.5">
+              {PAYMENT_TERM_OPTIONS.map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  onClick={() => setPaymentTerm((prev) => (prev === o ? '' : o))}
+                  className={[
+                    'rounded-full px-2.5 py-1 text-[11px] font-bold transition',
+                    paymentTerm === o ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-slate-950 text-slate-400 ring-1 ring-slate-800'
+                  ].join(' ')}
+                >
+                  {o}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span className="mb-1 block text-[11px] font-bold text-slate-500">만기</span>
+            <div className="flex flex-wrap gap-1.5">
+              {MATURITY_OPTIONS.map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  onClick={() => setMaturity((prev) => (prev === o ? '' : o))}
+                  className={[
+                    'rounded-full px-2.5 py-1 text-[11px] font-bold transition',
+                    maturity === o ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-slate-950 text-slate-400 ring-1 ring-slate-800'
+                  ].join(' ')}
+                >
+                  {o}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <span className="mb-1 block text-[11px] font-bold text-slate-500">갱신형태</span>
+            <div className="flex flex-wrap gap-1.5">
+              {RENEWAL_OPTIONS.map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  onClick={() => setRenewal((prev) => (prev === o ? '' : o))}
+                  className={[
+                    'rounded-full px-2.5 py-1 text-[11px] font-bold transition',
+                    renewal === o ? 'bg-[#0e1e3a] text-[#e6c877]' : 'bg-slate-950 text-slate-400 ring-1 ring-slate-800'
+                  ].join(' ')}
+                >
+                  {o}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 병력 고지 — 간편심사 요청의 필수 정보 */}
+        <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5">
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-200">
+              <HeartPulse className="h-3.5 w-3.5 text-[#c6982f]" /> 병력 고지 포함
+              <span className="text-[10px] font-normal text-slate-500">(간편심사 선택 시 자동 포함 — 매니저가 되묻지 않게)</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={includeMedical}
+              onChange={(e) => {
+                const on = e.target.checked
+                setIncludeMedical(on)
+                if (on && !medicalNotes && customer?.medicalHistory) setMedicalNotes(customer.medicalHistory)
+              }}
+              className="h-4 w-4 accent-[#c6982f]"
+            />
+          </label>
+          {includeMedical ? (
+            <textarea
+              value={medicalNotes}
+              onChange={(e) => setMedicalNotes(e.target.value)}
+              rows={2}
+              placeholder="병명·시기·치료 상태 (고객 DB 병력이 자동 입력됩니다 — 수정 가능)"
+              className={`${input} mt-2`}
+            />
+          ) : null}
+        </div>
+      </div>
+
+      {/* 5) 실시간 미리보기 */}
       <div className="rounded-2xl border border-slate-800 bg-white p-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-100">3. 문자 미리보기</h2>
+          <h2 className="text-sm font-bold text-slate-100">5. 문자 미리보기</h2>
           {editedMessage !== null ? (
             <span className="flex items-center gap-1.5">
               <span className="rounded-full bg-[#c6982f]/15 px-2 py-0.5 text-[10px] font-bold text-[#8a6a1e]">직접 수정됨</span>
@@ -556,6 +941,12 @@ export default function PlanRequestPage(): JSX.Element {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-sm font-bold text-slate-100">{r.customerName}</span>
                       <span className="text-[11px] text-slate-500">{r.insuranceKind}</span>
+                      {r.insurers.length > 0 ? (
+                        <span className="rounded-full bg-slate-950 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 ring-1 ring-slate-800">
+                          {r.insurers.join(' · ')}
+                        </span>
+                      ) : null}
+                      {r.managerName ? <span className="text-[10px] text-slate-500">매니저 {r.managerName}</span> : null}
                       <span className={['rounded-full px-1.5 py-0.5 text-[10px] font-bold', STATUS_CHIP[r.status]].join(' ')}>
                         {PLAN_STATUS_LABEL[r.status]}
                       </span>
