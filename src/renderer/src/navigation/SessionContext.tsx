@@ -206,7 +206,7 @@ export function SessionProvider({ children }: { children: ReactNode }): JSX.Elem
         }
       },
       phoneSignIn: async (phone, password) => {
-        const r = resolvePhoneLogin(phone)
+        const r = await resolvePhoneLogin(phone)
         if (r.kind === 'invalid-phone' || r.kind === 'not-registered' || r.kind === 'inactive') {
           return { kind: 'error', message: r.message }
         }

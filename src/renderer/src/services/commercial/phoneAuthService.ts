@@ -1,6 +1,6 @@
 import { normalizeKoreanPhoneNumber } from '@shared/phone'
 import { findByNormalizedPhone, requestPasswordReset } from './phoneLoginStore'
-import { getFunctionsBaseUrl, getSupabaseAnonKey } from './supabaseClient'
+import { getFunctionsBaseUrl, getSupabaseAnonKey, getSupabaseClient, initSupabaseClient } from './supabaseClient'
 import { getBackendConfig } from './backendConfig'
 
 /**
@@ -25,16 +25,29 @@ const INACTIVE_MSG = '비활성 직원 계정입니다. 관리자에게 문의�
 /**
  * Resolve what the login screen should do next for a given phone input.
  *
- * In Supabase mode the registered-phone list is NOT client-readable (RLS blocks it),
- * so we defer to the server: return 'attempt' and let signInWithPassword / the claim
- * Edge Function enforce registration/status. The local registry is used only in
- * local-mock/dev mode. (A future SECURITY DEFINER login-gate RPC can restore the
- * needs-setup hint in Supabase mode.)
+ * Supabase mode: the registered-phone TABLE is not client-readable (RLS), so we call
+ * the minimal SECURITY DEFINER RPC `phone_login_gate` which returns only a status
+ * string — this is what lets a newly added staff see the "첫 비밀번호 만들기" screen.
+ * RPC 실패 시에는 예전처럼 'attempt'로 넘어가 로그인 자체는 막지 않는다(fail-open).
+ * The local registry is used only in local-mock/dev mode.
  */
-export function resolvePhoneLogin(phoneInput: string): LoginResolution {
+export async function resolvePhoneLogin(phoneInput: string): Promise<LoginResolution> {
   const norm = normalizeKoreanPhoneNumber(phoneInput)
   if (!norm.ok || !norm.value) return { kind: 'invalid-phone', message: norm.error ?? '휴대폰 번호 형식을 확인해주세요.' }
-  if (getBackendConfig().mode === 'supabase') return { kind: 'attempt', normalizedPhone: norm.value }
+  if (getBackendConfig().mode === 'supabase') {
+    try {
+      await initSupabaseClient()
+      const client = getSupabaseClient() as { rpc?: (fn: string, args: Record<string, unknown>) => Promise<{ data?: unknown; error?: unknown }> } | null
+      const res = client?.rpc ? await client.rpc('phone_login_gate', { p_phone: norm.value }) : null
+      const gate = res && !res.error ? String(res.data ?? '') : ''
+      if (gate === 'not-registered') return { kind: 'not-registered', message: GATE_MSG }
+      if (gate === 'inactive') return { kind: 'inactive', message: INACTIVE_MSG }
+      if (gate === 'needs-setup') return { kind: 'needs-password-setup', normalizedPhone: norm.value }
+    } catch {
+      /* fail-open → attempt */
+    }
+    return { kind: 'attempt', normalizedPhone: norm.value }
+  }
   const acc = findByNormalizedPhone(norm.value)
   if (!acc) return { kind: 'not-registered', message: GATE_MSG }
   if (acc.status === 'inactive' || acc.status === 'blocked') return { kind: 'inactive', message: INACTIVE_MSG }
