@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { UserCog, Plus, RefreshCw, Ban, CheckCircle2, KeyRound, ShieldOff, Database, HardDrive, Loader2 } from 'lucide-react'
+import { UserCog, Plus, RefreshCw, Ban, CheckCircle2, KeyRound, ShieldOff, Database, HardDrive, Loader2, Share2 } from 'lucide-react'
+import { PhoneSegments } from '@renderer/components/ui/SegmentedInputs'
+import { shareMeetingText } from '@renderer/services/share/meetingShare'
 import { useSession } from '@renderer/navigation/SessionContext'
 import type { StaffRole } from '@shared/commercial/models'
 import type { PasswordResetRequest, StaffLoginAccount } from '@shared/commercial/phoneLogin'
@@ -39,6 +41,10 @@ export default function StaffLoginAdminPage(): JSX.Element {
   const [team, setTeam] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // 등록 직후: 새 직원에게 보낼 입장 안내 (로그인까지 이어지는 마지막 연결 고리)
+  const [lastAdded, setLastAdded] = useState<string | null>(null)
+  const [shareNote, setShareNote] = useState<string | null>(null)
+
   const load = async (): Promise<void> => {
     setLoading(true)
     const [a, r] = await Promise.all([listStaffLoginAccounts(), listPasswordResetRequests()])
@@ -61,7 +67,28 @@ export default function StaffLoginAdminPage(): JSX.Element {
     const res = await createStaffLoginAccount({ name, phone, role, teamName: team })
     setBusy(false)
     if (!res.ok) { setError(res.error); return }
-    setError(undefined); setName(''); setPhone(''); setTeam(''); void load()
+    setError(undefined)
+    setLastAdded(name.trim() || '새 직원')
+    setShareNote(null)
+    setName(''); setPhone(''); setTeam(''); void load()
+  }
+
+  /** 새 직원에게 보낼 입장 안내 문구 — 등록된 번호로 첫 로그인 시 비밀번호를 직접 만들면 끝. */
+  const guideText = (staffName: string): string =>
+    [
+      `[SJ INVEST] ${staffName}님, 합류를 환영합니다!`,
+      '',
+      `1) 폰 브라우저로 접속: ${window.location.origin}`,
+      '2) 로그인 화면에 본인 휴대폰 번호 입력',
+      '3) 첫 로그인이라 비밀번호를 새로 만들면 바로 입장됩니다',
+      '',
+      '※ 브라우저 메뉴에서 "홈 화면에 추가"하면 앱처럼 쓸 수 있어요'
+    ].join('\n')
+
+  const sendGuide = async (): Promise<void> => {
+    if (!lastAdded) return
+    const outcome = await shareMeetingText(guideText(lastAdded))
+    setShareNote(outcome === 'copied' ? '안내문이 복사됐어요 — 카톡에 붙여넣어 보내세요.' : null)
   }
   const setStatus = async (id: string, fn: (id: string) => Promise<{ ok: boolean; error?: string }>): Promise<void> => {
     const res = await fn(id)
@@ -103,7 +130,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
         <div className="mb-2 text-sm font-semibold text-slate-300">직원 번호 등록</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="직원명" maxLength={50} className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="휴대폰 번호" className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
+          <PhoneSegments value={phone} onChange={setPhone} />
           <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
             {roleOptions.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
           </select>
@@ -112,6 +139,26 @@ export default function StaffLoginAdminPage(): JSX.Element {
         <button type="button" onClick={() => void add()} disabled={busy} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} 직원 등록
         </button>
+
+        {/* 등록 완료 → 새 직원에게 입장 안내 보내기 (여기까지 해야 "로그인까지" 완결) */}
+        {lastAdded ? (
+          <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3">
+            <div className="flex items-center gap-1.5 text-[13px] font-bold text-emerald-800">
+              <CheckCircle2 className="h-4 w-4" /> {lastAdded} 님 등록 완료 — 이제 본인 폰에서 바로 로그인할 수 있습니다
+            </div>
+            <p className="mt-1 text-[11px] leading-5 text-emerald-700">
+              직원이 할 일: 앱 주소 접속 → 휴대폰 번호 입력 → 첫 로그인 비밀번호 만들기 (끝). 아래 버튼으로 안내문을 카톡으로 보내주세요.
+            </p>
+            <button
+              type="button"
+              onClick={() => void sendGuide()}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#fee500] px-3 py-2 text-xs font-bold text-[#191919] transition hover:brightness-95"
+            >
+              <Share2 className="h-3.5 w-3.5" /> 입장 안내 카톡 보내기
+            </button>
+            {shareNote ? <p className="mt-1.5 text-[11px] font-semibold text-amber-700">{shareNote}</p> : null}
+          </div>
+        ) : null}
       </div>
 
       {/* Reset requests */}

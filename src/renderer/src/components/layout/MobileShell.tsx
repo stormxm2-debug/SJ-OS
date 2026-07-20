@@ -34,6 +34,7 @@ import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
+import StaffLoginAdminPage from '@renderer/pages/StaffLoginAdminPage'
 import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
 import MorningBriefing from '@renderer/components/notifications/MorningBriefing'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
@@ -187,7 +188,7 @@ export default function MobileShell(): JSX.Element {
 }
 
 /** 모바일에서 관리자에게만 열어주는 관리자 라우트 (개발/배포 도구는 계속 차단). */
-const MOBILE_ADMIN_ROUTES: ViewName[] = ['staff-overview', 'staff-table', 'registration-admin', 'shared-schedule']
+const MOBILE_ADMIN_ROUTES: ViewName[] = ['staff-overview', 'staff-table', 'registration-admin', 'shared-schedule', 'staff-login']
 
 /** Mobile router: staff routes only; admin/dev routes → mobile access-denied card. */
 function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRole }): JSX.Element {
@@ -253,6 +254,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <StaffTablePage />
     case 'registration-admin':
       return <RegistrationAdminPage />
+    case 'staff-login':
+      return <StaffLoginAdminPage />
     default:
       return <MobileHome />
   }
