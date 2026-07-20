@@ -34,10 +34,21 @@ const RT_TABLES = ['company_contacts']
 
 type InsurerSector = '생보' | '손보' | '기타'
 
-/** 보험사명 → 생보/손보 구분 (이름 규칙: '생명'=생보, '화재/해상/손해'=손보, 그 외=기타). */
+/**
+ * 보험사명 → 생보/손보 구분.
+ * 실제 등록 데이터가 축약 이름(삼성·라이나·DB·교보 …)이라 키워드 + 회사명 매핑을 함께 쓴다.
+ * 우선순위: ①명시 키워드(생명/라이프, 화재/해상/손보/손해) ②알려진 회사명.
+ * 중의적 축약명은 사내 취급사 기준: 한화=한화생명(생보), 흥국=흥국화재(손보),
+ * 농협=NH농협손해(손보), 삼성=삼성화재(손보 — 삼성생명 담당자는 이름을 '삼성생명'으로).
+ */
+const LIFE_NAMES = ['라이나', '동양', '메트', '신한', 'ABL', 'KDB', '교보', '미래', '카디프', '한화', 'AIA', '푸본', '처브', 'iM']
+const NONLIFE_NAMES = ['삼성', 'DB', 'KB', '롯데', '하나', '현대', '흥국', '농협', 'NH', '메리츠', 'MG', '캐롯', 'AXA', 'AIG']
+
 function insurerSector(insurer: string): InsurerSector {
-  if (insurer.includes('생명')) return '생보'
-  if (insurer.includes('화재') || insurer.includes('해상') || insurer.includes('손해')) return '손보'
+  if (insurer.includes('생명') || insurer.includes('라이프')) return '생보'
+  if (insurer.includes('화재') || insurer.includes('해상') || insurer.includes('손보') || insurer.includes('손해')) return '손보'
+  if (LIFE_NAMES.some((n) => insurer.includes(n))) return '생보'
+  if (NONLIFE_NAMES.some((n) => insurer.includes(n))) return '손보'
   return '기타'
 }
 
@@ -74,6 +85,8 @@ export default function ManagerContactsPage(): JSX.Element {
   const [creating, setCreating] = useState(false)
   const [q, setQ] = useState('')
   const [sector, setSector] = useState<InsurerSector>('손보')
+  /** 2단계 탐색: 탭에서 보험사를 먼저 고르고 → 그 회사 매니저만 본다. */
+  const [selectedInsurer, setSelectedInsurer] = useState<string | null>(null)
 
   const load = async (): Promise<void> => {
     const res = await listCompanyContacts()
@@ -208,7 +221,10 @@ export default function ManagerContactsPage(): JSX.Element {
             <button
               key={s}
               type="button"
-              onClick={() => setSector(s)}
+              onClick={() => {
+                setSector(s)
+                setSelectedInsurer(null)
+              }}
               className="flex-1 py-2.5 text-sm font-bold transition"
               style={
                 sector === s
@@ -248,19 +264,17 @@ export default function ManagerContactsPage(): JSX.Element {
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
           {searching ? `'${q.trim()}' 검색 결과가 없습니다.` : `${sector === '생보' ? '생명보험사' : sector === '손보' ? '손해보험사' : '기타'} 매니저가 아직 없습니다.`}
         </div>
-      ) : (
+      ) : searching ? (
+        /* 검색 결과 — 생/손 구분 없이 회사별 그룹 + 생명/손해 배지 */
         <div className="space-y-4">
           {groups.map((g) => (
             <div key={g.insurer}>
-              {/* 보험사 그룹 헤더 — 안에서는 직급 높은 순 */}
               <div className="mb-1.5 flex items-center gap-1.5 px-1">
                 <span className="text-[13px] font-black text-slate-100">{g.insurer}</span>
                 <span className="rounded-full bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{g.list.length}명</span>
-                {searching ? (
-                  <span className="rounded-full border px-1.5 py-0.5 text-[9px] font-bold" style={{ borderColor: '#c6982f', color: '#a07a1f' }}>
-                    {insurerSector(g.insurer) === '생보' ? '생명' : insurerSector(g.insurer) === '손보' ? '손해' : '기타'}
-                  </span>
-                ) : null}
+                <span className="rounded-full border px-1.5 py-0.5 text-[9px] font-bold" style={{ borderColor: '#c6982f', color: '#a07a1f' }}>
+                  {insurerSector(g.insurer) === '생보' ? '생명' : insurerSector(g.insurer) === '손보' ? '손해' : '기타'}
+                </span>
               </div>
               <div className="space-y-2">
                 {g.list.map((c) =>
@@ -281,6 +295,66 @@ export default function ManagerContactsPage(): JSX.Element {
             </div>
           ))}
         </div>
+      ) : (
+        (() => {
+          const sel = selectedInsurer ? groups.find((g) => g.insurer === selectedInsurer) : undefined
+          if (!sel) {
+            /* 1단계: 보험사 선택 — 탭(생명/손해)의 회사 버튼 그리드 */
+            return (
+              <div className="grid grid-cols-2 gap-2">
+                {groups.map((g) => (
+                  <button
+                    key={g.insurer}
+                    type="button"
+                    onClick={() => setSelectedInsurer(g.insurer)}
+                    className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition active:bg-slate-50"
+                  >
+                    <div className="text-sm font-black text-slate-100">{g.insurer}</div>
+                    <div className="mt-0.5 text-[11px] text-slate-500">매니저 {g.list.length}명 →</div>
+                  </button>
+                ))}
+              </div>
+            )
+          }
+          /* 2단계: 선택한 회사의 매니저 — 직급 높은 순 */
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedInsurer(null)}
+                  className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-bold text-slate-500 active:bg-slate-50"
+                >
+                  ← 보험사 목록
+                </button>
+                <span className="text-sm font-black text-slate-100">{sel.insurer}</span>
+                <span className="rounded-full bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{sel.list.length}명</span>
+                <button
+                  type="button"
+                  onClick={() => void saveToPhone(sel.list, `${sel.insurer}-managers.vcf`)}
+                  className="ml-auto rounded-xl border px-2.5 py-1.5 text-[11px] font-bold active:opacity-90"
+                  style={{ borderColor: '#c6982f', color: '#a07a1f', backgroundColor: '#fdf9ef' }}
+                >
+                  {sel.insurer} 전체 저장
+                </button>
+              </div>
+              {sel.list.map((c) =>
+                editing?.id === c.id ? (
+                  <ContactForm
+                    key={c.id}
+                    initial={c}
+                    onDone={(saved) => {
+                      setEditing(null)
+                      if (saved) void load()
+                    }}
+                  />
+                ) : (
+                  <ContactCard key={c.id} c={c} admin={admin} onSave={() => void saveToPhone([c], `${contactDisplayName(c)}.vcf`)} onEdit={() => setEditing(c)} onDelete={() => void remove(c)} />
+                )
+              )}
+            </div>
+          )
+        })()
       )}
     </div>
   )
