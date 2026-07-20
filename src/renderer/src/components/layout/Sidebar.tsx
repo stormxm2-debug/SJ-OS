@@ -48,10 +48,12 @@ import {
   Briefcase,
   ExternalLink,
   FileSignature,
-  Clapperboard
+  Clapperboard,
+  Download
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
+import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeatures'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useAppMode, type AppMode } from '@renderer/navigation/AppModeContext'
 import { useSession } from '@renderer/navigation/SessionContext'
@@ -136,6 +138,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'staff-table', label: '전 직원 정리표', icon: UsersRound, view: { name: 'staff-table' }, match: ['staff-table'] },
       { key: 'staff-overview', label: '직원 현황', icon: UsersRound, view: { name: 'staff-overview' }, match: ['staff-overview'] },
+      { key: 'family-birthdays', label: '직원 생일 복지', icon: Cake, view: { name: 'family-birthdays' }, match: ['family-birthdays'] },
       { key: 'shared-schedule', label: '공유 일정 (전 직원)', icon: Share2, view: { name: 'shared-schedule' }, match: ['shared-schedule'] },
       { key: 'staff-team', label: '직원 / 팀 관리', icon: UsersRound, view: { name: 'staff-team' }, match: ['staff-team'] },
       { key: 'staff-login', label: '직원 로그인 관리', icon: UserRound, view: { name: 'staff-login' }, match: ['staff-login'] },
@@ -262,6 +265,10 @@ export default function Sidebar(): JSX.Element {
   // Menu for a non-admin role (FC / 팀장) — 팀 현황 라우트 제거로 역할별 차이 없음.
   const staffNav: NavItem[] = STAFF_NAV_MVP
 
+  // NEW 뱃지: 2번째 방문 직후 리렌더 없이도 뱃지가 바로 사라지도록 구독한다.
+  const [, bumpNewFeatures] = useState(0)
+  useEffect(() => subscribeNewFeatures(() => bumpNewFeatures((v) => v + 1)), [])
+
   const renderItem = ({ key, label, icon: Icon, view, match, href }: NavItem): JSX.Element => {
     const active = match?.includes(route.name) ?? false
     return (
@@ -280,7 +287,12 @@ export default function Sidebar(): JSX.Element {
         ].join(' ')}
       >
         <Icon className={['h-4 w-4 shrink-0', active ? 'text-white' : 'text-slate-500'].join(' ')} />
-        {label}
+        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+        {view && isNewFeature(view.name) ? (
+          <span className="shrink-0 rounded-full bg-[#e6c877] px-1.5 py-0.5 text-[9px] font-bold leading-none text-[#0e1e3a]">
+            NEW
+          </span>
+        ) : null}
       </button>
     )
   }

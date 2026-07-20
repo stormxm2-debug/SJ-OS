@@ -30,6 +30,7 @@ import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import TodayContactsPage from '@renderer/pages/TodayContactsPage'
 import PlanRequestPage from '@renderer/pages/PlanRequestPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
+import AppInstallPage from '@renderer/pages/AppInstallPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
 import DeveloperPromptCenterPage from '@renderer/pages/DeveloperPromptCenterPage'
 import AutopilotPage from '@renderer/pages/AutopilotPage'
@@ -47,6 +48,7 @@ import AnnouncementAdminPage from '@renderer/pages/AnnouncementAdminPage'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
+import FamilyBirthdayAdminPage from '@renderer/pages/FamilyBirthdayAdminPage'
 import SharedSchedulePage from '@renderer/pages/SharedSchedulePage'
 import BirthdayPage from '@renderer/pages/BirthdayPage'
 import StatsReportPage from '@renderer/pages/StatsReportPage'
@@ -127,6 +129,8 @@ export default function Router(): JSX.Element {
       return <ManagerContactsPage />
     case 'files':
       return <SharedFilesPage />
+    case 'app-install':
+      return <AppInstallPage />
     case 'app-builder':
       return <UniversalAppBuilderPage />
     case 'devprompt':
@@ -165,6 +169,8 @@ export default function Router(): JSX.Element {
       return <StaffOverviewPage />
     case 'staff-table':
       return <StaffTablePage />
+    case 'family-birthdays':
+      return <FamilyBirthdayAdminPage />
     default:
       return <Dashboard />
   }

@@ -46,6 +46,7 @@ export const STAFF_ROUTES: ViewName[] = [
   'content-studio',
   'plan-request',
   'files',
+  'app-install',
   'notice'
   // 'assistant'(경영 비서)는 관리자 전용 — 2026-07-20 대표 확정. 자비스 패널(jarvisService)은
   // 라우트가 아니라 별개이므로 전 직원 그대로 사용 가능.

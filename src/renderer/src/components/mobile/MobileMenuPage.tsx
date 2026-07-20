@@ -3,6 +3,7 @@ import { X, Star, LogOut } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
 import type { View } from '@renderer/navigation/types'
+import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeatures'
 import { MOBILE_MENU, listFavorites, toggleFavorite, subscribeFavorites } from './mobileMenu'
 
 /**
@@ -25,6 +26,9 @@ export default function MobileMenuPage({
   const admin = isAdminRole(session.role)
   const [favs, setFavs] = useState<string[]>(() => listFavorites())
   useEffect(() => subscribeFavorites(() => setFavs(listFavorites())), [])
+  // NEW 뱃지: 2번째 방문 직후 이 화면이 열려 있어도 뱃지가 바로 사라지도록 구독.
+  const [, bumpNewFeatures] = useState(0)
+  useEffect(() => subscribeNewFeatures(() => bumpNewFeatures((v) => v + 1)), [])
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-slate-950">
@@ -71,6 +75,11 @@ export default function MobileMenuPage({
                     >
                       <Icon className="h-4 w-4 shrink-0 text-indigo-500" />
                       <span className="truncate">{item.label}</span>
+                      {item.view && isNewFeature(item.view.name) ? (
+                        <span className="shrink-0 rounded-full bg-[#e6c877] px-1.5 py-0.5 text-[9px] font-bold leading-none text-[#0e1e3a]">
+                          NEW
+                        </span>
+                      ) : null}
                       {item.adminOnly ? (
                         <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-600">
                           관리자

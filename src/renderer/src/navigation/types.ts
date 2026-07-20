@@ -31,6 +31,7 @@ export type View =
   | { name: 'today-contacts' }
   | { name: 'plan-request' }
   | { name: 'files' }
+  | { name: 'app-install' }
   | { name: 'app-builder' }
   | { name: 'devprompt' }
   | { name: 'cto' }
@@ -50,5 +51,6 @@ export type View =
   | { name: 'registration-admin' }
   | { name: 'staff-overview' }
   | { name: 'staff-table' }
+  | { name: 'family-birthdays' }
 
 export type ViewName = View['name']

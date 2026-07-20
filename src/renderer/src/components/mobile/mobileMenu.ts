@@ -29,7 +29,11 @@ import {
   ExternalLink,
   FileSignature,
   Clapperboard,
-  UserCog
+  UserCog,
+  LayoutDashboard,
+  Sparkles,
+  ShieldCheck,
+  Download
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -68,7 +72,8 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' } },
       { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' } },
       { key: 'consultation', label: '상담기록', icon: ClipboardList, view: { name: 'consultation' } },
-      { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' } }
+      { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' } },
+      { key: 'app-install', label: '앱 설치', icon: Download, view: { name: 'app-install' } }
     ]
   },
   {
@@ -106,7 +111,12 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'staff-overview', label: '직원 현황', icon: UsersRound, view: { name: 'staff-overview' }, adminOnly: true },
       { key: 'staff-table', label: '전 직원 정리표', icon: LayoutList, view: { name: 'staff-table' }, adminOnly: true },
       { key: 'registration-admin', label: '고객등록 관리', icon: ClipboardCheck, view: { name: 'registration-admin' }, adminOnly: true },
-      { key: 'staff-login', label: '직원 추가·로그인', icon: UserCog, view: { name: 'staff-login' }, adminOnly: true }
+      { key: 'staff-login', label: '직원 추가·로그인', icon: UserCog, view: { name: 'staff-login' }, adminOnly: true },
+      // 폰 대표 모드 (2026-07-20 대표 지정 4종)
+      { key: 'dashboard', label: 'CEO 대시보드', icon: LayoutDashboard, view: { name: 'dashboard' }, adminOnly: true },
+      { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, adminOnly: true },
+      { key: 'announcements', label: '공지사항 관리', icon: Megaphone, view: { name: 'announcements' }, adminOnly: true },
+      { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, adminOnly: true }
     ]
   }
 ]

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { View } from './types'
+import { recordFeatureVisit } from './newFeatures'
 
 interface NavigationValue {
   route: View
@@ -44,6 +45,9 @@ export function NavigationProvider({
   }, [])
 
   const navigate = (view: View): void => {
+    // NEW 뱃지 방문 기록 — 같은 화면 재클릭 가드보다 먼저: "2번 누르면 사라짐"이
+    // 연속 두 번 클릭에도 성립해야 한다.
+    recordFeatureVisit(view.name)
     // 같은 화면 재클릭은 히스토리를 쌓지 않는다 (뒤로가기가 무의미하게 늘어남 방지).
     if (JSON.stringify(routeRef.current) === JSON.stringify(view)) return
     try {

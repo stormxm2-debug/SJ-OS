@@ -38,6 +38,20 @@ export interface CoverageItem {
   category?: string
 }
 
+/** 설계 조건 — v2. 전부 선택 입력 (있는 것만 문안에 실린다). */
+export interface PlanConditions {
+  /** 월 보험료 예산 (예: '월 10만원 내'). */
+  budget?: string
+  /** 납입기간 (예: '20년납'). */
+  paymentTerm?: string
+  /** 만기 (예: '100세'). */
+  maturity?: string
+  /** 갱신형태 (예: '비갱신 위주'). */
+  renewal?: string
+  /** 병력 고지 스냅샷 — 포함 시 문안 ■병력 고지 섹션으로. */
+  medicalNotes?: string
+}
+
 export interface PlanRequest {
   id: string
   fcId: string
@@ -50,6 +64,11 @@ export interface PlanRequest {
   extraRequest: string | null
   messageText: string
   managerName: string | null
+  /** 요청 보험사(복수 = 비교견적). v1 데이터는 빈 배열. */
+  insurers: string[]
+  /** 계약자명 — null이면 피보험자 본인 계약. */
+  policyholderName: string | null
+  conditions: PlanConditions
   status: PlanRequestStatus
   createdAt: string
 }
@@ -67,6 +86,13 @@ export const INSURANCE_KINDS = [
 ] as const
 
 export const DRIVING_OPTIONS = ['자가용 운전', '영업용 운전', '비운전', '미확인'] as const
+
+/* ---------- 설계 조건 옵션 (v2) ---------- */
+
+export const BUDGET_PRESETS = ['월 5만원 내', '월 10만원 내', '월 15만원 내', '월 20만원 내', '월 30만원 내'] as const
+export const PAYMENT_TERM_OPTIONS = ['10년납', '15년납', '20년납', '30년납', '전기납'] as const
+export const MATURITY_OPTIONS = ['80세', '90세', '100세', '종신'] as const
+export const RENEWAL_OPTIONS = ['비갱신 위주', '갱신 포함 가성비', '상관없음'] as const
 
 export interface CoverageGroup {
   category: string
@@ -157,18 +183,50 @@ export interface PlanMessageInput {
   insuranceKind: string
   coverages: CoverageItem[]
   extraRequest: string
+  /** v2 — 요청 보험사(복수), 매니저, 계약자, 설계 조건. 비우면 v1과 같은 문안. */
+  insurers?: string[]
+  managerName?: string
+  policyholderName?: string
+  conditions?: PlanConditions
 }
 
 /** 참고 UX(설계요청 문자) 포맷 그대로 — 매니저에게 바로 보내는 전문. */
 export function buildPlanRequestMessage(input: PlanMessageInput): string {
   const lines: string[] = ['[매니저 설계 요청서]', '']
+
+  // ■ 요청 대상 (v2 — 보험사·매니저를 지정했을 때만)
+  const insurers = (input.insurers ?? []).filter(Boolean)
+  const manager = input.managerName?.trim()
+  if (insurers.length > 0 || manager) {
+    lines.push('■ 요청 대상')
+    if (insurers.length > 0) lines.push(`- 보험사: ${insurers.join(', ')}${insurers.length > 1 ? ' (비교견적 부탁드립니다)' : ''}`)
+    if (manager) lines.push(`- 매니저: ${manager}`)
+    lines.push('')
+  }
+
+  const policyholder = input.policyholderName?.trim()
   lines.push('■ 고객 정보')
-  lines.push(`- 성함: ${input.customerName}${input.gender ? ` (${input.gender})` : ''}`)
+  if (policyholder) lines.push(`- 계약자: ${policyholder}`)
+  lines.push(`- ${policyholder ? '피보험자' : '성함'}: ${input.customerName}${input.gender ? ` (${input.gender})` : ''}`)
   lines.push(
     `- 생년월일: ${input.birthDate ?? '(미입력)'} (보험연령: ${input.insAge !== null ? `${input.insAge}세` : '계산불가'})`
   )
   lines.push(`- 운전 여부: ${input.driving}`)
   lines.push('')
+
+  // ■ 설계 조건 (v2 — 하나라도 입력했을 때만)
+  const cond = input.conditions ?? {}
+  const condLines: string[] = []
+  if (cond.budget?.trim()) condLines.push(`- 보험료 예산: ${cond.budget.trim()}`)
+  const term = [cond.paymentTerm?.trim(), cond.maturity?.trim() ? `${cond.maturity.trim()}만기` : undefined].filter(Boolean).join(' · ')
+  if (term) condLines.push(`- 납입/만기: ${term}`)
+  if (cond.renewal?.trim()) condLines.push(`- 갱신형태: ${cond.renewal.trim()}`)
+  if (condLines.length > 0) {
+    lines.push('■ 설계 조건')
+    lines.push(...condLines)
+    lines.push('')
+  }
+
   lines.push('■ 요청 보험')
   lines.push(`- 구분: ${input.insuranceKind}`)
   lines.push('')
@@ -187,6 +245,14 @@ export function buildPlanRequestMessage(input: PlanMessageInput): string {
     }
   }
   lines.push('')
+
+  // ■ 병력 고지 (v2 — 포함을 선택했을 때만. 간편심사 요청의 필수 정보)
+  if (cond.medicalNotes?.trim()) {
+    lines.push('■ 병력 고지')
+    for (const ln of cond.medicalNotes.trim().split(/\r?\n/)) lines.push(`- ${ln.trim()}`)
+    lines.push('')
+  }
+
   lines.push('■ 기타 요청사항')
   lines.push(`- ${input.extraRequest.trim() || '최저 보험료 및 가성비 좋은 플랜으로 설계 부탁드립니다.'}`)
   return lines.join('\n')
@@ -215,6 +281,7 @@ const VALID_STATUS: PlanRequestStatus[] = ['requested', 'received', 'proposed', 
 function mapRow(r: Record<string, any>): PlanRequest {
   const raw = String(r.status ?? 'requested') as PlanRequestStatus
   const cov = Array.isArray(r.coverages) ? r.coverages : []
+  const cond = r.conditions && typeof r.conditions === 'object' && !Array.isArray(r.conditions) ? r.conditions : {}
   return {
     id: String(r.id),
     fcId: String(r.fc_id ?? ''),
@@ -222,11 +289,26 @@ function mapRow(r: Record<string, any>): PlanRequest {
     customerId: r.customer_id ?? null,
     customerName: String(r.customer_name ?? ''),
     insuranceKind: String(r.insurance_kind ?? ''),
-    coverages: cov.map((c: any) => ({ name: String(c?.name ?? ''), amount: String(c?.amount ?? '') })).filter((c: CoverageItem) => c.name),
+    coverages: cov
+      .map((c: any) => ({
+        name: String(c?.name ?? ''),
+        amount: String(c?.amount ?? ''),
+        category: c?.category ? String(c.category) : undefined
+      }))
+      .filter((c: CoverageItem) => c.name),
     driving: r.driving ?? null,
     extraRequest: r.extra_request ?? null,
     messageText: String(r.message_text ?? ''),
     managerName: r.manager_name ?? null,
+    insurers: Array.isArray(r.insurers) ? r.insurers.map((x: any) => String(x)).filter(Boolean) : [],
+    policyholderName: r.policyholder_name ?? null,
+    conditions: {
+      budget: cond.budget ? String(cond.budget) : undefined,
+      paymentTerm: cond.paymentTerm ? String(cond.paymentTerm) : undefined,
+      maturity: cond.maturity ? String(cond.maturity) : undefined,
+      renewal: cond.renewal ? String(cond.renewal) : undefined,
+      medicalNotes: cond.medicalNotes ? String(cond.medicalNotes) : undefined
+    },
     status: VALID_STATUS.includes(raw) ? raw : 'requested',
     createdAt: String(r.created_at ?? '')
   }
@@ -238,7 +320,14 @@ function loadLocal(): PlanRequest[] {
   try {
     const raw = window.localStorage.getItem(LOCAL_KEY)
     const arr = raw ? JSON.parse(raw) : []
-    return Array.isArray(arr) ? (arr as PlanRequest[]) : []
+    if (!Array.isArray(arr)) return []
+    // v1 시절 저장분에는 v2 필드가 없다 — 기본값으로 보정.
+    return (arr as PlanRequest[]).map((r) => ({
+      ...r,
+      insurers: Array.isArray(r.insurers) ? r.insurers : [],
+      policyholderName: r.policyholderName ?? null,
+      conditions: r.conditions ?? {}
+    }))
   } catch {
     return []
   }
@@ -281,6 +370,9 @@ export interface CreatePlanRequestInput {
   extraRequest: string
   messageText: string
   managerName?: string
+  insurers?: string[]
+  policyholderName?: string
+  conditions?: PlanConditions
 }
 
 export async function createPlanRequest(
@@ -292,21 +384,35 @@ export async function createPlanRequest(
   if (client) {
     const me = await uid(client)
     if (me) {
+      const base = {
+        fc_id: me,
+        fc_name: actor.name || null,
+        customer_id: input.customerId ?? null,
+        customer_name: input.customerName.trim(),
+        insurance_kind: input.insuranceKind,
+        coverages: input.coverages,
+        driving: input.driving || null,
+        extra_request: input.extraRequest.trim() || null,
+        message_text: input.messageText,
+        manager_name: input.managerName?.trim() || null
+      }
       try {
         const { error } = await client.from('plan_requests').insert({
-          fc_id: me,
-          fc_name: actor.name || null,
-          customer_id: input.customerId ?? null,
-          customer_name: input.customerName.trim(),
-          insurance_kind: input.insuranceKind,
-          coverages: input.coverages,
-          driving: input.driving || null,
-          extra_request: input.extraRequest.trim() || null,
-          message_text: input.messageText,
-          manager_name: input.managerName?.trim() || null
+          ...base,
+          insurers: input.insurers ?? [],
+          policyholder_name: input.policyholderName?.trim() || null,
+          conditions: input.conditions ?? {}
         })
-        if (error) return { ok: false, error: error.message }
-        return { ok: true }
+        if (!error) return { ok: true }
+        // v2 컬럼이 아직 서버에 없으면(증분 SQL 미적용) v1 형식으로 재시도 —
+        // 배포 순서가 바뀌어도 저장 자체는 실패하지 않게 한다. 문안 스냅샷에는
+        // 어차피 전체 내용이 들어 있어 정보 유실은 문자 필드 검색뿐이다.
+        if (/column|schema/i.test(error.message ?? '')) {
+          const retry = await client.from('plan_requests').insert(base)
+          if (!retry.error) return { ok: true }
+          return { ok: false, error: retry.error.message }
+        }
+        return { ok: false, error: error.message }
       } catch {
         return { ok: false, error: '요청 저장 중 오류가 발생했습니다.' }
       }
@@ -325,6 +431,9 @@ export async function createPlanRequest(
     extraRequest: input.extraRequest.trim() || null,
     messageText: input.messageText,
     managerName: input.managerName?.trim() || null,
+    insurers: input.insurers ?? [],
+    policyholderName: input.policyholderName?.trim() || null,
+    conditions: input.conditions ?? {},
     status: 'requested',
     createdAt: new Date().toISOString()
   })
@@ -363,5 +472,121 @@ export async function deletePlanRequest(id: string): Promise<{ ok: boolean; erro
     }
   }
   saveLocal(loadLocal().filter((r) => r.id !== id))
+  return { ok: true }
+}
+
+/* ---------- 자주 쓰는 특약 세트 (개인 템플릿) ---------- */
+
+export interface PlanTemplate {
+  id: string
+  name: string
+  insuranceKind: string
+  coverages: CoverageItem[]
+  driving: string | null
+  conditions: PlanConditions
+}
+
+const TPL_LOCAL_KEY = 'sjos.plantemplates.v1'
+
+function loadLocalTemplates(): PlanTemplate[] {
+  try {
+    const raw = window.localStorage.getItem(TPL_LOCAL_KEY)
+    const arr = raw ? JSON.parse(raw) : []
+    return Array.isArray(arr) ? (arr as PlanTemplate[]) : []
+  } catch {
+    return []
+  }
+}
+
+function saveLocalTemplates(rows: PlanTemplate[]): void {
+  try {
+    window.localStorage.setItem(TPL_LOCAL_KEY, JSON.stringify(rows))
+  } catch {
+    /* 데모 폴백 — 저장 실패는 조용히 무시 */
+  }
+}
+
+function mapTemplateRow(r: Record<string, any>): PlanTemplate {
+  const cov = Array.isArray(r.coverages) ? r.coverages : []
+  const cond = r.conditions && typeof r.conditions === 'object' && !Array.isArray(r.conditions) ? r.conditions : {}
+  return {
+    id: String(r.id),
+    name: String(r.name ?? ''),
+    insuranceKind: String(r.insurance_kind ?? ''),
+    coverages: cov
+      .map((c: any) => ({
+        name: String(c?.name ?? ''),
+        amount: String(c?.amount ?? ''),
+        category: c?.category ? String(c.category) : undefined
+      }))
+      .filter((c: CoverageItem) => c.name),
+    driving: r.driving ?? null,
+    conditions: cond as PlanConditions
+  }
+}
+
+/**
+ * 템플릿 목록 — 로그인 시 서버(plan_request_templates, 본인만), 아니면 localStorage.
+ * 서버 테이블이 아직 없으면(증분 SQL 미적용) localStorage로 조용히 폴백한다.
+ */
+export async function listPlanTemplates(): Promise<PlanTemplate[]> {
+  const client = await getClient()
+  if (client && (await uid(client))) {
+    try {
+      const { data, error } = await client
+        .from('plan_request_templates')
+        .select('id, name, insurance_kind, coverages, driving, conditions')
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (!error) return ((data as any[]) ?? []).map(mapTemplateRow)
+    } catch {
+      /* 아래 로컬 폴백 */
+    }
+  }
+  return loadLocalTemplates()
+}
+
+export async function savePlanTemplate(input: Omit<PlanTemplate, 'id'>): Promise<{ ok: boolean; error?: string }> {
+  if (!input.name.trim()) return { ok: false, error: '세트 이름을 입력해 주세요.' }
+  const client = await getClient()
+  if (client) {
+    const me = await uid(client)
+    if (me) {
+      try {
+        const { error } = await client.from('plan_request_templates').insert({
+          fc_id: me,
+          name: input.name.trim(),
+          insurance_kind: input.insuranceKind,
+          coverages: input.coverages,
+          driving: input.driving,
+          conditions: input.conditions
+        })
+        if (!error) return { ok: true }
+        /* 테이블 미존재 등 — 아래 로컬 폴백 */
+      } catch {
+        /* 아래 로컬 폴백 */
+      }
+    }
+  }
+  const rows = loadLocalTemplates()
+  rows.unshift({ ...input, name: input.name.trim(), id: `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}` })
+  saveLocalTemplates(rows)
+  return { ok: true }
+}
+
+export async function deletePlanTemplate(id: string): Promise<{ ok: boolean; error?: string }> {
+  if (!id.startsWith('local-')) {
+    const client = await getClient()
+    if (client && (await uid(client))) {
+      try {
+        const { error } = await client.from('plan_request_templates').delete().eq('id', id)
+        if (error) return { ok: false, error: error.message }
+        return { ok: true }
+      } catch {
+        return { ok: false, error: '삭제 중 오류가 발생했습니다.' }
+      }
+    }
+  }
+  saveLocalTemplates(loadLocalTemplates().filter((r) => r.id !== id))
   return { ok: true }
 }
