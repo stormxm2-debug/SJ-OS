@@ -72,6 +72,9 @@ import {
 import { scanAutoBuildPrompt } from '@shared/claudeAutoBuild'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { useAppMode } from '@renderer/navigation/AppModeContext'
+import { useSession } from '@renderer/navigation/SessionContext'
+import { realtimeLiveService, type RealtimeState } from '@renderer/services/jarvis/RealtimeLiveService'
+import { buildJarvisContext } from '@renderer/services/jarvis/JarvisContextService'
 import { getClapEnabled, setClapEnabled } from '@renderer/services/jarvis/clapSettings'
 import { LOW_PERF } from '@renderer/services/system/perf'
 import { copyText } from '@renderer/services/share/clipboard'
@@ -303,7 +306,15 @@ export default function JarvisPanel(): JSX.Element | null {
   const gptConfig = jarvisGptBrainService.getConfig()
   const { navigate } = useNavigation()
   const { mode } = useAppMode()
+  const { session: authSession } = useSession()
+  // 리얼타임 보이스(ChatGPT Live급, 분당 과금)는 대표 전용.
+  const isOwner = authSession.role === 'owner'
+  const [realtimeState, setRealtimeState] = useState<RealtimeState>('idle')
+  const realtimeActive = realtimeState === 'connecting' || realtimeState === 'live'
   const commandChips = mode === 'staff' ? STAFF_COMMAND_CHIPS : CEO_COMMAND_CHIPS
+
+  // 패널이 닫히면(언마운트) 리얼타임 세션도 반드시 종료 — 과금 방지.
+  useEffect(() => () => realtimeLiveService.stop(), [])
 
   // 자비스 브레인이 모드별 프롬프트·이동 화이트리스트를 쓰도록 동기화.
   useEffect(() => {
@@ -319,8 +330,9 @@ export default function JarvisPanel(): JSX.Element | null {
 
   // 라이브 대화 루프 — 낭독·전사·실행이 모두 끝나 완전히 idle이 되면 자동으로
   // 다시 듣는다 (턴테이킹). 어떤 상태든 하나라도 진행 중이면 대기.
+  // 리얼타임 세션(대표 전용) 중에는 이 무료 루프를 돌리지 않는다.
   useEffect(() => {
-    if (!liveMode) return
+    if (!liveMode || realtimeActive) return
     if (speaking || transcribing || recording) return
     if (voiceStatus === 'listening') return
     if (state.status === 'thinking' || state.status === 'running') return
@@ -840,19 +852,8 @@ export default function JarvisPanel(): JSX.Element | null {
     else stopListening()
   }
 
-  /**
-   * 라이브 대화 시작/종료 — ChatGPT 보이스처럼 말이 끝나면 자동 전송되고,
-   * 자비스가 음성으로 답한 뒤 다시 자동으로 듣는다. Web Speech 엔진 전용
-   * (침묵 자동 감지). 낭독 중 마이크 버튼을 누르면 말을 끊고 바로 이어 말할 수 있다.
-   */
-  const toggleLiveMode = (): void => {
-    if (liveMode) {
-      setLiveMode(false)
-      stopListening()
-      voice.stopSpeaking()
-      setVoiceNotice('라이브 대화를 종료했습니다.')
-      return
-    }
+  /** 무료 라이브(A안) 켜기 — Web Speech 턴테이킹 루프. */
+  const startFreeLive = (): void => {
     if (!recognitionSupported) {
       setVoiceError('이 기기에서는 라이브 대화(연속 음성 인식)를 사용할 수 없습니다. 폰/웹 브라우저에서 이용해 주세요.')
       return
@@ -863,6 +864,56 @@ export default function JarvisPanel(): JSX.Element | null {
     setVoiceError(null)
     setVoiceNotice('라이브 대화 시작 — 말씀이 끝나면 자동으로 자비스가 답합니다. 버튼을 다시 누르면 종료됩니다.')
     setLiveMode(true) // 루프 효과가 청취를 시작한다.
+  }
+
+  /** 리얼타임 보이스(B안, 대표 전용) — OpenAI Realtime WebRTC 직결. */
+  const startRealtime = async (): Promise<void> => {
+    voice.stopSpeaking()
+    stopListening()
+    setVoiceError(null)
+    setVoiceNotice('리얼타임 보이스 연결 중…')
+    const context = await buildJarvisContext()
+    const res = await realtimeLiveService.start(context, {
+      onStateChange: (s, detail) => {
+        setRealtimeState(s)
+        if (s === 'live') setVoiceNotice('리얼타임 보이스 연결됨 — 편하게 말씀하세요. 말 중간에 끼어들어도 됩니다. (10분 자동 종료)')
+        else if (s === 'ended') setVoiceNotice(detail ?? '리얼타임 보이스를 종료했습니다.')
+        else if (s === 'error' && detail) setVoiceError(detail)
+      },
+      onAssistantSpeaking: setSpeaking,
+      onTranscript: (role, text) => {
+        if (role === 'user') setLastTranscript(text)
+        else setState((prev) => ({ ...prev, response: text }))
+      }
+    })
+    // 서버 미설정 등으로 리얼타임이 불가하면 무료 라이브로 자연 폴백.
+    if (!res.ok && recognitionSupported) {
+      setVoiceNotice('리얼타임 연결이 안 되어 무료 라이브 모드로 시작합니다.')
+      startFreeLive()
+    }
+  }
+
+  /**
+   * 라이브 대화 시작/종료 — 대표는 리얼타임 보이스(즉각 응답·말 끊기),
+   * 그 외에는 무료 턴테이킹 루프. 다시 누르면 어느 쪽이든 종료.
+   */
+  const toggleLiveMode = (): void => {
+    if (realtimeLiveService.isActive()) {
+      realtimeLiveService.stop('리얼타임 보이스를 종료했습니다.')
+      return
+    }
+    if (liveMode) {
+      setLiveMode(false)
+      stopListening()
+      voice.stopSpeaking()
+      setVoiceNotice('라이브 대화를 종료했습니다.')
+      return
+    }
+    if (isOwner) {
+      void startRealtime()
+      return
+    }
+    startFreeLive()
   }
   const voiceActive = voiceStatus === 'listening' || recording
   const canStartVoice = usesRecorder ? recorderSupported : recognitionSupported
@@ -1909,29 +1960,33 @@ export default function JarvisPanel(): JSX.Element | null {
             <button
               type="button"
               onClick={toggleLiveMode}
-              disabled={!recognitionSupported && !liveMode}
+              disabled={!recognitionSupported && !liveMode && !isOwner && !realtimeActive}
               title={
-                liveMode
-                  ? '라이브 대화 종료'
-                  : recognitionSupported
-                    ? '라이브 대화 — 계속 듣고, 계속 답합니다'
-                    : '이 기기에서는 라이브 대화를 사용할 수 없습니다'
+                realtimeActive
+                  ? '리얼타임 보이스 종료'
+                  : liveMode
+                    ? '라이브 대화 종료'
+                    : isOwner
+                      ? '리얼타임 보이스(대표 전용) — 즉각 응답, 말 중간에 끼어들기 가능'
+                      : recognitionSupported
+                        ? '라이브 대화 — 계속 듣고, 계속 답합니다'
+                        : '이 기기에서는 라이브 대화를 사용할 수 없습니다'
               }
               aria-label="라이브 대화"
               className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[12px] font-black tracking-wide transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-40"
               style={
-                liveMode
+                liveMode || realtimeActive
                   ? { borderColor: 'rgba(230,200,119,0.65)', color: '#e6c877', background: 'rgba(230,200,119,0.12)', boxShadow: '0 0 26px -6px rgba(230,200,119,0.9)' }
                   : { borderColor: 'rgba(103,232,249,0.3)', color: '#9adcff', background: 'rgba(56,189,248,0.06)' }
               }
             >
-              {liveMode ? (
+              {liveMode || realtimeActive ? (
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ background: '#e6c877' }} />
                   <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: '#e6c877' }} />
                 </span>
               ) : null}
-              {liveMode ? 'LIVE' : '라이브'}
+              {realtimeState === 'connecting' ? '연결중' : realtimeActive || liveMode ? 'LIVE' : '라이브'}
             </button>
 
             <input
