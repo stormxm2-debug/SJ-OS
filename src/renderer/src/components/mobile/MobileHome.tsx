@@ -7,6 +7,7 @@ import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
 import MyDayWidgets from '@renderer/components/home/MyDayWidgets'
 import { findMenuItem, listFavorites, subscribeFavorites } from './mobileMenu'
+import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
 
 /**
  * 모바일 홈 — 즐겨찾기 + 최근 공지만 (2026-07-10 대표 지시로 대폭 정리).
@@ -45,6 +46,7 @@ export default function MobileHome(): JSX.Element {
                   type="button"
                   onClick={() => {
                     if (item.action === 'jarvis') jarvisService.open()
+                    else if (item.action === 'birthday-gate') openFamilyBirthdayGate()
                     else if (item.href) window.open(item.href, '_blank', 'noopener')
                     else if (item.view) navigate(item.view)
                   }}

@@ -7,6 +7,7 @@ import JarvisClapListener from '@renderer/components/jarvis/JarvisClapListener'
 import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
 import MorningBriefing from '@renderer/components/notifications/MorningBriefing'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
+import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
 import { useWakeKey } from '@renderer/services/commercial/wakeResync'
 
 /**
@@ -52,6 +53,7 @@ export default function AppShell(): JSX.Element {
       {/* 하루 첫 접속 시 "오늘 접촉할 고객 N명" 브리핑 (자체생산 루틴 시작점) */}
       <MorningBriefing />
       <ResolutionLockGate key={`rg-${wakeKey}`} />
+      <FamilyBirthdayGate />
     </div>
   )
 }

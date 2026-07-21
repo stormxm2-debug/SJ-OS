@@ -347,11 +347,20 @@ export async function listPlanRequests(): Promise<{ ok: boolean; mode: PlanDataM
   const client = await getClient()
   if (client && (await uid(client))) {
     try {
-      const { data, error } = await client
+      const V1_COLS = 'id, fc_id, fc_name, customer_id, customer_name, insurance_kind, coverages, driving, extra_request, message_text, manager_name, status, created_at'
+      let { data, error } = await client
         .from('plan_requests')
-        .select('id, fc_id, fc_name, customer_id, customer_name, insurance_kind, coverages, driving, extra_request, message_text, manager_name, status, created_at')
+        .select(`${V1_COLS}, insurers, policyholder_name, conditions`)
         .order('created_at', { ascending: false })
         .limit(300)
+      // v2 컬럼이 아직 서버에 없으면(증분 SQL 미적용) v1 컬럼만으로 재시도 — 저장 쪽 폴백과 대칭.
+      if (error && /column|schema/i.test(error.message ?? '')) {
+        ;({ data, error } = await client
+          .from('plan_requests')
+          .select(V1_COLS)
+          .order('created_at', { ascending: false })
+          .limit(300))
+      }
       if (error) return { ok: false, mode: 'supabase', requests: [], error: error.message }
       return { ok: true, mode: 'supabase', requests: ((data as any[]) ?? []).map(mapRow) }
     } catch {

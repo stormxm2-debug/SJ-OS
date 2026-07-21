@@ -34,6 +34,8 @@ import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import AppInstallPage from '@renderer/pages/AppInstallPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
+import FamilyBirthdayAdminPage from '@renderer/pages/FamilyBirthdayAdminPage'
+import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import StaffLoginAdminPage from '@renderer/pages/StaffLoginAdminPage'
 import Dashboard from '@renderer/components/dashboard/Dashboard'
@@ -188,6 +190,7 @@ export default function MobileShell(): JSX.Element {
       {/* 하루 첫 접속 시 "오늘 접촉할 고객 N명" 브리핑 (자체생산 루틴 시작점) */}
       <MorningBriefing />
       <ResolutionLockGate key={`rg-${wakeKey}`} />
+      <FamilyBirthdayGate />
     </div>
   )
 }
@@ -196,6 +199,7 @@ export default function MobileShell(): JSX.Element {
 const MOBILE_ADMIN_ROUTES: ViewName[] = [
   'staff-overview',
   'staff-table',
+  'family-birthdays',
   'registration-admin',
   'shared-schedule',
   'staff-login',
@@ -268,6 +272,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <NoticePage />
     case 'staff-overview':
       return <StaffOverviewPage />
+    case 'family-birthdays':
+      return <FamilyBirthdayAdminPage />
     case 'staff-table':
       return <StaffTablePage />
     case 'registration-admin':

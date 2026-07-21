@@ -51,7 +51,7 @@ export interface MobileMenuItem {
   label: string
   icon: LucideIcon
   view?: View
-  action?: 'jarvis'
+  action?: 'jarvis' | 'birthday-gate'
   /** 외부 사이트 바로가기 — 새 탭(웹)/기본 브라우저(데스크톱)로 연다. */
   href?: string
   adminOnly?: boolean
@@ -101,7 +101,9 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
       { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' } },
       { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' } },
-      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } }
+      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } },
+      // 복지: 등록 게이트를 다시 여는 액션 (첫 등록 후에도 추가·삭제 가능해야 함)
+      { key: 'my-birthday', label: '내 생일 복지 등록', icon: Cake, action: 'birthday-gate' }
     ]
   },
   {
@@ -109,6 +111,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
     items: [
       { key: 'shared-schedule', label: '공유 일정 (전 직원)', icon: Share2, view: { name: 'shared-schedule' }, adminOnly: true },
       { key: 'staff-overview', label: '직원 현황', icon: UsersRound, view: { name: 'staff-overview' }, adminOnly: true },
+      { key: 'family-birthdays', label: '직원 생일 복지', icon: Cake, view: { name: 'family-birthdays' }, adminOnly: true },
       { key: 'staff-table', label: '전 직원 정리표', icon: LayoutList, view: { name: 'staff-table' }, adminOnly: true },
       { key: 'registration-admin', label: '고객등록 관리', icon: ClipboardCheck, view: { name: 'registration-admin' }, adminOnly: true },
       { key: 'staff-login', label: '직원 추가·로그인', icon: UserCog, view: { name: 'staff-login' }, adminOnly: true },

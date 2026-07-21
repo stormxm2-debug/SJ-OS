@@ -5,6 +5,7 @@ import { isAdminRole } from '@renderer/navigation/roleAccess'
 import type { View } from '@renderer/navigation/types'
 import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeatures'
 import { MOBILE_MENU, listFavorites, toggleFavorite, subscribeFavorites } from './mobileMenu'
+import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
 
 /**
  * 모바일 전체 메뉴 화면 — 더보기를 누르면 새 창처럼 전체 화면으로 열린다.
@@ -68,7 +69,10 @@ export default function MobileMenuPage({
                       type="button"
                       onClick={() => {
                         if (item.action === 'jarvis') onJarvis()
-                        else if (item.href) window.open(item.href, '_blank', 'noopener')
+                        else if (item.action === 'birthday-gate') {
+                          openFamilyBirthdayGate()
+                          onClose()
+                        } else if (item.href) window.open(item.href, '_blank', 'noopener')
                         else if (item.view) onNavigate(item.view)
                       }}
                       className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-300 transition active:bg-slate-950"

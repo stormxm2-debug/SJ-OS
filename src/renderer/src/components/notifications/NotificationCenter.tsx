@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bell, X, ClipboardCheck, PhoneCall, ShieldCheck, Hourglass, Sunrise } from 'lucide-react'
+import { Bell, X, ClipboardCheck, PhoneCall, ShieldCheck, Hourglass, Sunrise, Cake } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
@@ -24,7 +24,7 @@ interface Toast {
   id: number
   title: string
   body: string
-  target: 'registration-admin' | 'customer' | 'leads' | 'claim-assistant' | 'exemptions' | 'today-contacts'
+  target: 'registration-admin' | 'customer' | 'leads' | 'claim-assistant' | 'exemptions' | 'today-contacts' | 'family-birthdays'
 }
 
 let toastSeq = 1
@@ -149,6 +149,22 @@ export default function NotificationCenter(): JSX.Element | null {
             target: 'exemptions'
           })
       })
+      // 직원 본인·가족 생일 3일 전~당일 → 관리자에게만 (cron 이 birthday_alerts 생성,
+      // RLS로 관리자만 조회 가능). 등록한 직원 본인에겐 알림이 가지 않는다.
+      channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'birthday_alerts' }, (payload: any) => {
+        if (!adminRef.current) return
+        const row = payload?.new ?? {}
+        const person = row.person_name ? String(row.person_name) : '직원'
+        const rel = row.relation ? String(row.relation) : ''
+        const staff = row.staff_name ? String(row.staff_name) : ''
+        const du = Number(row.days_until ?? 0)
+        if (active)
+          push({
+            title: du === 0 ? '오늘 생일 🎂' : `생일 ${du}일 전 🎉`,
+            body: `${person}${rel && rel !== '본인' ? `(${staff}님 ${rel})` : ` (${staff}님)`}`,
+            target: 'family-birthdays'
+          })
+      })
       channel.subscribe((status: string) => {
         // 소켓 오류/타임아웃이면 잠시 후 재구독 (useRealtimeSync와 같은 방어).
         if (!active) return
@@ -199,6 +215,8 @@ export default function NotificationCenter(): JSX.Element | null {
               <Hourglass className="h-4 w-4" />
             ) : t.target === 'today-contacts' ? (
               <Sunrise className="h-4 w-4" />
+            ) : t.target === 'family-birthdays' ? (
+              <Cake className="h-4 w-4" />
             ) : (
               <Bell className="h-4 w-4" />
             )}

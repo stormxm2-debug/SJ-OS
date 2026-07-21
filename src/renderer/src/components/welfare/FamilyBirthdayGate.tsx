@@ -27,21 +27,22 @@ export default function FamilyBirthdayGate(): JSX.Element | null {
   const [items, setItems] = useState<FamilyBirthday[]>([])
   const [loaded, setLoaded] = useState(false)
 
-  const load = async (): Promise<FamilyBirthday[]> => {
+  const load = async (): Promise<{ items: FamilyBirthday[]; configured: boolean }> => {
     const r = await listMyFamilyBirthdays()
     setItems(r.items)
     setLoaded(true)
-    return r.items
+    return r
   }
 
-  // 로그인 시 1회 자동 안내 — 등록분 0건 + 이번 세션에 '다음에' 안 눌렀을 때만.
+  // 로그인 시 1회 자동 안내 — 백엔드 연결됨 + 등록분 0건 + 이번 세션에 '다음에' 안 눌렀을 때만.
+  // (configured=false 데모/미연결 환경에서는 저장이 항상 실패하므로 자동으로 띄우지 않는다)
   useEffect(() => {
     if (!session.isLoggedIn) return
     let alive = true
-    void load().then((list) => {
+    void load().then((r) => {
       if (!alive) return
       const skipped = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SKIP_KEY) === '1'
-      if (list.length === 0 && !skipped) setOpen(true)
+      if (r.configured && r.items.length === 0 && !skipped) setOpen(true)
     })
     return () => {
       alive = false

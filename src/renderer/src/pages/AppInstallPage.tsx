@@ -144,7 +144,8 @@ export default function AppInstallPage(): JSX.Element {
           <Download className="h-5 w-5 text-[#e6c877]" />
           <h1 className="text-lg font-extrabold">앱 설치 · 배포</h1>
         </div>
-        <p className="mt-1 text-[13px] leading-5 text-slate-300">
+        {/* 다크 네이비(명시적 hex) 위에서는 slate 토큰 금지 — 반전 리매핑으로 검정 글씨가 됨 */}
+        <p className="mt-1 text-[13px] leading-5 text-white/70">
           폰에는 <b className="text-[#e6c877]">홈 화면 추가(설치)</b>로, PC에는 프로그램 또는 브라우저로 —
           같은 계정으로 어디서나 이어집니다.
         </p>
