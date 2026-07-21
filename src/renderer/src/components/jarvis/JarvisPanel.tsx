@@ -243,6 +243,9 @@ export default function JarvisPanel(): JSX.Element | null {
   const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(() => voiceService.isVoiceOutputEnabled())
   // TTS로 말하는 중 — 오브 '말하는 중' 연출.
   const [speaking, setSpeaking] = useState(false)
+  // 라이브 대화(연속 음성) 모드 — ChatGPT 보이스처럼 듣기→답변→낭독→자동 재청취 루프.
+  const [liveMode, setLiveMode] = useState(false)
+  const liveModeRef = useRef(false)
   // 답변을 한 글자씩 흘리는 중 — 오브 맥동(하트비트) 동기화.
   const [typing, setTyping] = useState(false)
   const [diagnostics, setDiagnostics] = useState<VoiceDiagnostics>(() => voice.getDiagnostics())
@@ -309,6 +312,24 @@ export default function JarvisPanel(): JSX.Element | null {
 
   // TTS 말하기 상태 구독 — 오브가 말할 때 골드 파동으로 진동.
   useEffect(() => voice.onSpeakingChange(setSpeaking), [voice])
+
+  useEffect(() => {
+    liveModeRef.current = liveMode
+  }, [liveMode])
+
+  // 라이브 대화 루프 — 낭독·전사·실행이 모두 끝나 완전히 idle이 되면 자동으로
+  // 다시 듣는다 (턴테이킹). 어떤 상태든 하나라도 진행 중이면 대기.
+  useEffect(() => {
+    if (!liveMode) return
+    if (speaking || transcribing || recording) return
+    if (voiceStatus === 'listening') return
+    if (state.status === 'thinking' || state.status === 'running') return
+    const t = window.setTimeout(() => {
+      if (!liveModeRef.current) return
+      startListening()
+    }, 700)
+    return () => window.clearTimeout(t)
+  }, [liveMode, speaking, transcribing, recording, voiceStatus, state.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Jarvis → Claude Code Auto Builder. Dev commands create an auto-build job.
   // Auto mode (default OFF) auto-runs a safe job right after creation.
@@ -655,6 +676,11 @@ export default function JarvisPanel(): JSX.Element | null {
       onError: (message, code) => {
         setVoiceError(message)
         refreshDiagnostics()
+        // 라이브 대화 중 인식 오류(무음 제외)는 루프를 멈춘다 — 무한 재시도 방지.
+        if (liveModeRef.current && code !== 'no-speech' && code !== 'aborted') {
+          setLiveMode(false)
+          setVoiceNotice('라이브 대화를 종료했습니다 — 음성 인식 오류.')
+        }
         // A network failure means Web Speech is unreliable here — recommend the
         // stable STT Proxy engine by switching the selection to it.
         if (code === 'network' || code === 'service-not-allowed') {
@@ -812,6 +838,31 @@ export default function JarvisPanel(): JSX.Element | null {
   const stopVoice = (): void => {
     if (usesRecorder) stopRecording()
     else stopListening()
+  }
+
+  /**
+   * 라이브 대화 시작/종료 — ChatGPT 보이스처럼 말이 끝나면 자동 전송되고,
+   * 자비스가 음성으로 답한 뒤 다시 자동으로 듣는다. Web Speech 엔진 전용
+   * (침묵 자동 감지). 낭독 중 마이크 버튼을 누르면 말을 끊고 바로 이어 말할 수 있다.
+   */
+  const toggleLiveMode = (): void => {
+    if (liveMode) {
+      setLiveMode(false)
+      stopListening()
+      voice.stopSpeaking()
+      setVoiceNotice('라이브 대화를 종료했습니다.')
+      return
+    }
+    if (!recognitionSupported) {
+      setVoiceError('이 기기에서는 라이브 대화(연속 음성 인식)를 사용할 수 없습니다. 폰/웹 브라우저에서 이용해 주세요.')
+      return
+    }
+    // 라이브 대화는 음성 응답이 핵심 — 출력이 꺼져 있으면 켠다.
+    if (!voiceOutputEnabled) setVoiceOutputEnabled(voice.setVoiceOutput(true))
+    if (voiceEngine !== 'web-speech') setVoiceEngine('web-speech')
+    setVoiceError(null)
+    setVoiceNotice('라이브 대화 시작 — 말씀이 끝나면 자동으로 자비스가 답합니다. 버튼을 다시 누르면 종료됩니다.')
+    setLiveMode(true) // 루프 효과가 청취를 시작한다.
   }
   const voiceActive = voiceStatus === 'listening' || recording
   const canStartVoice = usesRecorder ? recorderSupported : recognitionSupported
@@ -1852,6 +1903,35 @@ export default function JarvisPanel(): JSX.Element | null {
               ) : (
                 <AudioLines className="h-5 w-5" />
               )}
+            </button>
+
+            {/* 라이브 대화 — ChatGPT 보이스식 연속 턴테이킹 (듣기→답변→낭독→재청취) */}
+            <button
+              type="button"
+              onClick={toggleLiveMode}
+              disabled={!recognitionSupported && !liveMode}
+              title={
+                liveMode
+                  ? '라이브 대화 종료'
+                  : recognitionSupported
+                    ? '라이브 대화 — 계속 듣고, 계속 답합니다'
+                    : '이 기기에서는 라이브 대화를 사용할 수 없습니다'
+              }
+              aria-label="라이브 대화"
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[12px] font-black tracking-wide transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-40"
+              style={
+                liveMode
+                  ? { borderColor: 'rgba(230,200,119,0.65)', color: '#e6c877', background: 'rgba(230,200,119,0.12)', boxShadow: '0 0 26px -6px rgba(230,200,119,0.9)' }
+                  : { borderColor: 'rgba(103,232,249,0.3)', color: '#9adcff', background: 'rgba(56,189,248,0.06)' }
+              }
+            >
+              {liveMode ? (
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ background: '#e6c877' }} />
+                  <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: '#e6c877' }} />
+                </span>
+              ) : null}
+              {liveMode ? 'LIVE' : '라이브'}
             </button>
 
             <input
