@@ -16,6 +16,8 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- 백화면 자가 복구 — 번들과 독립 로드, CSP(script-src 'self') 준수. public/boot-watchdog.js 참고 -->
+    <script src="/boot-watchdog.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
