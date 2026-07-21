@@ -102,8 +102,8 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' } },
       { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' } },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } },
-      // 복지: 등록 게이트를 다시 여는 액션 (첫 등록 후에도 추가·삭제 가능해야 함)
-      { key: 'my-birthday', label: '내 생일 복지 등록', icon: Cake, action: 'birthday-gate' }
+      // 인사 기록 게이트 재열기 액션 — ⚠ 라벨에 생일/복지 금지 (서프라이즈 유지, FamilyBirthdayGate 참고)
+      { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardList, action: 'birthday-gate' }
     ]
   },
   {

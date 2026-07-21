@@ -207,7 +207,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
   { key: 'app-install', label: '앱 설치·배포', icon: Download, view: { name: 'app-install' }, match: ['app-install'] },
-  { key: 'my-birthday', label: '내 생일 복지 등록', icon: Cake, action: 'birthday-gate' }
+  { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardListIcon, action: 'birthday-gate' }
 ]
 
 /**
@@ -242,7 +242,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' }, match: ['salary'] },
   { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
-  { key: 'my-birthday', label: '내 생일 복지 등록', icon: Cake, action: 'birthday-gate' }
+  { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardListIcon, action: 'birthday-gate' }
 ]
 
 const MODE_LABEL: Record<AppMode, string> = { ceo: '대표 모드', staff: '직원 모드' }

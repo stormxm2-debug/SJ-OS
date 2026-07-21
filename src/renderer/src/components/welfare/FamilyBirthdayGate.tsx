@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Cake, X, Plus, Trash2, Loader2, Gift } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, ClipboardList } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import {
   listMyFamilyBirthdays,
@@ -15,8 +15,10 @@ import {
 /**
  * 직원 복지 · 본인/가족 생일 등록 게이트. 로그인 후 등록분이 하나도 없으면 자동으로
  * 한 번 뜨고(이번 세션 '다음에'로 넘기면 다시 안 뜸), 메뉴에서 언제든 다시 열 수 있다.
- * 회사가 생일을 챙기려면 직원이 알려줘야 하므로, 강제가 아닌 부드러운 안내로 둔다.
  * 🔒 주민번호는 앞자리(생년월일)만 입력받는다.
+ * ⚠ 대표 지시(2026-07-21): 직원에게 '생일 챙기기' 목적을 드러내지 않는다(서프라이즈 유지).
+ *   직원 노출 문구는 이력서 가족사항 같은 평범한 인사 기록 수집으로 보이게 유지할 것 —
+ *   이 파일과 직원용 메뉴 라벨에 생일/복지/축하/케이크 아이콘 금지 (관리자 화면은 무관).
  */
 
 const SKIP_KEY = 'sj-family-bday-skip-v1'
@@ -75,15 +77,16 @@ export default function FamilyBirthdayGate(): JSX.Element | null {
         {/* 헤더 */}
         <div className="mb-1 flex items-center justify-between">
           <h3 className="flex items-center gap-1.5 text-sm font-extrabold text-slate-100">
-            <Gift className="h-4 w-4 text-[#b0821f]" /> 생일 복지 · 본인/가족 생일 등록
+            <ClipboardList className="h-4 w-4 text-[#b0821f]" /> 인사 기록 · 기본 정보 등록
           </h3>
           <button type="button" onClick={later} aria-label="닫기" className="rounded-lg p-1 text-slate-400 hover:text-slate-100">
             <X className="h-5 w-5" />
           </button>
         </div>
         <p className="mb-3 text-[12px] leading-5 text-slate-500">
-          회사가 <b className="text-slate-300">본인·가족 생일</b>을 챙겨드립니다. 생년월일만 있으면 되니
-          <b className="text-slate-300"> 주민번호 앞자리</b>만 적어주세요. (뒷자리는 받지 않습니다)
+          인사 관리에 필요한 기본 정보를 정리하고 있습니다. 이력서 가족사항처럼
+          <b className="text-slate-300"> 본인·가족의 이름과 관계, 주민번호 앞자리</b>만 적어주세요.
+          (뒷자리는 받지 않습니다)
         </p>
 
         {/* 이미 등록한 목록 */}
@@ -181,7 +184,7 @@ function AddForm({ defaultName, onAdded }: { defaultName: string; onAdded: () =>
         />
       </label>
       {info ? (
-        <p className="mt-1 text-[11px] text-[#b0821f]">생일: {info.label}{info.age != null ? ` · 만 ${info.age}세` : ''}</p>
+        <p className="mt-1 text-[11px] text-[#b0821f]">생년월일 확인: {info.label}{info.age != null ? ` · 만 ${info.age}세` : ''}</p>
       ) : null}
       {msg ? <div className="mt-1 text-[11px] font-medium text-rose-600">{msg}</div> : null}
       <button
@@ -190,7 +193,7 @@ function AddForm({ defaultName, onAdded }: { defaultName: string; onAdded: () =>
         disabled={busy || !name.trim() || (rrn.replace(/\D/g, '').length < 6)}
         className={['mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-extrabold', busy || !name.trim() || rrn.replace(/\D/g, '').length < 6 ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'bg-gradient-to-r from-[#0e1e3a] to-[#1b3a6b] text-[#e6c877]'].join(' ')}
       >
-        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} 생일 추가
+        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} 추가
       </button>
     </div>
   )
