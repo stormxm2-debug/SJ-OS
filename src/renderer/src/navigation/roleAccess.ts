@@ -30,6 +30,7 @@ export const STAFF_ROUTES: ViewName[] = [
   'sales-activity',
   'manager-contacts',
   'underwriting',
+  'family-caregiver',
   'insurance-analysis',
   'claim-assistant',
   'wiki',
