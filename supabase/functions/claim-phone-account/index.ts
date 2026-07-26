@@ -73,8 +73,21 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, message: '비활성 직원 계정입니다. 관리자에게 문의하세요.' })
     }
     // Already claimed → do NOT overwrite the password (reset must be admin-approved).
-    if (acct.password_status === 'set' && acct.profile_id) {
+    // SECURITY(2026-07-21): OR, not AND. An account that is half-claimed (password set but
+    // profile_id not linked, or linked but status not yet 'set') must also be refused —
+    // with AND, such a row fell through to createUser and anyone who merely knew the phone
+    // number could take the account over. Only a never-claimed row may proceed.
+    if (acct.password_status === 'set' || acct.profile_id) {
       return json({ ok: false, message: '이미 비밀번호가 설정된 계정입니다. 로그인해주세요.' })
+    }
+    // Belt-and-braces: refuse if an auth user already exists for this phone, so a
+    // stale/mismatched staff row can never be used to mint a second credential.
+    {
+      const { data: existing } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
+      const bare = phone.replace('+', '')
+      if (existing?.users?.some((u: any) => u.phone === bare || u.phone === phone)) {
+        return json({ ok: false, message: '이미 등록된 계정입니다. 로그인하거나 관리자에게 문의하세요.' })
+      }
     }
 
     const { data: created, error: createErr } = await admin.auth.admin.createUser({

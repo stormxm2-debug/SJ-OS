@@ -8,6 +8,7 @@ import NotificationCenter from '@renderer/components/notifications/NotificationC
 import MorningBriefing from '@renderer/components/notifications/MorningBriefing'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
 import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
+import PasswordChangeGate from '@renderer/components/security/PasswordChangeGate'
 import { useWakeKey } from '@renderer/services/commercial/wakeResync'
 
 /**
@@ -54,6 +55,7 @@ export default function AppShell(): JSX.Element {
       <MorningBriefing />
       <ResolutionLockGate key={`rg-${wakeKey}`} />
       <FamilyBirthdayGate />
+      <PasswordChangeGate />
     </div>
   )
 }

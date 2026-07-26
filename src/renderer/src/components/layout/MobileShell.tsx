@@ -36,6 +36,7 @@ import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
 import FamilyBirthdayAdminPage from '@renderer/pages/FamilyBirthdayAdminPage'
 import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
+import PasswordChangeGate from '@renderer/components/security/PasswordChangeGate'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import StaffLoginAdminPage from '@renderer/pages/StaffLoginAdminPage'
 import Dashboard from '@renderer/components/dashboard/Dashboard'
@@ -191,6 +192,7 @@ export default function MobileShell(): JSX.Element {
       <MorningBriefing />
       <ResolutionLockGate key={`rg-${wakeKey}`} />
       <FamilyBirthdayGate />
+      <PasswordChangeGate />
     </div>
   )
 }

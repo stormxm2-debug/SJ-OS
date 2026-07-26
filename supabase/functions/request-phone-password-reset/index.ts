@@ -53,8 +53,21 @@ Deno.serve(async (req: Request) => {
   try {
     const { data: acct } = await admin.from('staff_login_accounts').select('id, status').eq('normalized_phone', phone).maybeSingle()
     if (acct && acct.status !== 'blocked') {
-      await admin.from('password_reset_requests').insert({ normalized_phone: phone, status: 'pending' })
-      await admin.from('staff_login_accounts').update({ password_status: 'reset-requested', updated_at: new Date().toISOString() }).eq('id', acct.id)
+      // SECURITY(2026-07-21): this endpoint is unauthenticated, so it must be idempotent
+      // and must NOT mutate the target account's auth state. Previously every call
+      // inserted a new row (queue flooding) and flipped password_status to
+      // 'reset-requested', which an attacker could use to weaken the claim guard.
+      // Now: at most one pending request per phone, and no write to the account row.
+      const { data: pending } = await admin
+        .from('password_reset_requests')
+        .select('id')
+        .eq('normalized_phone', phone)
+        .eq('status', 'pending')
+        .limit(1)
+        .maybeSingle()
+      if (!pending) {
+        await admin.from('password_reset_requests').insert({ normalized_phone: phone, status: 'pending' })
+      }
     }
   } catch (e) {
     console.error('request-phone-password-reset failed:', (e as Error)?.name ?? 'error')

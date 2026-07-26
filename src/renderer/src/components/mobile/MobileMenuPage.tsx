@@ -6,6 +6,7 @@ import type { View } from '@renderer/navigation/types'
 import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeatures'
 import { MOBILE_MENU, listFavorites, toggleFavorite, subscribeFavorites } from './mobileMenu'
 import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
+import { openPasswordGate } from '@renderer/services/commercial/passwordService'
 
 /**
  * 모바일 전체 메뉴 화면 — 더보기를 누르면 새 창처럼 전체 화면으로 열린다.
@@ -71,6 +72,9 @@ export default function MobileMenuPage({
                         if (item.action === 'jarvis') onJarvis()
                         else if (item.action === 'birthday-gate') {
                           openFamilyBirthdayGate()
+                          onClose()
+                        } else if (item.action === 'password-gate') {
+                          openPasswordGate()
                           onClose()
                         } else if (item.href) window.open(item.href, '_blank', 'noopener')
                         else if (item.view) onNavigate(item.view)

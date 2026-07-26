@@ -33,7 +33,8 @@ import {
   LayoutDashboard,
   Sparkles,
   ShieldCheck,
-  Download
+  Download,
+  KeyRound
 } from 'lucide-react'
 import type { View } from '@renderer/navigation/types'
 
@@ -51,7 +52,7 @@ export interface MobileMenuItem {
   label: string
   icon: LucideIcon
   view?: View
-  action?: 'jarvis' | 'birthday-gate'
+  action?: 'jarvis' | 'birthday-gate' | 'password-gate'
   /** 외부 사이트 바로가기 — 새 탭(웹)/기본 브라우저(데스크톱)로 연다. */
   href?: string
   adminOnly?: boolean
@@ -103,7 +104,8 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' } },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } },
       // 인사 기록 게이트 재열기 액션 — ⚠ 라벨에 생일/복지 금지 (서프라이즈 유지, FamilyBirthdayGate 참고)
-      { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardList, action: 'birthday-gate' }
+      { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardList, action: 'birthday-gate' },
+      { key: 'my-password', label: '비밀번호 변경', icon: KeyRound, action: 'password-gate' }
     ]
   },
   {
