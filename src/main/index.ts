@@ -200,6 +200,16 @@ function installPermissionHandlers(): void {
   })
 }
 
+/** http(s)만 시스템 브라우저로 넘긴다 — file:, 커스텀 프로토콜 등은 전부 거부. */
+function isSafeExternalUrl(url: string): boolean {
+  try {
+    const protocol = new URL(url).protocol
+    return protocol === 'https:' || protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1280,
@@ -227,9 +237,29 @@ function createWindow(): void {
   })
 
   // Open external links in the system browser, never in-app.
+  // SECURITY: only http(s). Without this check an XSS in the renderer could call
+  // window.open('file:///…') or a custom-protocol URL and make the OS launch it.
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    void shell.openExternal(details.url)
+    if (isSafeExternalUrl(details.url)) void shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  // SECURITY: the window itself must never leave the app. Any in-place navigation
+  // to a remote origin (injected <a target=_self>, location.href=…) is cancelled and
+  // sent to the system browser instead, so the app frame keeps its own privileges.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const current = mainWindow.webContents.getURL()
+    if (url === current) return
+    const devUrl = process.env.ELECTRON_RENDERER_URL
+    if (devUrl && url.startsWith(devUrl)) return
+    if (url.startsWith('file://')) return
+    event.preventDefault()
+    if (isSafeExternalUrl(url)) void shell.openExternal(url)
+  })
+
+  // SECURITY: never attach a webview (none are used; this blocks injected ones).
+  mainWindow.webContents.on('will-attach-webview', (event) => {
+    event.preventDefault()
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {
