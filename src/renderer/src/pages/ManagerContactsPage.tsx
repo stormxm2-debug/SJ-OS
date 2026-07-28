@@ -11,8 +11,10 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
-  Search
+  Search,
+  Printer
 } from 'lucide-react'
+import InsurerFaxManagerCard from '@renderer/components/insurance-claim/InsurerFaxManagerCard'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
 import { INSURERS } from '@renderer/services/commercial/registrationService'
@@ -31,6 +33,9 @@ import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 
 /** Tables whose changes should live-refresh this screen (stable ref for the hook). */
 const RT_TABLES = ['company_contacts']
+
+/** 화면 상단 모드 — 매니저 연락처 / 보험사 청구 팩스번호 (2026-07-28 대표 지시로 여기 합침). */
+type ContactsMode = 'manager' | 'fax'
 
 type InsurerSector = '생보' | '손보' | '기타'
 
@@ -87,6 +92,7 @@ export default function ManagerContactsPage(): JSX.Element {
   const [sector, setSector] = useState<InsurerSector>('손보')
   /** 2단계 탐색: 탭에서 보험사를 먼저 고르고 → 그 회사 매니저만 본다. */
   const [selectedInsurer, setSelectedInsurer] = useState<string | null>(null)
+  const [mode, setMode] = useState<ContactsMode>('manager')
 
   const load = async (): Promise<void> => {
     const res = await listCompanyContacts()
@@ -170,10 +176,32 @@ export default function ManagerContactsPage(): JSX.Element {
       <div className="flex flex-wrap items-center gap-2">
         <UsersRound className="h-6 w-6 text-indigo-500" />
         <h1 className="text-xl font-bold text-slate-100">매니저 연락처</h1>
-        {items.length > 0 ? <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">{items.length}명</span> : null}
-        {staleCount > 0 ? <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">변경 {staleCount}</span> : null}
+        {mode === 'manager' && items.length > 0 ? <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">{items.length}명</span> : null}
+        {mode === 'manager' && staleCount > 0 ? <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">변경 {staleCount}</span> : null}
       </div>
 
+      {/* 매니저 연락처 ↔ 청구 팩스번호 (보험사 연락 정보를 한 화면에 모음) */}
+      <div className="flex overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {([
+          { key: 'manager', label: '매니저 연락처', icon: UsersRound },
+          { key: 'fax', label: '청구 팩스', icon: Printer }
+        ] as { key: ContactsMode; label: string; icon: typeof UsersRound }[]).map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            onClick={() => setMode(m.key)}
+            className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-sm font-bold transition"
+            style={mode === m.key ? { backgroundColor: '#0e1e3a', color: '#e6c877' } : { backgroundColor: 'transparent', color: '#94a3b8' }}
+          >
+            <m.icon className="h-4 w-4" /> {m.label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'fax' ? <InsurerFaxManagerCard standalone /> : null}
+
+      {mode === 'manager' ? (
+      <>
       {/* 전체 저장 — 딥네이비+골드 (이 화면의 대표 액션) */}
       {items.length > 0 ? (
         <button
@@ -356,6 +384,8 @@ export default function ManagerContactsPage(): JSX.Element {
           )
         })()
       )}
+      </>
+      ) : null}
     </div>
   )
 }
