@@ -105,7 +105,7 @@ export default function AnnouncementAdminPage(): JSX.Element {
           </label>
           {targetType === 'role' ? (
             <select value={targetRole} onChange={(e) => setTargetRole(e.target.value as StaffRole)} className="rounded-lg border border-slate-200 px-2 py-1 text-slate-300">
-              {(['owner', 'admin', 'team-leader', 'fc'] as StaffRole[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              {(['owner', 'admin', 'team-leader', 'fc', 'back-office'] as StaffRole[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
           ) : null}
           {targetType === 'team' ? (

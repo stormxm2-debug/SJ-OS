@@ -59,7 +59,7 @@ export default function StaffTeamManagementPage(): JSX.Element {
   const summary = useMemo(() => getOrganizationSummary(staff, teams), [staff, teams])
   const teamName = (id?: string): string => (id ? teams.find((t) => t.id === id)?.name ?? '-' : '-')
   const memberCount = (teamId: string): number => staff.filter((s) => s.teamId === teamId).length
-  const roleOptions: StaffRole[] = session.role === 'owner' ? ['owner', 'admin', 'team-leader', 'fc'] : ['admin', 'team-leader', 'fc']
+  const roleOptions: StaffRole[] = session.role === 'owner' ? ['owner', 'admin', 'team-leader', 'fc', 'back-office'] : ['admin', 'team-leader', 'fc', 'back-office']
 
   const filtered = useMemo(
     () =>
@@ -141,7 +141,7 @@ export default function StaffTeamManagementPage(): JSX.Element {
           <Search className="h-3.5 w-3.5 text-slate-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름 검색" className="w-28 text-[11px] focus:outline-none" />
         </div>
-        <Sel value={roleF} onChange={(v) => setRoleF(v as StaffRole | 'all')} opts={[['all', '전체 역할'], ...(['owner', 'admin', 'team-leader', 'fc'] as StaffRole[]).map((r) => [r, ROLE_LABEL[r]] as [string, string])]} />
+        <Sel value={roleF} onChange={(v) => setRoleF(v as StaffRole | 'all')} opts={[['all', '전체 역할'], ...(['owner', 'admin', 'team-leader', 'fc', 'back-office'] as StaffRole[]).map((r) => [r, ROLE_LABEL[r]] as [string, string])]} />
         <Sel value={teamF} onChange={setTeamF} opts={[['all', '전체 팀'], ...teams.map((t) => [t.id, t.name] as [string, string])]} />
         <Sel value={statusF} onChange={(v) => setStatusF(v as StaffLoginStatus | 'all')} opts={[['all', '전체 상태'], ...(['invited', 'active', 'inactive', 'blocked'] as StaffLoginStatus[]).map((s) => [s, STAFF_LOGIN_STATUS_LABEL[s]] as [string, string])]} />
       </div>
@@ -185,7 +185,7 @@ export default function StaffTeamManagementPage(): JSX.Element {
           {teams.filter((t) => t.status === 'active').map((t) => (
             <div key={t.id} className="rounded-lg border border-slate-200 p-2">
               <div className="mb-1 text-[11px] font-semibold text-slate-300">{t.name}</div>
-              <Sel value="" onChange={(v) => { const s = staff.find((x) => x.id === v); if (s) setLeaderConfirm({ team: t, staff: s }) }} opts={[['', '팀장 선택'], ...staff.filter((s) => s.role !== 'owner' && s.role !== 'admin').map((s) => [s.id, s.name] as [string, string])]} small />
+              <Sel value="" onChange={(v) => { const s = staff.find((x) => x.id === v); if (s) setLeaderConfirm({ team: t, staff: s }) }} opts={[['', '팀장 선택'], ...staff.filter((s) => s.role !== 'owner' && s.role !== 'admin' && s.role !== 'back-office').map((s) => [s.id, s.name] as [string, string])]} small />
             </div>
           ))}
         </div>

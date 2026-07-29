@@ -10,7 +10,7 @@ import { getSupabaseConfigStatus, getSupabaseClient, initSupabaseClient } from '
  * (return a clear result) when Supabase is not configured.
  */
 
-const ALLOWED_ROLES: StaffRole[] = ['owner', 'admin', 'team-leader', 'fc']
+const ALLOWED_ROLES: StaffRole[] = ['owner', 'admin', 'team-leader', 'fc', 'back-office']
 
 export interface SupabaseProfile {
   id: string

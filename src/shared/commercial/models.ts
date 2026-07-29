@@ -7,7 +7,7 @@
  * no server URLs here.
  */
 
-export type StaffRole = 'owner' | 'admin' | 'team-leader' | 'fc'
+export type StaffRole = 'owner' | 'admin' | 'team-leader' | 'fc' | 'back-office'
 
 export interface StaffUser {
   id: string

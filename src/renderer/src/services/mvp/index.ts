@@ -1,4 +1,4 @@
-import { DEMO_USERS, type UserRole } from '@renderer/navigation/roleAccess'
+import { DEMO_USERS, ROLE_LABEL, type UserRole } from '@renderer/navigation/roleAccess'
 
 /**
  * MVP service boundaries. These are clean seams to swap for a real server API later.
@@ -42,8 +42,7 @@ export interface TeamMemberStatus {
 // --- authService -----------------------------------------------------------
 export const authService = {
   listDemoUsers: () => DEMO_USERS,
-  roleLabel: (role: UserRole): string =>
-    ({ owner: '대표', admin: '관리자', 'team-leader': '팀장', fc: 'FC' })[role]
+  roleLabel: (role: UserRole): string => ROLE_LABEL[role]
 }
 
 // --- staffService ----------------------------------------------------------

@@ -58,7 +58,7 @@ import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeat
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useAppMode, type AppMode } from '@renderer/navigation/AppModeContext'
 import { useSession } from '@renderer/navigation/SessionContext'
-import { DEMO_USERS, ROLE_LABEL, isAdminRole } from '@renderer/navigation/roleAccess'
+import { DEMO_USERS, ROLE_LABEL, isAdminRole, canAccessRoute, canSeeAdminMenu } from '@renderer/navigation/roleAccess'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
 import { openPasswordGate } from '@renderer/services/commercial/passwordService'
@@ -256,6 +256,9 @@ export default function Sidebar(): JSX.Element {
   const { mode, setMode } = useAppMode()
   const { session, logout, switchUser } = useSession()
   const admin = isAdminRole(session.role)
+  // 총무비서도 관리자형(그룹) 메뉴를 보되, 개별 항목은 canAccessRoute 로 다시 걸러
+  // 막힌 화면(CEO 대시보드·직원/팀 관리·개발도구)은 숨긴다.
+  const showAdminMenu = canSeeAdminMenu(session.role)
 
   // Advanced/admin groups start collapsed to keep the main menu clean; a group
   // still auto-expands when the active route lives inside it (see render below).
@@ -342,15 +345,18 @@ export default function Sidebar(): JSX.Element {
       ) : null}
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {!admin ? (
+        {!showAdminMenu ? (
           // FC / 팀장: staff-only company menu (no developer/release/admin tools).
           <div className="space-y-1">{staffNav.map(renderItem)}</div>
-        ) : mode === 'staff' ? (
+        ) : admin && mode === 'staff' ? (
           <div className="space-y-1">{STAFF_NAV.map(renderItem)}</div>
         ) : (
           <div className="space-y-4">
             {NAV_GROUPS.map((group) => {
-              const hasActive = group.items.some((it) => it.match?.includes(route.name))
+              // 총무비서 등 역할별로 막힌 항목은 제거하고, 남는 항목이 없으면 그룹째 숨긴다.
+              const items = group.items.filter((it) => !it.view || canAccessRoute(session.role, it.view.name))
+              if (items.length === 0) return null
+              const hasActive = items.some((it) => it.match?.includes(route.name))
               const isCollapsed = !!group.collapsible && collapsed[group.label] && !hasActive
               return (
                 <div key={group.label} className="space-y-1">
@@ -368,7 +374,7 @@ export default function Sidebar(): JSX.Element {
                       {group.label}
                     </div>
                   )}
-                  {!isCollapsed ? group.items.map(renderItem) : null}
+                  {!isCollapsed ? items.map(renderItem) : null}
                 </div>
               )
             })}

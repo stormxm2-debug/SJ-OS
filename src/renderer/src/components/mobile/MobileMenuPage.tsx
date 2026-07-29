@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { X, Star, LogOut } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
-import { isAdminRole } from '@renderer/navigation/roleAccess'
+import { canAccessRoute } from '@renderer/navigation/roleAccess'
 import type { View } from '@renderer/navigation/types'
 import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeatures'
 import { MOBILE_MENU, listFavorites, toggleFavorite, subscribeFavorites } from './mobileMenu'
@@ -25,7 +25,6 @@ export default function MobileMenuPage({
   onLogout: () => void
 }): JSX.Element {
   const { session } = useSession()
-  const admin = isAdminRole(session.role)
   const [favs, setFavs] = useState<string[]>(() => listFavorites())
   useEffect(() => subscribeFavorites(() => setFavs(listFavorites())), [])
   // NEW 뱃지: 2번째 방문 직후 이 화면이 열려 있어도 뱃지가 바로 사라지도록 구독.
@@ -56,7 +55,9 @@ export default function MobileMenuPage({
       {/* 카테고리 목록 */}
       <div className="flex-1 space-y-3 overflow-y-auto p-3 pb-10">
         {MOBILE_MENU.map((cat) => {
-          const items = cat.items.filter((i) => !i.adminOnly || admin)
+          // 라우트 항목은 역할별 접근권한으로 필터(총무비서는 막힌 화면만 숨김).
+          // 화면 이동이 아닌 동작(자비스·인사정보·비밀번호)은 항상 노출.
+          const items = cat.items.filter((i) => (i.view ? canAccessRoute(session.role, i.view.name) : true))
           if (items.length === 0) return null
           return (
             <section key={cat.title} className="rounded-2xl border border-slate-800 bg-white p-2 shadow-sm">

@@ -60,7 +60,14 @@ export default function StaffLoginAdminPage(): JSX.Element {
   }, [])
 
   // owner-only guard for creating another owner (admin cannot casually create owner).
-  const roleOptions: StaffRole[] = session.role === 'owner' ? ['owner', 'admin', 'team-leader', 'fc'] : ['admin', 'team-leader', 'fc']
+  // 총무비서는 staff-login을 열 수 있어도 '계정 추가만' 원칙 — FC만 등록 가능(승격 불가).
+  // (서버 RLS도 등급 변경을 관리자 전용으로 막으므로 이는 UI 방어선이다.)
+  const roleOptions: StaffRole[] =
+    session.role === 'owner'
+      ? ['owner', 'admin', 'team-leader', 'fc', 'back-office']
+      : session.role === 'back-office'
+        ? ['fc']
+        : ['admin', 'team-leader', 'fc', 'back-office']
 
   const add = async (): Promise<void> => {
     setBusy(true)

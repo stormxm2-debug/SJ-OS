@@ -5,7 +5,7 @@ import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useSession } from '@renderer/navigation/SessionContext'
 import BrandLogo from '@renderer/components/brand/BrandLogo'
-import { ROLE_LABEL, routeCategory, isAdminRole, type UserRole } from '@renderer/navigation/roleAccess'
+import { ROLE_LABEL, routeCategory, canAccessRoute, type UserRole } from '@renderer/navigation/roleAccess'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
 import JarvisClapListener from '@renderer/components/jarvis/JarvisClapListener'
@@ -197,7 +197,7 @@ export default function MobileShell(): JSX.Element {
   )
 }
 
-/** 모바일에서 관리자에게만 열어주는 관리자 라우트 (개발/배포 도구는 계속 차단). */
+/** 모바일에서 관리자·총무비서에게 열어주는 관리자 라우트 (개발/배포 도구는 계속 차단). */
 const MOBILE_ADMIN_ROUTES: ViewName[] = [
   'staff-overview',
   'staff-table',
@@ -217,7 +217,9 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
   // Hide developer/release/deployment tools on mobile for EVERY role — except the
   // three admin pages above, which admins may open from the 전체 메뉴.
   if (routeCategory(routeName) === 'admin') {
-    if (!(MOBILE_ADMIN_ROUTES.includes(routeName) && isAdminRole(role))) return <MobileAccessDenied />
+    // 관리자 라우트 목록에 있고 + 역할이 접근 가능할 때만 허용(총무비서는 canAccessRoute가
+    // 막힌 화면을 걸러낸다). 그 외 관리자/개발 라우트는 모바일에서 계속 차단.
+    if (!(MOBILE_ADMIN_ROUTES.includes(routeName) && canAccessRoute(role, routeName))) return <MobileAccessDenied />
   }
   switch (routeName) {
     case 'staff-home':

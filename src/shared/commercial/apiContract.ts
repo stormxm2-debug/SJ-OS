@@ -110,5 +110,8 @@ export const ROLE_PERMISSIONS: Record<StaffRole, { canReadAllTeams: boolean; can
   owner: { canReadAllTeams: true, canManageStaff: true, canPostNotice: true },
   admin: { canReadAllTeams: true, canManageStaff: true, canPostNotice: true },
   'team-leader': { canReadAllTeams: false, canManageStaff: false, canPostNotice: true },
-  fc: { canReadAllTeams: false, canManageStaff: false, canPostNotice: false }
+  fc: { canReadAllTeams: false, canManageStaff: false, canPostNotice: false },
+  // 총무비서(전산 총무): 전 직원 데이터 조회 + 계정 온보딩/공지 관리는 가능하되,
+  // 등급 승격(권한 변경)은 서버(RLS)에서 관리자 전용으로 막힌다.
+  'back-office': { canReadAllTeams: true, canManageStaff: true, canPostNotice: true }
 }
