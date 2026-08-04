@@ -53,11 +53,7 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
       </button>
 
       {open ? (
-        <div
-          className={`absolute right-0 z-[70] mt-2 w-64 overflow-hidden rounded-2xl border border-slate-800 bg-white shadow-xl ${
-            compact ? 'max-h-[70vh] overflow-y-auto' : ''
-          }`}
-        >
+        <div className="absolute right-0 z-[70] mt-2 max-h-[70vh] w-64 overflow-y-auto rounded-2xl border border-slate-800 bg-white shadow-xl">
           <div className="border-b border-slate-800 px-4 py-2.5 text-[11px] font-bold text-slate-500">
             보험사 전산 바로가기 <span className="font-medium">— 새 탭으로 열립니다</span>
           </div>
