@@ -173,3 +173,112 @@ export function subscribeFavorites(fn: FavListener): () => void {
     favListeners.delete(fn)
   }
 }
+
+/** 즐겨찾기 순서 이동 — 홈 화면 즐겨찾기 줄이 이 배열 순서 그대로 그려진다. */
+export function moveFavorite(key: string, dir: -1 | 1): void {
+  const cur = listFavorites()
+  const idx = cur.indexOf(key)
+  const to = idx + dir
+  if (idx < 0 || to < 0 || to >= cur.length) return
+  const next = [...cur]
+  next.splice(idx, 1)
+  next.splice(to, 0, key)
+  try {
+    window.localStorage.setItem(FAV_KEY, JSON.stringify(next))
+  } catch {
+    /* 저장 실패여도 앱은 계속 동작 */
+  }
+  favListeners.forEach((fn) => fn())
+}
+
+// ---------- 회원별 메뉴 순서·숨김 (기기별 localStorage — 즐겨찾기와 같은 원칙) ----------
+
+const PREFS_KEY = 'sj-mobile-menu-prefs-v1'
+
+export interface MenuPrefs {
+  /** 카테고리 제목 → 항목 key 순서. 저장에 없는 항목(신규 메뉴)은 기본 순서로 뒤에 붙는다. */
+  order: Record<string, string[]>
+  /** 전체 메뉴에서 숨길 항목 key — 표시만 숨기며 접근권한·즐겨찾기와 무관. */
+  hidden: string[]
+}
+
+const prefListeners = new Set<FavListener>()
+
+export function loadMenuPrefs(): MenuPrefs {
+  try {
+    const raw = window.localStorage.getItem(PREFS_KEY)
+    const p: unknown = raw ? JSON.parse(raw) : null
+    const rawOrder =
+      p && typeof p === 'object' && 'order' in p && p.order && typeof (p as { order: unknown }).order === 'object'
+        ? ((p as { order: Record<string, unknown> }).order)
+        : {}
+    const rawHidden = p && typeof p === 'object' && 'hidden' in p ? (p as { hidden: unknown }).hidden : []
+    const order: Record<string, string[]> = {}
+    for (const cat of MOBILE_MENU) {
+      const saved = Array.isArray(rawOrder[cat.title]) ? (rawOrder[cat.title] as unknown[]) : []
+      order[cat.title] = saved.filter((k): k is string => typeof k === 'string' && cat.items.some((i) => i.key === k))
+    }
+    const hidden = Array.isArray(rawHidden)
+      ? rawHidden.filter((k): k is string => typeof k === 'string' && Boolean(findMenuItem(k)))
+      : []
+    return { order, hidden }
+  } catch {
+    return { order: {}, hidden: [] }
+  }
+}
+
+function saveMenuPrefs(p: MenuPrefs): void {
+  try {
+    window.localStorage.setItem(PREFS_KEY, JSON.stringify(p))
+  } catch {
+    /* 저장 실패여도 앱은 계속 동작 */
+  }
+  prefListeners.forEach((fn) => fn())
+}
+
+export function subscribeMenuPrefs(fn: FavListener): () => void {
+  prefListeners.add(fn)
+  return () => {
+    prefListeners.delete(fn)
+  }
+}
+
+/** 카테고리 항목을 회원이 저장한 순서로 정렬 (미저장·신규 항목은 기본 순서로 뒤에). */
+export function orderedItems(cat: MobileMenuCategory, prefs: MenuPrefs = loadMenuPrefs()): MobileMenuItem[] {
+  const saved = prefs.order[cat.title] ?? []
+  if (saved.length === 0) return cat.items
+  const inSaved = cat.items
+    .filter((i) => saved.includes(i.key))
+    .sort((a, b) => saved.indexOf(a.key) - saved.indexOf(b.key))
+  const rest = cat.items.filter((i) => !saved.includes(i.key))
+  return [...inSaved, ...rest]
+}
+
+/** 항목을 카테고리 안에서 위/아래로 이동. orderedKeys = 화면에 그려진 현재 순서 전체. */
+export function moveMenuItem(catTitle: string, orderedKeys: string[], key: string, dir: -1 | 1): void {
+  const idx = orderedKeys.indexOf(key)
+  const to = idx + dir
+  if (idx < 0 || to < 0 || to >= orderedKeys.length) return
+  const next = [...orderedKeys]
+  next.splice(idx, 1)
+  next.splice(to, 0, key)
+  const prefs = loadMenuPrefs()
+  prefs.order[catTitle] = next
+  saveMenuPrefs(prefs)
+}
+
+export function toggleMenuItemHidden(key: string): void {
+  const prefs = loadMenuPrefs()
+  prefs.hidden = prefs.hidden.includes(key) ? prefs.hidden.filter((k) => k !== key) : [...prefs.hidden, key]
+  saveMenuPrefs(prefs)
+}
+
+/** 순서·숨김을 기본값으로 복원 (즐겨찾기는 건드리지 않음). */
+export function resetMenuPrefs(): void {
+  try {
+    window.localStorage.removeItem(PREFS_KEY)
+  } catch {
+    /* ignore */
+  }
+  prefListeners.forEach((fn) => fn())
+}
