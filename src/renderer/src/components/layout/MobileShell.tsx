@@ -5,6 +5,7 @@ import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useSession } from '@renderer/navigation/SessionContext'
 import BrandLogo from '@renderer/components/brand/BrandLogo'
+import InsurerLinksMenu from '@renderer/components/navigation/InsurerLinksMenu'
 import { ROLE_LABEL, routeCategory, canAccessRoute, type UserRole } from '@renderer/navigation/roleAccess'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
@@ -116,6 +117,7 @@ export default function MobileShell(): JSX.Element {
           <span className="truncate text-[10px] text-slate-500">{session.name || '직원'} · {ROLE_LABEL[session.role]}</span>
         </div>
         <div className="flex items-center gap-1.5">
+          <InsurerLinksMenu compact />
           <button
             type="button"
             onClick={() => void snap()}

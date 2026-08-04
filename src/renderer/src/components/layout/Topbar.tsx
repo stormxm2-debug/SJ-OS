@@ -3,6 +3,7 @@ import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View } from '@renderer/navigation/types'
 import { getWorkerById } from '@renderer/data/mockManagement'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
+import InsurerLinksMenu from '@renderer/components/navigation/InsurerLinksMenu'
 
 function titleFor(route: View): { title: string; subtitle: string } {
   switch (route.name) {
@@ -37,6 +38,8 @@ export default function Topbar(): JSX.Element {
       </div>
 
       <div className="flex items-center gap-4">
+        <InsurerLinksMenu />
+
         <button
           type="button"
           onClick={() => {
