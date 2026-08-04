@@ -150,7 +150,14 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'staff-login', label: '직원 로그인 관리', icon: UserRound, view: { name: 'staff-login' }, match: ['staff-login'] },
       { key: 'announcements', label: '공지사항 관리', icon: Megaphone, view: { name: 'announcements' }, match: ['announcements'] },
       { key: 'registration-admin', label: '고객등록 관리', icon: ShieldCheck, view: { name: 'registration-admin' }, match: ['registration-admin'] },
-      { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] }
+      { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
+      // 아래 4개는 '직원 본인용' 항목 — 총무비서는 대표/직원 모드 토글이 없어 STAFF_NAV에
+      // 닿지 못하므로(관리자 메뉴만 렌더) 여기에도 둬야 출퇴근·공지·비밀번호 변경을 쓸 수 있다.
+      // 관리자에게는 중복 노출이지만 canAccessRoute로 걸러지지 않는 공용 화면이라 무해하다.
+      { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' }, match: ['attendance'] },
+      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+      { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardListIcon, action: 'birthday-gate' },
+      { key: 'my-password', label: '비밀번호 변경', icon: KeyRound, action: 'password-gate' }
     ]
   },
   {

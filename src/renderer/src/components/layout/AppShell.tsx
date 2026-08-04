@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import Router from '../Router'
+import ErrorBoundary from '@renderer/components/system/ErrorBoundary'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
 import JarvisClapListener from '@renderer/components/jarvis/JarvisClapListener'
 import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
@@ -18,6 +20,7 @@ import { useWakeKey } from '@renderer/services/commercial/wakeResync'
 export default function AppShell(): JSX.Element {
   // 모바일/절전 복귀 시 전체 화면 재조회 — key 리마운트로 모든 화면이 최신 데이터를 다시 불러온다.
   const { wakeKey } = useWakeKey()
+  const { route, navigate } = useNavigation()
 
   // Interaction watchdog (long-session stability). A single 5s interval that
   // guarantees the app can never be left unclickable: if anything ever leaves
@@ -40,7 +43,11 @@ export default function AppShell(): JSX.Element {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />
         <main key={wakeKey} className="flex-1 overflow-y-auto p-6">
-          <Router />
+          {/* 한 화면이 렌더 중 죽어도 앱 전체가 백화면이 되지 않게 막는다.
+              route 이름을 key로 줘서 다른 화면으로 이동하면 자동 복구된다. */}
+          <ErrorBoundary key={route.name} onGoHome={() => navigate({ name: 'staff-home' })}>
+            <Router />
+          </ErrorBoundary>
         </main>
       </div>
       {/* 자비스 플로팅 버튼은 대표 지시로 제거 (2026-07) — 자비스는 대시보드

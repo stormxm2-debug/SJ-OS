@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Star } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
-import { isAdminRole } from '@renderer/navigation/roleAccess'
+import { canAccessRoute } from '@renderer/navigation/roleAccess'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
@@ -23,9 +23,11 @@ export default function MobileHome(): JSX.Element {
   // 관리자가 아닌 계정에서 걸러낸다 (기기 공유 등으로 저장돼 있어도 숨김).
   const [favKeys, setFavKeys] = useState<string[]>(() => listFavorites())
   useEffect(() => subscribeFavorites(() => setFavKeys(listFavorites())), [])
+  // 전체 메뉴(MobileMenuPage)와 반드시 같은 기준으로 걸러야 한다. adminOnly+isAdminRole로
+  // 거르면 총무비서가 별표한 관리자 화면이 홈에서만 사라져 "별은 켜졌는데 안 나온다"가 된다.
   const favItems = favKeys
     .map((k) => findMenuItem(k))
-    .filter((i): i is NonNullable<typeof i> => Boolean(i && (!i.adminOnly || isAdminRole(session.role))))
+    .filter((i): i is NonNullable<typeof i> => Boolean(i && (!i.view || canAccessRoute(session.role, i.view.name))))
 
   return (
     <div className="space-y-3">

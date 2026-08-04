@@ -55,7 +55,7 @@ export const INSURER_LINKS: InsurerLink[] = [
     ars: '1 고장출동 · 2 사고접수 · 3 보험금청구 · 4 장기보험관리 · 5 자동차보험관리 · 6 가입상담 · 7 대출·연금·펀드 · 8 증권·증명서 · 0 상담사'
   },
   {
-    name: '한화손해보험', portal: '설계사 전산', url: 'http://portal.hwgeneralins.com/', group: '손해보험',
+    name: '한화손해보험', portal: '설계사 전산', url: 'https://portal.hwgeneralins.com/', group: '손해보험',
     csPhone: '1566-8000',
     ars: '1 차사고접수 · 2 고장출동 · 3 신규가입 · 4 장기 계약관리 · 5 보험금청구 · 6 자동차 계약관리 · 7 대출 · 8 증권·서류 · 0 상담사'
   },
@@ -89,7 +89,7 @@ export const INSURER_LINKS: InsurerLink[] = [
     ars: '0 상담사 · 1 계약대출 · 2 보험금·해지 · 3 보험료납입 · 4 부동산·신용대출 · 6 변액 · 7 증명서 · 8 사고보험금'
   },
   {
-    name: '동양생명', portal: '설계사 전산', url: 'http://1004.myangel.co.kr/', group: '생명보험',
+    name: '동양생명', portal: '설계사 전산', url: 'https://1004.myangel.co.kr/', group: '생명보험',
     csPhone: '1577-1004',
     ars: '1 간편계약대출 · 2 보험료입금·이체 · 3 증명서·서류 · 4 창구위치 · 5 보안·피싱신고 · 0 상담원'
   },
@@ -104,14 +104,14 @@ export const INSURER_LINKS: InsurerLink[] = [
     ars: '0 상담사연결(2 납입·3 대출·4 사고보험금·5 일반문의·6 변액) · 1 ARS 셀프처리 · 2 AI 음성봇'
   },
   { name: '라이나생명', portal: 'GA업무지원시스템', url: 'https://ga.lina.co.kr/', group: '생명보험', csPhone: '1588-0058' },
-  { name: 'KDB생명', portal: '설계사 전산', url: 'http://kss.kdblife.co.kr/', group: '생명보험', csPhone: '1588-4040' },
+  { name: 'KDB생명', portal: '설계사 전산', url: 'https://kss.kdblife.co.kr/', group: '생명보험', csPhone: '1588-4040' },
   {
     name: 'iM라이프', portal: '설계사 전산', url: 'https://fgs.dgbfnlife.com:8443/', group: '생명보험',
     csPhone: '1588-4770',
     ars: '1 ARS 자동화 · 2 사고보험금 · 3 상담사 업무 · 4 고령자 간편상담 · 5 변액 · 6 해약'
   },
   {
-    name: '미래에셋생명', portal: '설계사 전산', url: 'http://www.loveageplan.com/', group: '생명보험',
+    name: '미래에셋생명', portal: '설계사 전산', url: 'https://www.loveageplan.com/', group: '생명보험',
     csPhone: '1588-0220',
     ars: '1 사고보험금 접수 · 2 가상계좌 발급 · 3 빠른조회·지급 · 4 변액상담 · 5 장애인·고령 상담 · 0 상담원'
   },
@@ -126,7 +126,7 @@ export const INSURER_LINKS: InsurerLink[] = [
     ars: '1 거래고객 · 2 65세 이상 · 3 변액상담 · 4 은행·영업직원 · 5 기타 → 상담사연결'
   },
   {
-    name: 'DB생명', portal: '이토피아 전산', url: 'http://etopia.idblife.com/', group: '생명보험',
+    name: 'DB생명', portal: '이토피아 전산', url: 'https://etopia.idblife.com/', group: '생명보험',
     csPhone: '1588-3131',
     ars: '1 계약대출 · 2 사고보험금 · 3 계약확인 · 4 보험료납입 · 5 변액상담 · 6 증권·증명서 · 0 상담사'
   },
@@ -140,18 +140,18 @@ export const INSURER_LINKS: InsurerLink[] = [
     csPhone: '1588-2288',
     ars: '0 상담사(1 대출·3 사고보험금·6 변액) · 1 피싱신고·지급중지 · 2 ARS 조회·처리'
   },
-  { name: 'ABL생명', portal: 'GA 전산', url: 'http://ga.abllife.co.kr/', group: '생명보험', csPhone: '1588-6500' },
+  { name: 'ABL생명', portal: 'GA 전산', url: 'https://ga.abllife.co.kr/', group: '생명보험', csPhone: '1588-6500' },
   { name: 'IBK연금보험', portal: '설계사 전산', url: 'https://sf.ibki.co.kr/', group: '생명보험', csPhone: '1577-4117' },
   { name: 'NH농협생명', portal: 'SFA 영업지원', url: 'https://sfa.nhlife.co.kr:8443/', group: '생명보험', csPhone: '1544-4000' },
-  { name: '메트라이프', portal: 'MetPlus', url: 'http://metplus.metlife.co.kr/', group: '생명보험', csPhone: '1588-9600' },
+  { name: '메트라이프', portal: 'MetPlus', url: 'https://metplus.metlife.co.kr/', group: '생명보험', csPhone: '1588-9600' },
   {
-    name: '처브라이프', portal: 'e-Smart 전산', url: 'http://esmart.chubblife.co.kr/', group: '생명보험',
+    name: '처브라이프', portal: 'e-Smart 전산', url: 'https://esmart.chubblife.co.kr/', group: '생명보험',
     csPhone: '1599-4600',
     ars: '1 자동조회(환급금·대출·납입·지급내역) · 2 보험금청구 문의 · 0 상담사'
   },
   { name: '푸본현대생명', portal: '설계사 전산', url: 'https://ez.fubonhyundai.com/', group: '생명보험', csPhone: '1577-3311' },
   {
-    name: 'BNP파리바카디프', portal: 'GA 전산', url: 'http://ga.cardif.co.kr/', group: '생명보험',
+    name: 'BNP파리바카디프', portal: 'GA 전산', url: 'https://ga.cardif.co.kr/', group: '생명보험',
     csPhone: '1688-1118',
     ars: '1 거래고객 · 2 65세 이상 · 3 변액상담 · 0 비고객'
   },

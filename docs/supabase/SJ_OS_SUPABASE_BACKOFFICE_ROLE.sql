@@ -27,6 +27,11 @@ create or replace function public.is_backoffice()
 returns boolean language sql stable security definer set search_path = public as $$
   select public.current_user_role() = 'back-office'
 $$;
+-- ⚠ Supabase는 public 스키마 신규 함수에 anon/authenticated EXECUTE를 '직접' 부여한다
+--   (ALTER DEFAULT PRIVILEGES). `revoke from public`만으로는 anon 권한이 남으므로
+--   반드시 anon 을 명시적으로 회수할 것. (2026-08-05 적용 시 확인)
+revoke execute on function public.is_backoffice() from public, anon;
+grant execute on function public.is_backoffice() to authenticated;
 
 -- =============================================================================
 -- 2) 조회(SELECT) — 총무비서는 전 직원 데이터를 "읽기"만 (직원 현황/정리표/공유일정)
@@ -91,7 +96,16 @@ end $$;
 -- 3) 관리 쓰기 — 총무비서가 실제로 "처리"해야 하는 화면만 선별 허용
 -- =============================================================================
 
--- 공지사항 관리(announcements): 작성/수정/삭제
+-- 공지사항 관리: 작성/수정/삭제
+-- ⚠ 2026-08-05 교정 — 앱이 실제로 쓰는 테이블은 public.announcements 다.
+--   (supabaseAnnouncementAdapter 가 announcements 만 읽고 쓴다. public.notices 는
+--    스키마에만 있고 클라이언트 참조 0건·행 0건인 미사용 테이블이었다.)
+--   원래 이 정책이 notices 에만 걸려 있어서 총무비서가 공지를 못 만졌다.
+drop policy if exists announcements_backoffice_manage on public.announcements;
+create policy announcements_backoffice_manage on public.announcements
+  for all using (public.is_backoffice()) with check (public.is_backoffice());
+
+-- 미사용 테이블에도 남겨둔다(무해, 나중에 쓰게 될 경우 대비)
 drop policy if exists notices_backoffice_manage on public.notices;
 create policy notices_backoffice_manage on public.notices
   for all using (public.is_backoffice()) with check (public.is_backoffice());

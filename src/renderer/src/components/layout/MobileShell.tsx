@@ -36,8 +36,11 @@ import AppInstallPage from '@renderer/pages/AppInstallPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
 import FamilyBirthdayAdminPage from '@renderer/pages/FamilyBirthdayAdminPage'
+import SalesActivityWorkspacePage from '@renderer/pages/SalesActivityWorkspacePage'
+import FcOsPage from '@renderer/pages/FcOsPage'
 import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
 import PasswordChangeGate from '@renderer/components/security/PasswordChangeGate'
+import ErrorBoundary from '@renderer/components/system/ErrorBoundary'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import StaffLoginAdminPage from '@renderer/pages/StaffLoginAdminPage'
 import Dashboard from '@renderer/components/dashboard/Dashboard'
@@ -149,7 +152,10 @@ export default function MobileShell(): JSX.Element {
 
       {/* Content — wakeKey 리마운트로 복귀 시 모든 화면 재조회 */}
       <main ref={mainRef} key={wakeKey} className="flex-1 overflow-y-auto overflow-x-hidden p-3 pb-24">
-        <MobileContent routeName={route.name} role={session.role} />
+        {/* 한 화면이 렌더 중 죽어도 앱 전체가 백화면이 되지 않게 막는다 */}
+        <ErrorBoundary key={route.name} onGoHome={() => navigate({ name: 'staff-home' })}>
+          <MobileContent routeName={route.name} role={session.role} />
+        </ErrorBoundary>
       </main>
 
       {/* 전체 메뉴 — 더보기를 누르면 새 창처럼 전체 화면으로 열린다 */}
@@ -280,6 +286,11 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <StaffOverviewPage />
     case 'family-birthdays':
       return <FamilyBirthdayAdminPage />
+    // 경영 비서의 [화면 열기]가 sales-activity로 보내는데 케이스가 없어 홈으로 튕겼다.
+    case 'sales-activity':
+      return <SalesActivityWorkspacePage />
+    case 'fcos':
+      return <FcOsPage />
     case 'staff-table':
       return <StaffTablePage />
     case 'registration-admin':
