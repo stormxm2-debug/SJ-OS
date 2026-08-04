@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { UserCog, Plus, RefreshCw, Ban, CheckCircle2, KeyRound, ShieldOff, Database, HardDrive, Loader2, Share2 } from 'lucide-react'
 import { PhoneSegments } from '@renderer/components/ui/SegmentedInputs'
 import { shareMeetingText } from '@renderer/services/share/meetingShare'
@@ -118,12 +118,15 @@ export default function StaffLoginAdminPage(): JSX.Element {
         <ModeBadge mode={mode} />
         <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600">관리자 전용</span>
       </div>
-      <p className="text-xs text-slate-500">등록된 휴대폰 번호만 SJ OS에 접속할 수 있습니다. 여기서는 허용 번호만 등록하며, 실제 계정 생성/비밀번호 설정은 서버 함수(claim-phone-account)에서 처리됩니다. (service_role은 서버에만 저장)</p>
+      <p className="text-xs text-slate-500">
+        등록된 휴대폰 번호만 SJ OS에 접속할 수 있습니다.
+        <span className="hidden sm:inline"> 여기서는 허용 번호만 등록하며, 실제 계정 생성/비밀번호 설정은 서버 함수(claim-phone-account)에서 처리됩니다. (service_role은 서버에만 저장)</span>
+      </p>
 
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600">{error}</div> : null}
 
-      {/* Server function status */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      {/* Server function status — 개발자용 정보라 모바일에서는 숨긴다(데스크톱만 표시) */}
+      <div className="hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:block">
         <div className="mb-2 text-sm font-semibold text-slate-300">서버 함수 상태</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <FnStatus name="claim-phone-account" ready={isClaimFunctionConfigured()} />
@@ -195,45 +198,101 @@ export default function StaffLoginAdminPage(): JSX.Element {
         ) : accounts.length === 0 ? (
           <p className="py-4 text-center text-xs text-slate-500">등록된 직원이 없습니다. 직원 번호를 등록해주세요.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-[11px]">
-              <thead className="text-slate-400"><tr className="border-b border-slate-100">
-                <th className="py-1.5 pr-2 font-medium">직원명</th>
-                <th className="py-1.5 pr-2 font-medium">휴대폰</th>
-                <th className="py-1.5 pr-2 font-medium">역할</th>
-                <th className="py-1.5 pr-2 font-medium">팀</th>
-                <th className="py-1.5 pr-2 font-medium">상태</th>
-                <th className="py-1.5 pr-2 font-medium">비밀번호</th>
-                <th className="py-1.5 pr-2 font-medium">프로필</th>
-                <th className="py-1.5 pr-2 font-medium">관리</th>
-              </tr></thead>
-              <tbody>
-                {accounts.map((a) => (
-                  <tr key={a.id} className="border-b border-slate-50">
-                    <td className="py-1.5 pr-2 font-medium text-slate-300">{a.name}</td>
-                    <td className="py-1.5 pr-2 font-mono text-slate-500">{maskKoreanPhoneDisplay(a.normalizedPhone)}</td>
-                    <td className="py-1.5 pr-2 text-slate-500">{ROLE_LABEL[a.role]}</td>
-                    <td className="py-1.5 pr-2 text-slate-500">{a.teamName ?? '-'}</td>
-                    <td className="py-1.5 pr-2"><span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{STAFF_LOGIN_STATUS_LABEL[a.status]}</span></td>
-                    <td className="py-1.5 pr-2 text-slate-500">{PASSWORD_STATUS_LABEL[a.passwordStatus]}</td>
-                    <td className="py-1.5 pr-2 text-slate-500">{a.profileId ? '연결됨' : '-'}</td>
-                    <td className="py-1.5 pr-2">
-                      <div className="flex flex-wrap gap-1">
-                        {a.status !== 'inactive' ? <ActBtn icon={<Ban className="h-3 w-3" />} label="비활성화" onClick={() => void setStatus(a.id, deactivateStaffLoginAccount)} /> : <ActBtn icon={<CheckCircle2 className="h-3 w-3" />} label="활성화" tone="emerald" onClick={() => void setStatus(a.id, (id) => updateStaffLoginStatus(id, 'active'))} />}
-                        {a.status !== 'blocked' ? <ActBtn icon={<ShieldOff className="h-3 w-3" />} label="차단" tone="rose" onClick={() => void setStatus(a.id, blockStaffLoginAccount)} /> : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* 모바일: 카드형 (가로 스크롤·8칸 표의 뭉개짐 제거) */}
+            <div className="space-y-2 sm:hidden">
+              {accounts.map((a) => (
+                <StaffCard
+                  key={a.id}
+                  a={a}
+                  onDeactivate={() => void setStatus(a.id, deactivateStaffLoginAccount)}
+                  onActivate={() => void setStatus(a.id, (id) => updateStaffLoginStatus(id, 'active'))}
+                  onBlock={() => void setStatus(a.id, blockStaffLoginAccount)}
+                />
+              ))}
+            </div>
+
+            {/* 데스크톱: 기존 표 유지 */}
+            <div className="hidden overflow-x-auto sm:block">
+              <table className="w-full text-left text-[11px]">
+                <thead className="text-slate-400"><tr className="border-b border-slate-100">
+                  <th className="py-1.5 pr-2 font-medium">직원명</th>
+                  <th className="py-1.5 pr-2 font-medium">휴대폰</th>
+                  <th className="py-1.5 pr-2 font-medium">역할</th>
+                  <th className="py-1.5 pr-2 font-medium">팀</th>
+                  <th className="py-1.5 pr-2 font-medium">상태</th>
+                  <th className="py-1.5 pr-2 font-medium">비밀번호</th>
+                  <th className="py-1.5 pr-2 font-medium">프로필</th>
+                  <th className="py-1.5 pr-2 font-medium">관리</th>
+                </tr></thead>
+                <tbody>
+                  {accounts.map((a) => (
+                    <tr key={a.id} className="border-b border-slate-50">
+                      <td className="py-1.5 pr-2 font-medium text-slate-300">{a.name}</td>
+                      <td className="py-1.5 pr-2 font-mono text-slate-500">{maskKoreanPhoneDisplay(a.normalizedPhone)}</td>
+                      <td className="py-1.5 pr-2 text-slate-500">{ROLE_LABEL[a.role]}</td>
+                      <td className="py-1.5 pr-2 text-slate-500">{a.teamName ?? '-'}</td>
+                      <td className="py-1.5 pr-2"><span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{STAFF_LOGIN_STATUS_LABEL[a.status]}</span></td>
+                      <td className="py-1.5 pr-2 text-slate-500">{PASSWORD_STATUS_LABEL[a.passwordStatus]}</td>
+                      <td className="py-1.5 pr-2 text-slate-500">{a.profileId ? '연결됨' : '-'}</td>
+                      <td className="py-1.5 pr-2">
+                        <div className="flex flex-wrap gap-1">
+                          {a.status !== 'inactive' ? <ActBtn icon={<Ban className="h-3 w-3" />} label="비활성화" onClick={() => void setStatus(a.id, deactivateStaffLoginAccount)} /> : <ActBtn icon={<CheckCircle2 className="h-3 w-3" />} label="활성화" tone="emerald" onClick={() => void setStatus(a.id, (id) => updateStaffLoginStatus(id, 'active'))} />}
+                          {a.status !== 'blocked' ? <ActBtn icon={<ShieldOff className="h-3 w-3" />} label="차단" tone="rose" onClick={() => void setStatus(a.id, blockStaffLoginAccount)} /> : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>
   )
 }
 
+/** 모바일 직원 카드 — 8칸 표 대신 폰에서 깔끔하게 읽히는 카드 한 장. */
+function StaffCard({
+  a,
+  onDeactivate,
+  onActivate,
+  onBlock
+}: {
+  a: StaffLoginAccount
+  onDeactivate: () => void
+  onActivate: () => void
+  onBlock: () => void
+}): JSX.Element {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="truncate text-sm font-bold text-slate-100">{a.name}</span>
+        <span className="shrink-0 rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-[#e6c877]">{ROLE_LABEL[a.role]}</span>
+      </div>
+      <div className="mt-0.5 font-mono text-[12px] text-slate-500">
+        {maskKoreanPhoneDisplay(a.normalizedPhone)}{a.teamName ? ` · ${a.teamName}` : ''}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1">
+        <Chip>{STAFF_LOGIN_STATUS_LABEL[a.status]}</Chip>
+        <Chip>비번 {PASSWORD_STATUS_LABEL[a.passwordStatus]}</Chip>
+        <Chip>{a.profileId ? '프로필 연결됨' : '프로필 미연결'}</Chip>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
+        {a.status !== 'inactive' ? (
+          <ActBtn icon={<Ban className="h-3 w-3" />} label="비활성화" onClick={onDeactivate} />
+        ) : (
+          <ActBtn icon={<CheckCircle2 className="h-3 w-3" />} label="활성화" tone="emerald" onClick={onActivate} />
+        )}
+        {a.status !== 'blocked' ? <ActBtn icon={<ShieldOff className="h-3 w-3" />} label="차단" tone="rose" onClick={onBlock} /> : null}
+      </div>
+    </div>
+  )
+}
+function Chip({ children }: { children: ReactNode }): JSX.Element {
+  return <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{children}</span>
+}
 function ActBtn({ icon, label, onClick, tone }: { icon: JSX.Element; label: string; onClick: () => void; tone?: 'emerald' | 'rose' }): JSX.Element {
   const t = tone === 'emerald' ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : tone === 'rose' ? 'border-rose-300 bg-rose-50 text-rose-600' : 'border-slate-300 text-slate-600 hover:bg-slate-50'
   return <button type="button" onClick={onClick} className={['inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium', t].join(' ')}>{icon}{label}</button>
