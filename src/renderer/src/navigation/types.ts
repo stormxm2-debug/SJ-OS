@@ -12,6 +12,7 @@ export type View =
   | { name: 'birthdays' }
   | { name: 'stats-report' }
   | { name: 'content-studio' }
+  | { name: 'knowledge' }
   | { name: 'sales-activity' }
   | { name: 'schedule' }
   | { name: 'shared-schedule' }
