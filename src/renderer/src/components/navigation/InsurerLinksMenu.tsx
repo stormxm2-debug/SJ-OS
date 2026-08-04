@@ -53,7 +53,11 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-[70] mt-2 max-h-[70vh] w-64 overflow-y-auto rounded-2xl border border-slate-800 bg-white shadow-xl">
+        <div
+          className={`z-[70] max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-800 bg-white shadow-xl ${
+            compact ? 'fixed inset-x-3 top-14' : 'absolute right-0 mt-2 w-[26rem]'
+          }`}
+        >
           <div className="border-b border-slate-800 px-4 py-2.5 text-[11px] font-bold text-slate-500">
             보험사 전산 바로가기 <span className="font-medium">— 새 탭으로 열립니다</span>
           </div>
@@ -65,20 +69,22 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                 <div className="bg-slate-900 px-4 py-1.5 text-[10px] font-bold tracking-wide text-[#8a6a1f]">
                   {group}
                 </div>
-                {items.map((l) => (
-                  <button
-                    key={l.name}
-                    type="button"
-                    onClick={() => openLink(l.url)}
-                    className="flex w-full items-center justify-between px-4 py-2.5 text-left transition hover:bg-slate-900 active:bg-slate-900"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-semibold text-slate-100">{l.name}</span>
-                      <span className="block truncate text-[10px] text-slate-500">{l.portal}</span>
-                    </span>
-                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                  </button>
-                ))}
+                {/* 정사각형 타일 그리드 (대표 지시) — 모바일 3열, 데스크톱 4열 */}
+                <div className={`grid gap-1.5 p-2 ${compact ? 'grid-cols-3' : 'grid-cols-4'}`}>
+                  {items.map((l) => (
+                    <button
+                      key={l.name}
+                      type="button"
+                      onClick={() => openLink(l.url)}
+                      title={`${l.name} — ${l.portal}`}
+                      className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-slate-800 bg-white p-1.5 text-center transition hover:border-[#c6982f] hover:bg-slate-900 active:bg-slate-900"
+                    >
+                      <span className="break-keep text-[11px] font-bold leading-tight text-slate-100">{l.name}</span>
+                      <span className="line-clamp-2 break-keep text-[9px] leading-tight text-slate-500">{l.portal}</span>
+                      <ExternalLink className="h-3 w-3 text-slate-500" />
+                    </button>
+                  ))}
+                </div>
               </div>
             )
           })}
