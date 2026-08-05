@@ -234,10 +234,10 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
       ) : null}
 
       {open && !compact ? (
-        /* 데스크톱: 전산 포털 정사각형 타일 드롭다운 */
-        <div className="absolute right-0 z-[70] mt-2 max-h-[70vh] w-[26rem] overflow-y-auto rounded-2xl border border-slate-800 bg-white shadow-xl">
+        /* 데스크톱: 회사 카드(전산 접속 + 고객센터 번호 + 상품공시실) 정사각형 그리드 */
+        <div className="absolute right-0 z-[70] mt-2 max-h-[72vh] w-[31rem] overflow-y-auto rounded-2xl border border-slate-800 bg-white shadow-xl">
           <div className="border-b border-slate-800 px-4 py-2.5 text-[11px] font-bold text-slate-500">
-            보험사 전산 바로가기 — 새 탭으로 열립니다
+            보험사 바로가기 <span className="font-medium">— 전산·상품공시실은 새 탭, 카드 클릭=전산 접속</span>
           </div>
           {INSURER_GROUPS.map((group: InsurerGroup) => {
             const items = INSURER_LINKS.filter((l) => l.group === group)
@@ -247,19 +247,54 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                 <div className="bg-slate-900 px-4 py-1.5 text-[10px] font-bold tracking-wide text-[#8a6a1f]">
                   {group}
                 </div>
-                <div className="grid grid-cols-4 gap-1.5 p-2">
+                <div className="grid grid-cols-3 gap-2 p-2.5">
                   {items.map((l) => (
-                    <button
+                    <div
                       key={l.name}
-                      type="button"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => openLink(l.url)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') openLink(l.url)
+                      }}
                       title={`${l.name} — ${l.portal}`}
-                      className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-slate-800 bg-white p-1.5 text-center transition hover:border-[#c6982f] hover:bg-slate-900 active:bg-slate-900"
+                      className="group flex aspect-square cursor-pointer flex-col items-center justify-between rounded-2xl border border-slate-800 bg-white p-2.5 text-center transition hover:border-[#c6982f] hover:shadow-md"
                     >
-                      <span className="break-keep text-[11px] font-bold leading-tight text-slate-100">{l.name}</span>
-                      <span className="line-clamp-2 break-keep text-[9px] leading-tight text-slate-500">{l.portal}</span>
-                      <ExternalLink className="h-3 w-3 text-slate-500" />
-                    </button>
+                      <div className="flex flex-1 flex-col items-center justify-center gap-1">
+                        <span className="break-keep text-[13px] font-bold leading-tight text-slate-100">{l.name}</span>
+                        <span className="flex items-center gap-1 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                          <Phone className="h-2.5 w-2.5 text-emerald-700" />
+                          {l.csPhone}
+                        </span>
+                      </div>
+                      <div className="flex w-full gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openLink(l.url)
+                          }}
+                          className="flex flex-1 items-center justify-center gap-0.5 rounded-lg border border-[#c6982f] bg-[#fdf7ea] py-1 text-[10px] font-bold text-[#8a6a1f] transition hover:brightness-95"
+                        >
+                          <ExternalLink className="h-2.5 w-2.5" />
+                          전산
+                        </button>
+                        {l.disclosure ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openLink(l.disclosure!)
+                            }}
+                            title={`${l.name} 상품공시실`}
+                            className="flex flex-1 items-center justify-center gap-0.5 rounded-lg border border-indigo-200 bg-indigo-50 py-1 text-[10px] font-bold text-indigo-600 transition hover:brightness-95"
+                          >
+                            <ExternalLink className="h-2.5 w-2.5" />
+                            공시실
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
