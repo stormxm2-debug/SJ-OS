@@ -140,6 +140,18 @@ export const supabaseStaffLoginAccountAdapter = {
       .select(RESET_COLS)
       .single()
     if (error) return err('error', '재설정 승인에 실패했습니다.')
+    // 승인과 동시에 로그인 게이트를 '재설정 대기'로 바꿔야 해당 직원의 로그인
+    // 화면에 새 비밀번호 설정 칸이 뜬다(phone_login_gate가 이 상태를 본다).
+    // 실제 비밀번호 변경 자체는 서버(claim-phone-account)가 승인 기록을 다시
+    // 검증하므로, 이 갱신이 실패해도 보안 문제는 없고 안내만 늦어진다.
+    try {
+      await client
+        .from('staff_login_accounts')
+        .update({ password_status: 'reset-approved', updated_at: new Date().toISOString() })
+        .eq('normalized_phone', (data as { normalized_phone?: string }).normalized_phone ?? '')
+    } catch {
+      /* 게이트 갱신 실패는 치명적이지 않음 */
+    }
     return { ok: true, data: mapReset(data) }
   }
 }

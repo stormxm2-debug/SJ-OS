@@ -136,7 +136,7 @@ export default function LoginScreen(): JSX.Element {
         {/* First-password setup (only when phone is registered & not set) */}
         {setupPhone ? (
           <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
-            <div className="text-[12px] font-semibold text-slate-300">최초 비밀번호 설정이 필요합니다.</div>
+            <div className="text-[12px] font-semibold text-slate-300">새 비밀번호를 설정해 주세요 (처음 로그인 또는 재설정 승인됨).</div>
             <input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} placeholder="새 비밀번호 (8자 이상, 영문+숫자)" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
             <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="새 비밀번호 확인" className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
             <button type="button" onClick={() => void onSetup()} disabled={busy} className="mt-2 w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white disabled:opacity-60">비밀번호 설정</button>

@@ -77,8 +77,43 @@ Deno.serve(async (req: Request) => {
     // profile_id not linked, or linked but status not yet 'set') must also be refused —
     // with AND, such a row fell through to createUser and anyone who merely knew the phone
     // number could take the account over. Only a never-claimed row may proceed.
+    //
+    // 2026-08-05: 단, 관리자가 승인한 비밀번호 재설정(7일 이내, 미사용)이 있으면
+    // 기존 계정의 비밀번호를 새로 설정할 수 있다 — 승인 없이는 여전히 불가.
+    // (기존에는 승인돼도 여기서 무조건 거절되어 재설정이 영구히 막혀 있었다.)
     if (acct.password_status === 'set' || acct.profile_id) {
-      return json({ ok: false, message: '이미 비밀번호가 설정된 계정입니다. 로그인해주세요.' })
+      const { data: reset } = await admin
+        .from('password_reset_requests')
+        .select('id, approved_at')
+        .eq('normalized_phone', phone)
+        .eq('status', 'approved')
+        .order('approved_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const RESET_TTL_MS = 7 * 24 * 3600 * 1000
+      const fresh = !!reset?.approved_at && Date.now() - new Date(reset.approved_at).getTime() < RESET_TTL_MS
+      if (!reset || !fresh) {
+        return json({
+          ok: false,
+          message: reset
+            ? '재설정 승인이 만료되었습니다. 관리자에게 다시 요청해주세요.'
+            : '이미 비밀번호가 설정된 계정입니다. 비밀번호를 잊으셨으면 로그인 화면의 [비밀번호 찾기]로 요청 후 관리자 승인을 받아주세요.'
+        })
+      }
+      if (!acct.profile_id) {
+        // 승인은 있으나 연결된 auth 계정이 없는 비정상 행 — 자동 생성으로 흘려보내지
+        // 않고 명시적으로 멈춘다(탈취 방지 원칙 유지).
+        return json({ ok: false, message: '계정 연결 상태에 문제가 있습니다. 관리자에게 문의하세요.' })
+      }
+      const { error: updErr } = await admin.auth.admin.updateUserById(acct.profile_id, { password: body.password })
+      if (updErr) return json({ ok: false, message: '비밀번호 재설정에 실패했습니다. 관리자에게 문의하세요.' })
+      await admin.from('password_reset_requests').update({ status: 'used' }).eq('id', reset.id)
+      await admin
+        .from('staff_login_accounts')
+        .update({ password_status: 'set', status: 'active', updated_at: new Date().toISOString() })
+        .eq('id', acct.id)
+      await admin.from('profiles').update({ password_rotated_at: new Date().toISOString() }).eq('id', acct.profile_id)
+      return json({ ok: true, message: '새 비밀번호가 설정되었습니다. 로그인해주세요.' })
     }
     // Belt-and-braces: refuse if an auth user already exists for this phone, so a
     // stale/mismatched staff row can never be used to mint a second credential.
