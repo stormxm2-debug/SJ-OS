@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Building2, ChevronDown, ExternalLink, Phone, X } from 'lucide-react'
-import { INSURER_LINKS, INSURER_GROUPS, type InsurerGroup, type InsurerLink } from '@renderer/data/insurerLinks'
+import { Building2, ChevronDown, ExternalLink, Phone, X, FileText, ClipboardList, AlertTriangle, ChevronRight } from 'lucide-react'
+import {
+  INSURER_LINKS,
+  INSURER_GROUPS,
+  cancelGuideFor,
+  CANCEL_COMMON_STEPS,
+  CANCEL_COMMON_DOCS,
+  CANCEL_COMMON_NOTE,
+  type InsurerGroup,
+  type InsurerLink,
+  type CancelGuide
+} from '@renderer/data/insurerLinks'
 
 /**
  * 상단 [보험사] 메뉴.
@@ -42,6 +52,8 @@ const DIALPAD: string[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0'
 function ArsCallScreen({ insurer, onClose }: { insurer: InsurerLink; onClose: () => void }): JSX.Element {
   const keys = parseArsKeys(insurer.ars)
   const keyMap = new Map<string, string>((keys ?? []).map((k) => [k.digit, k.label]))
+  const cancel = cancelGuideFor(insurer.name)
+  const [showCancel, setShowCancel] = useState(false)
   const dial = (): void => {
     window.location.href = `tel:${insurer.csPhone}`
   }
@@ -111,8 +123,19 @@ function ArsCallScreen({ insurer, onClose }: { insurer: InsurerLink; onClose: ()
         ) : null}
       </div>
 
-      {/* 하단: 통화 버튼 (실제 전화) */}
+      {/* 하단: 해지 순서 진입 + 통화 버튼 (실제 전화) */}
       <div className="shrink-0 pb-10 pt-3 text-center">
+        {cancel ? (
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={() => setShowCancel(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#c6982f] bg-[rgba(198,152,47,0.12)] px-4 py-2 text-[12px] font-bold text-[#e6c877] active:bg-[rgba(198,152,47,0.25)]"
+            >
+              <FileText className="h-3.5 w-3.5" /> 해지 진행 순서 보기 <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : null}
         <a
           href={`tel:${insurer.csPhone}`}
           aria-label={`${insurer.name} 전화 걸기`}
@@ -121,6 +144,106 @@ function ArsCallScreen({ insurer, onClose }: { insurer: InsurerLink; onClose: ()
           <Phone className="h-7 w-7 text-white" />
         </a>
         <div className="mt-2 text-[11px] font-semibold text-[#94a3b8]">전화 걸기</div>
+      </div>
+
+      {showCancel && cancel ? (
+        <CancelGuideScreen insurer={insurer} guide={cancel} onClose={() => setShowCancel(false)} />
+      ) : null}
+    </div>
+  )
+}
+
+/** 해지 진행 순서 안내 화면 (검수 전 참고용). 색은 전부 명시적 hex(토큰 리매핑 회피). */
+function CancelGuideScreen({
+  insurer,
+  guide,
+  onClose
+}: {
+  insurer: InsurerLink
+  guide: CancelGuide
+  onClose: () => void
+}): JSX.Element {
+  const steps = guide.steps ?? CANCEL_COMMON_STEPS
+  const docs = guide.docs ?? CANCEL_COMMON_DOCS
+  const note = guide.notes ?? CANCEL_COMMON_NOTE
+  return (
+    <div className="fixed inset-0 z-[95] flex flex-col bg-gradient-to-b from-[#0a1830] via-[#0e1e3a] to-[#091326]">
+      {/* 헤더 */}
+      <div className="relative shrink-0 border-b border-[rgba(255,255,255,0.08)] px-5 pb-3 pt-7 text-center">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="해지 안내 닫기"
+          className="absolute right-4 top-5 rounded-full border border-[rgba(255,255,255,0.18)] p-2 text-[#cbd5e1] active:bg-[rgba(255,255,255,0.08)]"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <div className="text-[11px] font-bold tracking-[0.2em] text-[#e6c877]">해지 진행 순서</div>
+        <div className="mt-1 text-[19px] font-bold text-[#f1f5f9]">{insurer.name}</div>
+        <span className="mt-1.5 inline-block rounded-full border border-[rgba(230,200,119,0.4)] bg-[rgba(230,200,119,0.1)] px-2 py-0.5 text-[10px] font-bold text-[#e6c877]">
+          검수 전 참고용
+        </span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="mx-auto max-w-[24rem] space-y-4">
+          {/* ARS 경로 + 전화 */}
+          <div className="rounded-2xl border border-[#c6982f] bg-[rgba(198,152,47,0.12)] p-3.5">
+            <div className="text-[10px] font-bold tracking-widest text-[#e6c877]">전화 경로</div>
+            <div className="mt-1 text-[14px] font-bold leading-relaxed text-[#f1f5f9]">{guide.arsPath}</div>
+            <a
+              href={`tel:${insurer.csPhone}`}
+              className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-[#22c55e] px-4 py-2 text-[13px] font-bold text-white active:brightness-90"
+            >
+              <Phone className="h-3.5 w-3.5" /> {insurer.csPhone} 전화
+            </a>
+          </div>
+
+          {/* 준비물 */}
+          <div>
+            <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-bold text-[#cbd5e1]">
+              <ClipboardList className="h-3.5 w-3.5 text-[#e6c877]" /> 미리 준비할 것
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {docs.map((d) => (
+                <span
+                  key={d}
+                  className="rounded-full border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] px-2.5 py-1 text-[11px] font-semibold text-[#e2e8f0]"
+                >
+                  {d}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* 단계 */}
+          <div>
+            <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-bold text-[#cbd5e1]">
+              <FileText className="h-3.5 w-3.5 text-[#e6c877]" /> 진행 순서
+            </div>
+            <ol className="space-y-1.5">
+              {steps.map((s, i) => (
+                <li
+                  key={i}
+                  className="flex gap-2.5 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 py-2.5"
+                >
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#c6982f] text-[11px] font-bold text-[#201603]">
+                    {i + 1}
+                  </span>
+                  <span className="text-[12.5px] leading-snug text-[#e2e8f0]">{s}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {/* 유의 */}
+          <div className="rounded-2xl border border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.08)] p-3">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#fbbf24]">
+              <AlertTriangle className="h-3.5 w-3.5" /> 해지 전 꼭 확인
+            </div>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-[#e2e8f0]">{note}</p>
+          </div>
+        </div>
       </div>
     </div>
   )
