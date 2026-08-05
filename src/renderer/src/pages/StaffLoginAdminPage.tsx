@@ -12,6 +12,7 @@ import { isClaimFunctionConfigured } from '@renderer/services/commercial/phoneAu
 import {
   approvePasswordResetRequest,
   blockStaffLoginAccount,
+  createStaffAccountWithPassword,
   createStaffLoginAccount,
   deactivateStaffLoginAccount,
   listPasswordResetRequests,
@@ -39,11 +40,16 @@ export default function StaffLoginAdminPage(): JSX.Element {
   const [phone, setPhone] = useState('')
   const [role, setRole] = useState<StaffRole>('fc')
   const [team, setTeam] = useState('')
+  const [initPw, setInitPw] = useState('')
   const [busy, setBusy] = useState(false)
 
   // 등록 직후: 새 직원에게 보낼 입장 안내 (로그인까지 이어지는 마지막 연결 고리)
   const [lastAdded, setLastAdded] = useState<string | null>(null)
+  const [lastInitPw, setLastInitPw] = useState<string | null>(null)
   const [shareNote, setShareNote] = useState<string | null>(null)
+
+  // 초기 비밀번호 방식은 관리자 전용 + 대표(owner) 계정 생성은 항상 초대 방식.
+  const canUseInitPw = (session.role === 'owner' || session.role === 'admin') && role !== 'owner'
 
   const load = async (): Promise<void> => {
     setLoading(true)
@@ -69,32 +75,59 @@ export default function StaffLoginAdminPage(): JSX.Element {
         ? ['fc']
         : ['admin', 'team-leader', 'fc', 'back-office']
 
+  /** 초기 비밀번호 자동 생성 — 영문+숫자 8자, 헷갈리는 글자(l/1/O/0) 제외. */
+  const genInitPw = (): void => {
+    const letters = 'abcdefghjkmnpqrstuvwxyz'
+    const digits = '23456789'
+    const all = letters + digits
+    const rnd = new Uint8Array(8)
+    crypto.getRandomValues(rnd)
+    const body = Array.from(rnd, (b) => all[b % all.length]).join('')
+    // 영문·숫자 최소 1자 보장: 첫 글자=영문, 마지막=숫자로 고정 치환
+    setInitPw(letters[rnd[0] % letters.length] + body.slice(1, 7) + digits[rnd[7] % digits.length])
+  }
+
   const add = async (): Promise<void> => {
     setBusy(true)
-    const res = await createStaffLoginAccount({ name, phone, role, teamName: team })
+    const usePw = canUseInitPw && initPw.trim().length > 0 && mode === 'supabase'
+    const res = usePw
+      ? await createStaffAccountWithPassword({ name, phone, role, password: initPw.trim() })
+      : await createStaffLoginAccount({ name, phone, role, teamName: team })
     setBusy(false)
     if (!res.ok) { setError(res.error); return }
     setError(undefined)
     setLastAdded(name.trim() || '새 직원')
+    setLastInitPw(usePw ? initPw.trim() : null)
     setShareNote(null)
-    setName(''); setPhone(''); setTeam(''); void load()
+    setName(''); setPhone(''); setTeam(''); setInitPw(''); void load()
   }
 
-  /** 새 직원에게 보낼 입장 안내 문구 — 등록된 번호로 첫 로그인 시 비밀번호를 직접 만들면 끝. */
-  const guideText = (staffName: string): string =>
-    [
-      `[SJ INVEST] ${staffName}님, 합류를 환영합니다!`,
-      '',
-      `1) 폰 브라우저로 접속: ${window.location.origin}`,
-      '2) 로그인 화면에 본인 휴대폰 번호 입력',
-      '3) 첫 로그인이라 비밀번호를 새로 만들면 바로 입장됩니다',
-      '',
-      '※ 브라우저 메뉴에서 "홈 화면에 추가"하면 앱처럼 쓸 수 있어요'
-    ].join('\n')
+  /** 새 직원에게 보낼 입장 안내 문구 — 초기 비밀번호 유무에 따라 두 버전. */
+  const guideText = (staffName: string, pw: string | null): string =>
+    pw
+      ? [
+          `[SJ INVEST] ${staffName}님, 합류를 환영합니다!`,
+          '',
+          `1) 폰 브라우저로 접속: ${window.location.origin}`,
+          '2) 본인 휴대폰 번호 + 아래 초기 비밀번호로 바로 로그인',
+          `   초기 비밀번호: ${pw}`,
+          '3) 첫 접속 때 안내가 뜨면 비밀번호를 본인 것으로 꼭 바꿔주세요',
+          '',
+          '※ 브라우저 메뉴에서 "홈 화면에 추가"하면 앱처럼 쓸 수 있어요'
+        ].join('\n')
+      : [
+          `[SJ INVEST] ${staffName}님, 합류를 환영합니다!`,
+          '',
+          `1) 폰 브라우저로 접속: ${window.location.origin}`,
+          '2) 로그인 화면에 본인 휴대폰 번호 입력',
+          '3) 첫 로그인이라 비밀번호를 새로 만들면 바로 입장됩니다',
+          '',
+          '※ 브라우저 메뉴에서 "홈 화면에 추가"하면 앱처럼 쓸 수 있어요'
+        ].join('\n')
 
   const sendGuide = async (): Promise<void> => {
     if (!lastAdded) return
-    const outcome = await shareMeetingText(guideText(lastAdded))
+    const outcome = await shareMeetingText(guideText(lastAdded, lastInitPw))
     setShareNote(outcome === 'copied' ? '안내문이 복사됐어요 — 카톡에 붙여넣어 보내세요.' : null)
   }
   const setStatus = async (id: string, fn: (id: string) => Promise<{ ok: boolean; error?: string }>): Promise<void> => {
@@ -146,6 +179,27 @@ export default function StaffLoginAdminPage(): JSX.Element {
           </select>
           <input value={team} onChange={(e) => setTeam(e.target.value)} placeholder="팀 (선택)" className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none" />
         </div>
+        {canUseInitPw ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              value={initPw}
+              onChange={(e) => setInitPw(e.target.value)}
+              placeholder="초기 비밀번호 (입력 시 등록 즉시 로그인 가능)"
+              maxLength={72}
+              className="w-64 rounded-lg border border-slate-200 px-3 py-2 font-mono text-sm focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={genInitPw}
+              className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-2 text-[11px] font-bold text-indigo-600 hover:brightness-95"
+            >
+              <KeyRound className="h-3 w-3" /> 자동생성
+            </button>
+            <span className="text-[10px] text-slate-500">
+              비워두면 기존처럼 직원이 첫 로그인 때 직접 만듭니다 · 첫 접속 시 변경 안내가 뜹니다
+            </span>
+          </div>
+        ) : null}
         <button type="button" onClick={() => void add()} disabled={busy} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} 직원 등록
         </button>
@@ -156,9 +210,16 @@ export default function StaffLoginAdminPage(): JSX.Element {
             <div className="flex items-center gap-1.5 text-[13px] font-bold text-emerald-800">
               <CheckCircle2 className="h-4 w-4" /> {lastAdded} 님 등록 완료 — 이제 본인 폰에서 바로 로그인할 수 있습니다
             </div>
-            <p className="mt-1 text-[11px] leading-5 text-emerald-700">
-              직원이 할 일: 앱 주소 접속 → 휴대폰 번호 입력 → 첫 로그인 비밀번호 만들기 (끝). 아래 버튼으로 안내문을 카톡으로 보내주세요.
-            </p>
+            {lastInitPw ? (
+              <p className="mt-1 text-[11px] leading-5 text-emerald-700">
+                초기 비밀번호: <span className="rounded bg-white px-1.5 py-0.5 font-mono font-bold">{lastInitPw}</span>
+                {' '}— 번호+이 비밀번호로 즉시 로그인됩니다. 첫 접속 때 본인 비밀번호로 바꾸라는 안내가 뜹니다.
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] leading-5 text-emerald-700">
+                직원이 할 일: 앱 주소 접속 → 휴대폰 번호 입력 → 첫 로그인 비밀번호 만들기 (끝). 아래 버튼으로 안내문을 카톡으로 보내주세요.
+              </p>
+            )}
             <button
               type="button"
               onClick={() => void sendGuide()}

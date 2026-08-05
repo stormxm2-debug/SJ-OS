@@ -1,6 +1,7 @@
 import type { PasswordResetRequest, StaffLoginAccount, StaffLoginStatus } from '@shared/commercial/phoneLogin'
 import type { StaffRole } from '@shared/commercial/models'
 import { getBackendConfig } from './backendConfig'
+import { getFunctionsBaseUrl, getSupabaseAnonKey, getSupabaseClient, initSupabaseClient } from './supabaseClient'
 import {
   addStaffLoginAccount as addLocal,
   approveResetRequest as approveLocal,
@@ -64,6 +65,41 @@ export async function createStaffLoginAccount(input: CreateStaffInput): Promise<
   }
   const r = addLocal({ name: input.name, phone: input.phone, role: input.role, teamName: input.teamName })
   return r.ok ? { ok: true, mode: 'local-mock' } : { ok: false, mode: 'local-mock', error: r.error }
+}
+
+/**
+ * 관리자(owner/admin) 전용 — 등록과 동시에 초기 비밀번호를 지정해 즉시 로그인
+ * 가능한 계정을 만든다(admin-create-staff-account 엣지 함수, 서버가 역할 재검증).
+ * 초기 비밀번호를 쓰지 않는 등록은 기존 createStaffLoginAccount(초대) 경로 그대로.
+ */
+export async function createStaffAccountWithPassword(input: {
+  name: string
+  phone: string
+  role: StaffRole
+  password: string
+}): Promise<MutationResult> {
+  if (!isSupabase()) return { ok: false, mode: 'local-mock', error: '서버 연결 후 사용할 수 있습니다.' }
+  const base = getFunctionsBaseUrl()
+  const anon = getSupabaseAnonKey()
+  if (!base || !anon) return { ok: false, mode: 'not-configured', error: 'Supabase 설정이 없습니다.' }
+  try {
+    await initSupabaseClient()
+    const client = getSupabaseClient() as {
+      auth?: { getSession: () => Promise<{ data?: { session?: { access_token?: string } } }> }
+    } | null
+    const token = (await client?.auth?.getSession())?.data?.session?.access_token
+    if (!token) return { ok: false, mode: 'no-session', error: '로그인 세션이 없습니다.' }
+    const res = await fetch(`${base}/admin-create-staff-account`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    })
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string }
+    if (res.ok && data?.ok) return { ok: true, mode: 'supabase' }
+    return { ok: false, mode: 'supabase', error: data?.message ?? '계정 생성에 실패했습니다.' }
+  } catch {
+    return { ok: false, mode: 'supabase', error: '네트워크 상태를 확인해주세요.' }
+  }
 }
 
 export async function updateStaffLoginStatus(id: string, status: StaffLoginStatus): Promise<MutationResult> {
