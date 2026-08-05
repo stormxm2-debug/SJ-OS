@@ -51,7 +51,14 @@ import {
   ExternalLink,
   FileSignature,
   Clapperboard,
-  Download
+  Download,
+  Pencil,
+  Check,
+  ArrowUp,
+  ArrowDown,
+  Eye,
+  EyeOff,
+  RotateCcw
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -64,6 +71,15 @@ import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
 import { openPasswordGate } from '@renderer/services/commercial/passwordService'
 import BrandLogo from '@renderer/components/brand/BrandLogo'
+import {
+  loadSidebarPrefs,
+  subscribeSidebarPrefs,
+  orderSidebarItems,
+  isSidebarItemHidden,
+  moveSidebarItem,
+  toggleSidebarItemHidden,
+  resetSidebarPrefs
+} from './sidebarPrefs'
 
 type NavItem = {
   key: string
@@ -295,12 +311,18 @@ export default function Sidebar(): JSX.Element {
   const [, bumpNewFeatures] = useState(0)
   useEffect(() => subscribeNewFeatures(() => bumpNewFeatures((v) => v + 1)), [])
 
+  // 회원별 메뉴 순서·숨김 (기기별) — 모바일 전체 메뉴 편집과 같은 원칙.
+  const [editNav, setEditNav] = useState(false)
+  const [navPrefs, setNavPrefs] = useState(() => loadSidebarPrefs())
+  useEffect(() => subscribeSidebarPrefs(() => setNavPrefs(loadSidebarPrefs())), [])
+
   const renderItem = ({ key, label, icon: Icon, view, match, href, action }: NavItem): JSX.Element => {
     const active = match?.includes(route.name) ?? false
     return (
       <button
         key={key}
         type="button"
+        disabled={editNav}
         onClick={() => {
           if (action === 'birthday-gate') openFamilyBirthdayGate()
           else if (action === 'password-gate') openPasswordGate()
@@ -323,6 +345,47 @@ export default function Sidebar(): JSX.Element {
         ) : null}
       </button>
     )
+  }
+
+  /**
+   * 섹션(사이드바 변형·그룹)별로 저장된 순서·숨김을 적용해 목록을 그린다.
+   * 편집 모드에서는 숨긴 항목도 흐리게 보여 ↑↓ 이동·숨김/복구 버튼을 단다.
+   */
+  const renderList = (section: string, items: NavItem[]): JSX.Element[] => {
+    const ordered = orderSidebarItems(section, items, navPrefs)
+    const visible = editNav ? ordered : ordered.filter((it) => !isSidebarItemHidden(section, it.key, navPrefs))
+    const orderedKeys = ordered.map((it) => it.key)
+    const ctrl =
+      'flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-slate-700 bg-slate-950 text-slate-500 transition hover:text-slate-200 disabled:opacity-30'
+    return visible.map((item, i) => {
+      if (!editNav) return renderItem(item)
+      const hidden = isSidebarItemHidden(section, item.key, navPrefs)
+      return (
+        <div key={item.key} className={['flex items-center gap-1', hidden ? 'opacity-45' : ''].join(' ')}>
+          <div className="min-w-0 flex-1">{renderItem(item)}</div>
+          <button type="button" disabled={i === 0} onClick={() => moveSidebarItem(section, orderedKeys, item.key, -1)} className={ctrl} aria-label={`${item.label} 위로`}>
+            <ArrowUp className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            disabled={i === visible.length - 1}
+            onClick={() => moveSidebarItem(section, orderedKeys, item.key, 1)}
+            className={ctrl}
+            aria-label={`${item.label} 아래로`}
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleSidebarItemHidden(section, item.key)}
+            className={[ctrl, hidden ? 'text-[#c6982f]' : ''].join(' ')}
+            aria-label={hidden ? `${item.label} 다시 보이기` : `${item.label} 숨기기`}
+          >
+            {hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+      )
+    })
   }
 
   return (
@@ -356,11 +419,37 @@ export default function Sidebar(): JSX.Element {
       ) : null}
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
+        {/* 메뉴 편집 — 순서 ↑↓·숨김을 내 기기에 저장 (모바일 전체 메뉴와 동일 원칙) */}
+        <div className="mb-2 flex items-center justify-end gap-1">
+          {editNav ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('사이드바 순서와 숨김을 기본값으로 되돌릴까요?')) resetSidebarPrefs()
+              }}
+              className="flex items-center gap-1 rounded-full border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] font-bold text-slate-400 transition hover:text-slate-200"
+            >
+              <RotateCcw className="h-3 w-3" /> 기본 순서
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setEditNav((v) => !v)}
+            className={[
+              'flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold transition',
+              editNav ? 'bg-[#c6982f] text-[#201603]' : 'border border-slate-700 bg-slate-950 text-slate-500 hover:text-[#e6c877]'
+            ].join(' ')}
+            aria-label={editNav ? '메뉴 편집 완료' : '메뉴 순서 편집'}
+          >
+            {editNav ? <Check className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
+            {editNav ? '완료' : '메뉴 편집'}
+          </button>
+        </div>
         {!showAdminMenu ? (
           // FC / 팀장: staff-only company menu (no developer/release/admin tools).
-          <div className="space-y-1">{staffNav.map(renderItem)}</div>
+          <div className="space-y-1">{renderList('mvp', staffNav)}</div>
         ) : admin && mode === 'staff' ? (
-          <div className="space-y-1">{STAFF_NAV.map(renderItem)}</div>
+          <div className="space-y-1">{renderList('staff', STAFF_NAV)}</div>
         ) : (
           <div className="space-y-4">
             {NAV_GROUPS.map((group) => {
@@ -368,7 +457,8 @@ export default function Sidebar(): JSX.Element {
               const items = group.items.filter((it) => !it.view || canAccessRoute(session.role, it.view.name))
               if (items.length === 0) return null
               const hasActive = items.some((it) => it.match?.includes(route.name))
-              const isCollapsed = !!group.collapsible && collapsed[group.label] && !hasActive
+              // 편집 모드에서는 접힌 그룹도 펼쳐 숨김/순서를 손볼 수 있게 한다.
+              const isCollapsed = !editNav && !!group.collapsible && collapsed[group.label] && !hasActive
               return (
                 <div key={group.label} className="space-y-1">
                   {group.collapsible ? (
@@ -385,7 +475,7 @@ export default function Sidebar(): JSX.Element {
                       {group.label}
                     </div>
                   )}
-                  {!isCollapsed ? items.map(renderItem) : null}
+                  {!isCollapsed ? renderList(`group:${group.label}`, items) : null}
                 </div>
               )
             })}
