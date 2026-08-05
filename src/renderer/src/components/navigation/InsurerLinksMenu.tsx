@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Building2, ChevronDown, ExternalLink, Phone, X, FileText, ClipboardList, AlertTriangle, ChevronRight } from 'lucide-react'
+import { Building2, ChevronDown, ExternalLink, Phone, X, FileText, ClipboardList, AlertTriangle, ChevronRight, Check, Loader2, Video, Share2 } from 'lucide-react'
 import {
   INSURER_LINKS,
   INSURER_GROUPS,
@@ -11,6 +11,8 @@ import {
   type InsurerLink,
   type CancelGuide
 } from '@renderer/data/insurerLinks'
+import { generateSlideClip, renderSlidePoster, shareGuideFile, type ClipSlide } from '@renderer/services/share/cancelClip'
+import { copyText } from '@renderer/services/share/clipboard'
 
 /**
  * 상단 [보험사] 메뉴.
@@ -47,6 +49,16 @@ function parseArsKeys(ars?: string): ArsKey[] | null {
 }
 
 const DIALPAD: string[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#']
+
+/** 카드 모노그램 텍스트 — 회사명의 앞 두 글자(한글/영문만). */
+function monogram(name: string): string {
+  return name.replace(/[^가-힣A-Za-z]/g, '').slice(0, 2) || name.slice(0, 2)
+}
+
+/** 지금 브라우저가 엣지인지 (엣지 UA는 Chrome 문자열도 포함하므로 Edg/ 우선). */
+function isEdgeBrowser(): boolean {
+  return navigator.userAgent.includes('Edg/')
+}
 
 /** 전화 ARS 스타일 통화 화면 — 키패드에 각 번호의 기능을 매핑해 표시. */
 function ArsCallScreen({ insurer, onClose }: { insurer: InsurerLink; onClose: () => void }): JSX.Element {
@@ -166,6 +178,58 @@ function CancelGuideScreen({
   const steps = guide.steps ?? CANCEL_COMMON_STEPS
   const docs = guide.docs ?? CANCEL_COMMON_DOCS
   const note = guide.notes ?? CANCEL_COMMON_NOTE
+
+  // 고객에게 보낼 자막 슬라이드 영상 — 넣을 단계를 체크(기본 전체)하고 만든다.
+  const [chosen, setChosen] = useState<Set<number>>(() => new Set(steps.map((_, i) => i)))
+  const [customer, setCustomer] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [shareNote, setShareNote] = useState<string | null>(null)
+  const toggleStep = (i: number): void =>
+    setChosen((prev) => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i)
+      else next.add(i)
+      return next
+    })
+
+  const buildSlides = (): ClipSlide[] => {
+    const picked = steps.filter((_, i) => chosen.has(i))
+    const who = customer.trim() ? `${customer.trim()}님, ` : ''
+    return [
+      { badge: '보험 해지 안내', title: `${who}${insurer.name} 해지 방법`, body: ['아래 순서대로 하시면 됩니다'] },
+      { badge: '전화 경로', title: guide.arsPath, body: [`고객센터 ${insurer.csPhone}`] },
+      ...picked.map((s, i) => ({ badge: `STEP ${i + 1}`, title: s })),
+      { badge: '미리 준비할 것', title: '준비물', body: docs },
+      { badge: '꼭 확인', title: '해지 전 유의사항', body: [note] },
+      { badge: '문의', title: '궁금하면 담당 설계사에게', body: ['SJ INVEST'] }
+    ]
+  }
+
+  const makeAndShare = async (): Promise<void> => {
+    if (busy || chosen.size === 0) return
+    setBusy(true)
+    setShareNote(null)
+    const slides = buildSlides()
+    let file: File | null = null
+    let asVideo = false
+    const clip = await generateSlideClip(slides, 2000)
+    if (clip) {
+      asVideo = true
+      file = new File([clip.blob], `${insurer.name}_해지안내.${clip.ext}`, { type: clip.blob.type })
+    } else {
+      const png = await renderSlidePoster(slides)
+      if (png) file = new File([png], `${insurer.name}_해지안내.png`, { type: 'image/png' })
+    }
+    if (!file) {
+      setBusy(false)
+      setShareNote('이 기기에서는 영상·이미지 생성이 안 돼요. 화면을 캡처해 보내주세요.')
+      return
+    }
+    const r = await shareGuideFile(file)
+    setBusy(false)
+    setShareNote(r.message ?? (asVideo ? '영상 공유창을 열었어요.' : '영상이 지원되지 않아 이미지 안내로 보냈어요.'))
+  }
+
   return (
     <div className="fixed inset-0 z-[95] flex flex-col bg-gradient-to-b from-[#0a1830] via-[#0e1e3a] to-[#091326]">
       {/* 헤더 */}
@@ -216,23 +280,39 @@ function CancelGuideScreen({
             </div>
           </div>
 
-          {/* 단계 */}
+          {/* 단계 (체크한 단계가 영상에 담긴다) */}
           <div>
-            <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-bold text-[#cbd5e1]">
-              <FileText className="h-3.5 w-3.5 text-[#e6c877]" /> 진행 순서
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#cbd5e1]">
+                <FileText className="h-3.5 w-3.5 text-[#e6c877]" /> 진행 순서
+              </div>
+              <span className="text-[10px] text-[#64748b]">체크한 단계가 영상에 담겨요</span>
             </div>
             <ol className="space-y-1.5">
-              {steps.map((s, i) => (
-                <li
-                  key={i}
-                  className="flex gap-2.5 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-3 py-2.5"
-                >
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#c6982f] text-[11px] font-bold text-[#201603]">
-                    {i + 1}
-                  </span>
-                  <span className="text-[12.5px] leading-snug text-[#e2e8f0]">{s}</span>
-                </li>
-              ))}
+              {steps.map((s, i) => {
+                const on = chosen.has(i)
+                return (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onClick={() => toggleStep(i)}
+                      aria-pressed={on}
+                      className={`flex w-full items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition ${
+                        on ? 'border-[#c6982f] bg-[rgba(198,152,47,0.1)]' : 'border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)]'
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                          on ? 'border-[#c6982f] bg-[#c6982f] text-[#201603]' : 'border-[rgba(255,255,255,0.25)] text-transparent'
+                        }`}
+                      >
+                        <Check className="h-3 w-3" />
+                      </span>
+                      <span className="text-[12.5px] leading-snug text-[#e2e8f0]">{s}</span>
+                    </button>
+                  </li>
+                )
+              })}
             </ol>
           </div>
 
@@ -243,6 +323,35 @@ function CancelGuideScreen({
             </div>
             <p className="mt-1 text-[11.5px] leading-relaxed text-[#e2e8f0]">{note}</p>
           </div>
+
+          {/* 고객에게 보내기 — 자막 슬라이드 영상 → 카톡 공유 */}
+          <div className="rounded-2xl border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.03)] p-3.5">
+            <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#e6c877]">
+              <Video className="h-3.5 w-3.5" /> 고객에게 영상으로 보내기
+            </div>
+            <p className="mt-1 text-[10.5px] leading-relaxed text-[#94a3b8]">
+              위에서 체크한 단계로 짧은 안내 영상을 만들어 카톡으로 공유합니다. (만드는 데 약 20초)
+            </p>
+            <input
+              value={customer}
+              onChange={(e) => setCustomer(e.target.value)}
+              placeholder="고객 이름 (선택)"
+              className="mt-2.5 w-full rounded-lg border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] px-3 py-2 text-[13px] text-[#f1f5f9] outline-none placeholder:text-[#64748b] focus:border-[#c6982f]"
+            />
+            <button
+              type="button"
+              onClick={() => void makeAndShare()}
+              disabled={busy || chosen.size === 0}
+              className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#22c55e] px-4 py-2.5 text-[13px] font-bold text-white active:brightness-90 disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+              {busy ? '영상 만드는 중… (약 20초)' : '영상 만들어 카톡 공유'}
+            </button>
+            {chosen.size === 0 ? (
+              <p className="mt-1.5 text-[10.5px] text-[#fbbf24]">영상에 넣을 단계를 하나 이상 체크하세요.</p>
+            ) : null}
+            {shareNote ? <p className="mt-1.5 text-[11px] font-semibold text-[#e6c877]">{shareNote}</p> : null}
+          </div>
         </div>
       </div>
     </div>
@@ -252,7 +361,15 @@ function CancelGuideScreen({
 export default function InsurerLinksMenu({ compact = false }: { compact?: boolean }): JSX.Element {
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<InsurerLink | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
+
+  // 브라우저 호환 안내는 몇 초 뒤 자동으로 사라진다.
+  useEffect(() => {
+    if (!notice) return
+    const id = window.setTimeout(() => setNotice(null), 6000)
+    return () => window.clearTimeout(id)
+  }, [notice])
 
   useEffect(() => {
     if (!open) return
@@ -280,8 +397,37 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
     setOpen(false)
   }
 
+  /**
+   * 전산 열기 — 무슨 상황이든 사이트는 반드시 새 탭으로 연다(2026-08-05 대표:
+   * "크롬 전용 회사가 안 열린다" — 이전엔 엣지에서 크롬 전용을 안내만 하고 안 열어
+   * 먹통처럼 보였음). 브라우저가 안 맞으면(설계사닷컴 호환표 기준) 여는 것과
+   * 동시에 주소를 복사해주고 안내를 띄운다. 엣지 전용을 크롬에서 누르면
+   * 윈도우 microsoft-edge: 프로토콜로 엣지 실행도 함께 시도한다.
+   */
+  const openInsurer = (l: InsurerLink): void => {
+    const edgeNow = isEdgeBrowser()
+    if (edgeNow && !l.edge && l.chrome) {
+      window.open(l.url, '_blank', 'noopener')
+      void copyText(l.url)
+      setNotice(`${l.name} 전산은 크롬 권장입니다 — 일단 열었고 주소도 복사했어요. 화면이 이상하면 크롬 주소창에 붙여넣어 주세요.`)
+      return
+    }
+    if (!edgeNow && !l.chrome && l.edge) {
+      window.open(l.url, '_blank', 'noopener')
+      try {
+        window.location.href = `microsoft-edge:${l.url}`
+      } catch {
+        /* 프로토콜 미지원 환경이면 새 탭만 */
+      }
+      setNotice(`${l.name} 전산은 엣지 권장입니다 — 엣지 열기 창이 뜨면 허용을 눌러주세요.`)
+      return
+    }
+    openLink(l.url)
+  }
+
   const close = (): void => {
     setSelected(null)
+    setNotice(null)
     setOpen(false)
   }
 
@@ -357,11 +503,19 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
       ) : null}
 
       {open && !compact ? (
-        /* 데스크톱: 회사 카드(전산 접속 + 고객센터 번호 + 상품공시실) 정사각형 그리드 */
+        /* 데스크톱: 회사 카드(브랜드 모노그램 + 전산 + 고객센터 + 공시실 + 브라우저 호환) */
         <div className="absolute right-0 z-[70] mt-2 max-h-[72vh] w-[31rem] overflow-y-auto rounded-2xl border border-slate-800 bg-white shadow-xl">
-          <div className="border-b border-slate-800 px-4 py-2.5 text-[11px] font-bold text-slate-500">
-            보험사 바로가기 <span className="font-medium">— 전산·상품공시실은 새 탭, 카드 클릭=전산 접속</span>
+          <div className="border-b border-slate-800 bg-gradient-to-r from-[#0e1e3a] to-[#1a3057] px-4 py-3">
+            <div className="text-[13px] font-bold text-[#f1f5f9]">보험사 바로가기</div>
+            <div className="text-[10px] text-[#93a6c9]">
+              카드 클릭=전산 접속(새 탭) · <span className="text-[#e6c877]">크롬/엣지</span> 배지는 전산 지원 브라우저
+            </div>
           </div>
+          {notice ? (
+            <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11px] font-semibold text-amber-800">
+              {notice}
+            </div>
+          ) : null}
           {INSURER_GROUPS.map((group: InsurerGroup) => {
             const items = INSURER_LINKS.filter((l) => l.group === group)
             if (items.length === 0) return null
@@ -370,24 +524,49 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                 <div className="bg-slate-900 px-4 py-1.5 text-[10px] font-bold tracking-wide text-[#8a6a1f]">
                   {group}
                 </div>
-                <div className="grid grid-cols-3 gap-2 p-2.5">
+                <div className="grid grid-cols-3 gap-2 bg-[#f4f6fb] p-2.5">
                   {items.map((l) => (
                     <div
                       key={l.name}
                       role="button"
                       tabIndex={0}
-                      onClick={() => openLink(l.url)}
+                      onClick={() => openInsurer(l)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') openLink(l.url)
+                        if (e.key === 'Enter') openInsurer(l)
                       }}
                       title={`${l.name} — ${l.portal}`}
-                      className="group flex aspect-square cursor-pointer flex-col items-center justify-between rounded-2xl border border-slate-800 bg-white p-2.5 text-center transition hover:border-[#c6982f] hover:shadow-md"
+                      className="group flex aspect-square cursor-pointer flex-col items-center justify-between rounded-2xl border border-slate-800 bg-white p-2 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-[#c6982f] hover:shadow-md"
+                      style={{ borderTopWidth: 3, borderTopColor: l.color }}
                     >
                       <div className="flex flex-1 flex-col items-center justify-center gap-1">
-                        <span className="break-keep text-[13px] font-bold leading-tight text-slate-100">{l.name}</span>
-                        <span className="flex items-center gap-1 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                        <span
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-extrabold"
+                          style={{ background: `${l.color}1f`, color: l.color }}
+                        >
+                          {monogram(l.name)}
+                        </span>
+                        <span className="break-keep text-[12px] font-bold leading-tight text-slate-100">{l.name}</span>
+                        <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-300">
                           <Phone className="h-2.5 w-2.5 text-emerald-700" />
                           {l.csPhone}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span
+                            title={l.chrome ? '크롬 지원' : '크롬 미지원'}
+                            className={`rounded px-1 py-px text-[8.5px] font-bold ${
+                              l.chrome ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-900 text-slate-500 opacity-50 line-through'
+                            }`}
+                          >
+                            크롬
+                          </span>
+                          <span
+                            title={l.edge ? '엣지 지원' : '엣지 미지원'}
+                            className={`rounded px-1 py-px text-[8.5px] font-bold ${
+                              l.edge ? 'bg-sky-50 text-sky-700' : 'bg-slate-900 text-slate-500 opacity-50 line-through'
+                            }`}
+                          >
+                            엣지
+                          </span>
                         </span>
                       </div>
                       <div className="flex w-full gap-1">
@@ -395,7 +574,7 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
-                            openLink(l.url)
+                            openInsurer(l)
                           }}
                           className="flex flex-1 items-center justify-center gap-0.5 rounded-lg border border-[#c6982f] bg-[#fdf7ea] py-1 text-[10px] font-bold text-[#8a6a1f] transition hover:brightness-95"
                         >
