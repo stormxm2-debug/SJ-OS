@@ -88,7 +88,14 @@ const api = {
      * validates the key against its whitelist — raw URLs are never accepted.
      */
     open: (key: string): Promise<{ ok: boolean; key?: string; url?: string; error?: string }> =>
-      ipcRenderer.invoke('external:open', key)
+      ipcRenderer.invoke('external:open', key),
+    /**
+     * 특정 브라우저(크롬/엣지)로 https URL 열기 — 보험사 전산 전용 브라우저용.
+     * main이 https 검증 후 브라우저 실행 파일을 직접 spawn한다(셸 미경유).
+     * 미설치면 ok:false — 호출부가 기본 브라우저로 폴백할 것.
+     */
+    openInBrowser: (url: string, browser: 'chrome' | 'edge'): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke('external:open-in-browser', url, browser)
   },
   ai: {
     /**

@@ -60,6 +60,12 @@ function isEdgeBrowser(): boolean {
   return navigator.userAgent.includes('Edg/')
 }
 
+/** 데스크톱 앱(Electron) 브릿지 — 특정 브라우저로 직접 실행. 웹에서는 undefined. */
+function desktopOpenInBrowser(): ((url: string, browser: 'chrome' | 'edge') => Promise<{ ok: boolean }>) | undefined {
+  const sj = (window as { sj?: { external?: { openInBrowser?: (url: string, browser: 'chrome' | 'edge') => Promise<{ ok: boolean }> } } }).sj
+  return sj?.external?.openInBrowser
+}
+
 /** 전화 ARS 스타일 통화 화면 — 키패드에 각 번호의 기능을 매핑해 표시. */
 function ArsCallScreen({ insurer, onClose }: { insurer: InsurerLink; onClose: () => void }): JSX.Element {
   const keys = parseArsKeys(insurer.ars)
@@ -405,6 +411,23 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
    * 윈도우 microsoft-edge: 프로토콜로 엣지 실행도 함께 시도한다.
    */
   const openInsurer = (l: InsurerLink): void => {
+    // 데스크톱 앱: 전용 브라우저가 정해진 회사는 그 브라우저(크롬/엣지)를 직접
+    // 실행한다 — 기본 브라우저가 무엇이든 무관 (2026-08-05 대표: 누르면 크롬으로).
+    const desktopOpen = desktopOpenInBrowser()
+    if (desktopOpen && (!l.chrome || !l.edge)) {
+      const target: 'chrome' | 'edge' = l.chrome ? 'chrome' : 'edge'
+      void desktopOpen(l.url, target).then((r) => {
+        if (r?.ok) {
+          setNotice(`${l.name} 전산을 ${target === 'chrome' ? '크롬으로' : '엣지로'} 열었습니다.`)
+        } else {
+          // 해당 브라우저 미설치 → 기본 브라우저 폴백 + 안내
+          window.open(l.url, '_blank', 'noopener')
+          void copyText(l.url)
+          setNotice(`${target === 'chrome' ? '크롬' : '엣지'}이 설치돼 있지 않아 기본 브라우저로 열었습니다 (주소 복사됨).`)
+        }
+      })
+      return
+    }
     const edgeNow = isEdgeBrowser()
     if (edgeNow && !l.edge && l.chrome) {
       window.open(l.url, '_blank', 'noopener')

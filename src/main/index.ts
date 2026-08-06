@@ -4,6 +4,7 @@ import { autoUpdater } from 'electron-updater'
 import { runCoding } from './coding/engine'
 import { CompanyStartupService } from './companyStartupService'
 import { openApprovedExternal } from './externalLinks'
+import { openInBrowser } from './openInBrowser'
 import { getAiProxyStatus } from './aiProxyStatus'
 import { exportClaudePrompt } from './claudeExport'
 import { openPromptsFolder, runApprovedJob } from './claudeRunner'
@@ -294,6 +295,12 @@ app.whenReady().then(() => {
   // whitelist in externalLinks.ts maps it to a vetted URL. No raw URL, shell
   // execution, or filesystem access is exposed.
   ipcMain.handle('external:open', (_event, key: unknown) => openApprovedExternal(key))
+
+  // 특정 브라우저로 열기(보험사 전산 전용 브라우저) — https만, 셸 미경유 spawn.
+  // 위험도는 setWindowOpenHandler의 openExternal(안전 URL)과 동급이다.
+  ipcMain.handle('external:open-in-browser', (_event, url: unknown, browser: unknown) =>
+    openInBrowser(url, browser)
+  )
 
   // AI proxy readiness: probe ONLY the local sj-ai-proxy status endpoint from
   // the main process (no CORS/origin issues, no API key ever read or returned).
