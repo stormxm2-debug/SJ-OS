@@ -10,7 +10,8 @@ import {
   Settings2,
   Trash2,
   AlertTriangle,
-  Hourglass
+  Hourglass,
+  Users
 } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole } from '@renderer/navigation/roleAccess'
@@ -28,6 +29,16 @@ import {
   type CommissionRate,
   type SalaryCalc
 } from '@renderer/services/commercial/salaryService'
+import {
+  getMemberRate,
+  memberMonthlySales,
+  calcMemberSalary,
+  saveMemberRate,
+  listMemberRates,
+  createMemberCalc,
+  type MemberSales
+} from '@renderer/services/commercial/salaryMemberRateService'
+import { loadStaffDirectory, type StaffDirectoryEntry } from '@renderer/services/commercial/performanceRecordsService'
 
 /**
  * 급여 계산기 — 수당 4종(모집자·상생시상·원수사시상·13개월시상), 월납보험료 기준 %.
@@ -52,8 +63,6 @@ function initialMode(): CalcMode {
     return 'simple'
   }
 }
-
-const ZERO_PCT = { recruiterPct: 0, sangsaengPct: 0, carrierPct: 0, month13Pct: 0 }
 
 function currentMonth(): string {
   const d = new Date()
@@ -195,9 +204,6 @@ export default function SalaryCalculatorPage(): JSX.Element {
     [premium, pct]
   )
 
-  // 심플 모드는 % 입력이 없으므로 요율표에서 찾은 값으로만 계산 (요율 없으면 0 + 안내)
-  const simpleAmounts = useMemo(() => calcSalaryAmounts(premium, appliedRate ?? ZERO_PCT), [premium, appliedRate])
-
   const submit = async (): Promise<void> => {
     setSaveMsg(undefined)
     if (!insurer) {
@@ -269,7 +275,7 @@ export default function SalaryCalculatorPage(): JSX.Element {
             <h1 className="text-lg font-bold text-slate-100">급여 계산기</h1>
             <p className="text-[12px] text-slate-500">
               {mode === 'simple'
-                ? '보험사와 월납보험료만 넣으면 예상 수당이 바로 나옵니다'
+                ? '생명·손해·단기납 매출에 회원별 요율(%)을 적용해 수당을 계산합니다'
                 : '모집자 + 상생시상 + 원수사시상 + 13개월시상 — 월납보험료 기준 %'}
             </p>
           </div>
@@ -339,99 +345,8 @@ export default function SalaryCalculatorPage(): JSX.Element {
       {/* 관리자: 요율표 관리 */}
       {admin && showRateAdmin ? <RateAdmin rates={rates} month={month} onChanged={() => void loadRates()} /> : null}
 
-      {/* 심플 버전 — 보험사+월납보험료 → 즉시 수당 (순수 계산 전용) */}
-      {mode === 'simple' ? (
-        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
-          <div className="mb-3 text-sm font-bold text-slate-100">간편 계산</div>
-
-          <span className="mb-1.5 block text-[11px] font-medium text-slate-500">보험사 *</span>
-          <div className="flex flex-wrap gap-1.5">
-            {insurerOptions.map((i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => pickInsurer(i)}
-                className={[
-                  'rounded-full px-3 py-1.5 text-[12px] font-semibold transition',
-                  insurer === i ? 'bg-[#0e1e3a] text-[#e6c877]' : 'border border-slate-800 bg-white text-slate-400 hover:text-slate-200'
-                ].join(' ')}
-              >
-                {i}
-              </button>
-            ))}
-          </div>
-
-          {insurer && groupOptions.length > 1 ? (
-            <div className="mt-2.5">
-              <span className="mb-1.5 block text-[11px] font-medium text-slate-500">상품군</span>
-              <div className="flex flex-wrap gap-1.5">
-                {groupOptions.map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => pickGroup(g)}
-                    className={[
-                      'rounded-full px-2.5 py-1 text-[11px] font-semibold transition',
-                      productGroup === g ? 'bg-[#c6982f]/15 text-[#8a6a1f] ring-1 ring-[#c6982f]/50' : 'border border-slate-800 bg-white text-slate-400 hover:text-slate-200'
-                    ].join(' ')}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <label className="mt-3 block">
-            <span className="mb-1.5 block text-[11px] font-medium text-slate-500">월납보험료 (원) *</span>
-            <input
-              value={premiumStr ? fmt(premiumOf(premiumStr)) : ''}
-              onChange={(e) => setPremiumStr(e.target.value)}
-              inputMode="numeric"
-              placeholder="100,000"
-              className="w-full rounded-xl border border-slate-800 bg-white px-4 py-3 text-xl font-extrabold text-slate-100 focus:outline-none"
-            />
-          </label>
-
-          {insurer && !appliedRate ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 flex-1">이 보험사·상품군은 요율이 등록돼 있지 않습니다.</span>
-              <button type="button" onClick={() => switchMode('detail')} className="shrink-0 font-bold underline">
-                디테일에서 직접 입력
-              </button>
-            </div>
-          ) : null}
-
-          {insurer && appliedRate && premium > 0 ? (
-            <div className="mt-4 rounded-xl bg-[#0e1e3a] p-5 text-center">
-              <div className="text-[12px] font-medium text-[#8fa3c8]">즉시 예상 수당</div>
-              <div className="mt-1 text-3xl font-extrabold text-[#e6c877]">{fmt(simpleAmounts.immediate)}원</div>
-              <div className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-[#8fa3c8]">
-                <Hourglass className="h-3 w-3" /> 13회차 유지 시 총 <span className="font-bold text-white">{fmt(simpleAmounts.total)}원</span>
-              </div>
-              <div className="mt-3 border-t border-[#c6982f]/30 pt-2 text-[11px] text-[#8fa3c8]">
-                모집자 {fmt(simpleAmounts.recruiter)} · 상생 {fmt(simpleAmounts.sangsaeng)} · 원수사 {fmt(simpleAmounts.carrier)} · 13개월 {fmt(simpleAmounts.month13)}
-              </div>
-              {appliedRate.effectiveMonth ? (
-                <div className="mt-2 text-[10px] font-bold text-[#e6c877]">{appliedRate.effectiveMonth} 시책 요율 적용</div>
-              ) : null}
-            </div>
-          ) : !insurer || premium <= 0 ? (
-            <div className="mt-4 rounded-xl border border-dashed border-slate-700 py-6 text-center text-[12px] text-slate-500">
-              보험사를 선택하고 월납보험료를 입력하면 예상 수당이 바로 표시됩니다.
-            </div>
-          ) : null}
-
-          <button
-            type="button"
-            onClick={() => switchMode('detail')}
-            className="mt-3 text-[11px] font-semibold text-slate-500 underline hover:text-indigo-600"
-          >
-            % 수정 · 계약자명 · 저장은 디테일 버전에서
-          </button>
-        </div>
-      ) : null}
+      {/* 심플 — 생명·손해·단기납 매출 × 회원별 요율 (실적 연동) */}
+      {mode === 'simple' ? <SimpleMemberSalary admin={admin} month={month} /> : null}
 
       {/* 계산기 (디테일) */}
       {mode === 'detail' ? (
@@ -919,6 +834,259 @@ function RateAdmin({ rates, month, onChanged }: { rates: CommissionRate[]; month
       >
         <Plus className="h-3 w-3" /> 상품군/보험사 행 추가
       </button>
+    </div>
+  )
+}
+
+/**
+ * 심플(개편) — 생명·손해·단기납 '매출 × 회원별 요율(%)' 로 수당 계산.
+ * 회원 선택(관리자) 또는 본인 고정 → 그 회원 요율 + 그 달 실적 매출 자동 로드(수정 가능) → 즉시 수당.
+ * 관리자는 [회원 요율 관리]에서 직원별 %를 입력한다. RLS(owner·admin 쓰기, 본인 조회)가 실제 경계.
+ */
+function SimpleMemberSalary({ admin, month }: { admin: boolean; month: string }): JSX.Element {
+  const { session } = useSession()
+  const [staffId, setStaffId] = useState<string>(session.id)
+  const [staffName, setStaffName] = useState<string>(session.name || '나')
+  const [staffList, setStaffList] = useState<StaffDirectoryEntry[]>([])
+  const [rate, setRate] = useState<{ lifePct: number; nonLifePct: number; shortPct: number }>({ lifePct: 0, nonLifePct: 0, shortPct: 0 })
+  const [sales, setSales] = useState<MemberSales>({ life: 0, nonLife: 0, shortTerm: 0 })
+  const [loading, setLoading] = useState(true)
+  const [rateAdminOpen, setRateAdminOpen] = useState(false)
+  const [saveNote, setSaveNote] = useState('')
+
+  // 관리자: 직원 목록(회원 선택용)
+  useEffect(() => {
+    if (!admin) return
+    void loadStaffDirectory().then((r) => setStaffList((r as { data?: StaffDirectoryEntry[] }).data ?? []))
+  }, [admin])
+
+  // 회원의 요율 + 그 달 실적 매출을 불러온다(수정 가능).
+  const doLoad = async (): Promise<void> => {
+    setLoading(true)
+    const [rt, sl] = await Promise.all([getMemberRate(staffId), memberMonthlySales(staffId, month)])
+    setRate({ lifePct: rt.lifePct, nonLifePct: rt.nonLifePct, shortPct: rt.shortPct })
+    setSales(sl)
+    setLoading(false)
+  }
+  useEffect(() => {
+    let alive = true
+    setLoading(true)
+    Promise.all([getMemberRate(staffId), memberMonthlySales(staffId, month)]).then(([rt, sl]) => {
+      if (!alive) return
+      setRate({ lifePct: rt.lifePct, nonLifePct: rt.nonLifePct, shortPct: rt.shortPct })
+      setSales(sl)
+      setLoading(false)
+    })
+    return () => {
+      alive = false
+    }
+  }, [staffId, month])
+
+  const bd = calcMemberSalary(sales, rate)
+  const setSale = (k: keyof MemberSales, v: string): void => setSales((s) => ({ ...s, [k]: premiumOf(v) }))
+  const pickStaff = (id: string): void => {
+    setStaffId(id)
+    setStaffName(id === session.id ? session.name || '나' : staffList.find((s) => s.profileId === id)?.name ?? '')
+    setSaveNote('')
+  }
+  const save = async (): Promise<void> => {
+    const r = await createMemberCalc({ staffId, calcMonth: month, sales, rate, total: bd.total })
+    setSaveNote(r.ok ? '저장했습니다.' : r.error ?? '저장 실패')
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-bold text-slate-100">매출별 수당 (심플)</div>
+        {admin ? (
+          <button
+            type="button"
+            onClick={() => setRateAdminOpen((v) => !v)}
+            className={['inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition', rateAdminOpen ? 'bg-[#0e1e3a] text-[#e6c877]' : 'border border-slate-800 bg-white text-slate-400 hover:text-indigo-600'].join(' ')}
+          >
+            <Settings2 className="h-3.5 w-3.5" /> 회원 요율 관리
+          </button>
+        ) : null}
+      </div>
+
+      {admin && rateAdminOpen ? <MemberRateAdmin staffList={staffList} onChanged={() => void doLoad()} /> : null}
+
+      {/* 회원(직원) 선택 — 관리자는 전 직원, 직원은 본인 고정 */}
+      <div className="mb-3">
+        <span className="mb-1.5 block text-[11px] font-medium text-slate-500">회원 (직원)</span>
+        {admin ? (
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 shrink-0 text-slate-400" />
+            <select
+              value={staffId}
+              onChange={(e) => pickStaff(e.target.value)}
+              className="min-w-[10rem] flex-1 rounded-lg border border-slate-800 bg-white px-2.5 py-2 text-[13px] font-semibold text-slate-100 focus:outline-none"
+            >
+              <option value={session.id}>{session.name || '나'} (나)</option>
+              {staffList
+                .filter((s) => s.profileId !== session.id)
+                .map((s) => (
+                  <option key={s.profileId} value={s.profileId}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-[13px] font-bold text-slate-100">
+            <Users className="h-4 w-4 text-[#c6982f]" /> {session.name || '나'}
+          </div>
+        )}
+      </div>
+
+      {/* 이 회원의 요율 */}
+      <div className="mb-3 flex flex-wrap gap-1.5 text-[11px]">
+        {([['생명', rate.lifePct], ['손해', rate.nonLifePct], ['단기납', rate.shortPct]] as const).map(([lbl, p]) => (
+          <span key={lbl} className="rounded-full border border-slate-800 bg-slate-950 px-2.5 py-1 font-semibold text-slate-300">
+            {lbl} <span className="text-[#e6c877]">{p}%</span>
+          </span>
+        ))}
+        {rate.lifePct === 0 && rate.nonLifePct === 0 && rate.shortPct === 0 ? (
+          <span className="text-slate-500">{admin ? '요율 미설정 — [회원 요율 관리]에서 입력' : '요율 미설정 — 관리자에게 문의'}</span>
+        ) : null}
+      </div>
+
+      {/* 매출 3종 — 실적 자동 + 수정 가능 */}
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[11px] font-medium text-slate-500">이 달 매출 (실적에서 불러옴 · 수정 가능)</span>
+        <button type="button" onClick={() => void doLoad()} className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-indigo-600">
+          <RefreshCw className="h-3 w-3" /> 실적 다시 불러오기
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {([['생명', 'life'], ['손해', 'nonLife'], ['단기납', 'shortTerm']] as const).map(([lbl, key]) => (
+          <label key={key} className="block">
+            <span className="mb-1 block text-[10px] font-semibold text-slate-500">{lbl} 매출(원)</span>
+            <input
+              value={sales[key] ? fmt(sales[key]) : ''}
+              onChange={(e) => setSale(key, e.target.value)}
+              inputMode="numeric"
+              placeholder="0"
+              className="w-full rounded-lg border border-slate-800 bg-white px-2.5 py-2 text-[14px] font-bold text-slate-100 focus:outline-none"
+            />
+          </label>
+        ))}
+      </div>
+      <p className="mt-1 text-[10px] text-slate-400">단기납은 회사 규칙상 60% 반영이 필요하면 매출을 조정하거나 단기납 %에 반영하세요.</p>
+
+      {/* 결과 */}
+      <div className="mt-4 rounded-xl bg-[#0e1e3a] p-5 text-center">
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 text-[13px] text-[#8fa3c8]">
+            <Loader2 className="h-4 w-4 animate-spin" /> 불러오는 중…
+          </div>
+        ) : (
+          <>
+            <div className="text-[12px] font-medium text-[#8fa3c8]">예상 수당 합계</div>
+            <div className="mt-1 text-3xl font-extrabold text-[#e6c877]">{fmt(bd.total)}원</div>
+            <div className="mt-3 border-t border-[#c6982f]/30 pt-2 text-[11px] text-[#8fa3c8]">
+              생명 {fmt(bd.life)} · 손해 {fmt(bd.nonLife)} · 단기납 {fmt(bd.short)}
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-slate-500">{staffName ? `${staffName} · ${month.replace('-', '년 ')}월` : ''}</span>
+        <button
+          type="button"
+          onClick={() => void save()}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-[12px] font-bold text-white"
+        >
+          <Save className="h-3.5 w-3.5" /> 이 달 급여로 저장
+        </button>
+      </div>
+      {saveNote ? <p className="mt-1.5 text-right text-[11px] font-semibold text-[#8a6a1f]">{saveNote}</p> : null}
+    </div>
+  )
+}
+
+/** 관리자: 직원별 생명/손해/단기납 요율(%) 입력표. RLS(owner·admin)가 실제 경계. */
+function MemberRateAdmin({ staffList, onChanged }: { staffList: StaffDirectoryEntry[]; onChanged: () => void }): JSX.Element {
+  type Row = { life: string; nonLife: string; short: string }
+  const [rows, setRows] = useState<Record<string, Row>>({})
+  const [busy, setBusy] = useState('')
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    void listMemberRates().then((r) => {
+      if (!r.ok) {
+        setErr(r.error ?? '')
+        return
+      }
+      const map: Record<string, Row> = {}
+      for (const it of r.items) map[it.staffId] = { life: String(it.lifePct), nonLife: String(it.nonLifePct), short: String(it.shortPct) }
+      setRows(map)
+    })
+  }, [])
+
+  const val = (id: string): Row => rows[id] ?? { life: '', nonLife: '', short: '' }
+  const setVal = (id: string, patch: Partial<Row>): void => setRows((r) => ({ ...r, [id]: { ...val(id), ...patch } }))
+  const pctNum = (s: string): number => {
+    const n = Number(s)
+    return Number.isFinite(n) && n >= 0 ? n : 0
+  }
+  const saveOne = async (id: string): Promise<void> => {
+    setBusy(id)
+    const v = val(id)
+    const r = await saveMemberRate(id, { lifePct: pctNum(v.life), nonLifePct: pctNum(v.nonLife), shortPct: pctNum(v.short) })
+    setBusy('')
+    if (!r.ok) {
+      setErr(r.error ?? '저장 실패')
+      return
+    }
+    setErr('')
+    onChanged()
+  }
+
+  return (
+    <div className="mb-3 rounded-xl border border-[#c6982f]/40 bg-[#fdf9f0] p-3">
+      <div className="mb-2 text-[12px] font-bold text-[#8a6a1f]">회원별 요율 (%) — 관리자 전용 (급여 민감정보)</div>
+      {err ? <div className="mb-2 text-[11px] font-semibold text-rose-600">{err}</div> : null}
+      <div className="grid grid-cols-[1.4fr_repeat(3,0.9fr)_auto] items-center gap-1.5 text-[10px] font-bold text-slate-500">
+        <span className="px-1">직원</span>
+        <span className="text-center">생명%</span>
+        <span className="text-center">손해%</span>
+        <span className="text-center">단기납%</span>
+        <span />
+      </div>
+      <div className="mt-1 space-y-1">
+        {staffList.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 py-3 text-center text-[11px] text-slate-500">직원 목록을 불러오는 중…</div>
+        ) : (
+          staffList.map((s) => {
+            const v = val(s.profileId)
+            return (
+              <div key={s.profileId} className="grid grid-cols-[1.4fr_repeat(3,0.9fr)_auto] items-center gap-1.5">
+                <span className="truncate px-1 text-[12px] font-semibold text-slate-100">{s.name}</span>
+                {(['life', 'nonLife', 'short'] as const).map((k) => (
+                  <input
+                    key={k}
+                    value={v[k]}
+                    onChange={(e) => setVal(s.profileId, { [k]: e.target.value.replace(/[^0-9.]/g, '') } as Partial<Row>)}
+                    inputMode="decimal"
+                    placeholder="0"
+                    className="rounded-lg border border-slate-800 bg-white px-1.5 py-1.5 text-center text-[12px] text-slate-100 focus:outline-none"
+                  />
+                ))}
+                <button
+                  type="button"
+                  onClick={() => void saveOne(s.profileId)}
+                  disabled={busy === s.profileId}
+                  className="rounded-lg bg-[#0e1e3a] px-2 py-1.5 text-[11px] font-bold text-[#e6c877] disabled:opacity-50"
+                >
+                  {busy === s.profileId ? '…' : '저장'}
+                </button>
+              </div>
+            )
+          })
+        )}
+      </div>
     </div>
   )
 }
