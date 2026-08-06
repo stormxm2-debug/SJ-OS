@@ -71,9 +71,14 @@ export async function uploadAttendancePhoto(client: any, userId: string, dataUrl
   }
   const path = `${userId}/${dayFolder()}/${shortId()}.${parsed.ext}`
   try {
-    const { error } = await client.storage
-      .from(ATTENDANCE_PHOTO_BUCKET)
-      .upload(path, parsed.blob, { contentType: parsed.mime, upsert: false, cacheControl: '3600' })
+    // 신호 약한 곳에서 업로드가 무한정 매달리지 않게 20초 타임아웃 — 초과 시
+    // 사진 없이 기록이 먼저 저장되고 화면에 업로드 실패 경고가 뜬다.
+    const { error } = await Promise.race([
+      client.storage
+        .from(ATTENDANCE_PHOTO_BUCKET)
+        .upload(path, parsed.blob, { contentType: parsed.mime, upsert: false, cacheControl: '3600' }),
+      new Promise<{ error: Error }>((resolve) => window.setTimeout(() => resolve({ error: new Error('upload-timeout') }), 20000))
+    ])
     if (error) return { ok: false, configured: true, message: '사진 업로드에 실패했습니다.' }
     return { ok: true, configured: true, path, message: '사진이 업로드되었습니다.' }
   } catch {

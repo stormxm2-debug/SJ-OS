@@ -45,6 +45,72 @@ async function currentUserId(client: any): Promise<string | null> {
   }
 }
 
+/**
+ * 폰 절전/백그라운드 복귀 직후 첫 요청이 만료된 토큰으로 나가 저장이 거부되는
+ * 간헐 오류 대비 — 토큰이 만료됐거나 60초 안에 만료되면 미리 갱신한다.
+ * 갱신 실패는 조용히 넘어가 기존 흐름(요청 시도)을 막지 않는다.
+ */
+async function ensureFreshSession(client: any): Promise<void> {
+  try {
+    const { data } = await client.auth.getSession()
+    const expiresAt = Number(data?.session?.expires_at ?? 0) * 1000
+    if (expiresAt && expiresAt < Date.now() + 60_000) {
+      await client.auth.refreshSession()
+    }
+  } catch {
+    /* 갱신 실패 → 요청 자체가 판정 */
+  }
+}
+
+/** 오늘 이 사용자의 해당 유형 기록이 이미 있는지 (재시도 중복 방지용). */
+async function todayRecordOf(client: any, userId: string, type: 'check-in' | 'check-out'): Promise<any | null> {
+  try {
+    const { start, end } = todayRange()
+    const { data } = await client
+      .from('attendance_records')
+      .select(SELECT_COLS)
+      .eq('staff_id', userId)
+      .eq('type', type)
+      .gte('timestamp', start)
+      .lt('timestamp', end)
+      .order('timestamp', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    return data ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 출퇴근 기록 insert + 실패 시 1회 자동 재시도 (순간 네트워크 끊김/토큰 만료 대비).
+ * 재시도 전에 "첫 시도가 사실은 성공했는데 응답만 유실된 경우"를 확인해 중복 기록을
+ * 막는다 — 이미 오늘 기록이 있으면 그 행을 성공으로 돌려준다.
+ */
+async function insertAttendanceWithRetry(
+  client: any,
+  userId: string,
+  row: Record<string, unknown>,
+  type: 'check-in' | 'check-out'
+): Promise<{ data: any | null; error: unknown }> {
+  const first = await client.from('attendance_records').insert(row).select(SELECT_COLS).single().then(
+    (r: any) => r,
+    (e: unknown) => ({ data: null, error: e })
+  )
+  if (!first.error) return first
+
+  // 응답 유실로 실제로는 저장됐을 수 있음 → 중복 insert 방지
+  const existing = await todayRecordOf(client, userId, type)
+  if (existing) return { data: existing, error: null }
+
+  await client.auth.refreshSession().catch(() => {})
+  await new Promise((r) => window.setTimeout(r, 500))
+  return client.from('attendance_records').insert(row).select(SELECT_COLS).single().then(
+    (r: any) => r,
+    (e: unknown) => ({ data: null, error: e })
+  )
+}
+
 export interface AttendanceWithStaff extends AttendanceRecord {
   teamId?: string
 }
@@ -198,11 +264,12 @@ export const supabaseAttendanceAdapter = {
   async createCheckIn(input: AttendanceInput): Promise<AdapterResult<AttendanceWithStaff>> {
     const client = await getClient()
     if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    await ensureFreshSession(client)
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     const photoPath = await resolvePhotoPath(client, userId, input)
-    const { data, error } = await client.from('attendance_records').insert(buildInsert({ ...input, type: 'check-in', photoPath }, userId)).select(SELECT_COLS).single()
-    if (error) return err('error', '출근 기록 저장에 실패했습니다.')
+    const { data, error } = await insertAttendanceWithRetry(client, userId, buildInsert({ ...input, type: 'check-in', photoPath }, userId), 'check-in')
+    if (error || !data) return err('error', '출근 기록 저장에 실패했습니다. 네트워크 확인 후 다시 눌러주세요.')
     const [rec] = await attachSignedUrls(client, [data], [mapRow(data)])
     return { ok: true, data: rec }
   },
@@ -210,11 +277,12 @@ export const supabaseAttendanceAdapter = {
   async createCheckOut(input: AttendanceInput): Promise<AdapterResult<AttendanceWithStaff>> {
     const client = await getClient()
     if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    await ensureFreshSession(client)
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     const photoPath = await resolvePhotoPath(client, userId, input)
-    const { data, error } = await client.from('attendance_records').insert(buildInsert({ ...input, type: 'check-out', photoPath }, userId)).select(SELECT_COLS).single()
-    if (error) return err('error', '퇴근 기록 저장에 실패했습니다.')
+    const { data, error } = await insertAttendanceWithRetry(client, userId, buildInsert({ ...input, type: 'check-out', photoPath }, userId), 'check-out')
+    if (error || !data) return err('error', '퇴근 기록 저장에 실패했습니다. 네트워크 확인 후 다시 눌러주세요.')
     const [rec] = await attachSignedUrls(client, [data], [mapRow(data)])
     return { ok: true, data: rec }
   }
