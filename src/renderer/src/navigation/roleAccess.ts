@@ -46,6 +46,8 @@ export const STAFF_ROUTES: ViewName[] = [
   'today-contacts',
   'content-studio',
   'knowledge',
+  'family-caregiver',
+  'security-center',
   'plan-request',
   'files',
   'app-install',

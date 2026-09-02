@@ -55,6 +55,12 @@ import type {
   JarvisTicket,
   UpdateJarvisTicketInput
 } from '@shared/jarvisTickets'
+import type {
+  DependencyGraph,
+  EngineState,
+  InsurerProfile,
+  LearnedElement
+} from '@shared/securityLearning'
 import type { PackageOutputInspection, RegisteredPackageInfo } from '@shared/distributionPackage'
 
 /**
@@ -315,6 +321,32 @@ const api = {
     inspectPackageOutputs: (): Promise<PackageOutputInspection> => ipcRenderer.invoke('sj-dist:inspect'),
     registerPackage: (detectedId: string): Promise<RegisteredPackageInfo> =>
       ipcRenderer.invoke('sj-dist:register', detectedId)
+  },
+  securityLearning: {
+    /**
+     * 자동 보안 모듈 탐지 및 학습 엔진 (관찰·학습 전용). 렌더러는 읽기 전용 상태와
+     * 학습 결과만 받는다. 종료/제어 채널은 노출하지 않는다 — 메인은 어떤 프로세스도 종료하지 않는다.
+     */
+    getState: (): Promise<EngineState> => ipcRenderer.invoke('sj-seclearn:status'),
+    listInsurers: (): Promise<InsurerProfile[]> => ipcRenderer.invoke('sj-seclearn:list-insurers'),
+    listLearned: (insurerId?: string): Promise<LearnedElement[]> =>
+      ipcRenderer.invoke('sj-seclearn:learned', insurerId),
+    getGraph: (insurerId: string): Promise<DependencyGraph> =>
+      ipcRenderer.invoke('sj-seclearn:graph', insurerId),
+    beginSession: (insurerId: string, insurerName?: string): Promise<EngineState> =>
+      ipcRenderer.invoke('sj-seclearn:begin-session', { insurerId, insurerName }),
+    captureAfter: (): Promise<EngineState> => ipcRenderer.invoke('sj-seclearn:capture-after'),
+    endSession: (): Promise<EngineState> => ipcRenderer.invoke('sj-seclearn:end-session'),
+    /** 완전 자동 감지 켜기/끄기 (사용자 조작 없이 전산 실행을 자동 학습). */
+    setAutoWatch: (enabled: boolean): Promise<EngineState> =>
+      ipcRenderer.invoke('sj-seclearn:set-auto-watch', enabled),
+    onStateChange: (callback: (state: EngineState) => void): (() => void) => {
+      const handler = (_event: IpcRendererEvent, payload: EngineState): void => callback(payload)
+      ipcRenderer.on('sj-seclearn:state', handler)
+      return () => {
+        ipcRenderer.removeListener('sj-seclearn:state', handler)
+      }
+    }
   },
   companyStartup: {
     start: (): Promise<CompanyStartupSnapshot> =>

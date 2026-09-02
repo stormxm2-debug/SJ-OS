@@ -29,7 +29,8 @@ export const NEW_FEATURES: NewFeatureEntry[] = [
   { view: 'content-studio', addedAt: '2026-07-20' },
   { view: 'app-install', addedAt: '2026-07-21' },
   { view: 'family-birthdays', addedAt: '2026-07-21' },
-  { view: 'knowledge', addedAt: '2026-08-05' }
+  { view: 'knowledge', addedAt: '2026-08-05' },
+  { view: 'family-caregiver', addedAt: '2026-08-08' }
 ]
 
 const VISIT_KEY = 'sj-new-feature-visits-v1'

@@ -13,6 +13,8 @@ export type View =
   | { name: 'stats-report' }
   | { name: 'content-studio' }
   | { name: 'knowledge' }
+  | { name: 'family-caregiver' }
+  | { name: 'security-center' }
   | { name: 'sales-activity' }
   | { name: 'schedule' }
   | { name: 'shared-schedule' }

@@ -43,6 +43,8 @@ import {
   Cake,
   KeyRound,
   BookMarked,
+  HeartHandshake,
+  Radar,
   TrendingUp,
   UserPlus,
   PhoneCall,
@@ -132,6 +134,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
       { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
   { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' }, match: ['knowledge'] },
+      { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
       { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
       { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
       { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
@@ -169,6 +172,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'announcements', label: '공지사항 관리', icon: Megaphone, view: { name: 'announcements' }, match: ['announcements'] },
       { key: 'registration-admin', label: '고객등록 관리', icon: ShieldCheck, view: { name: 'registration-admin' }, match: ['registration-admin'] },
       { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
+      { key: 'security-center', label: '보안 모듈 학습', icon: Radar, view: { name: 'security-center' }, match: ['security-center'] },
       // 아래 4개는 '직원 본인용' 항목 — 총무비서는 대표/직원 모드 토글이 없어 STAFF_NAV에
       // 닿지 못하므로(관리자 메뉴만 렌더) 여기에도 둬야 출퇴근·공지·비밀번호 변경을 쓸 수 있다.
       // 관리자에게는 중복 노출이지만 canAccessRoute로 걸러지지 않는 공용 화면이라 무해하다.
@@ -228,6 +232,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
   { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
   { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' }, match: ['knowledge'] },
+      { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
   { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
@@ -260,6 +265,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
   { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
   { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' }, match: ['knowledge'] },
+      { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
   { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
