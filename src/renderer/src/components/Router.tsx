@@ -25,6 +25,7 @@ import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
 import ExceptionDiseasePage from '@renderer/pages/ExceptionDiseasePage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
+import ManagerContactsExcelPage from '@renderer/pages/ManagerContactsExcelPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import TodayContactsPage from '@renderer/pages/TodayContactsPage'
@@ -38,6 +39,7 @@ import CtoRoomPage from '@renderer/pages/CtoRoomPage'
 import QaCenterPage from '@renderer/pages/QaCenterPage'
 import ReleaseCenterPage from '@renderer/pages/ReleaseCenterPage'
 import DevOpsCenterPage from '@renderer/pages/DevOpsCenterPage'
+import DevelopmentOsPage from '@renderer/pages/DevelopmentOsPage'
 import PmPlannerPage from '@renderer/pages/PmPlannerPage'
 import ProductBacklogPage from '@renderer/pages/ProductBacklogPage'
 import ProjectManagerPage from '@renderer/pages/ProjectManagerPage'
@@ -112,6 +114,8 @@ export default function Router(): JSX.Element {
       return <SalaryCalculatorPage />
     case 'consultation':
       return <SupabaseConsultationManager />
+    case 'manager-contacts':
+      return <ManagerContactsExcelPage />
     case 'insurance-analysis':
       return <InsuranceAnalysisPage />
     case 'claim-assistant':
@@ -154,6 +158,8 @@ export default function Router(): JSX.Element {
       return <DevOpsCenterPage />
     case 'autopilot':
       return <AutopilotPage />
+    case 'devos':
+      return <DevelopmentOsPage />
     case 'pm':
       return <PmPlannerPage />
     case 'backlog':

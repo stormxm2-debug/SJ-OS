@@ -21,6 +21,8 @@ export type View =
   | { name: 'performance' }
   | { name: 'salary' }
   | { name: 'consultation' }
+  | { name: 'manager-contacts' }
+  | { name: 'family-caregiver' }
   | { name: 'insurance-analysis' }
   | { name: 'claim-assistant' }
   | { name: 'exemptions' }
@@ -42,6 +44,7 @@ export type View =
   | { name: 'release' }
   | { name: 'devops' }
   | { name: 'autopilot' }
+  | { name: 'devos' }
   | { name: 'pm' }
   | { name: 'backlog' }
   | { name: 'workers' }

@@ -78,10 +78,6 @@ import {
   getAiGatewayStatus,
   transcribeAudio
 } from './services/ai-gateway'
-import type { CodingExecRequest } from '@shared/providers'
-import type { AiTranscribeRequest } from '@shared/aiGateway'
-import type { ClaudeExportRequest, ClaudeRunRequest } from '@shared/claudeCode'
-import type { CreateAutoBuildJobRequest, SafeCheckKind } from '@shared/claudeAutoBuild'
 import {
   beginSession as secLearnBeginSession,
   captureAfter as secLearnCaptureAfter,
@@ -93,6 +89,10 @@ import {
   setAutoWatch as secLearnSetAutoWatch,
   setSecurityLearningEmitter
 } from './securityLearning'
+import type { CodingExecRequest } from '@shared/providers'
+import type { AiTranscribeRequest } from '@shared/aiGateway'
+import type { ClaudeExportRequest, ClaudeRunRequest } from '@shared/claudeCode'
+import type { CreateAutoBuildJobRequest, SafeCheckKind } from '@shared/claudeAutoBuild'
 
 /**
  * SJ AI Company — Electron main process (Node backend).

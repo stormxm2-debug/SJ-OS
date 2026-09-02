@@ -7,6 +7,7 @@ import {
   approveResetRequest as approveLocal,
   listResetRequests as listResetLocal,
   listStaffLoginAccounts as listLocal,
+  setAccountRole as setLocalRole,
   setAccountStatus as setLocalStatus
 } from './phoneLoginStore'
 import { supabaseStaffLoginAccountAdapter, type CreateAccountInput } from './supabaseStaffLoginAccountAdapter'
@@ -100,6 +101,20 @@ export async function createStaffAccountWithPassword(input: {
   } catch {
     return { ok: false, mode: 'supabase', error: '네트워크 상태를 확인해주세요.' }
   }
+}
+
+export async function updateStaffLoginRole(
+  id: string,
+  role: StaffRole,
+  teamId?: string
+): Promise<MutationResult> {
+  if (isSupabase()) {
+    const res = await supabaseStaffLoginAccountAdapter.updateRole(id, role, teamId)
+    if (res.ok) return { ok: true, mode: 'supabase' }
+    return { ok: false, mode: modeFromReason(res.reason), error: res.message }
+  }
+  setLocalRole(id, role)
+  return { ok: true, mode: 'local-mock' }
 }
 
 export async function updateStaffLoginStatus(id: string, status: StaffLoginStatus): Promise<MutationResult> {
