@@ -95,7 +95,7 @@ export interface SavedClaimAnalysis {
 
 // ── 공통 ─────────────────────────────────────────────────────────────────────
 
-const EXTRACT_TIMEOUT_MS = 170000
+const EXTRACT_TIMEOUT_MS = 390000
 const MAX_BATCH_FILES = 4
 /** 배치당 base64 문자 수 한도 (~4.5MB 원본). 서버 JSON 파싱이 CPU 한도 안에 들도록. */
 const MAX_BATCH_CHARS = 6_000_000
@@ -158,6 +158,90 @@ export async function postJson(
       return { ok: false, error: String(data?.error ?? `분석 요청 실패 (HTTP ${res.status})`), disabled }
     }
     return { ok: true, data }
+  } catch (e) {
+    const aborted = e instanceof DOMException && e.name === 'AbortError'
+    return { ok: false, error: aborted ? '분석 시간이 초과되었습니다. 다시 시도해 주세요.' : '서버에 연결할 수 없습니다.' }
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+/**
+ * 종합(synthesize) 스트리밍 호출 — 서버가 NDJSON으로 진행 상태를 흘려보내면
+ * onStatus로 전달하고, 마지막 result 이벤트를 postJson과 동일한 형태로 반환한다.
+ * 구버전 서버(스트림 미지원)가 일반 JSON을 돌려주면 자동으로 그대로 처리한다.
+ */
+async function postSynthesizeStream(
+  body: unknown,
+  timeoutMs: number,
+  onStatus: (text: string) => void
+): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string; disabled?: boolean }> {
+  const ep = endpoint()
+  if (!ep) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  const controller = new AbortController()
+  let timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  // 스트림이 살아 있는 동안은 청크마다 타이머를 연장한다. 웹 약관 열람(큰 PDF) 중에는
+  // 이벤트 간격이 길어질 수 있어 침묵 허용치를 넉넉히 둔다.
+  const touch = (): void => {
+    window.clearTimeout(timer)
+    timer = window.setTimeout(() => controller.abort(), 180000)
+  }
+  const asResult = (
+    data: Record<string, unknown> | null,
+    status: number
+  ): { ok: boolean; data?: Record<string, unknown>; error?: string; disabled?: boolean } => {
+    if (!data?.success) {
+      const disabled = data?.code === 'ANTHROPIC_API_KEY_MISSING'
+      return { ok: false, error: String(data?.error ?? `분석 요청 실패 (HTTP ${status})`), disabled }
+    }
+    return { ok: true, data }
+  }
+  try {
+    const token = (await bearer()) ?? ep.anon
+    const res = await fetch(ep.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: ep.anon, Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    })
+    const ct = res.headers.get('content-type') ?? ''
+    if (!res.body || !ct.includes('ndjson')) {
+      // 구버전 함수 또는 즉시 오류 — 일반 JSON 경로
+      const data = (await res.json().catch(() => null)) as Record<string, unknown> | null
+      return asResult(data, res.status)
+    }
+    const reader = res.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ''
+    let final: Record<string, unknown> | null = null
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      touch()
+      buf += dec.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (!line.trim()) continue
+        let ev: Record<string, unknown>
+        try {
+          ev = JSON.parse(line) as Record<string, unknown>
+        } catch {
+          continue
+        }
+        if (ev.type === 'status' && typeof ev.text === 'string') onStatus(ev.text)
+        else if (ev.type === 'result') final = ev
+      }
+    }
+    if (buf.trim() && !final) {
+      try {
+        const ev = JSON.parse(buf) as Record<string, unknown>
+        if (ev.type === 'result') final = ev
+      } catch {
+        /* ignore */
+      }
+    }
+    return asResult(final, res.status)
   } catch (e) {
     const aborted = e instanceof DOMException && e.name === 'AbortError'
     return { ok: false, error: aborted ? '분석 시간이 초과되었습니다. 다시 시도해 주세요.' : '서버에 연결할 수 없습니다.' }
@@ -482,6 +566,41 @@ function applyAudit(result: ClaimExpertResult, audit: Record<string, unknown>): 
   result.grandTotal = fixed.grandTotal
 }
 
+/**
+ * 회사별로 나눠 종합한 결과들을 하나로 합친다 (보험사 3곳 이상일 때).
+ * 금액은 reconcile로 다시 검산하고, 고객 안내문은 합쳐진 총액 기준으로 새로 조립한다
+ * (부분 안내문은 자기 회사 총액만 알기 때문).
+ */
+function mergeResults(parts: ClaimExpertResult[]): ClaimExpertResult {
+  const dedupe = (xs: string[]): string[] => [...new Set(xs.filter(Boolean))]
+  const { companies, grandTotal } = reconcile(parts.flatMap((p) => p.companies))
+  const seenHidden = new Set<string>()
+  const hiddenClaims = parts
+    .flatMap((p) => p.hiddenClaims)
+    .filter((h) => (seenHidden.has(h.desc) ? false : (seenHidden.add(h.desc), true)))
+  const perCompany = companies.map((c) => `${c.name} ${won(c.subtotal)}`).join(', ')
+  const customerMessage = [
+    `안녕하세요, 보험금 청구 검토 결과를 안내드립니다. 예상 보험금은 총 ${won(grandTotal)}입니다.`,
+    companies.length > 1 ? `회사별로는 ${perCompany} 입니다.` : '',
+    hiddenClaims.length > 0 ? '아직 청구되지 않은 것으로 보이는 건도 함께 확인해 드리겠습니다.' : '',
+    '청구에 필요한 서류와 절차는 제가 도와드릴게요. 궁금한 점은 편하게 문의 주세요!'
+  ]
+    .filter(Boolean)
+    .join(' ')
+  return {
+    companies,
+    grandTotal,
+    excluded: parts.flatMap((p) => p.excluded),
+    hiddenClaims,
+    cautions: dedupe(parts.flatMap((p) => p.cautions)),
+    customerMessage,
+    neededDocs: dedupe(parts.flatMap((p) => p.neededDocs)),
+    docs: parts[0]?.docs ?? [],
+    // 병원서류만 모드 가이드는 회사 분할과 무관 — 첫 조각의 값을 그대로 잇는다.
+    claimGuide: parts.find((x) => x.claimGuide)?.claimGuide ?? null
+  }
+}
+
 /** 병원서류만 모드의 청구 가능성 가이드 정규화. 형식이 아니면 null. */
 function normalizeGuide(raw: unknown): ClaimGuide | null {
   const g = raw as Record<string, unknown> | null | undefined
@@ -607,7 +726,7 @@ export async function analyzeClaimExpert(args: {
       args.onProgress?.({ stage: 'research', batch: i + 1, totalBatches: list.length, fileNames: [t.insurer] })
       const res = await postJson(
         { mode: 'research', insurer: t.insurer, productName: t.productName, coverages: t.coverages.slice(0, 30) },
-        170000
+        390000
       )
       const r = res.ok ? ((res.data?.research ?? null) as Record<string, unknown> | null) : null
       if (r && Array.isArray(r.clauses) && (r.clauses as unknown[]).length > 0) {
@@ -637,35 +756,82 @@ export async function analyzeClaimExpert(args: {
     }
     if (src) {
       args.onProgress?.({ stage: 'synthesize', batch: 0, totalBatches: 0, fileNames: ['수술분류표에서 종 확인 중'] })
-      const cls = await postJson({ mode: 'classify', file: src, surgeries }, 170000)
+      const cls = await postJson({ mode: 'classify', file: src, surgeries }, 390000)
       if (cls.ok && Array.isArray(cls.data?.classifications)) surgeryClasses = cls.data.classifications as unknown[]
     }
   }
 
   args.onProgress?.({ stage: 'synthesize', batch: 0, totalBatches: 0 })
   const termsForSynth = [...matched.map((t) => t.summary), ...researchedTerms]
-  const synthBody = {
-    mode: 'synthesize',
-    docs: allDocs.map(({ fileName: _fileName, ...rest }) => rest),
-    customerName: args.customerName ?? '',
-    termsSummaries: termsForSynth,
-    surgeryClasses,
-    coverageChecklist,
-    hasPolicy,
-    // 리서치 단계가 웹 확인을 이미 수행 — 종합은 웹 없이 빠르고 한도 안전하게.
-    // 약관 근거가 하나도 없을 때만(리서치 전멸) 종합 안에서 웹 폴백을 켠다.
-    useWeb: termsForSynth.length === 0 && hasPolicy
+
+  // 서버가 흘려보내는 실시간 상태(웹 검색·작성량)를 진행 패널로 전달.
+  let statusCount = 0
+  const onStatus = (text: string): void => {
+    statusCount += 1
+    args.onProgress?.({ stage: 'synthesize', batch: statusCount, totalBatches: 0, fileNames: [text] })
   }
-  let synth = await postJson(synthBody, 170000)
-  if (!synth.ok && !synth.disabled) {
-    // 종합만 자동 1회 재시도 — 판독(배치) 결과는 재사용하므로 처음부터 다시 할 필요 없음.
-    args.onProgress?.({ stage: 'synthesize', batch: 0, totalBatches: 0 })
-    synth = await postJson(synthBody, 170000)
+
+  // 잘림 원천 차단 — 증권상 보험사가 많으면(3곳 이상) 회사별로 나눠 종합한다.
+  // 한 번의 거대한 JSON 생성이 max_tokens에 잘려 마지막 회사가 유실되는 것을 막고,
+  // 합계·안내문은 클라이언트가 합치며 재검산한다. 보험사 표기가 없는 의료 서류는
+  // 어느 회사 계산에도 필요하므로 모든 그룹에 포함한다.
+  const insurerOf = (d: ExtractedDoc): string => normName(String(d.insurer ?? ''))
+  const policyInsurers = [...new Set(allDocs.filter((d) => d.docType === '증권' && insurerOf(d)).map(insurerOf))]
+  const groups: { label: string; docs: ExtractedDoc[] }[] =
+    policyInsurers.length >= 3
+      ? policyInsurers.map((ins, i) => ({
+          label: `회사 ${i + 1}/${policyInsurers.length}`,
+          docs: allDocs.filter((d) => !insurerOf(d) || insurerOf(d) === ins)
+        }))
+      : [{ label: '', docs: allDocs }]
+
+  const parts: ClaimExpertResult[] = []
+  let totalDropped = 0
+  let anyTruncated = false
+  const synthWebTerms: unknown[] = []
+  for (const g of groups) {
+    const prefix = g.label ? `${g.label} — ` : ''
+    const groupStatus = (text: string): void => onStatus(`${prefix}${text}`)
+    if (g.label) groupStatus('보험금 계산 시작')
+    // 체크리스트도 그룹 문서 기준으로 좁힌다 — 다른 회사 담보가 '누락'으로 잡히지 않게.
+    const groupChecklist =
+      groups.length === 1
+        ? coverageChecklist
+        : g.docs
+            .flatMap((d) => d.coverages.map((c) => ({ insurer: d.insurer ?? '', coverage: c.name })))
+            .filter((c) => c.coverage.trim())
+            .slice(0, 200)
+    const synthBody = {
+      mode: 'synthesize',
+      stream: true,
+      docs: g.docs.map(({ fileName: _fileName, ...rest }) => rest),
+      customerName: args.customerName ?? '',
+      termsSummaries: termsForSynth,
+      surgeryClasses,
+      coverageChecklist: groupChecklist,
+      hasPolicy,
+      // 리서치 단계가 웹 확인을 이미 수행 — 종합은 웹 없이 빠르고 한도 안전하게.
+      // 약관 근거가 하나도 없을 때만(리서치 전멸) 종합 안에서 웹 폴백을 켠다.
+      useWeb: termsForSynth.length === 0 && hasPolicy
+    }
+    let synth = await postSynthesizeStream(synthBody, 390000, groupStatus)
+    if (!synth.ok && !synth.disabled) {
+      // 종합만 자동 1회 재시도 — 판독(배치) 결과는 재사용하므로 처음부터 다시 할 필요 없음.
+      synth = await postSynthesizeStream(synthBody, 390000, groupStatus)
+    }
+    if (!synth.ok) {
+      return { ok: false, error: g.label ? `${synth.error} (${g.label})` : synth.error, disabled: synth.disabled }
+    }
+    const raw = (synth.data?.result ?? null) as Record<string, unknown> | null
+    if (!raw) return { ok: false, error: '종합 결과가 비어 있습니다. 다시 시도해 주세요.' }
+    parts.push(normalizeResult(raw, allDocs))
+    totalDropped += Number((synth.data as { droppedDocs?: unknown })?.droppedDocs ?? 0)
+    anyTruncated = anyTruncated || Boolean((synth.data as { truncated?: unknown })?.truncated)
+    if (Array.isArray((raw as { webTerms?: unknown }).webTerms)) {
+      synthWebTerms.push(...(raw as { webTerms: unknown[] }).webTerms)
+    }
   }
-  if (!synth.ok) return { ok: false, error: synth.error, disabled: synth.disabled }
-  const raw = (synth.data?.result ?? null) as Record<string, unknown> | null
-  if (!raw) return { ok: false, error: '종합 결과가 비어 있습니다. 다시 시도해 주세요.' }
-  const result = normalizeResult(raw, allDocs)
+  const result = parts.length === 1 ? parts[0] : mergeResults(parts)
 
   // ── 2차 감사 패스: 빠뜨린 보험금·계산 오류 재검사 (증권이 있을 때만) ────────
   if (hasPolicy && result.companies.length > 0) {
@@ -678,7 +844,7 @@ export async function analyzeClaimExpert(args: {
         coverageChecklist,
         termsSummaries: termsForSynth
       },
-      170000
+      390000
     )
     if (auditRes.ok && auditRes.data?.audit) {
       applyAudit(result, auditRes.data.audit as Record<string, unknown>)
@@ -707,7 +873,7 @@ export async function analyzeClaimExpert(args: {
     }
   }
   // 서버가 용량 한도로 뒤쪽 문서를 계산에서 제외했다면 반드시 겉으로 알린다.
-  const dropped = Number((synth.data as { droppedDocs?: unknown })?.droppedDocs ?? 0)
+  const dropped = totalDropped
   if (dropped > 0) {
     result.cautions = [
       `⚠️ 서류가 너무 많아 마지막 ${dropped}건은 이번 금액 계산에 포함되지 못했습니다. 남은 서류는 나눠서 한 번 더 분석해 주세요.`,
@@ -715,24 +881,41 @@ export async function analyzeClaimExpert(args: {
     ]
   }
   // AI 응답이 길이 한도에 걸려 복구된 경우 — 마지막 일부 항목이 빠졌을 수 있음을 알린다.
-  if ((synth.data as { truncated?: unknown })?.truncated) {
+  if (anyTruncated) {
     result.cautions = ['⚠️ 결과가 매우 길어 마지막 일부 항목이 생략됐을 수 있습니다. 서류를 나눠 다시 분석하면 전체를 확인할 수 있습니다.', ...result.cautions]
   }
   // 웹에서 확인한 약관 조항(리서치 단계 + 종합 폴백) — 보관함에 자동 저장돼 다음 분석부터 재사용
-  const synthWebTerms = Array.isArray((raw as { webTerms?: unknown }).webTerms) ? ((raw as { webTerms: unknown[] }).webTerms) : []
   return { ok: true, result, usedTerms: matched.map((t) => t.id), webTerms: [...researchedWebTerms, ...synthWebTerms] }
 }
 
-/** 부지급/삭감 통보 → 약관 조항 근거 재검토 요청서 생성. */
+/**
+ * 부지급/삭감 통보 → 약관 조항 근거 재검토 요청서 생성.
+ * 거절 사유가 특정 서류 내용을 다투는 경우(예: "수술 정의에 해당하지 않음") 관련 원본
+ * 서류를 files로 재첨부하면 AI가 원본을 직접 재판독해 인용을 강화한다 (선택).
+ */
 export async function generateAppeal(args: {
   result: ClaimExpertResult
   rejection: string
+  files?: File[]
 }): Promise<{ ok: boolean; appeal?: ClaimAppeal; error?: string }> {
   if (!args.rejection.trim()) return { ok: false, error: '보상팀의 거절/삭감 사유를 입력해 주세요.' }
   const analysis = { companies: args.result.companies, grandTotal: args.result.grandTotal, docs: args.result.docs.map(({ fileName: _f, ...rest }) => rest) }
-  const body = { mode: 'appeal', analysis, rejection: args.rejection }
-  let res = await postJson(body, 120000)
-  if (!res.ok && !res.disabled) res = await postJson(body, 120000) // 자동 1회 재시도
+  // 재첨부 원본 준비 (압축·인코딩 — 분석 업로드와 동일 파이프라인, 최대 4개)
+  let attach: PreparedDoc[] = []
+  const files = (args.files ?? []).slice(0, 4)
+  if (files.length > 0) {
+    for (const f of files) {
+      const issue = fileSizeIssue(f)
+      if (issue) return { ok: false, error: issue }
+    }
+    const prep = await prepareFiles(files)
+    if (!prep.ok) return { ok: false, error: prep.error }
+    attach = prep.docs
+  }
+  const timeout = attach.length > 0 ? 390000 : 240000
+  const body = { mode: 'appeal', analysis, rejection: args.rejection, files: attach }
+  let res = await postJson(body, timeout)
+  if (!res.ok && !res.disabled) res = await postJson(body, timeout) // 자동 1회 재시도
   if (!res.ok) return { ok: false, error: res.error }
   const raw = (res.data?.appeal ?? null) as { appealLetter?: unknown; keyPoints?: unknown } | null
   if (!raw?.appealLetter) return { ok: false, error: '요청서 생성에 실패했습니다. 다시 시도해 주세요.' }

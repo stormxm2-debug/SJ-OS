@@ -109,6 +109,8 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
   const [appealLoading, setAppealLoading] = useState(false)
   const [appeal, setAppeal] = useState<ClaimAppeal | null>(null)
   const [appealError, setAppealError] = useState('')
+  /** 재검토 요청서용 원본 재첨부 (선택) — 거절 사유가 서류 내용을 다툴 때 AI가 원문을 다시 읽는다. */
+  const [appealFiles, setAppealFiles] = useState<File[]>([])
   const [copiedAppeal, setCopiedAppeal] = useState(false)
 
   // 약관 보관함 — 한 번 등록하면 같은 상품 분석이 영구히 빨라진다
@@ -239,6 +241,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setPastResult(null)
     setMessage(j.result.customerMessage ?? '')
     setAppeal(null)
+    setAppealFiles([])
     setRejection('')
     setPhase('result')
     // 백그라운드에서 자동 보관된 웹 약관·고객 기록이 생겼을 수 있으니 갱신
@@ -294,6 +297,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setForcedTermIds([])
     setPastResult(null)
     setAppeal(null)
+    setAppealFiles([])
     setRejection('')
     setViewJobId(job.id)
     // 대기열에 쌓였다면(앞 작업 진행 중) 업로드 화면에 남아 다음 건을 계속 올릴 수 있다
@@ -319,6 +323,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setViewJobId(null)
     setMessage(item.result.customerMessage ?? '')
     setAppeal(null)
+    setAppealFiles([])
     setRejection('')
     setPhase('result')
     setPastOpen(false)
@@ -329,13 +334,14 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setAppealLoading(true)
     setAppealError('')
     setAppeal(null)
-    const res = await generateAppeal({ result, rejection })
+    const res = await generateAppeal({ result, rejection, files: appealFiles })
     setAppealLoading(false)
     if (!res.ok || !res.appeal) {
       setAppealError(res.error ?? '요청서 생성에 실패했습니다.')
       return
     }
     setAppeal(res.appeal)
+    setAppealFiles([])
   }
 
   const reset = (): void => {
@@ -344,6 +350,7 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
     setPastResult(null)
     setViewJobId(null)
     setAppeal(null)
+    setAppealFiles([])
     setRejection('')
   }
 
@@ -1142,6 +1149,31 @@ export default function InsuranceClaimAssistantPage(): JSX.Element {
               placeholder='예: "상해수술비는 약관상 수술 정의에 해당하지 않아 부지급 처리되었습니다" (문자/통화 내용 그대로)'
               className="mt-3 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-[13px] leading-6 text-slate-100 outline-none placeholder:text-slate-500 focus:border-[#c6982f]"
             />
+            {/* 원본 서류 재첨부 (선택) — 거절 사유가 서류 내용을 다툴 때 원본을 재판독해 반박 강화 */}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-800 bg-white px-3 py-2 text-[12px] font-bold text-slate-300 transition hover:border-[#c6982f]">
+                📎 관련 원본 서류 재첨부 (선택, 최대 4개)
+                <input
+                  type="file"
+                  multiple
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    setAppealFiles(Array.from(e.target.files ?? []).slice(0, 4))
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              {appealFiles.map((f) => (
+                <span key={f.name} className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-600">
+                  {f.name}
+                  <button type="button" onClick={() => setAppealFiles((xs) => xs.filter((x) => x !== f))} className="font-bold">×</button>
+                </span>
+              ))}
+            </div>
+            {appealFiles.length > 0 ? (
+              <p className="mt-1 text-[11px] text-slate-500">첨부한 원본을 AI가 다시 판독해, 거절 사유가 다투는 내용을 원문 인용으로 반박합니다.</p>
+            ) : null}
             <button
               type="button"
               onClick={() => void runAppeal()}

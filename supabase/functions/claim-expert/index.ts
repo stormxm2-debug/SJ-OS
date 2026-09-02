@@ -117,8 +117,8 @@ const EXTRACT_MODEL = (): string => Deno.env.get('CLAIM_EXTRACT_MODEL') || 'clau
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function callClaude(apiKey: string, system: string, content: any[], maxTokens: number, useWeb = false, model?: string, tools?: any[]): Promise<{ ok: boolean; text?: string; error?: string; truncated?: boolean }> {
   const controller = new AbortController()
-  // Supabase 요청 타임아웃(150s)보다 먼저 끊어 친절한 오류가 나가게 한다.
-  const timer = setTimeout(() => controller.abort(), 135000)
+  // Supabase 함수 wall-clock 한도(400s)보다 먼저 끊어 친절한 오류가 나가게 한다.
+  const timer = setTimeout(() => controller.abort(), 370000)
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -154,6 +154,108 @@ async function callClaude(apiKey: string, system: string, content: any[], maxTok
     clearTimeout(timer)
   }
 }
+
+/**
+ * 종합(synthesize)을 Anthropic 스트리밍으로 실행하고, 진행 상태를 NDJSON으로 흘려보낸다.
+ *  {"type":"status","text":"웹에서 약관 검색 중…"}    ← 실제 이벤트 기반 (가짜 아님)
+ *  {"type":"result","success":true,...}               ← 마지막 줄 = 기존 JSON 응답과 동일 형태
+ * 클라이언트가 스트림을 못 읽어도(구버전) 전체 본문을 JSON 여러 줄로 받게 되므로 마지막
+ * 줄만 파싱하면 된다. 오류도 {"type":"result","success":false,...}로 내보낸다.
+ */
+function streamSynthesize(apiKey: string, content: unknown[], dropped: number, useWeb: boolean): Response {
+  const enc = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown): void => controller.enqueue(enc.encode(JSON.stringify(obj) + '\n'))
+      const finish = (obj: unknown): void => {
+        send(obj)
+        controller.close()
+      }
+      const abort = new AbortController()
+      // 스트리밍은 첫 바이트가 빨라 idle 종료가 없다 — wall-clock 한도(400s) 직전까지 허용.
+      const timer = setTimeout(() => abort.abort(), 370000)
+      try {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: Deno.env.get('CLAIM_EXPERT_MODEL') || 'claude-opus-4-8',
+            max_tokens: 16000,
+            system: SYNTH_SYSTEM,
+            ...(useWeb ? { tools: WEB_TOOLS } : {}),
+            stream: true,
+            messages: [{ role: 'user', content }]
+          }),
+          signal: abort.signal
+        })
+        if (!r.ok || !r.body) {
+          const data = await r.json().catch(() => ({}))
+          const msg = (data as { error?: { message?: string } })?.error?.message || `Claude 오류 (HTTP ${r.status})`
+          finish({ type: 'result', success: false, error: friendlyClaudeError(msg) })
+          return
+        }
+        const reader = r.body.getReader()
+        const dec = new TextDecoder()
+        let buf = ''
+        let text = ''
+        let truncated = false
+        let lastStatusAt = 0
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += dec.decode(value, { stream: true })
+          const lines = buf.split('\n')
+          buf = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            let ev: Record<string, unknown>
+            try {
+              ev = JSON.parse(line.slice(6)) as Record<string, unknown>
+            } catch {
+              continue
+            }
+            const t = String(ev.type ?? '')
+            if (t === 'content_block_start') {
+              const block = ev.content_block as { type?: string; name?: string } | undefined
+              if (block?.type === 'server_tool_use' && block.name === 'web_search') send({ type: 'status', text: '웹에서 약관 조항 검색 중…' })
+              else if (block?.type === 'server_tool_use' && block.name === 'web_fetch') send({ type: 'status', text: '약관 원문 페이지 확인 중…' })
+              else if (block?.type === 'web_search_tool_result') send({ type: 'status', text: '검색 결과 검토 중…' })
+            } else if (t === 'content_block_delta') {
+              const delta = ev.delta as { type?: string; text?: string } | undefined
+              if (delta?.type === 'text_delta' && delta.text) {
+                text += delta.text
+                if (text.length - lastStatusAt > 1500) {
+                  lastStatusAt = text.length
+                  send({ type: 'status', text: `담보별 산정 내역 작성 중… (${Math.round(text.length / 1000)}천자)` })
+                }
+              }
+            } else if (t === 'message_delta') {
+              const d = ev.delta as { stop_reason?: string } | undefined
+              if (d?.stop_reason === 'max_tokens') truncated = true
+            }
+          }
+        }
+        const parsed = parseJson(text)
+        if (!parsed || !Array.isArray(parsed.companies)) {
+          finish({ type: 'result', success: false, error: '종합 결과 형식 오류 — 다시 시도해 주세요.' })
+          return
+        }
+        finish({ type: 'result', success: true, mode: 'synthesize', result: parsed, droppedDocs: dropped, truncated })
+      } catch (e) {
+        const aborted = e instanceof DOMException && e.name === 'AbortError'
+        finish({
+          type: 'result',
+          success: false,
+          error: aborted ? '분석 시간이 초과되었습니다. 서류 수를 나눠 다시 시도해 주세요.' : '분석 중 오류가 발생했습니다.'
+        })
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+  })
+  return new Response(stream, { headers: { ...CORS, 'Content-Type': 'application/x-ndjson' } })
+}
+
 
 const EXTRACT_SYSTEM = [
   '당신은 대한민국 보험 서류 판독 전문가입니다. 첨부된 각 문서를 정밀 판독해 아래 JSON으로만 답하세요 (다른 텍스트 금지).',
@@ -200,7 +302,7 @@ const SYNTH_SYSTEM = [
   '',
   '지급 판단 근거의 위계 (반드시 이 순서):',
   '① 상품약관 — 업로드된 약관 문서 또는 "보관함 약관 요약"의 조항이 최우선. 조항을 정확 인용하고 basisSource=clause-confirmed (보관함 요약도 검증된 상품약관이므로 동일).',
-  '② 웹 약관 확인 — 약관이 업로드되지 않은 핵심 담보는 웹 검색/열람 도구로 해당 보험사의 공식 약관·상품공시를 찾아 조항을 확인하세요 (보험사 공식 사이트·공시실 우선). 확인되면 basisSource=web-confirmed, basis에 조항과 출처를 간단히 명시. 검색은 금액이 큰 담보 위주로 총 4회 이내.',
+  '② 웹 약관 확인 — 약관이 업로드되지 않은 핵심 담보는 웹 검색/열람 도구로 해당 보험사의 **상품공시실**에서 약관 원문을 찾아 조항을 확인하세요 (검색어 예: "○○보험 상품공시실 ○○상품 약관"). 증권의 가입일·상품명으로 판매 시기에 맞는 약관 버전을 고르세요 — 보험사도 그 약관을 보고 지급합니다. 확인되면 basisSource=web-confirmed, basis에 조항과 출처를 간단히 명시. 검색은 금액이 큰 담보 위주로.',
   '③ 증권 기재 — 웹에서도 못 찾으면 증권에 인쇄된 담보명·가입금액·지급규칙을 근거로. basisSource=policy-stated.',
   '④ 표준약관 — 위 모두 부족하면 대한민국 표준약관 일반 기준으로 추정. basisSource=standard-estimate, basis에 "약관 업로드 시 조항 확정" 덧붙임.',
   '웹 약관은 상품 판매연도에 따라 조항이 다를 수 있으니, web-confirmed가 있으면 cautions에 "웹 약관 기준 — 가입 시점 약관과 대조 권장" 1줄을 넣으세요.',
@@ -225,7 +327,7 @@ const SYNTH_SYSTEM = [
   '4) 같은 담보가 여러 회사에 있으면 각각 계산 (실손은 비례보상 주의사항을 cautions에).',
   '5) 의료 사실 날짜가 3년 이내인데 청구 흔적이 없으면 hiddenClaims로.',
   '6) 간결하게 (응답이 잘리지 않도록): basis는 조항 인용 포함 1문장(90자 이내), excluded.reason은 60자 이내, calc는 30자 이내, cautions 각 항목 80자 이내. 담보가 많아도 전수 검토가 우선 — 설명을 줄여서라도 모든 담보를 포함할 것.',
-  '7) 종별 수술비(1~5종 등): "수술 종 확정 데이터"가 입력에 제공되면 그것이 약관 분류표에서 직접 확인된 값이므로 **최우선으로 사용**해 종을 확정하고, calc에 "담낭절제술=3종→50만원" 형식으로 종을 명시하세요 (basisSource=clause-confirmed). 확정 데이터가 없으면 보관함 요약 → 웹 검색 순으로 확인. 그래도 분류표를 확인하지 못했다면 종을 절대 추측하지 말 것 — 그 담보는 amount를 0으로 하고, basis에 증권 기재 종별 금액표를 그대로 정확히 적은 뒤 "수술분류표 확인 후 확정"을 명시하고, neededDocs에 "해당 상품 약관 수술분류표"를, cautions에 확정 필요 안내 1줄을 넣으세요.',
+  '7) 종별 수술비(1~5종 등): "수술 종 확정 데이터"가 입력에 제공되면 그것이 약관 분류표에서 직접 확인된 값이므로 **최우선으로 사용**해 종을 확정하고, calc에 "담낭절제술=3종→50만원" 형식으로 종을 명시하세요 (basisSource=clause-confirmed). 확정 데이터가 없으면 ① 보관함 요약의 수술분류표 항목 확인 → ② **반드시 웹 검색으로 해당 보험사 상품공시실에서 가입 시점 약관의 수술분류표를 찾아** 이 수술이 몇 종인지 확인하세요 (검색어 예: "○○보험 상품공시실 ○○상품 약관", "○○보험 수술분류표 ○○수술"). 보험사 보상팀도 바로 그 분류표를 보고 지급하므로, 이 확인이 종별 수술비 산정의 핵심입니다. 웹에서 확인되면 basisSource=web-confirmed로 종을 확정하고 basis에 출처를 명시. 웹 확인까지 시도했는데도 분류표를 못 찾은 경우에만 — 종을 추측하지 말고 그 담보는 amount를 0으로, basis에 증권 기재 종별 금액표를 그대로 정확히 적은 뒤 "수술분류표 확인 후 확정"을 명시하고, neededDocs에 "해당 상품 약관 수술분류표"를, cautions에 확정 필요 안내 1줄을 넣으세요.',
   '8) 실손의료비 정밀 계산: 실손 담보가 있으면 진료비영수증의 급여/비급여 구분으로 세대별 산식을 적용하세요 —',
   '   · 1세대(2009.9 이전): 상품별 상이 — 통상 입원 100%(자기부담 없음 상품 다수)/통원 공제 5천~1만. 가입시점 확인 필요.',
   '   · 2세대 표준화(2009.10~2017.3): 입원 (급여+비급여)의 90% (선택형 80%), 통원 외래 공제 1~2만·처방 8천 차감.',
@@ -608,6 +710,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // 웹 도구가 없으니 업로드/보관함 약관 + 증권 기재만으로 판단하도록 안내.
       content[0].text += '\n\n(참고: 이번 분석은 웹 약관 조회 없이 위 보관함/업로드 약관과 증권 기재만으로 신속히 종합합니다. 약관에 없는 담보는 증권 기재를 근거로 policy-stated 처리하세요.)'
     }
+    // 클라이언트가 stream을 요청하면 NDJSON으로 진행 상태를 흘려보낸다 (구버전 클라이언트는 미요청).
+    if ((body as { stream?: unknown }).stream === true) {
+      return streamSynthesize(apiKey, content, dropped, useWeb)
+    }
     const res = await callClaude(apiKey, SYNTH_SYSTEM, content, 16000, useWeb)
     if (!res.ok) return json({ success: false, error: res.error }, 502)
     const parsed = parseJson(res.text ?? '')
@@ -619,12 +725,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const analysis = body.analysis
     const rejection = String((body.rejection as string) ?? '').trim()
     if (!analysis || !rejection) return json({ success: false, error: '분석 결과와 거절 사유가 필요합니다.' }, 400)
-    const content = [
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const content: any[] = [
       {
         type: 'text',
         text: ['--- 기존 분석 결과 ---', JSON.stringify(analysis).slice(0, 200000), '', '--- 보상팀 거절/삭감 통보 내용 ---', rejection.slice(0, 3000)].join('\n')
       }
     ]
+    // 원본 서류 재첨부(선택) — 거절 사유가 서류 내용을 다툴 때 원본을 직접 재판독해 반박 강화.
+    const rawFiles = Array.isArray((body as { files?: unknown }).files)
+      ? ((body as { files: unknown[] }).files as Record<string, unknown>[]).slice(0, 4)
+      : []
+    let attached = 0
+    for (const f of rawFiles) {
+      const data = typeof f.data === 'string' ? f.data : ''
+      if (!data) continue
+      const mime = String(f.mediaType ?? 'image/jpeg')
+      if (mime !== 'application/pdf' && !ALLOWED_IMAGE_TYPES.has(mime)) continue
+      attached += 1
+      content.push({ type: 'text', text: `[재첨부 원본 ${attached}] 파일명: ${String(f.name ?? `문서${attached}`).slice(0, 120)}` })
+      content.push(
+        mime === 'application/pdf'
+          ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
+          : { type: 'image', source: { type: 'base64', media_type: mime, data } }
+      )
+    }
+    if (attached > 0) {
+      content.push({
+        type: 'text',
+        text: `위 ${attached}개 재첨부 원본 서류를 직접 다시 판독하세요. 거절 사유가 다투는 내용(진단명·수술명·약관 조항 등)을 원본에서 원문 그대로 인용해 반박 근거로 사용하세요.`
+      })
+    }
     const res = await callClaude(apiKey, APPEAL_SYSTEM, content, 6000, true)
     if (!res.ok) return json({ success: false, error: res.error }, 502)
     const parsed = parseJson(res.text ?? '')
