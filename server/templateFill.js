@@ -95,5 +95,8 @@ export async function fillTemplate(templateBuffer, matrix) {
     }
   }
 
+  // 총보험료·입원일당 합계 같은 수식이 엑셀을 열 때 바로 다시 계산되도록 한다.
+  workbook.calcProperties = { ...(workbook.calcProperties || {}), fullCalcOnLoad: true };
+
   return { workbook, filled, skippedCompanies };
 }
