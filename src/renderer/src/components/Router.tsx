@@ -18,6 +18,7 @@ import PerformancePage from '@renderer/pages/PerformancePage'
 import SalaryCalculatorPage from '@renderer/pages/SalaryCalculatorPage'
 import FcOsPage from '@renderer/pages/FcOsPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
+import CoverageAnalysisPage from '@renderer/pages/CoverageAnalysisPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import ExemptionsPage from '@renderer/pages/ExemptionsPage'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
@@ -118,6 +119,8 @@ export default function Router(): JSX.Element {
       return <ManagerContactsExcelPage />
     case 'insurance-analysis':
       return <InsuranceAnalysisPage />
+    case 'coverage-analysis':
+      return <CoverageAnalysisPage />
     case 'claim-assistant':
       return <InsuranceClaimAssistantPage />
     case 'exemptions':
