@@ -39,6 +39,9 @@ export default defineConfig({
       '@shared': resolve(__dirname, 'src/shared')
     }
   },
+  // 웹 PWA 빌드 표식 — supabaseClient 가 배포 설정(env)과 무관하게 SJ Supabase 프로젝트로
+  // 항상 접속하도록(환경변수 누락/오타로 인한 로그인 장애 방지). 공개 anon 키만 사용.
+  define: { __SJ_WEB_BUILD__: JSON.stringify(true) },
   plugins: [react(), buildVersionPlugin()],
   build: {
     outDir: resolve(__dirname, 'dist'),
