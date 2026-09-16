@@ -15,7 +15,8 @@ import {
   applyFileLevelRules,
   CATEGORIES,
 } from "./classify.js";
-import { fillTemplate } from "./templateFill.js";
+import { fillTemplate, loadTemplate, inspectTemplate } from "./templateFill.js";
+import { extractPaybackRule, describePaybackRule } from "./payback.js";
 import { buildCoverageWorkbook, buildExportFileName } from "./excel.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -102,11 +103,13 @@ app.post("/api/analyze", upload.array("files", 12), async (req, res) => {
         };
       });
       applyFileLevelRules(items);
+      const company = detectCompany(pages, fileName);
       results.push({
         fileName,
-        company: detectCompany(pages, fileName),
+        company,
         totalPremium: findTotalPremium(pages),
         payback: detectPayback(pages) || items.some((item) => item.payback),
+        paybackNote: describePaybackRule(company, extractPaybackRule(pages)),
         warnings,
         items,
       });
@@ -144,6 +147,18 @@ app.post("/api/export", async (req, res) => {
   }
 });
 
+// 양식 안에 담보표 시트가 몇 개인지, 이미 어떤 회사가 적혀 있는지 알려준다.
+app.post("/api/template-info", upload.single("template"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "엑셀 양식 파일을 올려주세요." });
+    const workbook = await loadTemplate(req.file.buffer);
+    res.json({ sheets: inspectTemplate(workbook) });
+  } catch (err) {
+    console.error("[template-info] 처리 중 오류:", err.name, err.message);
+    res.status(500).json({ error: "엑셀 양식을 읽지 못했습니다. .xlsx 파일인지 확인해주세요." });
+  }
+});
+
 // 사용자가 올린 양식에 값을 채워서 내려받기
 app.post("/api/export-template", upload.single("template"), async (req, res) => {
   try {
@@ -161,7 +176,19 @@ app.post("/api/export-template", upload.single("template"), async (req, res) => 
       return res.status(400).json({ error: "양식에 채울 내용이 없습니다. 담보를 하나 이상 체크해주세요." });
     }
 
-    const { workbook, skippedCompanies } = await fillTemplate(req.file.buffer, matrix);
+    let extras = {};
+    try {
+      extras = JSON.parse(req.body.extras || "{}");
+    } catch {
+      extras = {};
+    }
+
+    const { workbook, skippedCompanies, sheetName } = await fillTemplate(
+      req.file.buffer,
+      matrix,
+      req.body.sheetName || "",
+      extras
+    );
     const base = (req.file.originalname || "양식").replace(/\.xlsx$/i, "");
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");

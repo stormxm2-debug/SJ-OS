@@ -21,7 +21,7 @@
           <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple hidden />
           <div class="drop-zone-icon">📄</div>
           <p class="drop-zone-text">눌러서 파일을 고르거나 여기로 끌어다 놓으세요</p>
-          <p class="drop-zone-hint">여러 개 한꺼번에 가능 · PDF, JPG, PNG · 분석 후에도 계속 추가할 수 있습니다</p>
+          <p class="drop-zone-hint">여러 개 한꺼번에 가능 · PDF, JPG, PNG · 분석 후에도 계속 추가할 수 있습니다<br />엑셀 양식(.xlsx)을 끌어다 놓으면 양식으로 등록됩니다</p>
         </div>
         <ul id="pendingList" class="pending-list"></ul>
         <div class="toolbar">
@@ -61,7 +61,18 @@
           <table id="matrixTable" class="matrix-table"></table>
         </div>
 
-        <h2 class="panel-title">5. 엑셀 받기</h2>
+        <h2 class="panel-title">5. 최종 합계표 (하루 입원 시 받는 금액, 만원)</h2>
+        <p class="panel-hint">체크한 담보를 전 보험사 합산한 금액입니다. 상황별로 상해·질병을 나눠 계산합니다.</p>
+        <label class="toggle">
+          <input type="checkbox" id="sanggeupIncludesGeneral" />
+          상급병원 합계에 종합병원일당도 더하기 (약관에서 상급종합병원이 종합병원에 포함되는 경우)
+        </label>
+        <div class="table-scroll">
+          <table id="summaryTable" class="matrix-table"></table>
+        </div>
+        <div id="paybackNotes" class="payback-notes"></div>
+
+        <h2 class="panel-title">6. 엑셀 받기</h2>
         <div class="template-row">
           <input type="file" id="templateInput" accept=".xlsx" hidden />
           <button id="templatePickBtn" class="btn btn-secondary" type="button">엑셀 양식 파일 선택</button>

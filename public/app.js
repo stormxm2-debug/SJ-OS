@@ -60,6 +60,10 @@
   function addPending(fileList) {
     const rejected = [];
     for (const file of fileList) {
+      if (/\.xlsx$/i.test(file.name)) {
+        setTemplate(file); // 엑셀을 끌어다 놓으면 양식으로 쓴다
+        continue;
+      }
       const verdict = isAllowed(file);
       if (verdict === "heic") {
         rejected.push(`${file.name}: 아이폰 HEIC 사진은 지원하지 않습니다. JPG로 저장해 올려주세요.`);
@@ -147,6 +151,7 @@
           company: result.company || "",
           totalPremium: result.totalPremium,
           payback: !!result.payback,
+          paybackNote: result.paybackNote || null,
           warnings: result.warnings || [],
           items: result.items.map((item, index) => ({
             key: `${state.nextId}-${index}`,
@@ -404,7 +409,11 @@
     const matrix = buildMatrix();
     matrixPanel.hidden = matrix.length === 0;
     matrixTable.innerHTML = "";
-    if (matrix.length === 0) return;
+    if (matrix.length === 0) {
+      $("summaryTable").innerHTML = "";
+      $("paybackNotes").innerHTML = "";
+      return;
+    }
 
     const head = document.createElement("thead");
     const row1 = document.createElement("tr");
@@ -443,6 +452,7 @@
           }
           input.addEventListener("input", () => {
             state.overrides.set(overrideKey(entry.company, category, side), input.value.trim());
+            renderSummary(buildMatrix()); // 표 전체를 다시 그리면 입력 중 커서가 빠지므로 합계만 갱신
           });
           td.appendChild(input);
           tr.appendChild(td);
@@ -452,7 +462,121 @@
     }
 
     matrixTable.append(head, body);
+    renderSummary(matrix);
   }
+
+  /* ---------- 최종 합계표 ---------- */
+
+  // 하루 입원했을 때 실제로 받는 금액을 상황별로 합산한다(체크된 담보, 전 보험사 합계).
+  const SUMMARY_SCENARIOS = [
+    { label: "일반병원 입원", parts: ["입원일당", "간병인사용일당"] },
+    { label: "종합병원 입원", parts: ["입원일당", "간병인사용일당", "종합병원일당"] },
+    { label: "종합병원 1인실", parts: ["입원일당", "간병인사용일당", "종합병원일당", "종합1인실"] },
+    { label: "종합병원 2~3인실", parts: ["입원일당", "간병인사용일당", "종합병원일당", "종합2~3인실"] },
+    { label: "종합병원 4~5인실", parts: ["입원일당", "간병인사용일당", "종합병원일당", "종합4~5인실"] },
+    { label: "상급병원 1인실", parts: ["입원일당", "간병인사용일당", "상급1인실"], sanggeup: true },
+    { label: "상급병원 2~3인실", parts: ["입원일당", "간병인사용일당", "상급2~3인실"], sanggeup: true },
+    { label: "상급병원 4~5인실", parts: ["입원일당", "간병인사용일당", "상급4~5인실"], sanggeup: true },
+    { label: "요양병원·의원", parts: ["요양병원및의원"] },
+    { label: "간호간병통합서비스 병동", parts: ["입원일당", "통합간호간병"] },
+  ];
+
+  function computeSummary(matrix) {
+    const addGeneral = $("sanggeupIncludesGeneral").checked;
+    return SUMMARY_SCENARIOS.map((scenario) => {
+      const parts = scenario.sanggeup && addGeneral ? [...scenario.parts, "종합병원일당"] : scenario.parts;
+      const row = { label: scenario.label, 상해: 0, 질병: 0, parts };
+      for (const entry of matrix) {
+        for (const side of SIDES) {
+          for (const category of parts) {
+            const raw = valueFor(entry, category, side);
+            if (raw === "") continue;
+            const value = Number(raw);
+            if (Number.isFinite(value)) row[side] += value;
+          }
+        }
+      }
+      return row;
+    });
+  }
+
+  function renderSummary(matrix) {
+    const table = $("summaryTable");
+    table.innerHTML = "";
+    table.className = "matrix-table summary-table";
+    if (matrix.length === 0) return;
+
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    headRow.append(th("상황", "row-label"), th("상해"), th("질병"), th("합계에 넣은 항목", "side-head"));
+    head.appendChild(headRow);
+
+    const body = document.createElement("tbody");
+    for (const row of computeSummary(matrix)) {
+      const tr = document.createElement("tr");
+      const injury = document.createElement("td");
+      injury.textContent = row["상해"] ? `${round(row["상해"])}만원` : "";
+      const illness = document.createElement("td");
+      illness.textContent = row["질병"] ? `${round(row["질병"])}만원` : "";
+      const parts = document.createElement("td");
+      parts.className = "side-head";
+      parts.textContent = row.parts.join(" + ");
+      tr.append(th(row.label, "row-label"), injury, illness, parts);
+      body.appendChild(tr);
+    }
+
+    table.append(head, body);
+    renderPaybackNotes();
+  }
+
+  function round(value) {
+    return Math.round(value * 100) / 100;
+  }
+
+  function paybackNotes() {
+    const notes = [];
+    const seen = new Set();
+    for (const file of state.files) {
+      const note = file.paybackNote;
+      if (!note || !note.text) continue;
+      const company = file.company || note.company;
+      if (seen.has(company)) continue;
+      seen.add(company);
+      notes.push({ company, text: note.text, evidence: (note.evidence || [])[0] || "" });
+    }
+    return notes;
+  }
+
+  function renderPaybackNotes() {
+    const container = $("paybackNotes");
+    container.innerHTML = "";
+    const notes = paybackNotes();
+    if (notes.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "제안서에서 간병인 지원금(페이백) 조건을 찾지 못했습니다. 원문을 확인해주세요.";
+      container.appendChild(empty);
+      return;
+    }
+    for (const note of notes) {
+      const box = document.createElement("div");
+      box.className = "payback-note";
+      const title = document.createElement("strong");
+      title.textContent = `${note.company} 간병 페이백`;
+      const text = document.createElement("div");
+      text.textContent = note.text;
+      box.append(title, text);
+      if (note.evidence) {
+        const evidence = document.createElement("div");
+        evidence.className = "evidence";
+        evidence.textContent = `원문: ${note.evidence}`;
+        box.appendChild(evidence);
+      }
+      container.appendChild(box);
+    }
+  }
+
+  $("sanggeupIncludesGeneral").addEventListener("change", () => renderMatrix());
 
   function th(text, className) {
     const element = document.createElement("th");
@@ -485,10 +609,50 @@
   });
 
   $("templatePickBtn").addEventListener("click", () => $("templateInput").click());
-  $("templateInput").addEventListener("change", (event) => {
+  $("templateInput").addEventListener("change", async (event) => {
     const file = event.target.files[0];
     state.templateFile = file || null;
+    state.templateSheet = "";
+    const sheetSelect = $("sheetSelect");
+    if (sheetSelect) sheetSelect.remove();
     $("templateName").textContent = file ? file.name : "선택된 양식 없음";
+    if (!file) return;
+
+    // 양식 안에 담보표 시트가 여러 개일 수 있어(사본 시트 등) 어디에 채울지 고르게 한다.
+    try {
+      const formData = new FormData();
+      formData.append("template", file);
+      const response = await fetch("/api/template-info", { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "양식을 읽지 못했습니다.");
+
+      const sheets = data.sheets || [];
+      if (sheets.length === 0) throw new Error("양식에서 '회사명' 칸이 있는 시트를 찾지 못했습니다.");
+      state.templateSheet = sheets[0].name;
+
+      const detail = document.createElement("span");
+      detail.className = "muted";
+      detail.id = "sheetSelect";
+      if (sheets.length === 1) {
+        const companies = sheets[0].companies.join(", ");
+        detail.textContent = `시트 "${sheets[0].name}"${companies ? ` · 이미 있는 회사: ${companies}` : ""}`;
+      } else {
+        const select = document.createElement("select");
+        for (const sheet of sheets) {
+          const option = document.createElement("option");
+          option.value = sheet.name;
+          option.textContent = `${sheet.name}${sheet.companies.length ? ` (${sheet.companies.join(", ")})` : " (비어 있음)"}`;
+          select.appendChild(option);
+        }
+        select.addEventListener("change", () => {
+          state.templateSheet = select.value;
+        });
+        detail.append("채울 시트: ", select);
+      }
+      document.querySelector(".template-row").appendChild(detail);
+    } catch (error) {
+      showError(resultError, error.message);
+    }
   });
 
   $("resetBtn").addEventListener("click", () => {
@@ -543,6 +707,18 @@
     const formData = new FormData();
     formData.append("template", state.templateFile);
     formData.append("matrix", JSON.stringify(matrix));
+    formData.append("sheetName", state.templateSheet || "");
+    formData.append(
+      "extras",
+      JSON.stringify({
+        summary: computeSummary(buildMatrix()).map((row) => ({
+          label: row.label,
+          상해: round(row["상해"]),
+          질병: round(row["질병"]),
+        })),
+        paybackNotes: paybackNotes(),
+      })
+    );
 
     try {
       const response = await fetch("/api/export-template", { method: "POST", body: formData });

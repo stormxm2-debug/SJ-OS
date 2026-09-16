@@ -393,6 +393,50 @@ tr.row-unmatched td {
 .swatch-empty { background: var(--color-empty); }
 .swatch-review { background: var(--color-review); }
 
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  margin: 6px 0;
+  cursor: pointer;
+}
+
+.toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.summary-table th.row-label {
+  min-width: 140px;
+}
+
+.payback-notes {
+  margin-top: 12px;
+  font-size: 0.85rem;
+}
+
+.payback-note {
+  border-left: 3px solid var(--color-primary);
+  background: #f7f9ff;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.payback-note strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.payback-note .evidence {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
 /* 다운로드 */
 .template-row {
   display: flex;
