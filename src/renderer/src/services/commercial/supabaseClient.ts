@@ -18,6 +18,41 @@ function env(): Record<string, string | undefined> {
   return ((import.meta as unknown as { env?: Record<string, string | undefined> }).env) ?? {}
 }
 
+/**
+ * 웹 PWA 배포 안정화용 기본값.
+ *
+ * SJ INVEST 는 이 Supabase 프로젝트 하나만 사용한다. anon 키는 공개용(프론트엔드에
+ * 노출돼도 안전 — 실제 접근 통제는 RLS)이라, 배포 환경변수 누락/오타로 인한 전사 로그인
+ * 장애를 막기 위해 코드에 기본값으로 내장한다. 강제 적용은 웹 빌드에서만(vite.config.web.ts
+ * 의 __SJ_WEB_BUILD__); 데스크톱/개발 빌드는 기존 env 기반 동작(env 없으면 데모 모드)을 유지한다.
+ */
+const FALLBACK_SUPABASE_URL = 'https://kmjnluubjgyxkppxxjel.supabase.co'
+const FALLBACK_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imttam5sdXViamd5eGtwcHh4amVsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxNzQ1MjMsImV4cCI6MjA5ODc1MDUyM30.7bCGFTRIx-GwZg7h4V015O1QZnKGKXumeFgqEcvbHPw'
+
+declare const __SJ_WEB_BUILD__: boolean | undefined
+
+/** 웹 PWA 빌드 여부. vite.config.web.ts 에서 define. 그 외 빌드에서는 false. */
+function isWebBuild(): boolean {
+  try {
+    return typeof __SJ_WEB_BUILD__ !== 'undefined' && __SJ_WEB_BUILD__ === true
+  } catch {
+    return false
+  }
+}
+
+/** 실제 사용할 Supabase URL. 웹 빌드는 항상 SJ 프로젝트(배포 설정 실수 방지). */
+function resolvedSupabaseUrl(): string | undefined {
+  if (isWebBuild()) return FALLBACK_SUPABASE_URL
+  return env().VITE_SUPABASE_URL?.trim() || undefined
+}
+
+/** 실제 사용할 anon 키(공개). 웹 빌드는 항상 내장 기본값. */
+function resolvedSupabaseAnonKey(): string | undefined {
+  if (isWebBuild()) return FALLBACK_SUPABASE_ANON_KEY
+  return env().VITE_SUPABASE_ANON_KEY?.trim() || undefined
+}
+
 export interface SupabaseConfigStatus {
   url?: string
   urlConfigured: boolean
@@ -26,11 +61,10 @@ export interface SupabaseConfigStatus {
   isConfigured: boolean
 }
 
-/** Read the public Supabase config from env (no secrets returned). */
+/** Read the public Supabase config (no secrets returned). Web build uses built-in defaults. */
 export function getSupabaseConfigStatus(): SupabaseConfigStatus {
-  const e = env()
-  const url = e.VITE_SUPABASE_URL?.trim() || undefined
-  const anonKey = e.VITE_SUPABASE_ANON_KEY?.trim() || undefined
+  const url = resolvedSupabaseUrl()
+  const anonKey = resolvedSupabaseAnonKey()
   return {
     url,
     urlConfigured: !!url,
@@ -41,7 +75,7 @@ export function getSupabaseConfigStatus(): SupabaseConfigStatus {
 
 /** Public anon key (safe in the frontend). Used as Bearer for Edge Function calls. */
 export function getSupabaseAnonKey(): string | undefined {
-  return env().VITE_SUPABASE_ANON_KEY?.trim() || undefined
+  return resolvedSupabaseAnonKey()
 }
 
 /**
@@ -78,8 +112,7 @@ export async function initSupabaseClient(): Promise<unknown | null> {
     const mod: any = await import('@supabase/supabase-js')
     const createClient = mod?.createClient
     if (typeof createClient !== 'function') return null
-    const e = env()
-    cachedClient = createClient(status.url, e.VITE_SUPABASE_ANON_KEY, {
+    cachedClient = createClient(resolvedSupabaseUrl(), resolvedSupabaseAnonKey(), {
       auth: { persistSession: true, autoRefreshToken: true }
     })
     return cachedClient
