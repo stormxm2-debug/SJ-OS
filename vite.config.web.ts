@@ -41,7 +41,8 @@ export default defineConfig({
   },
   // 웹 PWA 빌드 표식 — supabaseClient 가 배포 설정(env)과 무관하게 SJ Supabase 프로젝트로
   // 항상 접속하도록(환경변수 누락/오타로 인한 로그인 장애 방지). 공개 anon 키만 사용.
-  define: { __SJ_WEB_BUILD__: JSON.stringify(true) },
+  // 기본 true(운영: 항상 SJ Supabase 접속). 로컬 데모 확인용으로만 SJ_WEB_FORCE_SUPABASE=0 로 끌 수 있음.
+  define: { __SJ_WEB_BUILD__: JSON.stringify(process.env.SJ_WEB_FORCE_SUPABASE !== '0') },
   plugins: [react(), buildVersionPlugin()],
   build: {
     outDir: resolve(__dirname, 'dist'),
