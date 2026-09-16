@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>가입제안서 담보 자동 엑셀 정리</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1>가입제안서 담보 자동 엑셀 정리</h1>
+      <p class="subtitle">제안서를 여러 건 올리면 담보를 뽑아 분류하고, 체크한 담보만 엑셀 양식에 채워 드립니다.</p>
+    </header>
+
+    <main>
+      <!-- 1. 제안서 업로드 -->
+      <section class="panel">
+        <h2 class="panel-title">1. 가입제안서 올리기</h2>
+        <div id="dropZone" class="drop-zone">
+          <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple hidden />
+          <div class="drop-zone-icon">📄</div>
+          <p class="drop-zone-text">눌러서 파일을 고르거나 여기로 끌어다 놓으세요</p>
+          <p class="drop-zone-hint">여러 개 한꺼번에 가능 · PDF, JPG, PNG · 분석 후에도 계속 추가할 수 있습니다</p>
+        </div>
+        <ul id="pendingList" class="pending-list"></ul>
+        <div class="toolbar">
+          <button id="analyzeBtn" class="btn btn-primary" type="button" disabled>분석 시작</button>
+          <span id="progressText" class="muted" hidden></span>
+        </div>
+        <p id="uploadError" class="error-text" hidden></p>
+      </section>
+
+      <!-- 2. 분석된 문서 -->
+      <section id="filesPanel" class="panel" hidden>
+        <h2 class="panel-title">2. 분석된 제안서</h2>
+        <p class="panel-hint">회사명과 보험료가 다르면 여기서 고치세요. 같은 회사 파일이 여러 개면 보험료는 합산됩니다.</p>
+        <div id="fileCards" class="file-cards"></div>
+      </section>
+
+      <!-- 3. 담보 선택 -->
+      <section id="itemsPanel" class="panel" hidden>
+        <h2 class="panel-title">3. 양식에 넣을 담보 고르기</h2>
+        <div class="legend">
+          <span class="legend-item"><span class="swatch swatch-review"></span>확인 필요</span>
+          <span class="legend-item"><span class="swatch swatch-empty"></span>양식에 없는 담보(기본 해제)</span>
+          <span class="legend-item">분류·구분·일당은 직접 고치거나 입력할 수 있습니다</span>
+        </div>
+        <div class="toolbar">
+          <button id="checkAllBtn" class="btn btn-secondary btn-small" type="button">분류된 담보 모두 체크</button>
+          <button id="uncheckAllBtn" class="btn btn-secondary btn-small" type="button">전체 해제</button>
+        </div>
+        <div id="itemGroups"></div>
+      </section>
+
+      <!-- 4. 양식 미리보기 + 다운로드 -->
+      <section id="matrixPanel" class="panel" hidden>
+        <h2 class="panel-title">4. 양식 미리보기</h2>
+        <p class="panel-hint">체크한 담보가 아래처럼 채워집니다. 칸을 직접 고쳐도 됩니다(농협처럼 일당을 못 읽은 칸은 여기서 입력).</p>
+        <div class="table-scroll">
+          <table id="matrixTable" class="matrix-table"></table>
+        </div>
+
+        <h2 class="panel-title">5. 엑셀 받기</h2>
+        <div class="template-row">
+          <input type="file" id="templateInput" accept=".xlsx" hidden />
+          <button id="templatePickBtn" class="btn btn-secondary" type="button">엑셀 양식 파일 선택</button>
+          <span id="templateName" class="muted">선택된 양식 없음</span>
+        </div>
+        <div class="result-actions">
+          <button id="resetBtn" class="btn btn-tertiary" type="button">전체 초기화</button>
+          <div class="action-group">
+            <button id="downloadListBtn" class="btn btn-secondary" type="button">담보 목록만 받기</button>
+            <button id="downloadTemplateBtn" class="btn btn-primary" type="button">양식에 채워서 받기</button>
+          </div>
+        </div>
+        <p id="resultError" class="error-text" hidden></p>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "sj-os-coverage-tool",
+  "version": "0.1.0",
+  "description": "보험 가입제안서 담보 자동 엑셀 정리 (SJ OS 통합 예정 모듈)",
+  "private": true,
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "start:mobile": "node server/index.js --mobile"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.0.0",
+    "pdfjs-dist": "^4.0.379",
+    "@napi-rs/canvas": "^0.1.53",
+    "tesseract.js": "^5.1.0",
+    "exceljs": "^4.4.0"
+  }
+}

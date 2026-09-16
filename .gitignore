@@ -1,0 +1,8 @@
+node_modules/
+
+# tesseract.js가 내려받는 한국어/영어 인식 모델(약 7MB)
+.cache/
+
+# 실행 로그·임시 산출물
+*.log
+*.tmp.mjs
