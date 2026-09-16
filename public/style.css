@@ -50,6 +50,102 @@ body {
   margin-top: 18px;
 }
 
+/* 탭 */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 16px;
+  border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
+}
+
+.tab {
+  border: none;
+  background: none;
+  padding: 10px 14px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tab.is-active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.tab-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-empty);
+  font-size: 0.72rem;
+  margin-right: 4px;
+}
+
+.tab.is-active .tab-no {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.tab-count {
+  font-weight: 500;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+/* 접기 */
+.fold {
+  margin-top: 18px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+.fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 4px 0;
+}
+
+.item-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 8px 0;
+}
+
+/* 하단 상태 바 */
+.status-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-top: 16px;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.status-text {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
 .panel-title {
   font-size: 1.05rem;
   margin: 0 0 6px;

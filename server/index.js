@@ -52,6 +52,13 @@ async function pagesFromFile(file) {
   return pages;
 }
 
+// 브라우저가 보낸 파일명은 latin1로 읽혀 한글이 깨진다. UTF-8로 되돌린다.
+function decodeFileName(name) {
+  if (!name) return "이름 없는 파일";
+  const restored = Buffer.from(name, "latin1").toString("utf8");
+  return restored.includes("�") ? name : restored;
+}
+
 function checkFile(file) {
   if (/heic|heif/i.test(file.mimetype)) {
     return "아이폰 HEIC 사진은 지원하지 않습니다. JPG로 저장한 뒤 다시 올려주세요.";
@@ -75,7 +82,7 @@ app.post("/api/analyze", upload.array("files", 12), async (req, res) => {
 
   const results = [];
   for (const file of files) {
-    const fileName = file.originalname || "이름 없는 파일";
+    const fileName = decodeFileName(file.originalname);
     const problem = checkFile(file);
     if (problem) {
       results.push({ fileName, error: problem, items: [], warnings: [] });
@@ -189,7 +196,7 @@ app.post("/api/export-template", upload.single("template"), async (req, res) => 
       req.body.sheetName || "",
       extras
     );
-    const base = (req.file.originalname || "양식").replace(/\.xlsx$/i, "");
+    const base = decodeFileName(req.file.originalname).replace(/\.xlsx$/i, "");
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;

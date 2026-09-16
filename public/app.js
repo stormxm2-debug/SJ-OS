@@ -171,6 +171,7 @@
       state.pending = [];
       showError(uploadError, failed.join("\n"));
       renderAll();
+      if (state.files.length > 0) showTab("items"); // 분석이 끝나면 담보 선택 화면으로
     } catch (error) {
       showError(uploadError, error.message || "분석 중 오류가 발생했습니다.");
     } finally {
@@ -256,10 +257,12 @@
     itemGroups.innerHTML = "";
 
     for (const file of state.files) {
-      const group = document.createElement("div");
+      const group = document.createElement("details");
       group.className = "item-group";
-      const title = document.createElement("h3");
-      title.textContent = `${file.company || "회사 미확인"} — ${file.fileName}`;
+      group.open = true;
+      const title = document.createElement("summary");
+      const checkedCount = file.items.filter((item) => item.checked).length;
+      title.textContent = `${file.company || "회사 미확인"} — ${file.fileName} (체크 ${checkedCount}/${file.items.length})`;
       group.appendChild(title);
 
       const table = document.createElement("table");
@@ -463,6 +466,7 @@
 
     matrixTable.append(head, body);
     renderSummary(matrix);
+    renderPremiumTable(matrix);
   }
 
   /* ---------- 최종 합계표 ---------- */
@@ -585,11 +589,120 @@
     return element;
   }
 
+  /* ---------- 탭 · 상태 바 ---------- */
+
+  function showTab(name) {
+    for (const tab of document.querySelectorAll(".tab")) {
+      tab.classList.toggle("is-active", tab.dataset.tab === name);
+    }
+    for (const page of document.querySelectorAll(".tab-page")) {
+      page.hidden = page.dataset.page !== name;
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  for (const tab of document.querySelectorAll(".tab")) {
+    tab.addEventListener("click", () => showTab(tab.dataset.tab));
+  }
+
+  $("statusDownloadBtn").addEventListener("click", () => $("downloadTemplateBtn").click());
+
+  function renderStatus() {
+    let checked = 0;
+    let total = 0;
+    for (const file of state.files) {
+      for (const item of file.items) {
+        total++;
+        if (item.checked) checked++;
+      }
+    }
+    $("countFiles").textContent = state.files.length ? `${state.files.length}건` : "";
+    $("countItems").textContent = total ? `${checked}/${total}` : "";
+    $("statusBar").hidden = state.files.length === 0;
+    $("statusText").textContent =
+      `문서 ${state.files.length}건 · 담보 ${checked}/${total} 체크 · ` +
+      (state.templateFile ? state.templateFile.name : "양식 미선택");
+    $("itemsEmpty").hidden = state.files.length > 0;
+    $("resultEmpty").hidden = state.files.length > 0;
+  }
+
+  /* ---------- 항목별 보험료 ---------- */
+
+  // 담보 하나가 여러 항목(인실 3칸 등)에 들어가도 보험료는 첫 항목에만 한 번 더한다.
+  function renderPremiumTable(matrix) {
+    const table = $("premiumTable");
+    table.innerHTML = "";
+    if (matrix.length === 0) return;
+
+    const companies = matrix.map((entry) => entry.company);
+    const totals = new Map();
+    for (const file of state.files) {
+      const company = (file.company || "").trim() || "회사 미확인";
+      for (const item of file.items) {
+        if (!item.checked) continue;
+        const category = categoriesOfChoice(item.choice)[0];
+        if (!category) continue;
+        const premium = Number(String(item.premium || "").replace(/[^\d]/g, ""));
+        if (!Number.isFinite(premium) || premium === 0) continue;
+        const bucket = totals.get(company) || new Map();
+        bucket.set(category, (bucket.get(category) || 0) + premium);
+        totals.set(company, bucket);
+      }
+    }
+
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    headRow.appendChild(th("항목", "row-label"));
+    for (const company of companies) headRow.appendChild(th(company));
+    headRow.appendChild(th("합계"));
+    head.appendChild(headRow);
+
+    const body = document.createElement("tbody");
+    const won = (value) => (value ? `${value.toLocaleString("ko-KR")}원` : "");
+
+    for (const category of state.categories) {
+      if (category === "간병페이백") continue;
+      const values = companies.map((company) => (totals.get(company) || new Map()).get(category) || 0);
+      const sum = values.reduce((a, b) => a + b, 0);
+      if (sum === 0) continue;
+      const tr = document.createElement("tr");
+      tr.appendChild(th(category, "row-label"));
+      for (const value of values) {
+        const td = document.createElement("td");
+        td.textContent = won(value);
+        tr.appendChild(td);
+      }
+      const totalTd = document.createElement("td");
+      totalTd.textContent = won(sum);
+      tr.appendChild(totalTd);
+      body.appendChild(tr);
+    }
+
+    const totalRow = document.createElement("tr");
+    totalRow.appendChild(th("체크한 담보 합계", "row-label"));
+    let grand = 0;
+    for (const company of companies) {
+      const bucket = totals.get(company) || new Map();
+      const sum = [...bucket.values()].reduce((a, b) => a + b, 0);
+      grand += sum;
+      const td = document.createElement("td");
+      td.textContent = won(sum);
+      totalRow.appendChild(td);
+    }
+    const grandTd = document.createElement("td");
+    grandTd.textContent = won(grand);
+    totalRow.appendChild(grandTd);
+    body.appendChild(totalRow);
+
+    table.append(head, body);
+  }
+
   function renderAll() {
     renderFiles();
     renderItems();
     renderMatrix();
     renderPending();
+    renderStatus();
   }
 
   /* ---------- 내려받기 ---------- */
@@ -616,6 +729,7 @@
     const sheetSelect = $("sheetSelect");
     if (sheetSelect) sheetSelect.remove();
     $("templateName").textContent = file ? file.name : "선택된 양식 없음";
+    renderStatus();
     if (!file) return;
 
     // 양식 안에 담보표 시트가 여러 개일 수 있어(사본 시트 등) 어디에 채울지 고르게 한다.
