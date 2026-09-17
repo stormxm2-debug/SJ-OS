@@ -19,6 +19,7 @@ import SalaryCalculatorPage from '@renderer/pages/SalaryCalculatorPage'
 import FcOsPage from '@renderer/pages/FcOsPage'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
 import CoverageAnalysisPage from '@renderer/pages/CoverageAnalysisPage'
+import HospitalCoveragePage from '@renderer/pages/HospitalCoveragePage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import ExemptionsPage from '@renderer/pages/ExemptionsPage'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
@@ -121,6 +122,8 @@ export default function Router(): JSX.Element {
       return <InsuranceAnalysisPage />
     case 'coverage-analysis':
       return <CoverageAnalysisPage />
+    case 'hospital-coverage':
+      return <HospitalCoveragePage />
     case 'claim-assistant':
       return <InsuranceClaimAssistantPage />
     case 'exemptions':
