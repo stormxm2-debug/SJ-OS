@@ -254,7 +254,7 @@ export interface SummaryScenario {
   sanggeup?: boolean
 }
 
-// 하루 입원했을 때 실제로 받는 금액을 상황별로 합산한다(체크된 담보, 전 보험사).
+// 하루 입원했을 때 실제로 받는 금액을 상황별로 합산한다(체크된 담보, 보험사마다 따로).
 export const SUMMARY_SCENARIOS: SummaryScenario[] = [
   { label: '일반병원 입원', parts: ['입원일당', '간병인사용일당'] },
   { label: '종합병원 입원', parts: ['입원일당', '간병인사용일당', '종합병원일당'] },
@@ -271,8 +271,8 @@ export const SUMMARY_SCENARIOS: SummaryScenario[] = [
 export interface SummaryRow {
   label: string
   parts: Category[]
-  상해: number
-  질병: number
+  // 보험사별 상해/질병 합계(만원). 서로 비교하는 제안서라 회사끼리 더하지 않는다.
+  byCompany: Record<string, Record<Side, number>>
 }
 
 export function computeSummary(
@@ -283,17 +283,19 @@ export function computeSummary(
   return SUMMARY_SCENARIOS.map((scenario) => {
     const parts: Category[] =
       scenario.sanggeup && sanggeupIncludesGeneral ? [...scenario.parts, '종합병원일당'] : scenario.parts
-    const row: SummaryRow = { label: scenario.label, parts, 상해: 0, 질병: 0 }
+    const row: SummaryRow = { label: scenario.label, parts, byCompany: {} }
     for (const company of companies) {
+      const totals: Record<Side, number> = { 상해: 0, 질병: 0 }
       for (const side of SIDES) {
         for (const category of parts) {
-          const value = Number(valueOf(company, category, side))
-          if (valueOf(company, category, side) !== '' && Number.isFinite(value)) row[side] += value
+          const raw = valueOf(company, category, side)
+          const value = Number(raw)
+          if (raw !== '' && Number.isFinite(value)) totals[side] += value
         }
+        totals[side] = Math.round(totals[side] * 100) / 100
       }
+      row.byCompany[company] = totals
     }
-    row.상해 = Math.round(row.상해 * 100) / 100
-    row.질병 = Math.round(row.질병 * 100) / 100
     return row
   })
 }

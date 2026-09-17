@@ -341,18 +341,19 @@ export default function HospitalCoveragePage(): JSX.Element {
   })
 
   const makeSummary = async (): Promise<string> => {
-    setBusy('AI가 요약 설명을 만드는 중…')
+    setBusy('AI가 보험별 장점을 정리하는 중…')
     const input = summaryInput()
     const res = await requestAiSummary(input)
     let text: string
-    if (res.ok && res.summary && (res.summary.headline || res.summary.points.length)) {
-      text = summaryToText(res.summary)
+    const premiums = new Map(input.companies.map((c) => [c.company, c.monthlyPremium]))
+    if (res.ok && res.summary && res.summary.companies.length) {
+      text = summaryToText(res.summary, premiums)
       setSummarySource('ai')
-      setNotice('AI 요약을 만들었습니다. 필요하면 고쳐서 쓰세요.')
+      setNotice('AI가 보험별 장점을 정리했습니다. 필요하면 고쳐서 쓰세요.')
     } else {
-      text = summaryToText(buildBasicSummary(input))
+      text = summaryToText(buildBasicSummary(input), premiums)
       setSummarySource('basic')
-      setNotice(`${res.error ?? 'AI 요약을 만들지 못했습니다.'} 숫자로 만든 기본 요약으로 채웠습니다.`)
+      setNotice(`${res.error ?? 'AI 요약을 만들지 못했습니다.'} 숫자 비교로 만든 기본 장점 설명으로 채웠습니다.`)
     }
     setSummaryText(text)
     setSummaryKey(JSON.stringify(input))
@@ -672,38 +673,80 @@ export default function HospitalCoveragePage(): JSX.Element {
           <div className="rounded-2xl border border-slate-800 bg-white p-6 text-center text-[13px] text-slate-500 shadow-sm">아직 계산할 담보가 없습니다. 제안서를 올리고 담보를 체크해주세요.</div>
         ) : (
           <div className="space-y-4">
-            {/* 최종 합계표 */}
+            {/* 최종 합계표 — 회사별 담보 표와 바로 아래 회사별 합계 */}
             <div className="space-y-2">
               <div className="flex flex-wrap items-end justify-between gap-2 px-1">
-                <div>
-                  <h2 className="text-sm font-bold text-slate-100">최종 합계표 <span className="text-[11px] font-medium text-slate-500">하루 입원 시 받는 금액(만원) · 체크한 담보 전 보험사 합산</span></h2>
-                </div>
+                <h2 className="text-sm font-bold text-slate-100">
+                  최종 합계표 <span className="text-[11px] font-medium text-slate-500">보험료 낮은 순 · 일당 만원 · 위 칸은 직접 수정 가능</span>
+                </h2>
                 <label className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-slate-300">
                   <input type="checkbox" checked={includeGeneral} onChange={(e) => setIncludeGeneral(e.target.checked)} className="h-4 w-4 accent-indigo-600" />
                   상급병원 합계에 종합병원일당도 더하기 (약관상 해당 시)
                 </label>
               </div>
-              <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-white shadow-sm">
-                <table className="w-full min-w-[560px] text-left text-[13px]">
+              <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-white p-2 shadow-sm">
+                <table className="w-full border-collapse text-center text-[12px]">
                   <thead>
-                    <tr className="border-b border-slate-800 bg-slate-950 text-[11px] text-slate-500">
-                      <th className="px-3 py-2.5 font-semibold">상황</th>
-                      <th className="px-3 py-2.5 text-right font-semibold">상해</th>
-                      <th className="px-3 py-2.5 text-right font-semibold">질병</th>
-                      <th className="px-3 py-2.5 font-semibold">합산 항목</th>
+                    <tr className="text-[12px]">
+                      <th rowSpan={2} className="sticky left-0 z-[1] border border-slate-800 bg-[#0e1e3a] px-3 py-1.5 text-left font-bold text-white">항목</th>
+                      {companies.map((c) => <th key={c} colSpan={2} className="border border-slate-800 bg-[#0e1e3a] px-2 py-1.5 font-bold text-white">{c}</th>)}
+                    </tr>
+                    <tr className="text-[11px] text-slate-500">
+                      {companies.flatMap((c) => SIDES.map((s) => <th key={`${c}-${s}`} className="border border-slate-800 bg-slate-950 px-2 py-1 font-semibold">{s}</th>))}
                     </tr>
                   </thead>
                   <tbody>
+                    {CATEGORIES.map((category) => (
+                      <tr key={category}>
+                        <th className="sticky left-0 z-[1] whitespace-nowrap border border-slate-800 bg-white px-3 py-1 text-left text-[12px] font-semibold text-slate-200">{category}</th>
+                        {companies.flatMap((company) =>
+                          SIDES.map((side) => {
+                            const key = overrideKey(company, category, side)
+                            const value = valueOf(company, category, side)
+                            const needsInput = category !== '간병페이백' && !value && docs.some(
+                              (d) => (d.company.trim() || '회사 미확인') === company && d.items.some((it) => it.checked && it.daily === '' && categoriesOf(it.choice).includes(category))
+                            )
+                            return (
+                              <td key={key} className="border border-slate-800 p-0.5">
+                                <input value={value} onChange={(e) => setOverrides((prev) => ({ ...prev, [key]: e.target.value.trim() }))}
+                                  className={['w-full min-w-[3.5rem] rounded px-1 py-0.5 text-center text-[12px] tabular-nums outline-none focus:bg-indigo-50', needsInput ? 'bg-rose-50' : 'bg-transparent'].join(' ')} />
+                              </td>
+                            )
+                          })
+                        )}
+                      </tr>
+                    ))}
+                    <tr className="bg-slate-950">
+                      <th className="sticky left-0 z-[1] border border-slate-800 bg-slate-950 px-3 py-1 text-left text-[12px] font-bold text-slate-100">월 보험료</th>
+                      {companies.map((company) => {
+                        const key = overrideKey(company, '보험료', '')
+                        return (
+                          <td key={key} colSpan={2} className="border border-slate-800 p-0.5">
+                            <input value={premiumOf(company)} onChange={(e) => setOverrides((prev) => ({ ...prev, [key]: e.target.value.trim() }))}
+                              className="w-full rounded bg-transparent px-1 py-0.5 text-center text-[12px] font-bold tabular-nums outline-none focus:bg-white" />
+                          </td>
+                        )
+                      })}
+                    </tr>
+                    <tr>
+                      <th colSpan={1 + companies.length * 2} className="border border-slate-800 bg-[#0e1e3a] px-3 py-1.5 text-left text-[12px] font-bold text-white">
+                        합계 <span className="font-medium text-white/70">하루 입원 시 받는 금액(만원) · 회사별</span>
+                      </th>
+                    </tr>
                     {summary.map((row) => (
-                      <tr key={row.label} className="border-b border-slate-800 last:border-0">
-                        <td className="px-3 py-2 font-semibold whitespace-nowrap text-slate-100">{row.label}</td>
-                        <td className="px-3 py-2 text-right tabular-nums font-bold text-slate-100">{row.상해 ? `${row.상해}만원` : ''}</td>
-                        <td className="px-3 py-2 text-right tabular-nums font-bold text-slate-100">{row.질병 ? `${row.질병}만원` : ''}</td>
-                        <td className="px-3 py-2 text-[11px] text-slate-500">{row.parts.join(' + ')}</td>
+                      <tr key={row.label} className="bg-amber-50" title={row.parts.join(' + ')}>
+                        <th className="sticky left-0 z-[1] whitespace-nowrap border border-slate-800 bg-amber-50 px-3 py-1.5 text-left text-[12px] font-bold text-slate-100">{row.label}</th>
+                        {companies.flatMap((company) =>
+                          SIDES.map((side) => {
+                            const value = row.byCompany[company]?.[side] ?? 0
+                            return <td key={`${row.label}-${company}-${side}`} className="border border-slate-800 px-2 py-1.5 font-bold tabular-nums text-slate-100">{value || ''}</td>
+                          })
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                <p className="px-1 pt-2 text-[11px] text-slate-500">빨간 칸은 일당을 못 읽은 곳입니다(예: 농협). 직접 입력하면 합계가 바로 바뀝니다. 합계 줄에 마우스를 올리면 더한 항목이 보입니다.</p>
               </div>
 
               {/* 페이백 안내 */}
@@ -724,27 +767,27 @@ export default function HospitalCoveragePage(): JSX.Element {
             <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-slate-100">
-                  요약 설명{' '}
+                  이 보험의 장점{' '}
                   {summarySource ? (
                     <span className="text-[11px] font-medium text-slate-500">
-                      {summarySource === 'ai' ? 'AI 요약' : summarySource === 'basic' ? '기본 요약(AI 미연결)' : '직접 수정함'}
+                      {summarySource === 'ai' ? 'AI 정리' : summarySource === 'basic' ? '기본 설명(AI 미연결)' : '직접 수정함'}
                     </span>
                   ) : null}
                 </h2>
                 <button type="button" disabled={Boolean(busy)} onClick={() => void makeSummary()}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[12px] font-bold text-indigo-700 hover:opacity-90 disabled:opacity-50">
-                  <Sparkles className="h-3.5 w-3.5" /> {summaryText ? 'AI로 다시 요약' : 'AI로 요약 만들기'}
+                  <Sparkles className="h-3.5 w-3.5" /> {summaryText ? 'AI로 다시 정리' : 'AI로 장점 정리'}
                 </button>
               </div>
-              <p className="mt-1 text-[11px] text-slate-500">합계표·보험료·페이백 숫자와 회사명만 AI에 보냅니다(고객 이름·제안서 원문은 보내지 않음). 엑셀 받을 때 비어 있거나 숫자가 바뀌었으면 자동으로 새로 만듭니다.</p>
-              {summaryStale ? <div className="mt-2 text-[12px] font-medium text-amber-700">요약을 만든 뒤 숫자가 바뀌었습니다. 엑셀 받을 때 새로 만들거나, 지금 다시 요약하세요.</div> : null}
+              <p className="mt-1 text-[11px] text-slate-500">보험사별로 고객에게 설명할 장점을 정리합니다. 합계·보험료·페이백 숫자와 회사명만 AI에 보냅니다(고객 이름·제안서 원문 제외). 엑셀 받을 때 비어 있거나 숫자가 바뀌었으면 자동으로 새로 만듭니다.</p>
+              {summaryStale ? <div className="mt-2 text-[12px] font-medium text-amber-700">정리한 뒤 숫자가 바뀌었습니다. 엑셀 받을 때 새로 만들거나, 지금 다시 정리하세요.</div> : null}
               {summaryText ? (
-                <textarea value={summaryText} onChange={(e) => { setSummaryText(e.target.value); setSummarySource('edited') }} rows={Math.min(10, summaryText.split('\n').length + 1)}
+                <textarea value={summaryText} onChange={(e) => { setSummaryText(e.target.value); setSummarySource('edited') }} rows={Math.min(16, summaryText.split('\n').length + 1)}
                   className="mt-2 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] leading-relaxed text-slate-200 outline-none focus:border-indigo-400" />
               ) : null}
               <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-slate-300">
                 <input type="checkbox" checked={includeSummary} onChange={(e) => setIncludeSummary(e.target.checked)} className="h-4 w-4 accent-indigo-600" />
-                엑셀에 요약 설명 넣기
+                엑셀에 장점 설명 넣기
               </label>
             </div>
 
@@ -778,66 +821,10 @@ export default function HospitalCoveragePage(): JSX.Element {
               </div>
             </details>
 
-            {/* 양식 미리보기 */}
-            <details className="rounded-2xl border border-slate-800 bg-white shadow-sm">
-              <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-bold text-slate-100">양식 미리보기 (회사별 값 · 보험료 낮은 순 · 직접 수정 가능)</summary>
-              <p className="px-4 pt-2 text-[11px] text-slate-500">농협처럼 일당을 못 읽은 칸(빨간 칸)은 여기에 직접 입력하세요.</p>
-              <div className="overflow-x-auto p-2">
-                <table className="text-center text-[12px]">
-                  <thead>
-                    <tr className="text-[11px] text-slate-500">
-                      <th className="sticky left-0 bg-white px-2 py-1 text-left">항목</th>
-                      {companies.map((c) => <th key={c} colSpan={2} className="border border-slate-800 px-2 py-1 font-bold text-slate-200">{c}</th>)}
-                    </tr>
-                    <tr className="text-[10px] text-slate-500">
-                      <th className="sticky left-0 bg-white"></th>
-                      {companies.flatMap((c) => SIDES.map((s) => <th key={`${c}-${s}`} className="border border-slate-800 px-2 py-0.5 font-medium">{s}</th>))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {CATEGORIES.map((category) => (
-                      <tr key={category}>
-                        <th className="sticky left-0 whitespace-nowrap bg-white px-2 py-1 text-left text-[12px] font-semibold text-slate-200">{category}</th>
-                        {companies.flatMap((company) =>
-                          SIDES.map((side) => {
-                            const entry = matrix.find((m) => m.company === company)
-                            const hasAny = Boolean(entry && Object.keys(entry.cells[category] ?? {}).length)
-                            const key = overrideKey(company, category, side)
-                            const value = valueOf(company, category, side)
-                            const needsInput = category !== '간병페이백' && !value && docs.some(
-                              (d) => (d.company.trim() || '회사 미확인') === company && d.items.some((it) => it.checked && it.daily === '' && categoriesOf(it.choice).includes(category))
-                            )
-                            return (
-                              <td key={key} className="border border-slate-800 p-0.5">
-                                <input value={value} onChange={(e) => setOverrides((prev) => ({ ...prev, [key]: e.target.value.trim() }))}
-                                  className={['w-14 rounded px-1 py-0.5 text-center text-[12px] tabular-nums outline-none focus:bg-white', needsInput ? 'bg-rose-50' : hasAny ? '' : 'bg-transparent'].join(' ')} />
-                              </td>
-                            )
-                          })
-                        )}
-                      </tr>
-                    ))}
-                    <tr>
-                      <th className="sticky left-0 bg-white px-2 py-1 text-left text-[12px] font-semibold text-slate-200">보험료</th>
-                      {companies.map((company) => {
-                        const key = overrideKey(company, '보험료', '')
-                        return (
-                          <td key={key} colSpan={2} className="border border-slate-800 p-0.5">
-                            <input value={premiumOf(company)} onChange={(e) => setOverrides((prev) => ({ ...prev, [key]: e.target.value.trim() }))}
-                              className="w-full rounded px-1 py-0.5 text-center text-[12px] tabular-nums outline-none" />
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </details>
-
             {/* 엑셀 받기 */}
             <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-bold text-slate-100">엑셀 받기</h2>
-              <p className="mt-1 text-[12px] text-slate-500">양식 없이 바로 받기: 요약 설명 · 회사별 비교(보험료 낮은 순) · 최종 합계표 · 페이백 안내 · 담보 목록</p>
+              <p className="mt-1 text-[12px] text-slate-500">양식 없이 바로 받기 — A4 가로 한 장: 회사별 담보 표 + 합계 · 페이백 안내 · 이 보험의 장점 (+ 담보목록 시트)</p>
               <div className="mt-2 flex justify-end">
                 <button type="button" disabled={Boolean(busy)} onClick={() => void downloadExcel()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-2 text-[12px] font-bold text-white hover:opacity-90 disabled:opacity-50">
                   <Download className="h-3.5 w-3.5" /> 엑셀 받기
@@ -864,7 +851,7 @@ export default function HospitalCoveragePage(): JSX.Element {
                   </select>
                 ) : null}
               </div>
-              <p className="mt-2 text-[11px] text-slate-500">양식의 기존 표·수식은 그대로 두고 값만 채웁니다(회사는 보험료 낮은 순). 요약 설명·합계표·페이백 안내는 시트 아래에 추가됩니다.</p>
+              <p className="mt-2 text-[11px] text-slate-500">양식의 기존 표·수식은 그대로 두고 값만 채웁니다(회사는 보험료 낮은 순). 회사별 합계·페이백 안내·장점 설명은 표 아래에 추가됩니다.</p>
               <div className="mt-3 flex flex-wrap justify-end gap-2">
                 <button type="button" disabled={Boolean(busy) || !template} onClick={() => void downloadTemplate()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-white px-3 py-2 text-[12px] font-semibold text-slate-200 hover:bg-slate-950 disabled:opacity-50">
                   <Download className="h-3.5 w-3.5" /> 양식에 채워서 받기

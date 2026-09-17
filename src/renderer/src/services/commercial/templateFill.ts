@@ -112,8 +112,15 @@ function chooseSheet(workbook: Workbook, sheetName: string): Worksheet | null {
   return best
 }
 
-// 기존 표와 수식은 그대로 두고 시트 아래에 요약 설명·최종 합계표·간병 페이백 안내를 덧붙인다.
-function writeSummaryBlock(sheet: Worksheet, labelColumn: number, summary: SummaryRow[], notes: PaybackNote[], summaryLines: string[]): void {
+// 기존 표와 수식은 그대로 두고, 표 바로 아래에 회사별 합계(같은 회사 칸)·페이백 안내·요약 설명을 덧붙인다.
+function writeSummaryBlock(
+  sheet: Worksheet,
+  labelColumn: number,
+  slotByCompany: Map<string, { left: number; right: number }>,
+  summary: SummaryRow[],
+  notes: PaybackNote[],
+  summaryLines: string[]
+): void {
   if (summary.length === 0 && notes.length === 0 && summaryLines.length === 0) return
   let rowNumber = sheet.rowCount + 2
   const put = (row: number, col: number, value: CellValue, bold = false): void => {
@@ -122,22 +129,16 @@ function writeSummaryBlock(sheet: Worksheet, labelColumn: number, summary: Summa
     if (bold) cell.font = { ...(cell.font ?? {}), bold: true }
   }
 
-  if (summaryLines.length > 0) {
-    put(rowNumber++, labelColumn, '요약 설명', true)
-    for (const line of summaryLines) put(rowNumber++, labelColumn, line)
-    rowNumber++
-  }
-
-  if (summary.length > 0) {
-    put(rowNumber++, labelColumn, '최종 합계표 (하루 입원 시 받는 금액, 만원)', true)
-    put(rowNumber, labelColumn, '상황', true)
-    put(rowNumber, labelColumn + 1, '상해', true)
-    put(rowNumber, labelColumn + 2, '질병', true)
-    rowNumber++
+  if (summary.length > 0 && slotByCompany.size > 0) {
+    put(rowNumber++, labelColumn, '합계 (하루 입원 시 받는 금액, 만원)', true)
     for (const row of summary) {
-      put(rowNumber, labelColumn, row.label)
-      put(rowNumber, labelColumn + 1, row.상해)
-      put(rowNumber, labelColumn + 2, row.질병)
+      put(rowNumber, labelColumn, row.label, true)
+      for (const [company, slot] of slotByCompany) {
+        const totals = row.byCompany[company]
+        if (!totals) continue
+        if (totals.상해) put(rowNumber, slot.left, totals.상해)
+        if (totals.질병) put(rowNumber, slot.right, totals.질병)
+      }
       rowNumber++
     }
     rowNumber++
@@ -149,6 +150,11 @@ function writeSummaryBlock(sheet: Worksheet, labelColumn: number, summary: Summa
       put(rowNumber, labelColumn + 1, note.text)
       rowNumber++
     }
+    rowNumber++
+  }
+  if (summaryLines.length > 0) {
+    put(rowNumber++, labelColumn, '이 보험의 장점', true)
+    for (const line of summaryLines) put(rowNumber++, labelColumn, line)
   }
 }
 
@@ -168,6 +174,7 @@ export async function fillTemplate(args: {
 
   const used = new Set<number>()
   const skippedCompanies: string[] = []
+  const slotByCompany = new Map<string, { left: number; right: number }>()
 
   for (const entry of args.matrix) {
     const company = entry.company.trim()
@@ -181,6 +188,7 @@ export async function fillTemplate(args: {
       continue
     }
     used.add(slot.left)
+    slotByCompany.set(entry.company, slot)
     if (!slot.name) {
       sheet.getRow(layout.companyRow).getCell(slot.left).value = company
       slot.name = compact
@@ -202,7 +210,7 @@ export async function fillTemplate(args: {
     }
   }
 
-  writeSummaryBlock(sheet, layout.labelColumn, args.summary, args.paybackNotes, args.summaryLines ?? [])
+  writeSummaryBlock(sheet, layout.labelColumn, slotByCompany, args.summary, args.paybackNotes, args.summaryLines ?? [])
   // 총보험료·입원일당 합계 같은 수식이 엑셀을 열 때 바로 다시 계산되도록 한다.
   workbook.calcProperties = { ...workbook.calcProperties, fullCalcOnLoad: true }
 
@@ -221,7 +229,23 @@ export interface CoverageListRow {
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-// 양식 없이 바로 받는 정리 엑셀: '합계표' 시트(요약·회사별 비교·최종 합계표·페이백) + '담보목록' 시트.
+// A4 가로로 인쇄되도록 설정한다. onePage 면 한 장에 모두 들어가게 줄인다.
+function setA4Landscape(sheet: Worksheet, lastColumn: number, lastRow: number, onePage: boolean): void {
+  sheet.pageSetup = {
+    ...sheet.pageSetup,
+    paperSize: 9,
+    orientation: 'landscape',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: onePage ? 1 : 0,
+    horizontalCentered: true,
+    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+    printArea: `A1:${sheet.getColumn(lastColumn).letter}${lastRow}`
+  }
+}
+
+// 양식 없이 바로 받는 정리 엑셀.
+// '합계표' 시트(A4 가로): 회사별 담보 표 → 바로 아래 회사별 합계 → 간병 페이백 → 이 보험의 장점. '담보목록' 시트: 원문 담보.
 export async function buildSummaryWorkbook(args: {
   matrix: MatrixEntry[] // 보험료 낮은 순
   categories: readonly Category[]
@@ -232,121 +256,146 @@ export async function buildSummaryWorkbook(args: {
 }): Promise<Blob> {
   const ExcelJS = await loadExcelJs()
   const workbook = new ExcelJS.Workbook()
-  const bold = { bold: true }
-  const headerFill = { type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb: 'FFE8EEF7' } }
-  const border = { style: 'thin' as const, color: { argb: 'FFBFC8D6' } }
-  const boxed = { top: border, left: border, bottom: border, right: border }
 
-  /* 합계표 */
-  const sheet = workbook.addWorksheet('합계표')
-  const lastCol = 1 + Math.max(args.matrix.length * 2, 3)
-  sheet.getColumn(1).width = 26
-  for (let c = 2; c <= lastCol; c++) sheet.getColumn(c).width = 12
+  const NAVY = 'FF0E1E3A'
+  const GOLD_SOFT = 'FFFBF3DC'
+  const GRAY_SOFT = 'FFF3F5F9'
+  const line = { style: 'thin' as const, color: { argb: 'FFC5CCD8' } }
+  const boxed = { top: line, left: line, bottom: line, right: line }
+  const fill = (argb: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb } })
+  const font = 'Malgun Gothic'
+
+  const sheet = workbook.addWorksheet('합계표', { views: [{ showGridLines: false }] })
+  const companyCount = Math.max(args.matrix.length, 1)
+  const lastCol = 1 + companyCount * 2
+  // A4 가로 한 장 너비(약 140자)를 회사 칸이 나눠 쓰도록 폭을 정한다.
+  const valueWidth = Math.max(8, Math.min(26, Math.floor((140 - 24) / (companyCount * 2))))
+  const mergedWidth = valueWidth * companyCount * 2
+  const linesFor = (text: string, width: number): number => Math.max(1, Math.ceil((text.length * 1.9) / width))
+  sheet.getColumn(1).width = 24
+  for (let c = 2; c <= lastCol; c++) sheet.getColumn(c).width = valueWidth
+
+  const style = (row: number, col: number, opts: { bold?: boolean; color?: string; bg?: string; size?: number; align?: 'left' | 'center' | 'right'; numFmt?: string; wrap?: boolean } = {}): void => {
+    const cell = sheet.getCell(row, col)
+    cell.font = { name: font, size: opts.size ?? 10, bold: Boolean(opts.bold), color: opts.color ? { argb: opts.color } : undefined }
+    cell.alignment = { horizontal: opts.align ?? 'center', vertical: 'middle', wrapText: Boolean(opts.wrap) }
+    cell.border = boxed
+    if (opts.bg) cell.fill = fill(opts.bg)
+    if (opts.numFmt) cell.numFmt = opts.numFmt
+  }
+
+  /* 제목 */
   let r = 1
-  sheet.getCell(r, 1).value = '가입제안서 담보 정리'
-  sheet.getCell(r, 1).font = { bold: true, size: 14 }
+  sheet.mergeCells(r, 1, r, lastCol)
+  sheet.getCell(r, 1).value = '가입제안서 담보 정리 — 입원·간병 보장 비교'
+  sheet.getCell(r, 1).font = { name: font, size: 16, bold: true, color: { argb: NAVY } }
+  sheet.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'middle' }
+  sheet.getRow(r).height = 28
+  r++
+  sheet.mergeCells(r, 1, r, lastCol)
+  const d = new Date()
+  sheet.getCell(r, 1).value = `작성일 ${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')} · 보험사는 월 보험료 낮은 순 · 금액 단위: 일당 만원 / 보험료 원`
+  sheet.getCell(r, 1).font = { name: font, size: 9, color: { argb: 'FF6B7280' } }
   r += 2
 
-  if (args.summaryLines.length > 0) {
-    sheet.getCell(r, 1).value = '요약 설명'
-    sheet.getCell(r, 1).font = bold
-    r++
-    for (const line of args.summaryLines) {
-      sheet.mergeCells(r, 1, r, lastCol)
-      const cell = sheet.getCell(r, 1)
-      cell.value = line
-      cell.alignment = { wrapText: true, vertical: 'top' }
-      sheet.getRow(r).height = Math.max(18, Math.ceil(line.length / 70) * 16)
-      r++
-    }
-    r++
+  /* 회사별 담보 표 */
+  const nameRow = r
+  const sideRow = r + 1
+  sheet.mergeCells(nameRow, 1, sideRow, 1)
+  sheet.getCell(nameRow, 1).value = '항목'
+  args.matrix.forEach((entry, i) => {
+    const left = 2 + i * 2
+    sheet.mergeCells(nameRow, left, nameRow, left + 1)
+    sheet.getCell(nameRow, left).value = entry.company
+    sheet.getCell(sideRow, left).value = '상해'
+    sheet.getCell(sideRow, left + 1).value = '질병'
+  })
+  for (let c = 1; c <= lastCol; c++) {
+    style(nameRow, c, { bold: true, color: 'FFFFFFFF', bg: NAVY, size: 11 })
+    style(sideRow, c, { bold: true, bg: GRAY_SOFT, size: 9 })
   }
+  sheet.getRow(nameRow).height = 22
+  r = sideRow + 1
 
-  if (args.matrix.length > 0) {
-    sheet.getCell(r, 1).value = '회사별 비교 (월 보험료 낮은 순 · 일당 만원)'
-    sheet.getCell(r, 1).font = bold
-    r++
-    const nameRow = r
-    const sideRow = r + 1
-    sheet.getCell(nameRow, 1).value = '항목'
-    sheet.mergeCells(nameRow, 1, sideRow, 1)
+  const writeValues = (label: string, valueAt: (entry: MatrixEntry, side: Side) => number | string | undefined, opts: { bg?: string; bold?: boolean } = {}): void => {
+    sheet.getCell(r, 1).value = label
+    style(r, 1, { bold: true, align: 'left', bg: opts.bg })
     args.matrix.forEach((entry, i) => {
-      const left = 2 + i * 2
-      sheet.mergeCells(nameRow, left, nameRow, left + 1)
-      sheet.getCell(nameRow, left).value = entry.company
-      sheet.getCell(sideRow, left).value = '상해'
-      sheet.getCell(sideRow, left + 1).value = '질병'
-    })
-    for (const row of [nameRow, sideRow]) {
-      for (let c = 1; c <= 1 + args.matrix.length * 2; c++) {
-        const cell = sheet.getCell(row, c)
-        cell.font = bold
-        cell.fill = headerFill
-        cell.border = boxed
-        cell.alignment = { horizontal: 'center', vertical: 'middle' }
-      }
-    }
-    r = sideRow + 1
-    const writeRow = (label: string, valueAt: (entry: MatrixEntry, side: Side) => number | string | undefined, numFmt?: string): void => {
-      sheet.getCell(r, 1).value = label
-      sheet.getCell(r, 1).font = bold
-      sheet.getCell(r, 1).border = boxed
-      args.matrix.forEach((entry, i) => {
-        ;(['상해', '질병'] as Side[]).forEach((side, j) => {
-          const cell = sheet.getCell(r, 2 + i * 2 + j)
-          const value = valueAt(entry, side)
-          if (value !== undefined && value !== '') cell.value = value
-          if (numFmt) cell.numFmt = numFmt
-          cell.border = boxed
-          cell.alignment = { horizontal: 'center' }
-        })
+      ;(['상해', '질병'] as Side[]).forEach((side, j) => {
+        const value = valueAt(entry, side)
+        if (value !== undefined && value !== '' && value !== 0) sheet.getCell(r, 2 + i * 2 + j).value = value
+        style(r, 2 + i * 2 + j, { bg: opts.bg, bold: opts.bold })
       })
-      r++
-    }
-    for (const category of args.categories) writeRow(category, (entry, side) => entry.cells[category]?.[side])
-    // 보험료는 회사당 두 칸을 합쳐 한 번만 적는다.
-    const premiumRow = r
-    writeRow('월 보험료(원)', (entry, side) => (side === '상해' && entry.premium !== null ? entry.premium : undefined), '#,##0')
-    args.matrix.forEach((_, i) => sheet.mergeCells(premiumRow, 2 + i * 2, premiumRow, 3 + i * 2))
+    })
+    sheet.getRow(r).height = 18
     r++
   }
 
+  for (const category of args.categories) writeValues(category, (entry, side) => entry.cells[category]?.[side])
+
+  // 월 보험료: 회사당 두 칸을 합쳐 한 번만.
+  sheet.getCell(r, 1).value = '월 보험료'
+  style(r, 1, { bold: true, align: 'left', bg: GRAY_SOFT })
+  args.matrix.forEach((entry, i) => {
+    const left = 2 + i * 2
+    sheet.mergeCells(r, left, r, left + 1)
+    if (entry.premium !== null) sheet.getCell(r, left).value = entry.premium
+    style(r, left, { bold: true, bg: GRAY_SOFT, numFmt: '#,##0"원"' })
+    style(r, left + 1, { bg: GRAY_SOFT })
+  })
+  sheet.getRow(r).height = 20
+  r++
+
+  /* 회사별 합계 — 같은 표 바로 아래 */
   if (args.summary.length > 0) {
-    sheet.getCell(r, 1).value = '최종 합계표 (하루 입원 시 받는 금액, 만원 · 전 보험사 합산)'
-    sheet.getCell(r, 1).font = bold
-    r++
-    ;['상황', '상해', '질병', '합산 항목'].forEach((label, i) => {
-      const cell = sheet.getCell(r, 1 + i)
-      cell.value = label
-      cell.font = bold
-      cell.fill = headerFill
-      cell.border = boxed
-    })
+    sheet.mergeCells(r, 1, r, lastCol)
+    sheet.getCell(r, 1).value = '합계 (하루 입원 시 받는 금액 · 만원)'
+    for (let c = 1; c <= lastCol; c++) style(r, c, { bold: true, color: 'FFFFFFFF', bg: NAVY, align: 'left' })
+    sheet.getRow(r).height = 20
     r++
     for (const row of args.summary) {
-      sheet.getCell(r, 1).value = row.label
-      sheet.getCell(r, 2).value = row.상해
-      sheet.getCell(r, 3).value = row.질병
-      sheet.getCell(r, 4).value = row.parts.join(' + ')
-      for (let c = 1; c <= 4; c++) sheet.getCell(r, c).border = boxed
-      r++
+      writeValues(row.label, (entry, side) => row.byCompany[entry.company]?.[side], { bg: GOLD_SOFT, bold: true })
     }
-    r++
   }
+  let lastRow = r - 1
 
+  /* 간병 페이백 */
   if (args.paybackNotes.length > 0) {
+    r++
     sheet.getCell(r, 1).value = '간병 페이백 안내'
-    sheet.getCell(r, 1).font = bold
+    sheet.getCell(r, 1).font = { name: font, size: 11, bold: true, color: { argb: NAVY } }
     r++
     for (const note of args.paybackNotes) {
       sheet.getCell(r, 1).value = note.company
+      style(r, 1, { bold: true, align: 'left' })
       sheet.mergeCells(r, 2, r, lastCol)
       sheet.getCell(r, 2).value = note.text
-      sheet.getCell(r, 2).alignment = { wrapText: true, vertical: 'top' }
-      sheet.getRow(r).height = Math.max(18, Math.ceil(note.text.length / 60) * 16)
+      style(r, 2, { align: 'left', wrap: true })
+      sheet.getRow(r).height = linesFor(note.text, mergedWidth) * 15 + 6
       r++
     }
+    lastRow = r - 1
   }
+
+  /* 이 보험의 장점 */
+  if (args.summaryLines.length > 0) {
+    r++
+    sheet.getCell(r, 1).value = '이 보험의 장점'
+    sheet.getCell(r, 1).font = { name: font, size: 11, bold: true, color: { argb: NAVY } }
+    r++
+    for (const text of args.summaryLines) {
+      sheet.mergeCells(r, 1, r, lastCol)
+      sheet.getCell(r, 1).value = text
+      const isHeading = text.startsWith('[')
+      sheet.getCell(r, 1).font = { name: font, size: 10, bold: isHeading, color: isHeading ? { argb: NAVY } : undefined }
+      sheet.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }
+      sheet.getRow(r).height = linesFor(text, mergedWidth + 24) * 15 + 3
+      r++
+    }
+    lastRow = r - 1
+  }
+
+  setA4Landscape(sheet, lastCol, lastRow, true)
 
   /* 담보목록 */
   const list = workbook.addWorksheet('담보목록')
@@ -357,7 +406,7 @@ export async function buildSummaryWorkbook(args: {
     { header: '납입기간·만기', key: 'term', width: 20 },
     { header: '보험료(원)', key: 'premium', width: 12 }
   ]
-  list.getRow(1).font = bold
+  list.getRow(1).font = { bold: true }
   for (const row of args.rows) {
     const digits = row.premium.replace(/[^\d]/g, '')
     const added = list.addRow({ ...row, premium: digits && /^[\d,\s원]+$/.test(row.premium) ? Number(digits) : row.premium })
@@ -365,6 +414,7 @@ export async function buildSummaryWorkbook(args: {
   }
   list.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, args.rows.length + 1), column: 5 } }
   list.views = [{ state: 'frozen', ySplit: 1 }]
+  setA4Landscape(list, 5, Math.max(1, args.rows.length + 1), false)
 
   const out = await workbook.xlsx.writeBuffer()
   return new Blob([out], { type: XLSX_MIME })

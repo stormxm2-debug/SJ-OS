@@ -2,7 +2,7 @@
 //
 // 입력: 화면에서 이미 계산한 숫자만 받는다 — 보험사별 월 보험료, 항목별 일당(만원), 상황별 합계, 간병 페이백 문장.
 //       고객 이름·파일명·제안서 원문은 받지 않는다.
-// 출력: { success, result: { headline, points[] } } — 고객에게 설명하기 쉬운 압축 요약.
+// 출력: { success, result: { headline, companies: [{ company, points[] }] } } — 보험사별 "이 보험의 장점".
 // 키는 ANTHROPIC_API_KEY 시크릿. 요청 내용은 메모리에서만 처리되고 저장·로그하지 않는다.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
@@ -18,17 +18,20 @@ function json(body: unknown, status = 200): Response {
 }
 
 const SYSTEM_PROMPT = [
-  '당신은 대한민국 보험 설계사가 고객에게 입원·간병 보장을 설명하도록 돕는 선배입니다.',
-  '입력은 여러 보험사 가입제안서에서 뽑아 이미 계산한 숫자입니다. 이 숫자만 근거로 쉽게 압축 요약하세요.',
+  '당신은 대한민국 보험 설계사가 고객에게 입원·간병 보험을 설명하도록 돕는 선배입니다.',
+  '입력은 서로 비교하는 보험사 가입제안서에서 뽑아 이미 계산한 숫자입니다.',
+  '금액을 그대로 읽어주지 말고, 각 보험의 "장점"을 고객이 바로 이해하도록 짧게 설명하세요.',
   '아래 JSON으로만 답하세요. 응답의 첫 글자는 반드시 { 이고, 인사말·마크다운·코드펜스 금지.',
-  '{"headline":"한 줄 핵심 요약 (60자 이내)","points":["쉬운 설명 한 문장 (각 70자 이내)"]}',
+  '{"headline":"비교 결론 한 줄 (예: 보험료는 A, 대학병원 입원 보장은 B가 강점) 60자 이내",',
+  '"companies":[{"company":"보험사명(입력 그대로)","points":["이 보험의 장점 한 문장 (각 70자 이내)"]}]}',
   '',
   '규칙:',
-  '1) points는 3~6개. 보험료 비교(저렴한 순) → 입원 시 하루 받는 금액 → 상급·종합병원 병실 → 간호간병·요양병원 → 간병 페이백 조건 순서.',
-  '2) 입력에 없는 숫자·약관 내용은 절대 지어내지 마세요. 값이 0이거나 없는 항목은 언급하지 않습니다.',
-  '3) 금액 단위를 지키세요: 보험료는 원(예: 월 38,280원), 일당·합계는 만원(예: 하루 21만원).',
-  '4) 상황별 합계는 모든 보험사를 합친 금액입니다. 그렇게 표현하세요.',
-  '5) 전문용어는 풀어서, 고객이 바로 이해하는 존댓말로. 가입 권유·불안 조성·단정 표현은 금지.',
+  '1) companies는 입력 순서(보험료 낮은 순) 그대로, 회사마다 points 2~4개.',
+  '2) 장점은 다른 제안서와 비교해 더 나은 점을 우선합니다: 더 저렴한 보험료, 특정 상황(일반·종합·대학병원 1인실·간호간병·요양병원)에서 하루 더 많이 받는 점, 다른 곳에 없는 보장, 간병 페이백 조건.',
+  '3) 숫자는 장점을 뒷받침할 때만 짧게 쓰세요 (예: "대학병원 1인실 입원 시 하루 31만원으로 가장 든든합니다").',
+  '4) 입력에 없는 숫자·약관 내용·보장은 절대 지어내지 마세요. 값이 0이거나 없는 항목은 장점으로 쓰지 않습니다.',
+  '5) 단위: 보험료는 원(월 38,280원), 일당·합계는 만원. 합계는 회사별 금액이며 회사끼리 더하지 않습니다.',
+  '6) 쉬운 존댓말. 전문용어는 풀어서. 과장·단정·불안 조성·다른 회사 비방 금지.',
   '모두 한국어.'
 ].join('\n')
 
@@ -64,11 +67,18 @@ function buildUserText(body: Record<string, unknown>): string | null {
 
   const summary = (Array.isArray(body.summary) ? body.summary : []).slice(0, 20) as Record<string, unknown>[]
   if (summary.length) {
-    lines.push('', '[상황별 하루 입원 시 받는 금액 (전 보험사 합산, 만원)]')
+    lines.push('', '[상황별 하루 입원 시 받는 금액 (보험사별, 만원)]')
     for (const row of summary) {
-      const s = Number(row['상해']) || 0
-      const d = Number(row['질병']) || 0
-      if (s || d) lines.push(`- ${clip(row.label, 30)}: 상해 ${s} / 질병 ${d}`)
+      const byCompany = row.byCompany && typeof row.byCompany === 'object' ? (row.byCompany as Record<string, Record<string, unknown>>) : {}
+      const parts = Object.entries(byCompany)
+        .slice(0, 12)
+        .map(([company, sides]) => {
+          const s = Number(sides?.['상해']) || 0
+          const d = Number(sides?.['질병']) || 0
+          return s || d ? `${clip(company, 30)} 상해 ${s}/질병 ${d}` : ''
+        })
+        .filter(Boolean)
+      if (parts.length) lines.push(`- ${clip(row.label, 30)}: ${parts.join(', ')}`)
     }
   }
 
@@ -139,8 +149,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const blocks = (data as { content?: { type: string; text?: string }[] }).content ?? []
     const parsed = parseJson(blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join(''))
     if (!parsed) return json({ success: false, error: '요약 형식 오류 — 다시 시도해 주세요.' }, 502)
-    const points = (Array.isArray(parsed.points) ? parsed.points : []).map((p) => clip(p, 200)).filter(Boolean).slice(0, 8)
-    return json({ success: true, result: { headline: clip(parsed.headline, 150), points } })
+    const companies = (Array.isArray(parsed.companies) ? parsed.companies : [])
+      .slice(0, 12)
+      .map((c) => {
+        const item = (c ?? {}) as Record<string, unknown>
+        const points = (Array.isArray(item.points) ? item.points : []).map((p) => clip(p, 200)).filter(Boolean).slice(0, 5)
+        return { company: clip(item.company, 30), points }
+      })
+      .filter((c) => c.company && c.points.length)
+    return json({ success: true, result: { headline: clip(parsed.headline, 150), companies } })
   } catch (e) {
     const aborted = e instanceof DOMException && e.name === 'AbortError'
     return json({ success: false, error: aborted ? '요약 시간이 초과되었습니다. 다시 시도해 주세요.' : '요약 중 오류가 발생했습니다.' }, aborted ? 504 : 502)
