@@ -74,43 +74,55 @@
       <!-- 3. 합계 · 엑셀 -->
       <section class="tab-page" data-page="result" hidden>
         <div id="matrixPanel" class="panel" hidden>
-          <h2 class="panel-title">최종 합계표 <span class="muted">(하루 입원 시 받는 금액, 만원)</span></h2>
-          <p class="panel-hint">체크한 담보를 전 보험사 합산한 금액입니다. 상황별로 상해·질병을 나눠 계산합니다.</p>
+          <h2 class="panel-title">최종 합계표 <span class="muted">(보험료 낮은 순 · 일당 만원)</span></h2>
+          <p class="panel-hint">위 칸은 회사별 담보 값(직접 수정 가능), 아래 노란 줄은 회사별 합계입니다. 빨간 칸은 일당을 못 읽은 곳이니 직접 입력하세요.</p>
           <label class="toggle">
             <input type="checkbox" id="sanggeupIncludesGeneral" />
             상급병원 합계에 종합병원일당도 더하기 (약관에서 상급종합병원이 종합병원에 포함되는 경우)
           </label>
           <div class="table-scroll">
-            <table id="summaryTable" class="matrix-table"></table>
+            <table id="matrixTable" class="matrix-table combined-table"></table>
           </div>
           <div id="paybackNotes" class="payback-notes"></div>
 
-          <details class="fold">
-            <summary>항목별 보험료 (체크한 담보 기준, 월 보험료 원)</summary>
+          <div class="advantages">
+            <div class="advantages-head">
+              <h2 class="panel-title">이 보험의 장점 <span id="advantagesSource" class="muted"></span></h2>
+              <button id="advantagesResetBtn" class="btn btn-secondary btn-small" type="button">숫자로 다시 정리</button>
+            </div>
+            <p class="panel-hint">제안서끼리 비교해 보험사별 장점을 자동으로 정리합니다. 직접 고쳐도 되고, 고친 내용이 엑셀에 들어갑니다.</p>
+            <textarea id="advantagesText" class="advantages-text" rows="8"></textarea>
+            <label class="toggle">
+              <input type="checkbox" id="includeAdvantages" checked />
+              엑셀에 장점 설명 넣기
+            </label>
+          </div>
+
+          <details class="fold" open>
+            <summary>항목별 보험료 (체크한 담보 기준 · 월 보험료와 1일당 받는 금액 · 저렴한 회사부터)</summary>
             <div class="table-scroll">
               <table id="premiumTable" class="matrix-table"></table>
             </div>
           </details>
 
-          <details class="fold">
-            <summary>양식 미리보기 (회사별 담보 값 · 직접 수정 가능)</summary>
-            <p class="panel-hint">농협처럼 일당을 못 읽은 칸은 여기에 직접 입력하세요.</p>
-            <div class="table-scroll">
-              <table id="matrixTable" class="matrix-table"></table>
-            </div>
-          </details>
-
           <h2 class="panel-title">엑셀 받기</h2>
+          <p class="panel-hint">양식 없이 바로 받기 — A4 가로 한 장: 회사별 담보 표 + 합계 · 페이백 안내 · 이 보험의 장점 (+ 담보목록 시트)</p>
+          <div class="result-actions">
+            <button id="resetBtn" class="btn btn-tertiary" type="button">전체 초기화</button>
+            <div class="action-group">
+              <button id="downloadSummaryBtn" class="btn btn-primary" type="button">엑셀 받기</button>
+            </div>
+          </div>
+          <p class="panel-hint">내 엑셀 양식에 채워서 받기 (회사는 보험료 낮은 순, 합계·페이백·장점은 표 아래에 추가)</p>
           <div class="template-row">
             <input type="file" id="templateInput" accept=".xlsx" hidden />
             <button id="templatePickBtn" class="btn btn-secondary" type="button">엑셀 양식 파일 선택</button>
             <span id="templateName" class="muted">선택된 양식 없음</span>
           </div>
           <div class="result-actions">
-            <button id="resetBtn" class="btn btn-tertiary" type="button">전체 초기화</button>
+            <span></span>
             <div class="action-group">
-              <button id="downloadListBtn" class="btn btn-secondary" type="button">담보 목록만 받기</button>
-              <button id="downloadTemplateBtn" class="btn btn-primary" type="button">양식에 채워서 받기</button>
+              <button id="downloadTemplateBtn" class="btn btn-secondary" type="button">양식에 채워서 받기</button>
             </div>
           </div>
           <p id="resultError" class="error-text" hidden></p>
@@ -122,7 +134,7 @@
     <!-- 어느 탭에서나 보이는 요약 바 -->
     <div id="statusBar" class="status-bar" hidden>
       <span id="statusText" class="status-text"></span>
-      <button id="statusDownloadBtn" class="btn btn-primary btn-small" type="button">양식에 채워서 받기</button>
+      <button id="statusDownloadBtn" class="btn btn-primary btn-small" type="button">엑셀 받기</button>
     </div>
   </div>
 

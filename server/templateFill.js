@@ -96,10 +96,11 @@ export async function loadTemplate(buffer) {
  * matrix: [{ company, premium, cells: { [항목]: { 상해: number|string|null, 질병: ... } } }]
  */
 // 기존 표와 수식은 그대로 두고, 시트 맨 아래에 최종 합계표와 간병 페이백 안내를 덧붙인다.
-function writeSummaryBlock(sheet, layout, extras = {}) {
+function writeSummaryBlock(sheet, layout, slotByCompany, extras = {}) {
   const summary = Array.isArray(extras.summary) ? extras.summary : [];
   const notes = Array.isArray(extras.paybackNotes) ? extras.paybackNotes : [];
-  if (summary.length === 0 && notes.length === 0) return;
+  const summaryLines = Array.isArray(extras.summaryLines) ? extras.summaryLines : [];
+  if (summary.length === 0 && notes.length === 0 && summaryLines.length === 0) return;
 
   const column = layout.labelColumn;
   let rowNumber = sheet.rowCount + 2;
@@ -110,16 +111,17 @@ function writeSummaryBlock(sheet, layout, extras = {}) {
     if (bold) cell.font = { ...(cell.font || {}), bold: true };
   };
 
-  if (summary.length > 0) {
-    put(rowNumber++, column, "최종 합계표 (하루 입원 시 받는 금액, 만원)", true);
-    put(rowNumber, column, "상황", true);
-    put(rowNumber, column + 1, "상해", true);
-    put(rowNumber, column + 2, "질병", true);
-    rowNumber++;
+  // 회사별 합계는 양식의 같은 회사 칸(왼쪽 상해 / 오른쪽 질병) 아래에 적는다. 회사끼리 더하지 않는다.
+  if (summary.length > 0 && slotByCompany.size > 0) {
+    put(rowNumber++, column, "합계 (하루 입원 시 받는 금액, 만원)", true);
     for (const item of summary) {
-      put(rowNumber, column, item.label);
-      if (Number.isFinite(item["상해"])) put(rowNumber, column + 1, item["상해"]);
-      if (Number.isFinite(item["질병"])) put(rowNumber, column + 2, item["질병"]);
+      put(rowNumber, column, item.label, true);
+      for (const [company, slot] of slotByCompany) {
+        const totals = item.byCompany?.[company];
+        if (!totals) continue;
+        if (totals["상해"]) put(rowNumber, slot.left, totals["상해"]);
+        if (totals["질병"]) put(rowNumber, slot.right, totals["질병"]);
+      }
       rowNumber++;
     }
     rowNumber++;
@@ -132,6 +134,12 @@ function writeSummaryBlock(sheet, layout, extras = {}) {
       put(rowNumber, column + 1, note.text);
       rowNumber++;
     }
+    rowNumber++;
+  }
+
+  if (summaryLines.length > 0) {
+    put(rowNumber++, column, "이 보험의 장점", true);
+    for (const text of summaryLines) put(rowNumber++, column, text);
   }
 }
 
@@ -144,6 +152,7 @@ export async function fillTemplate(templateBuffer, matrix, sheetName, extras = {
   const { companyRow, rowByLabel, slots } = layout;
   const used = new Set();
   const skippedCompanies = [];
+  const slotByCompany = new Map();
   let filled = 0;
 
   for (const entry of matrix) {
@@ -158,6 +167,7 @@ export async function fillTemplate(templateBuffer, matrix, sheetName, extras = {
       continue;
     }
     used.add(slot.left);
+    slotByCompany.set(companyName, slot);
     if (!slot.name) {
       sheet.getRow(companyRow).getCell(slot.left).value = companyName;
       slot.name = compact;
@@ -182,7 +192,7 @@ export async function fillTemplate(templateBuffer, matrix, sheetName, extras = {
     }
   }
 
-  writeSummaryBlock(sheet, layout, extras);
+  writeSummaryBlock(sheet, layout, slotByCompany, extras);
 
   // 총보험료·입원일당 합계 같은 수식이 엑셀을 열 때 바로 다시 계산되도록 한다.
   workbook.calcProperties = { ...(workbook.calcProperties || {}), fullCalcOnLoad: true };

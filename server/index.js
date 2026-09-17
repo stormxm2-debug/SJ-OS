@@ -16,7 +16,7 @@ import {
 } from "./classify.js";
 import { fillTemplate, loadTemplate, inspectTemplate } from "./templateFill.js";
 import { extractPaybackRule, describePaybackRule } from "./payback.js";
-import { buildCoverageWorkbook, buildExportFileName } from "./excel.js";
+import { buildCoverageWorkbook, buildExportFileName, buildSummaryWorkbook } from "./excel.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -148,6 +148,33 @@ app.post("/api/export", async (req, res) => {
     res.end();
   } catch (err) {
     console.error("[export] 처리 중 오류:", err.name, err.message);
+    res.status(500).json({ error: "엑셀 파일을 만드는 중 오류가 발생했습니다." });
+  }
+});
+
+// 양식 없이 바로 받기: A4 가로 합계표(회사별 표·합계·페이백·장점) + 담보목록 시트
+app.post("/api/export-summary", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const matrix = Array.isArray(body.matrix) ? body.matrix : [];
+    if (matrix.length === 0) {
+      return res.status(400).json({ error: "엑셀에 넣을 내용이 없습니다. 담보를 하나 이상 체크해주세요." });
+    }
+    const workbook = await buildSummaryWorkbook({
+      matrix,
+      categories: Array.isArray(body.categories) ? body.categories : CATEGORIES,
+      summary: Array.isArray(body.summary) ? body.summary : [],
+      paybackNotes: Array.isArray(body.paybackNotes) ? body.paybackNotes : [],
+      summaryLines: Array.isArray(body.summaryLines) ? body.summaryLines.map(String) : [],
+      rows: Array.isArray(body.rows) ? body.rows : [],
+    });
+    const fileName = buildExportFileName();
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("[export-summary] 처리 중 오류:", err.name, err.message);
     res.status(500).json({ error: "엑셀 파일을 만드는 중 오류가 발생했습니다." });
   }
 });
