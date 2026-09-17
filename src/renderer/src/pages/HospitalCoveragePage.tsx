@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import * as XLSX from 'xlsx'
-import { BedDouble, Upload, FileText, Trash2, Download, RotateCcw, FileSpreadsheet, CheckSquare, Square } from 'lucide-react'
+import { Upload, FileText, Trash2, Download, RotateCcw, FileSpreadsheet, CheckSquare, Square, Sparkles } from 'lucide-react'
 import { extractPdfPages, parseCoverageTable, REVIEW, type ParsedRow } from '@renderer/services/commercial/proposalParser'
 import {
   CATEGORIES,
@@ -17,11 +16,18 @@ import {
   type Side,
   type PaybackNote
 } from '@renderer/services/commercial/hospitalCoverage'
-import { inspectTemplate, fillTemplate, downloadBlob, type SheetInfo, type MatrixEntry } from '@renderer/services/commercial/templateFill'
+import { inspectTemplate, fillTemplate, buildSummaryWorkbook, downloadBlob, type SheetInfo, type MatrixEntry } from '@renderer/services/commercial/templateFill'
+import {
+  requestAiSummary,
+  buildBasicSummary,
+  summaryToText,
+  type ProposalSummaryInput
+} from '@renderer/services/commercial/proposalSummaryAi'
 
 /**
- * 입원·간병 합계표 — 가입제안서 PDF 여러 건에서 입원·간병 담보를 뽑아 고객 엑셀 양식 항목으로 분류하고,
- * 상황별 하루 입원 시 받는 금액을 전 보험사 합산한다. 제안서는 이 화면(브라우저 메모리)에서만 처리한다.
+ * 가입제안서 담보 정리 — 가입제안서 PDF 여러 건에서 입원·간병 담보를 뽑아 고객 엑셀 양식 항목으로 분류하고,
+ * 상황별 하루 입원 시 받는 금액을 전 보험사 합산한다. 제안서는 이 화면(브라우저 메모리)에서만 처리하고,
+ * AI 요약에는 계산된 숫자만 보낸다. 보험사는 월 보험료 낮은 순으로 왼쪽부터 나열한다.
  *
  * 색상: 이 앱은 slate 스케일 반전 리맵 — 어두운 글씨 text-slate-100/200, 밝은 면 bg-white/bg-slate-950.
  */
@@ -129,6 +135,10 @@ export default function HospitalCoveragePage(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [summaryText, setSummaryText] = useState('')
+  const [summarySource, setSummarySource] = useState<'ai' | 'basic' | 'edited' | null>(null)
+  const [summaryKey, setSummaryKey] = useState('')
+  const [includeSummary, setIncludeSummary] = useState(true)
   const fileInput = useRef<HTMLInputElement>(null)
   const templateInput = useRef<HTMLInputElement>(null)
 
@@ -207,6 +217,8 @@ export default function HospitalCoveragePage(): JSX.Element {
     setPending([])
     setOverrides({})
     setTemplate(null)
+    setSummaryText('')
+    setSummarySource(null)
     setError(null)
     setNotice(null)
     setTab('upload')
@@ -235,7 +247,6 @@ export default function HospitalCoveragePage(): JSX.Element {
     return [...byCompany.entries()].map(([company, e]) => ({ company, ...e }))
   }, [docs])
 
-  const companies = matrix.map((m) => m.company)
   const overrideKey = (company: string, category: string, side: string): string => `${company}|${category}|${side}`
 
   const valueOf = (company: string, category: Category, side: Side): string => {
@@ -254,6 +265,14 @@ export default function HospitalCoveragePage(): JSX.Element {
     const premium = matrix.find((m) => m.company === company)?.premium
     return premium === null || premium === undefined ? '' : String(premium)
   }
+
+  const premiumNumber = (company: string): number => {
+    const raw = premiumOf(company)
+    const n = Number(raw)
+    return raw !== '' && Number.isFinite(n) && n > 0 ? n : Number.POSITIVE_INFINITY
+  }
+  // 보험사는 월 보험료가 낮은 회사부터 왼쪽 → 오른쪽 (보험료를 모르는 회사는 맨 뒤).
+  const companies = matrix.map((m) => m.company).sort((a, b) => premiumNumber(a) - premiumNumber(b))
 
   const summary = computeSummary(companies, valueOf, includeGeneral)
 
@@ -286,6 +305,104 @@ export default function HospitalCoveragePage(): JSX.Element {
 
   /* ---------- 내려받기 ---------- */
 
+  // 화면 값(직접 수정 포함)을 엑셀용 회사별 표로. 순서는 보험료 낮은 순.
+  const buildEntries = (): MatrixEntry[] =>
+    companies.map((company) => {
+      const cells: MatrixEntry['cells'] = {}
+      for (const category of CATEGORIES) {
+        const sides: Partial<Record<Side, number | string>> = {}
+        for (const side of SIDES) {
+          const raw = valueOf(company, category, side)
+          if (raw === '') continue
+          sides[side] = category === '간병페이백' || Number.isNaN(Number(raw)) ? raw : Number(raw)
+        }
+        if (Object.keys(sides).length) cells[category] = sides
+      }
+      const premium = Number(premiumOf(company))
+      return { company, premium: premiumOf(company) !== '' && Number.isFinite(premium) ? premium : null, cells }
+    })
+
+  /* ---------- 요약 설명 ---------- */
+
+  // AI에는 계산된 숫자와 회사명만 보낸다(고객 이름·파일명·원문 제외).
+  const summaryInput = (): ProposalSummaryInput => ({
+    companies: buildEntries().map((entry) => {
+      const dailyByCategory: Record<string, { 상해?: number; 질병?: number }> = {}
+      for (const [category, sides] of Object.entries(entry.cells)) {
+        if (category === '간병페이백' || !sides) continue
+        const s = Number(sides.상해)
+        const d = Number(sides.질병)
+        if (s || d) dailyByCategory[category] = { ...(s ? { 상해: s } : {}), ...(d ? { 질병: d } : {}) }
+      }
+      return { company: entry.company, monthlyPremium: entry.premium, payback: entry.cells.간병페이백?.상해 === 'o', dailyByCategory }
+    }),
+    summary,
+    paybackNotes
+  })
+
+  const makeSummary = async (): Promise<string> => {
+    setBusy('AI가 요약 설명을 만드는 중…')
+    const input = summaryInput()
+    const res = await requestAiSummary(input)
+    let text: string
+    if (res.ok && res.summary && (res.summary.headline || res.summary.points.length)) {
+      text = summaryToText(res.summary)
+      setSummarySource('ai')
+      setNotice('AI 요약을 만들었습니다. 필요하면 고쳐서 쓰세요.')
+    } else {
+      text = summaryToText(buildBasicSummary(input))
+      setSummarySource('basic')
+      setNotice(`${res.error ?? 'AI 요약을 만들지 못했습니다.'} 숫자로 만든 기본 요약으로 채웠습니다.`)
+    }
+    setSummaryText(text)
+    setSummaryKey(JSON.stringify(input))
+    setBusy(null)
+    return text
+  }
+
+  // 요약을 만든 뒤 숫자(보험료·체크·일당)가 바뀌었으면 옛 요약이다. 직접 고친 요약은 그대로 둔다.
+  const summaryStale = Boolean(summaryText) && summarySource !== 'edited' && summaryKey !== JSON.stringify(summaryInput())
+
+  const ensureSummaryLines = async (): Promise<string[]> => {
+    if (!includeSummary) return []
+    const text = summaryText.trim() && !summaryStale ? summaryText : await makeSummary()
+    return text.split('\n').map((line) => line.trim()).filter(Boolean)
+  }
+
+  const downloadExcel = async (): Promise<void> => {
+    setError(null)
+    if (companies.length === 0) {
+      setError('엑셀에 넣을 내용이 없습니다. 제안서를 올리고 담보를 체크해주세요.')
+      return
+    }
+    try {
+      const summaryLines = await ensureSummaryLines()
+      setBusy('엑셀 파일을 만드는 중…')
+      const order = new Map(companies.map((c, i) => [c, i]))
+      const rows = docs
+        .flatMap((d) =>
+          d.items
+            .filter((it) => it.checked)
+            .map((it) => ({ company: d.company.trim() || '회사 미확인', coverageName: it.coverageName, amount: it.amount, term: it.term, premium: it.premium }))
+        )
+        .sort((a, b) => (order.get(a.company) ?? 99) - (order.get(b.company) ?? 99))
+      const blob = await buildSummaryWorkbook({
+        matrix: buildEntries(),
+        categories: CATEGORIES,
+        summary,
+        paybackNotes,
+        summaryLines,
+        rows
+      })
+      downloadBlob(blob, `가입제안서_담보정리_${stamp()}.xlsx`)
+      setNotice('엑셀 파일을 내려받았습니다.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '엑셀 파일을 만드는 중 오류가 발생했습니다.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const downloadTemplate = async (): Promise<void> => {
     setError(null)
     if (!template) {
@@ -297,28 +414,16 @@ export default function HospitalCoveragePage(): JSX.Element {
       setError('양식에 채울 내용이 없습니다. 제안서를 올리고 담보를 체크해주세요.')
       return
     }
-    setBusy('엑셀 양식을 채우는 중…')
     try {
-      const entries: MatrixEntry[] = matrix.map((m) => {
-        const cells: MatrixEntry['cells'] = {}
-        for (const category of CATEGORIES) {
-          const sides: Partial<Record<Side, number | string>> = {}
-          for (const side of SIDES) {
-            const raw = valueOf(m.company, category, side)
-            if (raw === '') continue
-            sides[side] = category === '간병페이백' || Number.isNaN(Number(raw)) ? raw : Number(raw)
-          }
-          if (Object.keys(sides).length) cells[category] = sides
-        }
-        const premium = Number(premiumOf(m.company))
-        return { company: m.company, premium: premiumOf(m.company) !== '' && Number.isFinite(premium) ? premium : null, cells }
-      })
+      const summaryLines = await ensureSummaryLines()
+      setBusy('엑셀 양식을 채우는 중…')
       const result = await fillTemplate({
         template: template.buffer,
-        matrix: entries,
+        matrix: buildEntries(),
         sheetName: template.sheetName,
         summary,
-        paybackNotes
+        paybackNotes,
+        summaryLines
       })
       downloadBlob(result.blob, `${template.file.name.replace(/\.xlsx$/i, '')}_${stamp()}.xlsx`)
       setNotice(
@@ -333,21 +438,6 @@ export default function HospitalCoveragePage(): JSX.Element {
     }
   }
 
-  const downloadList = (): void => {
-    const rows = docs.flatMap((d) =>
-      d.items.filter((it) => it.checked).map((it) => [d.company, it.coverageName, it.amount, it.term, it.premium])
-    )
-    if (rows.length === 0) {
-      setError('체크된 담보가 없습니다.')
-      return
-    }
-    const sheet = XLSX.utils.aoa_to_sheet([['보험사', '담보명', '가입금액', '납입기간·만기', '보험료'], ...rows])
-    sheet['!cols'] = [{ wch: 12 }, { wch: 60 }, { wch: 14 }, { wch: 18 }, { wch: 12 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, sheet, '담보정리')
-    XLSX.writeFile(wb, `가입제안서_담보정리_${stamp()}.xlsx`)
-  }
-
   /* ---------- 화면 ---------- */
 
   return (
@@ -355,8 +445,8 @@ export default function HospitalCoveragePage(): JSX.Element {
       {/* 헤더 */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-800 bg-[#0e1e3a] px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <BedDouble className="h-4 w-4 text-[#e6c877]" />
-          <h1 className="text-sm font-extrabold text-white">입원·간병 합계표</h1>
+          <FileSpreadsheet className="h-4 w-4 text-[#e6c877]" />
+          <h1 className="text-sm font-extrabold text-white">가입제안서 담보 정리</h1>
           <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/80">
             제안서 {docs.length}건 · 담보 {checkedCount}/{itemCount}
           </span>
@@ -630,9 +720,37 @@ export default function HospitalCoveragePage(): JSX.Element {
               )}
             </div>
 
+            {/* 요약 설명 */}
+            <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-slate-100">
+                  요약 설명{' '}
+                  {summarySource ? (
+                    <span className="text-[11px] font-medium text-slate-500">
+                      {summarySource === 'ai' ? 'AI 요약' : summarySource === 'basic' ? '기본 요약(AI 미연결)' : '직접 수정함'}
+                    </span>
+                  ) : null}
+                </h2>
+                <button type="button" disabled={Boolean(busy)} onClick={() => void makeSummary()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[12px] font-bold text-indigo-700 hover:opacity-90 disabled:opacity-50">
+                  <Sparkles className="h-3.5 w-3.5" /> {summaryText ? 'AI로 다시 요약' : 'AI로 요약 만들기'}
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">합계표·보험료·페이백 숫자와 회사명만 AI에 보냅니다(고객 이름·제안서 원문은 보내지 않음). 엑셀 받을 때 비어 있거나 숫자가 바뀌었으면 자동으로 새로 만듭니다.</p>
+              {summaryStale ? <div className="mt-2 text-[12px] font-medium text-amber-700">요약을 만든 뒤 숫자가 바뀌었습니다. 엑셀 받을 때 새로 만들거나, 지금 다시 요약하세요.</div> : null}
+              {summaryText ? (
+                <textarea value={summaryText} onChange={(e) => { setSummaryText(e.target.value); setSummarySource('edited') }} rows={Math.min(10, summaryText.split('\n').length + 1)}
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] leading-relaxed text-slate-200 outline-none focus:border-indigo-400" />
+              ) : null}
+              <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 text-[12px] text-slate-300">
+                <input type="checkbox" checked={includeSummary} onChange={(e) => setIncludeSummary(e.target.checked)} className="h-4 w-4 accent-indigo-600" />
+                엑셀에 요약 설명 넣기
+              </label>
+            </div>
+
             {/* 항목별 보험료 */}
             <details className="rounded-2xl border border-slate-800 bg-white shadow-sm">
-              <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-bold text-slate-100">항목별 보험료 (체크한 담보 기준, 월 보험료)</summary>
+              <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-bold text-slate-100">항목별 보험료 (체크한 담보 기준, 월 보험료 · 저렴한 회사부터)</summary>
               <div className="overflow-x-auto border-t border-slate-800">
                 <table className="w-full min-w-[480px] text-left text-[12px]">
                   <thead>
@@ -662,7 +780,7 @@ export default function HospitalCoveragePage(): JSX.Element {
 
             {/* 양식 미리보기 */}
             <details className="rounded-2xl border border-slate-800 bg-white shadow-sm">
-              <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-bold text-slate-100">양식 미리보기 (회사별 값 · 직접 수정 가능)</summary>
+              <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-bold text-slate-100">양식 미리보기 (회사별 값 · 보험료 낮은 순 · 직접 수정 가능)</summary>
               <p className="px-4 pt-2 text-[11px] text-slate-500">농협처럼 일당을 못 읽은 칸(빨간 칸)은 여기에 직접 입력하세요.</p>
               <div className="overflow-x-auto p-2">
                 <table className="text-center text-[12px]">
@@ -719,6 +837,14 @@ export default function HospitalCoveragePage(): JSX.Element {
             {/* 엑셀 받기 */}
             <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-bold text-slate-100">엑셀 받기</h2>
+              <p className="mt-1 text-[12px] text-slate-500">양식 없이 바로 받기: 요약 설명 · 회사별 비교(보험료 낮은 순) · 최종 합계표 · 페이백 안내 · 담보 목록</p>
+              <div className="mt-2 flex justify-end">
+                <button type="button" disabled={Boolean(busy)} onClick={() => void downloadExcel()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-2 text-[12px] font-bold text-white hover:opacity-90 disabled:opacity-50">
+                  <Download className="h-3.5 w-3.5" /> 엑셀 받기
+                </button>
+              </div>
+              <div className="my-3 border-t border-slate-800" />
+              <p className="text-[12px] font-semibold text-slate-300">내 엑셀 양식에 채워서 받기</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button type="button" onClick={() => templateInput.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-950">
                   <FileSpreadsheet className="h-3.5 w-3.5" /> 엑셀 양식 선택
@@ -738,12 +864,9 @@ export default function HospitalCoveragePage(): JSX.Element {
                   </select>
                 ) : null}
               </div>
-              <p className="mt-2 text-[11px] text-slate-500">양식의 기존 표·수식은 그대로 두고 값만 채웁니다. 합계표와 페이백 안내는 시트 아래에 추가됩니다.</p>
+              <p className="mt-2 text-[11px] text-slate-500">양식의 기존 표·수식은 그대로 두고 값만 채웁니다(회사는 보험료 낮은 순). 요약 설명·합계표·페이백 안내는 시트 아래에 추가됩니다.</p>
               <div className="mt-3 flex flex-wrap justify-end gap-2">
-                <button type="button" onClick={downloadList} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-white px-3 py-2 text-[12px] font-semibold text-slate-200 hover:bg-slate-950">
-                  <Download className="h-3.5 w-3.5" /> 담보 목록만 받기
-                </button>
-                <button type="button" disabled={Boolean(busy)} onClick={() => void downloadTemplate()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-2 text-[12px] font-bold text-white hover:opacity-90 disabled:opacity-50">
+                <button type="button" disabled={Boolean(busy) || !template} onClick={() => void downloadTemplate()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-white px-3 py-2 text-[12px] font-semibold text-slate-200 hover:bg-slate-950 disabled:opacity-50">
                   <Download className="h-3.5 w-3.5" /> 양식에 채워서 받기
                 </button>
               </div>
@@ -758,9 +881,16 @@ export default function HospitalCoveragePage(): JSX.Element {
           <span className="text-[12px] text-slate-500">
             제안서 {docs.length}건 · 담보 {checkedCount}/{itemCount} 체크 · {template ? template.file.name : '양식 미선택'}
           </span>
-          <button type="button" disabled={Boolean(busy)} onClick={() => void downloadTemplate()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-1.5 text-[12px] font-bold text-white hover:opacity-90 disabled:opacity-50">
-            <Download className="h-3.5 w-3.5" /> 양식에 채워서 받기
-          </button>
+          <div className="flex gap-1.5">
+            {template ? (
+              <button type="button" disabled={Boolean(busy)} onClick={() => void downloadTemplate()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-white px-3 py-1.5 text-[12px] font-semibold text-slate-200 hover:bg-slate-950 disabled:opacity-50">
+                <FileSpreadsheet className="h-3.5 w-3.5" /> 양식에 채워서 받기
+              </button>
+            ) : null}
+            <button type="button" disabled={Boolean(busy)} onClick={() => void downloadExcel()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-1.5 text-[12px] font-bold text-white hover:opacity-90 disabled:opacity-50">
+              <Download className="h-3.5 w-3.5" /> 엑셀 받기
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
