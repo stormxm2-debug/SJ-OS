@@ -619,3 +619,10 @@ tr.row-unmatched td {
     flex: 1;
   }
 }
+
+/* 항목별 보험료: 1일당 받는 금액 */
+.daily-line {
+  font-size: 11px;
+  color: #4338ca;
+  margin-top: 2px;
+}

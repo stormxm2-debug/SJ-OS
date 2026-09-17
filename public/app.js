@@ -654,44 +654,47 @@
     const headRow = document.createElement("tr");
     headRow.appendChild(th("항목", "row-label"));
     for (const company of companies) headRow.appendChild(th(company));
-    headRow.appendChild(th("합계"));
     head.appendChild(headRow);
 
     const body = document.createElement("tbody");
     const won = (value) => (value ? `${value.toLocaleString("ko-KR")}원` : "");
 
+    // 회사끼리 더하지 않는다 — 회사별 월 보험료와 그 담보로 하루에 받는 금액을 같이 보여준다.
     for (const category of state.categories) {
       if (category === "간병페이백") continue;
-      const values = companies.map((company) => (totals.get(company) || new Map()).get(category) || 0);
-      const sum = values.reduce((a, b) => a + b, 0);
-      if (sum === 0) continue;
+      const cells = matrix.map((entry) => {
+        const premium = (totals.get(entry.company) || new Map()).get(category) || 0;
+        const daily = SIDES.map((side) => [side, Number(valueFor(entry, category, side)) || 0]).filter(([, v]) => v > 0);
+        return { premium, daily };
+      });
+      if (cells.every((c) => !c.premium && c.daily.length === 0)) continue;
       const tr = document.createElement("tr");
       tr.appendChild(th(category, "row-label"));
-      for (const value of values) {
+      for (const c of cells) {
         const td = document.createElement("td");
-        td.textContent = won(value);
+        const premiumLine = document.createElement("div");
+        premiumLine.textContent = c.premium ? `월 ${won(c.premium)}` : c.daily.length ? "보험료 확인 필요" : "";
+        td.appendChild(premiumLine);
+        if (c.daily.length) {
+          const dailyLine = document.createElement("div");
+          dailyLine.className = "daily-line";
+          dailyLine.textContent = `1일당 ${c.daily.map(([side, v]) => `${side} ${v}만원`).join(" · ")}`;
+          td.appendChild(dailyLine);
+        }
         tr.appendChild(td);
       }
-      const totalTd = document.createElement("td");
-      totalTd.textContent = won(sum);
-      tr.appendChild(totalTd);
       body.appendChild(tr);
     }
 
     const totalRow = document.createElement("tr");
-    totalRow.appendChild(th("체크한 담보 합계", "row-label"));
-    let grand = 0;
+    totalRow.appendChild(th("체크한 담보 보험료", "row-label"));
     for (const company of companies) {
       const bucket = totals.get(company) || new Map();
       const sum = [...bucket.values()].reduce((a, b) => a + b, 0);
-      grand += sum;
       const td = document.createElement("td");
-      td.textContent = won(sum);
+      td.textContent = sum ? `월 ${won(sum)}` : "";
       totalRow.appendChild(td);
     }
-    const grandTd = document.createElement("td");
-    grandTd.textContent = won(grand);
-    totalRow.appendChild(grandTd);
     body.appendChild(totalRow);
 
     table.append(head, body);
