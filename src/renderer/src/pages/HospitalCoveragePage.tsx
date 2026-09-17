@@ -792,27 +792,38 @@ export default function HospitalCoveragePage(): JSX.Element {
             </div>
 
             {/* 항목별 보험료 */}
-            <details className="rounded-2xl border border-slate-800 bg-white shadow-sm">
-              <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-bold text-slate-100">항목별 보험료 (체크한 담보 기준, 월 보험료 · 저렴한 회사부터)</summary>
+            <details open className="rounded-2xl border border-slate-800 bg-white shadow-sm">
+              <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-bold text-slate-100">
+                항목별 보험료 <span className="text-[11px] font-medium text-slate-500">체크한 담보 기준 · 월 보험료와 1일당 받는 금액 · 저렴한 회사부터</span>
+              </summary>
               <div className="overflow-x-auto border-t border-slate-800">
                 <table className="w-full min-w-[480px] text-left text-[12px]">
                   <thead>
                     <tr className="border-b border-slate-800 bg-slate-950 text-[11px] text-slate-500">
                       <th className="px-3 py-2 font-semibold">항목</th>
                       {companies.map((c) => <th key={c} className="px-3 py-2 text-right font-semibold">{c}</th>)}
-                      <th className="px-3 py-2 text-right font-semibold">합계</th>
                     </tr>
                   </thead>
                   <tbody>
                     {CATEGORIES.filter((c) => c !== '간병페이백').map((category) => {
-                      const values = companies.map((c) => premiumTable.get(c)?.get(category) ?? 0)
-                      const total = values.reduce((a, b) => a + b, 0)
-                      if (!total) return null
+                      // 회사끼리 더하지 않는다 — 회사별 월 보험료와 그 담보로 하루에 받는 금액을 같이 보여준다.
+                      const cells = companies.map((company) => {
+                        const premium = premiumTable.get(company)?.get(category) ?? 0
+                        const daily = SIDES.map((side) => [side, Number(valueOf(company, category, side)) || 0] as const).filter(([, v]) => v > 0)
+                        return { company, premium, daily }
+                      })
+                      if (cells.every((c) => !c.premium && c.daily.length === 0)) return null
                       return (
-                        <tr key={category} className="border-b border-slate-800">
+                        <tr key={category} className="border-b border-slate-800 align-top">
                           <td className="px-3 py-1.5 font-semibold text-slate-200">{category}</td>
-                          {values.map((v, i) => <td key={companies[i]} className="px-3 py-1.5 text-right tabular-nums">{won(v)}</td>)}
-                          <td className="px-3 py-1.5 text-right font-bold tabular-nums">{won(total)}</td>
+                          {cells.map((c) => (
+                            <td key={c.company} className="px-3 py-1.5 text-right tabular-nums">
+                              <div className="font-semibold text-slate-200">{c.premium ? `월 ${won(c.premium)}` : c.daily.length ? '보험료 확인 필요' : ''}</div>
+                              {c.daily.length ? (
+                                <div className="text-[11px] text-indigo-700">1일당 {c.daily.map(([side, v]) => `${side} ${v}만원`).join(' · ')}</div>
+                              ) : null}
+                            </td>
+                          ))}
                         </tr>
                       )
                     })}
