@@ -12,7 +12,6 @@ import {
   detectCompany,
   detectPayback,
   findTotalPremium,
-  applyFileLevelRules,
   CATEGORIES,
 } from "./classify.js";
 import { fillTemplate, loadTemplate, inspectTemplate } from "./templateFill.js";
@@ -109,7 +108,6 @@ app.post("/api/analyze", upload.array("files", 12), async (req, res) => {
           reason: classified.reason || classified.valueReason || "",
         };
       });
-      applyFileLevelRules(items);
       const company = detectCompany(pages, fileName);
       results.push({
         fileName,

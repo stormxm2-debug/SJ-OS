@@ -17,7 +17,6 @@ export const CATEGORIES = [
 ];
 
 const SANGGEUP_ROOMS = ["상급1인실", "상급2~3인실", "상급4~5인실"];
-const GENERAL_ROOMS = ["종합1인실", "종합2~3인실", "종합4~5인실"];
 
 // 보험사 이름(양식 표기 기준)
 const COMPANY_PATTERNS = [
@@ -220,19 +219,4 @@ export function classifyCoverage(coverageName, amountText) {
     result.reason = result.reason || reason || "값 확인 필요";
   }
   return result;
-}
-
-// 한 파일 전체를 보고 판단하는 규칙:
-// 종합병원 입원 담보만 있고 병실별 담보가 따로 없으면, 종합 1인/2~3/4~5인실에도 같은 값을 넣는다(확인 필요).
-export function applyFileLevelRules(items) {
-  const hasGeneralRoom = items.some((item) => item.categories.some((c) => GENERAL_ROOMS.includes(c)));
-  if (hasGeneralRoom) return items;
-  for (const item of items) {
-    if (item.categories.includes("종합병원일당")) {
-      item.categories = [...item.categories, ...GENERAL_ROOMS];
-      item.needsReview = true;
-      item.reason = item.reason || "병실 구분이 없어 종합 3개 항목에 같은 값";
-    }
-  }
-  return items;
 }
