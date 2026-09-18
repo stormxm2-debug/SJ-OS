@@ -19,6 +19,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "proxy:dev": "npm --prefix sj-ai-proxy run dev",
     "proxy:check": "node --check sj-ai-proxy/server.mjs",
+    "test": "node --test test/*.test.*",
     "proxy:status": "node scripts/proxy-status.mjs",
     "proxy:env": "node scripts/check-proxy-env.mjs",
     "proxy:kill": "node scripts/kill-proxy-port.mjs",
