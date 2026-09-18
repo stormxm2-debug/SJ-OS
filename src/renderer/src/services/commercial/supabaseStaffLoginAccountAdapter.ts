@@ -159,13 +159,24 @@ export const supabaseStaffLoginAccountAdapter = {
     return { ok: true, data: (data ?? []).map(mapReset) }
   },
 
-  async approveReset(id: string): Promise<AdapterResult<PasswordResetRequest>> {
+  async approveReset(id: string): Promise<AdapterResult<PasswordResetRequest & { approvalCode: string }>> {
     const client = await getClient()
     if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
     const userId = await currentUserId(client)
+    // 전화번호만 아는 제3자가 승인된 재설정을 가로채지 못하도록, 승인할 때 6자리 확인 코드를
+    // 발급한다. 관리자가 직원 본인에게 직접 전달하고, 서버(claim-phone-account)는 코드가
+    // 맞을 때만 새 비밀번호를 적용한다. DB에는 코드 대신 해시만 저장한다(관리자만 조회 가능).
+    const approvalCode = newApprovalCode()
+    const approvalCodeHash = await approvalCodeDigest(id, approvalCode)
     const { data, error } = await client
       .from('password_reset_requests')
-      .update({ status: 'approved', approved_at: new Date().toISOString(), approved_by: userId })
+      .update({
+        status: 'approved',
+        approved_at: new Date().toISOString(),
+        approved_by: userId,
+        approval_code_hash: approvalCodeHash,
+        failed_attempts: 0
+      })
       .eq('id', id)
       .select(RESET_COLS)
       .single()
@@ -182,6 +193,17 @@ export const supabaseStaffLoginAccountAdapter = {
     } catch {
       /* 게이트 갱신 실패는 치명적이지 않음 */
     }
-    return { ok: true, data: mapReset(data) }
+    return { ok: true, data: { ...mapReset(data), approvalCode } }
   }
+}
+
+function newApprovalCode(): string {
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000
+  return String(n).padStart(6, '0')
+}
+
+// 서버(claim-phone-account)와 같은 방식: sha256(`${요청 id}:${코드}`)의 16진수.
+async function approvalCodeDigest(requestId: string, code: string): Promise<string> {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${requestId}:${code}`))
+  return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }

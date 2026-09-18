@@ -13,6 +13,7 @@ import {
   approvePasswordResetRequest,
   blockStaffLoginAccount,
   createStaffAccountWithPassword,
+  issueStaffInviteCode,
   createStaffLoginAccount,
   deactivateStaffLoginAccount,
   listPasswordResetRequests,
@@ -48,6 +49,8 @@ export default function StaffLoginAdminPage(): JSX.Element {
   // 등록 직후: 새 직원에게 보낼 입장 안내 (로그인까지 이어지는 마지막 연결 고리)
   const [lastAdded, setLastAdded] = useState<string | null>(null)
   const [lastInitPw, setLastInitPw] = useState<string | null>(null)
+  const [lastInviteCode, setLastInviteCode] = useState<string | null>(null)
+  const [issuedInvite, setIssuedInvite] = useState<{ name: string; code: string } | null>(null)
   const [shareNote, setShareNote] = useState<string | null>(null)
 
   // 초기 비밀번호 방식은 관리자 전용 + 대표(owner) 계정 생성은 항상 초대 방식.
@@ -95,17 +98,32 @@ export default function StaffLoginAdminPage(): JSX.Element {
     const res = usePw
       ? await createStaffAccountWithPassword({ name, phone, role, password: initPw.trim() })
       : await createStaffLoginAccount({ name, phone, role, teamName: team })
+    if (!res.ok) { setBusy(false); setError(res.error); return }
+    // 초기 비밀번호 없이 등록했으면 초대 코드를 발급해 안내문에 넣는다(코드 없이는 첫 비밀번호를 만들 수 없음).
+    let invite: string | null = null
+    if (!usePw && mode === 'supabase') {
+      const inv = await issueStaffInviteCode(phone)
+      if (inv.ok && inv.code) invite = inv.code
+      else setNotice(`직원은 등록됐지만 초대 코드를 받지 못했습니다(${inv.error ?? '오류'}). 목록의 [초대 코드] 버튼으로 다시 발급해 주세요.`)
+    }
     setBusy(false)
-    if (!res.ok) { setError(res.error); return }
     setError(undefined)
     setLastAdded(name.trim() || '새 직원')
     setLastInitPw(usePw ? initPw.trim() : null)
+    setLastInviteCode(invite)
     setShareNote(null)
     setName(''); setPhone(''); setTeam(''); setInitPw(''); void load()
   }
 
   /** 새 직원에게 보낼 입장 안내 문구 — 초기 비밀번호 유무에 따라 두 버전. */
-  const guideText = (staffName: string, pw: string | null): string =>
+  const reissueInvite = async (a: StaffLoginAccount): Promise<void> => {
+    setError(undefined)
+    const inv = await issueStaffInviteCode(a.normalizedPhone)
+    if (!inv.ok || !inv.code) { setError(inv.error); return }
+    setIssuedInvite({ name: a.name, code: inv.code })
+  }
+
+  const guideText = (staffName: string, pw: string | null, invite: string | null = null): string =>
     pw
       ? [
           `[SJ INVEST] ${staffName}님, 합류를 환영합니다!`,
@@ -122,14 +140,15 @@ export default function StaffLoginAdminPage(): JSX.Element {
           '',
           `1) 폰 브라우저로 접속: ${window.location.origin}`,
           '2) 로그인 화면에 본인 휴대폰 번호 입력',
-          '3) 첫 로그인이라 비밀번호를 새로 만들면 바로 입장됩니다',
+          `3) 비밀번호 설정 칸에 초대 코드${invite ? ` ${invite}` : '(관리자에게 받은 6자리)'}와 새 비밀번호를 입력하면 입장됩니다`,
+          '   (초대 코드는 7일 동안 유효 · 다른 사람에게 알려주지 마세요)',
           '',
           '※ 브라우저 메뉴에서 "홈 화면에 추가"하면 앱처럼 쓸 수 있어요'
         ].join('\n')
 
   const sendGuide = async (): Promise<void> => {
     if (!lastAdded) return
-    const outcome = await shareMeetingText(guideText(lastAdded, lastInitPw))
+    const outcome = await shareMeetingText(guideText(lastAdded, lastInitPw, lastInviteCode))
     setShareNote(outcome === 'copied' ? '안내문이 복사됐어요 — 카톡에 붙여넣어 보내세요.' : null)
   }
   const setStatus = async (id: string, fn: (id: string) => Promise<{ ok: boolean; error?: string }>): Promise<void> => {
@@ -137,9 +156,10 @@ export default function StaffLoginAdminPage(): JSX.Element {
     if (!res.ok) { setError(res.error); return }
     void load()
   }
-  const approve = async (id: string): Promise<void> => {
+  const approve = async (id: string, phoneLabel: string): Promise<void> => {
     const res = await approvePasswordResetRequest(id, session.id)
     if (!res.ok) { setError(res.error); return }
+    if (res.approvalCode) setIssuedCode({ phoneLabel, code: res.approvalCode })
     void load()
   }
   const changeRole = async (id: string, newRole: StaffRole): Promise<void> => {
@@ -151,6 +171,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
   }
 
   const pending = resets.filter((r) => r.status === 'pending')
+  const [issuedCode, setIssuedCode] = useState<{ phoneLabel: string; code: string } | null>(null)
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
@@ -242,6 +263,26 @@ export default function StaffLoginAdminPage(): JSX.Element {
         ) : null}
       </div>
 
+      {/* 초대 코드 — 발급 직후 한 번만 표시 */}
+      {issuedInvite || lastInviteCode ? (
+        <div className="rounded-2xl border border-indigo-300 bg-indigo-50 p-4">
+          <div className="text-sm font-semibold text-indigo-800">초대 코드 — {issuedInvite ? issuedInvite.name : lastAdded}</div>
+          <div className="mt-1 font-mono text-3xl font-extrabold tracking-[0.3em] text-indigo-900">{issuedInvite ? issuedInvite.code : lastInviteCode}</div>
+          <p className="mt-1 text-[11px] text-indigo-800">직원 본인에게 직접 전달해 주세요. 로그인 화면에서 이 코드와 새 비밀번호를 입력해야 첫 비밀번호가 만들어집니다. 7일 동안 유효하고, 5번 틀리면 새로 발급해야 합니다. 이 코드는 다시 볼 수 없습니다(필요하면 목록에서 재발급).</p>
+          <button type="button" onClick={() => { setIssuedInvite(null); setLastInviteCode(null) }} className="mt-2 rounded-md border border-indigo-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-800">전달했어요 · 닫기</button>
+        </div>
+      ) : null}
+
+      {/* 재설정 확인 코드 — 승인 직후 한 번만 표시 */}
+      {issuedCode ? (
+        <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4">
+          <div className="text-sm font-semibold text-emerald-800">재설정 확인 코드 — {issuedCode.phoneLabel}</div>
+          <div className="mt-1 font-mono text-3xl font-extrabold tracking-[0.3em] text-emerald-900">{issuedCode.code}</div>
+          <p className="mt-1 text-[11px] text-emerald-800">직원 본인에게 전화나 대면으로 직접 알려주세요. 로그인 화면에서 이 코드와 새 비밀번호를 입력해야 재설정됩니다. 24시간 동안 유효하고, 5번 틀리면 다시 승인해야 합니다. 이 코드는 다시 볼 수 없습니다.</p>
+          <button type="button" onClick={() => setIssuedCode(null)} className="mt-2 rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-800">전달했어요 · 닫기</button>
+        </div>
+      ) : null}
+
       {/* Reset requests */}
       {pending.length > 0 ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
@@ -250,11 +291,11 @@ export default function StaffLoginAdminPage(): JSX.Element {
             {pending.map((r) => (
               <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs">
                 <span className="text-slate-600">{maskKoreanPhoneDisplay(r.normalizedPhone)} · {r.requestedAt ? new Date(r.requestedAt).toLocaleString() : ''}</span>
-                <button type="button" onClick={() => void approve(r.id)} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" /> 승인</button>
+                <button type="button" onClick={() => void approve(r.id, maskKoreanPhoneDisplay(r.normalizedPhone))} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-[11px] font-semibold text-white"><CheckCircle2 className="h-3 w-3" /> 승인</button>
               </div>
             ))}
           </div>
-          <p className="mt-2 text-[10px] text-amber-700">승인은 요청 상태만 변경합니다. 실제 비밀번호 재설정 적용은 서버 함수 연결 후 가능합니다.</p>
+          <p className="mt-2 text-[10px] text-amber-700">승인하면 6자리 확인 코드가 나옵니다. 요청한 직원 본인인지 확인한 뒤 코드를 직접 전달해 주세요.</p>
         </div>
       ) : null}
 
@@ -279,6 +320,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
                   onDeactivate={() => void setStatus(a.id, deactivateStaffLoginAccount)}
                   onActivate={() => void setStatus(a.id, (id) => updateStaffLoginStatus(id, 'active'))}
                   onBlock={() => void setStatus(a.id, blockStaffLoginAccount)}
+                  onInvite={!a.profileId && a.passwordStatus !== 'set' && mode === 'supabase' ? () => void reissueInvite(a) : undefined}
                 />
               ))}
             </div>
@@ -323,6 +365,7 @@ export default function StaffLoginAdminPage(): JSX.Element {
                         <div className="flex flex-wrap gap-1">
                           {a.status !== 'inactive' ? <ActBtn icon={<Ban className="h-3 w-3" />} label="비활성화" onClick={() => void setStatus(a.id, deactivateStaffLoginAccount)} /> : <ActBtn icon={<CheckCircle2 className="h-3 w-3" />} label="활성화" tone="emerald" onClick={() => void setStatus(a.id, (id) => updateStaffLoginStatus(id, 'active'))} />}
                           {a.status !== 'blocked' ? <ActBtn icon={<ShieldOff className="h-3 w-3" />} label="차단" tone="rose" onClick={() => void setStatus(a.id, blockStaffLoginAccount)} /> : null}
+                          {!a.profileId && a.passwordStatus !== 'set' && mode === 'supabase' ? <ActBtn icon={<KeyRound className="h-3 w-3" />} label="초대 코드" tone="emerald" onClick={() => void reissueInvite(a)} /> : null}
                         </div>
                       </td>
                     </tr>
@@ -342,9 +385,11 @@ function StaffCard({
   a,
   onDeactivate,
   onActivate,
-  onBlock
+  onBlock,
+  onInvite
 }: {
   a: StaffLoginAccount
+  onInvite?: () => void
   onDeactivate: () => void
   onActivate: () => void
   onBlock: () => void
@@ -370,6 +415,7 @@ function StaffCard({
           <ActBtn icon={<CheckCircle2 className="h-3 w-3" />} label="활성화" tone="emerald" onClick={onActivate} />
         )}
         {a.status !== 'blocked' ? <ActBtn icon={<ShieldOff className="h-3 w-3" />} label="차단" tone="rose" onClick={onBlock} /> : null}
+        {onInvite ? <ActBtn icon={<KeyRound className="h-3 w-3" />} label="초대 코드" tone="emerald" onClick={onInvite} /> : null}
       </div>
     </div>
   )

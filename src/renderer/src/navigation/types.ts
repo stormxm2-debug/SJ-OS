@@ -22,7 +22,6 @@ export type View =
   | { name: 'salary' }
   | { name: 'consultation' }
   | { name: 'manager-contacts' }
-  | { name: 'family-caregiver' }
   | { name: 'insurance-analysis' }
   | { name: 'coverage-analysis' }
   | { name: 'hospital-coverage' }

@@ -52,7 +52,7 @@ interface SessionValue {
   switchUser: (userId: string) => void
   supabaseSignIn: (email: string, password: string) => Promise<void>
   phoneSignIn: (phone: string, password: string) => Promise<PhoneOutcome>
-  claimPhonePassword: (normalizedPhone: string, password: string) => Promise<ServerActionResult>
+  claimPhonePassword: (normalizedPhone: string, password: string, approvalCode?: string) => Promise<ServerActionResult>
   requestPhoneReset: (phone: string) => ServerActionResult
 }
 
@@ -233,7 +233,7 @@ export function SessionProvider({ children }: { children: ReactNode }): JSX.Elem
         setAuthState('logged-out')
         return { kind: 'error', message: '로그인에 실패했습니다.' }
       },
-      claimPhonePassword: (normalizedPhone, password) => claimPhoneAccount(normalizedPhone, password),
+      claimPhonePassword: (normalizedPhone, password, approvalCode) => claimPhoneAccount(normalizedPhone, password, approvalCode),
       requestPhoneReset: (phone) => requestPhonePasswordReset(phone)
     }
   }, [session, authMode, supabaseConfigured, authState, authError])

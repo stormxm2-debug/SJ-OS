@@ -10,8 +10,8 @@ import { getAutoLogin, setAutoLogin, clearAutoLogin } from '@renderer/services/c
  * SJ OS login — simple, admin-managed phone + password.
  *
  * EVERYONE (staff AND admin/owner) logs in with 휴대폰 번호 / 비밀번호 — there is no
- * email login. First-password setup appears inline only for a registered phone whose
- * password is not set. The local-demo picker shows ONLY when Supabase is not
+ * email login. 비밀번호 설정 칸은 첫 로그인이거나 재설정이 승인된 번호에만 뜨고,
+ * 관리자·총무가 직접 알려준 6자리 코드(초대 코드 / 재설정 확인 코드)가 있어야 적용된다. The local-demo picker shows ONLY when Supabase is not
  * configured (dev machines). Never shows or logs phone/password/tokens.
  */
 export default function LoginScreen(): JSX.Element {
@@ -53,6 +53,7 @@ export default function LoginScreen(): JSX.Element {
   const [setupPhone, setSetupPhone] = useState<string | null>(null)
   const [pw1, setPw1] = useState('')
   const [pw2, setPw2] = useState('')
+  const [resetCode, setResetCode] = useState('')
   const [setupMsg, setSetupMsg] = useState<string | undefined>()
 
   // forgot password
@@ -77,11 +78,12 @@ export default function LoginScreen(): JSX.Element {
     if (!setupPhone) return
     const v = validatePassword(pw1, pw2)
     if (!v.ok) { setSetupMsg(v.errors[0]); return }
+    if (!/^\d{6}$/.test(resetCode.replace(/\D/g, ''))) { setSetupMsg('관리자에게 받은 6자리 코드를 입력해 주세요.'); return }
     setBusy(true)
-    const res = await claimPhonePassword(setupPhone, pw1)
+    const res = await claimPhonePassword(setupPhone, pw1, resetCode)
     setBusy(false)
     setSetupMsg(res.message)
-    if (res.ok) { setPw1(''); setPw2(''); setSetupPhone(null); setPassword('') }
+    if (res.ok) { setPw1(''); setPw2(''); setResetCode(''); setSetupPhone(null); setPassword('') }
   }
 
   const onForgot = (): void => {
@@ -137,6 +139,8 @@ export default function LoginScreen(): JSX.Element {
         {setupPhone ? (
           <div className="mt-3 rounded-xl border border-[#c7d2fe] bg-indigo-50/50 p-3">
             <div className="text-[12px] font-semibold text-slate-300">새 비밀번호를 설정해 주세요 (처음 로그인 또는 재설정 승인됨).</div>
+            <p className="mt-0.5 text-[11px] text-slate-400">관리자에게 받은 6자리 코드가 필요합니다(처음이면 초대 코드, 비밀번호를 잊었으면 재설정 확인 코드).</p>
+            <input value={resetCode} onChange={(e) => setResetCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="초대 코드 / 확인 코드 6자리" autoComplete="one-time-code" className="mt-2 w-full rounded-lg border border-slate-800 px-3 py-2 text-sm tracking-widest focus:outline-none" />
             <input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} placeholder="새 비밀번호 (8자 이상, 영문+숫자)" className="mt-2 w-full rounded-lg border border-slate-800 px-3 py-2 text-sm focus:outline-none" />
             <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder="새 비밀번호 확인" className="mt-1.5 w-full rounded-lg border border-slate-800 px-3 py-2 text-sm focus:outline-none" />
             <button type="button" onClick={() => void onSetup()} disabled={busy} className="mt-2 w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white disabled:opacity-60">비밀번호 설정</button>

@@ -20,6 +20,8 @@ import SupabaseScheduleManager from '@renderer/components/schedule/SupabaseSched
 import SharedSchedulePage from '@renderer/pages/SharedSchedulePage'
 import SupabaseAttendanceManager from '@renderer/components/attendance/SupabaseAttendanceManager'
 import InsuranceAnalysisPage from '@renderer/pages/InsuranceAnalysisPage'
+import CoverageAnalysisPage from '@renderer/pages/CoverageAnalysisPage'
+import HospitalCoveragePage from '@renderer/pages/HospitalCoveragePage'
 import InsuranceWikiPage from '@renderer/pages/InsuranceWikiPage'
 import UnderwritingGuidePage from '@renderer/pages/UnderwritingGuidePage'
 import PreUnderwritingPage from '@renderer/pages/PreUnderwritingPage'
@@ -260,6 +262,10 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <SalaryCalculatorPage />
     case 'insurance-analysis':
       return <InsuranceAnalysisPage />
+    case 'coverage-analysis':
+      return <CoverageAnalysisPage />
+    case 'hospital-coverage':
+      return <HospitalCoveragePage />
     case 'claim-assistant':
       return <InsuranceClaimAssistantPage />
     case 'exemptions':

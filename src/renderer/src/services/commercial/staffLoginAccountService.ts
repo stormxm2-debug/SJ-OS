@@ -37,6 +37,8 @@ export interface MutationResult {
   ok: boolean
   mode: StaffAdminDataMode
   error?: string
+  /** 비밀번호 재설정 승인 시 발급된 6자리 확인 코드(관리자가 직원에게 직접 전달). */
+  approvalCode?: string
 }
 
 function isSupabase(): boolean {
@@ -103,6 +105,36 @@ export async function createStaffAccountWithPassword(input: {
   }
 }
 
+/**
+ * 초기 비밀번호 없이 등록한 직원용 6자리 초대 코드를 발급한다(issue-staff-invite 엣지 함수).
+ * 관리자·총무가 직원 본인에게 직접 전달하고, 직원은 로그인 화면에서 코드와 새 비밀번호를 입력한다.
+ * 코드는 응답으로 한 번만 받으며 어디에도 저장하지 않는다.
+ */
+export async function issueStaffInviteCode(phone: string): Promise<{ ok: boolean; code?: string; error?: string }> {
+  if (!isSupabase()) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  const base = getFunctionsBaseUrl()
+  const anon = getSupabaseAnonKey()
+  if (!base || !anon) return { ok: false, error: 'Supabase 설정이 없습니다.' }
+  try {
+    await initSupabaseClient()
+    const client = getSupabaseClient() as {
+      auth?: { getSession: () => Promise<{ data?: { session?: { access_token?: string } } }> }
+    } | null
+    const token = (await client?.auth?.getSession())?.data?.session?.access_token
+    if (!token) return { ok: false, error: '로그인 세션이 없습니다.' }
+    const res = await fetch(`${base}/issue-staff-invite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ phone })
+    })
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; code?: string; message?: string }
+    if (res.ok && data?.ok && data.code) return { ok: true, code: data.code }
+    return { ok: false, error: data?.message ?? '초대 코드 발급에 실패했습니다.' }
+  } catch {
+    return { ok: false, error: '네트워크 상태를 확인해주세요.' }
+  }
+}
+
 export async function updateStaffLoginRole(
   id: string,
   role: StaffRole,
@@ -141,7 +173,7 @@ export async function listPasswordResetRequests(): Promise<ResetsResult> {
 export async function approvePasswordResetRequest(id: string, approvedBy?: string): Promise<MutationResult> {
   if (isSupabase()) {
     const res = await supabaseStaffLoginAccountAdapter.approveReset(id)
-    if (res.ok) return { ok: true, mode: 'supabase' }
+    if (res.ok) return { ok: true, mode: 'supabase', approvalCode: res.data.approvalCode }
     return { ok: false, mode: modeFromReason(res.reason), error: res.message }
   }
   approveLocal(id, approvedBy)

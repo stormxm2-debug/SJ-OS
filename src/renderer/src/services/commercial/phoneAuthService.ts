@@ -95,7 +95,7 @@ function functionHeaders(): Record<string, string> {
  * returns a clear "server function not deployed" result (does NOT fake success).
  * Never logs phone/password.
  */
-export async function claimPhoneAccount(normalizedPhone: string, password: string): Promise<ServerActionResult> {
+export async function claimPhoneAccount(normalizedPhone: string, password: string, approvalCode = ''): Promise<ServerActionResult> {
   const base = getFunctionsBaseUrl()
   if (!base) return { ok: false, message: SERVER_REQUIRED }
   const v = validatePassword(password)
@@ -104,7 +104,7 @@ export async function claimPhoneAccount(normalizedPhone: string, password: strin
     const res = await fetch(`${base}/claim-phone-account`, {
       method: 'POST',
       headers: functionHeaders(),
-      body: JSON.stringify({ phone: normalizedPhone, password })
+      body: JSON.stringify({ phone: normalizedPhone, password, code: approvalCode.replace(/\D/g, '') })
     })
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string }
     if (res.ok && data?.ok) return { ok: true, message: data.message ?? '비밀번호 설정이 완료되었습니다. 이제 로그인해주세요.' }
