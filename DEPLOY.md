@@ -30,7 +30,27 @@ npm run dist
 
 **실제 운영 주소: https://sj-invest.pages.dev (Cloudflare Pages, 직접 업로드 방식)**
 
-### 한 번에 배포 (권장)
+### 자동 배포 (기본)
+
+`main` 에 push 하면 GitHub Actions(`.github/workflows/deploy-web.yml`)가
+**타입검사 → 테스트 → 빌드 → Cloudflare Pages 배포**까지 알아서 합니다.
+검사를 통과하지 못하면 배포하지 않으므로, 깨진 화면이 직원 폰까지 가지 않습니다.
+
+- 진행 상황: GitHub 저장소 → **Actions** 탭
+- 문서(`*.md`, `docs/`)만 고친 커밋은 배포하지 않습니다(화면이 안 바뀌므로).
+  그래도 올리고 싶으면 Actions 탭에서 **Run workflow** 로 직접 실행하세요.
+
+**최초 1회 설정** — 저장소 Settings → Secrets and variables → Actions 에 2개 등록:
+
+| Secret | 어디서 얻나 |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → Create Token → **Cloudflare Pages: Edit** 권한 |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 대시보드 우측의 **Account ID** |
+
+Supabase 키는 넣지 않아도 됩니다. 웹 빌드는 `__SJ_WEB_BUILD__` 가 true 라
+`supabaseClient.ts` 에 내장된 공개 anon 키로 항상 SJ 프로젝트에 접속합니다.
+
+### 한 번에 배포 (수동 — 급할 때)
 ```bash
 scripts\deploy-web.bat        # 빌드 + Cloudflare Pages 배포까지 자동
 ```

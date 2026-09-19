@@ -1,0 +1,90 @@
+# SJ INVEST — 모바일 웹(PWA) 자동 배포
+#
+# main 에 push 하면 빌드해서 Cloudflare Pages(sj-invest.pages.dev)로 올린다.
+# 사장님 PC의 "SJ OS 웹 배포" 런처(scripts/deploy-web.bat)와 같은 일을 하며,
+# 그 런처는 그대로 둔다(급할 때 수동 배포용).
+#
+# 검사를 통과해야만 배포한다 — 타입 오류나 테스트 실패가 직원 폰까지 가지 않게.
+# 배포되면 직원 폰 앱이 다음에 열릴 때 version.json 을 보고 스스로 새 버전으로 바뀐다.
+#
+# 필요한 저장소 Secret 2개 (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   — Cloudflare > My Profile > API Tokens, "Cloudflare Pages: Edit" 권한
+#   CLOUDFLARE_ACCOUNT_ID  — Cloudflare 대시보드 우측의 Account ID
+# Supabase 키는 필요 없다. 웹 빌드는 __SJ_WEB_BUILD__ 가 true 라
+# supabaseClient.ts 에 내장된 공개 anon 키로 항상 SJ 프로젝트에 붙는다.
+
+name: 웹(PWA) 배포
+
+on:
+  push:
+    branches: [main]
+    # 문서만 고친 커밋은 배포하지 않는다(화면이 바뀌지 않으므로).
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+  # Actions 탭에서 손으로 돌릴 수도 있다(문서만 고쳤는데 다시 올리고 싶을 때 등).
+  workflow_dispatch:
+
+# 배포가 겹치면 나중 것만 살린다. 진행 중인 배포는 중간에 끊지 않는다.
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: 빌드 · 검사 · 배포
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 코드 받기
+        uses: actions/checkout@v4
+
+      - name: Node 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 의존성 설치
+        # 웹 빌드에는 Electron 바이너리(약 100MB)가 필요 없어 내려받지 않는다.
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+
+      - name: 타입 검사
+        run: npm run typecheck
+
+      - name: 테스트
+        run: npm test
+
+      - name: 웹 빌드
+        run: npm run build:web
+
+      - name: 빌드 결과 확인
+        # dist/index.html 과 version.json 이 없으면 배포해봐야 깨진 사이트가 올라간다.
+        run: |
+          test -f dist/index.html || { echo "::error::dist/index.html 이 없습니다 — 빌드 실패"; exit 1; }
+          test -f dist/version.json || { echo "::error::dist/version.json 이 없습니다 — 폰 자동 업데이트가 동작하지 않습니다"; exit 1; }
+          echo "빌드 버전: $(cat dist/version.json)"
+
+      - name: Cloudflare Pages 배포
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=sj-invest --branch=main
+
+      - name: 배포 결과
+        run: |
+          echo "### 웹 배포 완료" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "https://sj-invest.pages.dev" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "빌드 버전: \`$(cat dist/version.json)\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "직원 폰의 앱은 다음에 열 때 자동으로 새 버전으로 바뀝니다." >> $GITHUB_STEP_SUMMARY
