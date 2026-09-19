@@ -151,15 +151,23 @@ AI에는 **화면에서 이미 계산한 숫자와 회사명만** 보낸다. 고
 
 ### edge function 배포
 
-아직 배포되지 않았다. 배포 전에는 기본 설명으로 동작한다.
+**2026-09-19 배포 완료** — `coverage-mix-summary` (ACTIVE, verify_jwt: true).
+
+다시 배포할 때:
 
 ```bash
 supabase functions deploy coverage-mix-summary
-# ANTHROPIC_API_KEY 시크릿이 이미 설정돼 있어야 한다 (proposal-summary 와 공용)
 ```
+
+`ANTHROPIC_API_KEY` 시크릿을 쓴다(`proposal-summary` 와 공용). 키가 없으면 함수가
+`ANTHROPIC_API_KEY_MISSING` 으로 503을 돌려주고, 화면은 기본 설명으로 넘어간다.
 
 모델은 `COVERAGE_MIX_MODEL` 환경변수로 바꿀 수 있고, 기본값은 다른 함수와 같은
 `claude-sonnet-5` 다.
+
+호출자 인증은 두 겹이다 — Supabase 의 `verify_jwt` 와, 함수 안에서 한 번 더
+`auth.getUser()` 로 로그인한 직원인지 확인한다(AI 무단 사용·요금 남용 차단).
+로그인하지 않은 호출은 401.
 
 ## 플랜 엑셀 받기
 
