@@ -16,7 +16,18 @@ import {
   type Side,
   type PaybackNote
 } from '@renderer/services/commercial/hospitalCoverage'
-import { inspectTemplate, fillTemplate, buildSummaryWorkbook, downloadBlob, type SheetInfo, type MatrixEntry } from '@renderer/services/commercial/templateFill'
+import {
+  inspectTemplate,
+  fillTemplate,
+  buildSummaryWorkbook,
+  buildPlanWorkbook,
+  downloadBlob,
+  type SheetInfo,
+  type MatrixEntry,
+  type PlanMixRow
+} from '@renderer/services/commercial/templateFill'
+import { buildMix, type MixResult } from '@renderer/services/commercial/coverageMix'
+import { explainMix, buildBasicExplanation, explanationToText, type MixExplanation } from '@renderer/services/commercial/coverageMixAi'
 import {
   PLANS,
   classifyPlanGroup,
@@ -156,6 +167,8 @@ export default function HospitalCoveragePage(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('upload')
   const [plan, setPlan] = useState<PlanKey>('hospital')
   const [planPrefs, setPlanPrefs] = useState<PlanPrefs>(() => loadPlanPrefs())
+  // 플랜별 AI 설명(조합 설계안이 왜 좋은지 3가지). 플랜을 바꿔도 각각 남는다.
+  const [mixNotes, setMixNotes] = useState<Partial<Record<PlanKey, MixExplanation>>>({})
   const [pending, setPending] = useState<File[]>([])
   const [docs, setDocs] = useState<ProposalDoc[]>([])
   const [overrides, setOverrides] = useState<Record<string, string>>({})
@@ -173,6 +186,9 @@ export default function HospitalCoveragePage(): JSX.Element {
   const templateInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => subscribePlanPrefs(() => setPlanPrefs(loadPlanPrefs())), [])
+
+  // 담보 선택이 바뀌면 조합도 바뀐다. 옛 숫자로 쓴 설명이 남지 않게 지운다.
+  useEffect(() => setMixNotes({}), [docs])
 
   /* ---------- 파일 받기 ---------- */
 
@@ -391,6 +407,33 @@ export default function HospitalCoveragePage(): JSX.Element {
 
   const planGroups = groupsOfPlan(plan)
   const current = planCounts(plan)
+  const planLabel = PLANS.find((p) => p.key === plan)?.label ?? ''
+
+  /* ---------- 조합 설계안 (담보별 최저 보험료) ---------- */
+
+  // 체크한 담보만 조합에 넣는다. 회사는 제안서의 보험사명 기준.
+  const mix: MixResult = useMemo(() => {
+    const items = docs.flatMap((doc) =>
+      doc.items
+        .filter((it) => it.plan === plan && it.checked)
+        .map((it) => ({
+          company: doc.company.trim() || '회사 미확인',
+          coverageName: it.coverageName,
+          amount: it.amount,
+          premium: it.premium,
+          plan: it.plan,
+          groupKey: it.groupKey
+        }))
+    )
+    return buildMix(items)
+  }, [docs, plan])
+
+  const mixCompanies = useMemo(
+    () => [...new Set(docs.map((d) => d.company.trim() || '회사 미확인'))],
+    [docs]
+  )
+
+  const planNote = mixNotes[plan] ?? null
 
   /* ---------- 내려받기 ---------- */
 
@@ -490,6 +533,106 @@ export default function HospitalCoveragePage(): JSX.Element {
       setError(e instanceof Error ? e.message : '엑셀 파일을 만드는 중 오류가 발생했습니다.')
     } finally {
       setBusy(null)
+    }
+  }
+
+  /* ---------- 플랜 엑셀 · AI 설명 ---------- */
+
+  // 조합 설계안 표를 엑셀용 행으로. 회사별 보험료를 같이 실어 비교 시트를 만든다.
+  const buildPlanMixRows = (): PlanMixRow[] =>
+    mix.rows
+      .filter((row) => row.best)
+      .map((row) => {
+        const byCompany: Record<string, number | null> = {}
+        for (const company of mixCompanies) {
+          byCompany[company] = row.candidates.find((c) => c.company === company)?.premiumWon ?? null
+        }
+        return {
+          label: row.label,
+          company: row.best!.company,
+          coverageName: row.best!.coverageName,
+          amountManwon: row.best!.amountManwon,
+          premiumWon: row.best!.premiumWon,
+          unitPrice: row.best!.unitPrice,
+          needsReview: row.needsReview,
+          soleOffer: row.soleOffer,
+          byCompany
+        }
+      })
+
+  const planListRows = (): { company: string; coverageName: string; amount: string; term: string; premium: string }[] =>
+    docs.flatMap((doc) =>
+      doc.items
+        .filter((it) => it.plan === plan && it.checked)
+        .map((it) => ({
+          company: doc.company.trim() || '회사 미확인',
+          coverageName: it.coverageName,
+          amount: it.amount,
+          term: it.term,
+          premium: it.premium
+        }))
+    )
+
+  // AI 설명을 받아 온다. 서버가 없거나 실패하면 숫자로 만든 기본 설명을 그대로 쓴다.
+  const requestPlanNote = async (): Promise<MixExplanation> => {
+    const { explanation, error: aiError } = await explainMix(planLabel, mix)
+    setMixNotes((prev) => ({ ...prev, [plan]: explanation }))
+    if (aiError) setNotice(`${aiError} 숫자로 만든 기본 설명을 사용합니다.`)
+    return explanation
+  }
+
+  const explainPlan = async (): Promise<void> => {
+    setError(null)
+    if (mix.rows.length === 0) {
+      setError('설명할 담보가 없습니다. 담보를 체크해주세요.')
+      return
+    }
+    setBusy('AI가 이 설계안의 장점을 정리하는 중…')
+    try {
+      const explanation = await requestPlanNote()
+      if (explanation.source === 'ai') setNotice('AI 설명을 받았습니다.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const downloadPlanExcel = async (): Promise<void> => {
+    setError(null)
+    if (mix.rows.length === 0) {
+      setError('내려받을 담보가 없습니다. 담보를 체크해주세요.')
+      return
+    }
+    try {
+      // 설명을 아직 안 받았으면 기본 설명이라도 넣어 엑셀이 비지 않게 한다.
+      const explanation = planNote ?? buildBasicExplanation(planLabel, mix)
+      setBusy('엑셀을 만드는 중…')
+      const blob = await buildPlanWorkbook({
+        planLabel,
+        companies: mixCompanies,
+        mixRows: buildPlanMixRows(),
+        mixPremium: mix.mixPremium,
+        cheapestSingle: mix.cheapestSingle,
+        savedVsSingle: mix.savedVsSingle,
+        byCompanyTotal: mix.byCompany,
+        explanation,
+        rows: planListRows()
+      })
+      downloadBlob(blob, `${planLabel}_조합설계안_${stamp()}.xlsx`)
+      setNotice(`${planLabel} 엑셀을 내려받았습니다.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '엑셀 파일을 만드는 중 오류가 발생했습니다.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const copyPlanNote = async (): Promise<void> => {
+    const explanation = planNote ?? buildBasicExplanation(planLabel, mix)
+    try {
+      await navigator.clipboard.writeText(explanationToText(explanation))
+      setNotice('설명을 복사했습니다.')
+    } catch {
+      setError('복사하지 못했습니다. 직접 선택해서 복사해주세요.')
     }
   }
 
@@ -749,6 +892,121 @@ export default function HospitalCoveragePage(): JSX.Element {
                   </div>
                   <p className="mt-2 text-[11px] text-slate-500">
                     켜고 끈 설정은 이 기기에 저장돼 다음에 제안서를 올릴 때 그대로 적용됩니다.
+                  </p>
+                </div>
+              ) : null}
+
+              {/* 조합 설계안 — 담보별로 가장 싼 회사로 쪼갠 결과 */}
+              {mix.rows.length > 0 ? (
+                <div className="space-y-2 rounded-2xl border border-indigo-200 bg-white p-3 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-[13px] font-bold text-slate-100">
+                        조합 설계안 <span className="text-[11px] font-medium text-slate-500">담보마다 가장 저렴한 회사로 쪼갬</span>
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        비교 기준: 가입금액 1,000만원당 월 보험료 · 제안서 {mixCompanies.length}건 · 담보 {mix.rows.length}개
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button type="button" onClick={explainPlan} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50">
+                        <Sparkles className="h-3.5 w-3.5" /> AI 설명 3가지
+                      </button>
+                      <button type="button" onClick={downloadPlanExcel} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:bg-slate-950 disabled:opacity-50">
+                        <Download className="h-3.5 w-3.5" /> 엑셀 받기
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 합계 요약 */}
+                  <div className="flex flex-wrap gap-2 text-[12px]">
+                    <span className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 font-bold text-indigo-700">
+                      조합 월 보험료 {mix.mixPremium ? won(mix.mixPremium) : '확인 필요'}
+                    </span>
+                    {mix.cheapestSingle ? (
+                      <span className="rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 font-semibold text-slate-300">
+                        한 회사만({mix.cheapestSingle.company}) {won(mix.cheapestSingle.premium)}
+                      </span>
+                    ) : null}
+                    {mix.savedVsSingle !== null && mix.savedVsSingle > 0 ? (
+                      <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 font-bold text-emerald-700">
+                        월 {won(mix.savedVsSingle)} 절약 · 연 {won(mix.savedVsSingle * 12)}
+                      </span>
+                    ) : null}
+                    {mix.usedCompanies.length > 1 ? (
+                      <span className="rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 font-semibold text-slate-300">
+                        보험사 {mix.usedCompanies.length}곳 조합
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* AI 설명 3가지 */}
+                  {planNote ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[12px] font-bold text-amber-900">{planNote.headline}</p>
+                        <div className="flex items-center gap-1.5">
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                            {planNote.source === 'ai' ? 'AI 설명' : '기본 설명(서버 미연결)'}
+                          </span>
+                          <button type="button" onClick={copyPlanNote} className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100">
+                            복사
+                          </button>
+                        </div>
+                      </div>
+                      <ol className="mt-2 space-y-1.5">
+                        {planNote.points.map((point, i) => (
+                          <li key={point} className="flex gap-2 text-[12px] leading-relaxed text-amber-900">
+                            <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-200 text-[10px] font-bold">{i + 1}</span>
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : null}
+
+                  {/* 담보별 회사 비교표 */}
+                  <div className="overflow-x-auto rounded-xl border border-slate-800">
+                    <table className="w-full min-w-[640px] text-left text-[12px]">
+                      <thead>
+                        <tr className="border-b border-slate-800 bg-slate-950 text-[11px] text-slate-500">
+                          <th className="px-2 py-2 font-semibold">담보</th>
+                          <th className="px-2 py-2 font-semibold">고른 회사</th>
+                          <th className="px-2 py-2 text-right font-semibold">가입금액(만원)</th>
+                          <th className="px-2 py-2 text-right font-semibold">월 보험료</th>
+                          <th className="px-2 py-2 text-right font-semibold">1천만원당</th>
+                          <th className="px-2 py-2 font-semibold">다른 회사</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mix.rows.map((row) => {
+                          const others = row.candidates.filter((c) => c.company !== row.best?.company)
+                          return (
+                            <tr key={row.key} className="border-b border-slate-800 last:border-0">
+                              <td className="px-2 py-1.5 font-semibold text-slate-200">
+                                {row.label}
+                                {row.needsReview ? <span className="ml-1 text-[10px] font-bold text-amber-700">가입금액 확인</span> : null}
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 font-bold text-indigo-700">{row.best?.company}</span>
+                                {row.soleOffer ? <span className="ml-1 text-[10px] text-slate-500">단독</span> : null}
+                              </td>
+                              <td className="px-2 py-1.5 text-right tabular-nums">{row.best?.amountManwon?.toLocaleString('ko-KR') ?? '-'}</td>
+                              <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-slate-200">{row.best?.premiumWon ? won(row.best.premiumWon) : '-'}</td>
+                              <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{row.best?.unitPrice ? won(row.best.unitPrice) : '-'}</td>
+                              <td className="px-2 py-1.5 text-[11px] text-slate-500">
+                                {others.length === 0
+                                  ? '-'
+                                  : others.map((c) => `${c.company} ${c.premiumWon ? won(c.premiumWon) : '확인 필요'}`).join(' · ')}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    보장 범위가 다른 담보(뇌혈관질환 vs 뇌졸중 등)는 일부러 따로 비교합니다. 가입금액을 읽지 못한 담보는 보험료로만 비교하며 '가입금액 확인'으로 표시됩니다.
                   </p>
                 </div>
               ) : null}

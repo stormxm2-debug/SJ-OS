@@ -430,3 +430,245 @@ export function downloadBlob(blob: Blob, fileName: string): void {
   link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+/* ---------- 플랜별 엑셀 (종합·운전자·실손) ---------- */
+
+export interface PlanMixRow {
+  label: string
+  company: string
+  coverageName: string
+  amountManwon: number | null
+  premiumWon: number | null
+  unitPrice: number | null
+  needsReview: boolean
+  soleOffer: boolean
+  /** 회사별 보험료(원) — 비교표에 그대로 깐다. */
+  byCompany: Record<string, number | null>
+}
+
+/**
+ * 플랜 하나를 엑셀로 내려받는다. 시트 3장:
+ *  1) 조합 설계안 — 담보별로 고른 회사와 보험료, 합계, 절감액, 이 설계안의 장점
+ *  2) 담보 비교   — 담보 × 회사 보험료 매트릭스 (고른 칸은 강조)
+ *  3) 담보목록    — 제안서 원문 그대로
+ */
+export async function buildPlanWorkbook(args: {
+  planLabel: string
+  companies: string[]
+  mixRows: PlanMixRow[]
+  mixPremium: number
+  cheapestSingle: { company: string; premium: number } | null
+  savedVsSingle: number | null
+  byCompanyTotal: { company: string; premium: number; rowCount: number }[]
+  explanation: { headline: string; points: string[] }
+  rows: CoverageListRow[]
+}): Promise<Blob> {
+  const ExcelJS = await loadExcelJs()
+  const workbook = new ExcelJS.Workbook()
+
+  const NAVY = 'FF0E1E3A'
+  const GOLD_SOFT = 'FFFBF3DC'
+  const GRAY_SOFT = 'FFF3F5F9'
+  const PICK = 'FFE8F0FE'
+  const line = { style: 'thin' as const, color: { argb: 'FFC5CCD8' } }
+  const boxed = { top: line, left: line, bottom: line, right: line }
+  const fill = (argb: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb } })
+  const font = 'Malgun Gothic'
+  const d = new Date()
+  const today = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`
+
+  const styleCell = (
+    sheet: Worksheet,
+    row: number,
+    col: number,
+    opts: { bold?: boolean; color?: string; bg?: string; size?: number; align?: 'left' | 'center' | 'right'; numFmt?: string; wrap?: boolean } = {}
+  ): void => {
+    const cell = sheet.getCell(row, col)
+    cell.font = { name: font, size: opts.size ?? 10, bold: Boolean(opts.bold), color: opts.color ? { argb: opts.color } : undefined }
+    cell.alignment = { horizontal: opts.align ?? 'center', vertical: 'middle', wrapText: Boolean(opts.wrap) }
+    cell.border = boxed
+    if (opts.bg) cell.fill = fill(opts.bg)
+    if (opts.numFmt) cell.numFmt = opts.numFmt
+  }
+
+  /* ===== 1) 조합 설계안 ===== */
+  const mix = workbook.addWorksheet('조합 설계안', { views: [{ showGridLines: false }] })
+  const MIX_COLS = 6
+  mix.getColumn(1).width = 30
+  mix.getColumn(2).width = 16
+  mix.getColumn(3).width = 14
+  mix.getColumn(4).width = 14
+  mix.getColumn(5).width = 16
+  mix.getColumn(6).width = 34
+
+  let r = 1
+  mix.mergeCells(r, 1, r, MIX_COLS)
+  mix.getCell(r, 1).value = `${args.planLabel} — 조합 설계안 (담보별 최저 보험료)`
+  mix.getCell(r, 1).font = { name: font, size: 16, bold: true, color: { argb: NAVY } }
+  mix.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'middle' }
+  mix.getRow(r).height = 28
+  r++
+  mix.mergeCells(r, 1, r, MIX_COLS)
+  mix.getCell(r, 1).value =
+    `작성일 ${today} · 비교한 제안서 ${args.companies.length}건 · 비교 기준: 가입금액 1,000만원당 월 보험료 · 금액 단위: 원`
+  mix.getCell(r, 1).font = { name: font, size: 9, color: { argb: 'FF6B7280' } }
+  r += 2
+
+  // 담보별 표
+  const HEAD = ['담보', '고른 보험사', '가입금액(만원)', '월 보험료(원)', '1천만원당(원)', '제안서상 담보명']
+  HEAD.forEach((h, i) => {
+    mix.getCell(r, i + 1).value = h
+    styleCell(mix, r, i + 1, { bold: true, color: 'FFFFFFFF', bg: NAVY })
+  })
+  r++
+
+  for (const row of args.mixRows) {
+    mix.getCell(r, 1).value = row.label
+    styleCell(mix, r, 1, { align: 'left', bold: true, bg: GRAY_SOFT })
+    mix.getCell(r, 2).value = row.company
+    styleCell(mix, r, 2, { bold: true, bg: PICK })
+    mix.getCell(r, 3).value = row.amountManwon ?? '확인 필요'
+    styleCell(mix, r, 3, { numFmt: '#,##0' })
+    mix.getCell(r, 4).value = row.premiumWon ?? '확인 필요'
+    styleCell(mix, r, 4, { numFmt: '#,##0' })
+    mix.getCell(r, 5).value = row.unitPrice ?? (row.needsReview ? '가입금액 확인 필요' : '-')
+    styleCell(mix, r, 5, { numFmt: '#,##0', color: row.needsReview ? 'FFB45309' : undefined })
+    mix.getCell(r, 6).value = row.soleOffer ? `${row.coverageName} (이 회사에만 있음)` : row.coverageName
+    styleCell(mix, r, 6, { align: 'left', size: 9, color: 'FF6B7280', wrap: true })
+    r++
+  }
+
+  // 합계
+  mix.mergeCells(r, 1, r, 3)
+  mix.getCell(r, 1).value = '조합 설계안 월 보험료 합계'
+  styleCell(mix, r, 1, { bold: true, align: 'left', bg: GOLD_SOFT })
+  styleCell(mix, r, 2, { bg: GOLD_SOFT })
+  styleCell(mix, r, 3, { bg: GOLD_SOFT })
+  mix.getCell(r, 4).value = args.mixPremium
+  styleCell(mix, r, 4, { bold: true, numFmt: '#,##0', bg: GOLD_SOFT })
+  mix.mergeCells(r, 5, r, 6)
+  styleCell(mix, r, 5, { bg: GOLD_SOFT })
+  r++
+
+  if (args.cheapestSingle && args.savedVsSingle !== null) {
+    mix.mergeCells(r, 1, r, 3)
+    mix.getCell(r, 1).value = `한 회사로만 넣을 때 가장 저렴한 곳 — ${args.cheapestSingle.company}`
+    styleCell(mix, r, 1, { align: 'left' })
+    styleCell(mix, r, 2, {})
+    styleCell(mix, r, 3, {})
+    mix.getCell(r, 4).value = args.cheapestSingle.premium
+    styleCell(mix, r, 4, { numFmt: '#,##0' })
+    mix.mergeCells(r, 5, r, 6)
+    mix.getCell(r, 5).value =
+      args.savedVsSingle > 0
+        ? `조합이 월 ${args.savedVsSingle.toLocaleString('ko-KR')}원 저렴 (연 ${(args.savedVsSingle * 12).toLocaleString('ko-KR')}원)`
+        : '조합과 차이 없음'
+    styleCell(mix, r, 5, { bold: args.savedVsSingle > 0, align: 'left', color: args.savedVsSingle > 0 ? 'FF15803D' : undefined })
+    r++
+  }
+  r++
+
+  // 회사별 단독 합계
+  mix.mergeCells(r, 1, r, MIX_COLS)
+  mix.getCell(r, 1).value = '회사별 단독 합계 — 그 회사가 가진 담보만 더한 값'
+  mix.getCell(r, 1).font = { name: font, size: 11, bold: true, color: { argb: NAVY } }
+  mix.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'middle' }
+  r++
+  for (const c of args.byCompanyTotal) {
+    mix.mergeCells(r, 1, r, 3)
+    mix.getCell(r, 1).value = `${c.company} (담보 ${c.rowCount}개)`
+    styleCell(mix, r, 1, { align: 'left' })
+    styleCell(mix, r, 2, {})
+    styleCell(mix, r, 3, {})
+    mix.getCell(r, 4).value = c.premium
+    styleCell(mix, r, 4, { numFmt: '#,##0' })
+    mix.mergeCells(r, 5, r, 6)
+    styleCell(mix, r, 5, {})
+    r++
+  }
+  r++
+
+  // 이 설계안의 장점
+  mix.mergeCells(r, 1, r, MIX_COLS)
+  mix.getCell(r, 1).value = args.explanation.headline || '이 설계안의 장점'
+  mix.getCell(r, 1).font = { name: font, size: 12, bold: true, color: { argb: NAVY } }
+  mix.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'middle' }
+  mix.getCell(r, 1).fill = fill(GOLD_SOFT)
+  mix.getRow(r).height = 24
+  r++
+  for (const [i, point] of args.explanation.points.entries()) {
+    mix.mergeCells(r, 1, r, MIX_COLS)
+    mix.getCell(r, 1).value = `${i + 1}. ${point}`
+    mix.getCell(r, 1).font = { name: font, size: 10 }
+    mix.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'top', wrapText: true }
+    mix.getRow(r).height = Math.max(18, Math.ceil((point.length * 1.9) / 130) * 16)
+    r++
+  }
+  setA4Landscape(mix, MIX_COLS, r - 1, false)
+
+  /* ===== 2) 담보 비교 ===== */
+  const cmp = workbook.addWorksheet('담보 비교', { views: [{ showGridLines: false, state: 'frozen', xSplit: 1, ySplit: 3 }] })
+  const cmpCols = 1 + args.companies.length
+  cmp.getColumn(1).width = 30
+  for (let c = 2; c <= cmpCols; c++) cmp.getColumn(c).width = 16
+
+  let cr = 1
+  cmp.mergeCells(cr, 1, cr, Math.max(cmpCols, 2))
+  cmp.getCell(cr, 1).value = `${args.planLabel} — 담보별 회사 보험료 비교`
+  cmp.getCell(cr, 1).font = { name: font, size: 14, bold: true, color: { argb: NAVY } }
+  cmp.getCell(cr, 1).alignment = { horizontal: 'left', vertical: 'middle' }
+  cr++
+  cmp.mergeCells(cr, 1, cr, Math.max(cmpCols, 2))
+  cmp.getCell(cr, 1).value = '색이 칠해진 칸이 조합 설계안에서 고른 회사입니다 · 빈칸은 그 회사 제안서에 없는 담보 · 단위: 원'
+  cmp.getCell(cr, 1).font = { name: font, size: 9, color: { argb: 'FF6B7280' } }
+  cr++
+
+  cmp.getCell(cr, 1).value = '담보'
+  styleCell(cmp, cr, 1, { bold: true, color: 'FFFFFFFF', bg: NAVY, align: 'left' })
+  args.companies.forEach((company, i) => {
+    cmp.getCell(cr, i + 2).value = company
+    styleCell(cmp, cr, i + 2, { bold: true, color: 'FFFFFFFF', bg: NAVY })
+  })
+  cr++
+
+  for (const row of args.mixRows) {
+    cmp.getCell(cr, 1).value = row.label
+    styleCell(cmp, cr, 1, { align: 'left', bold: true, bg: GRAY_SOFT })
+    args.companies.forEach((company, i) => {
+      const value = row.byCompany[company]
+      cmp.getCell(cr, i + 2).value = value ?? ''
+      styleCell(cmp, cr, i + 2, { numFmt: '#,##0', bg: company === row.company ? PICK : undefined, bold: company === row.company })
+    })
+    cr++
+  }
+
+  cmp.getCell(cr, 1).value = '합계'
+  styleCell(cmp, cr, 1, { bold: true, align: 'left', bg: GOLD_SOFT })
+  args.companies.forEach((company, i) => {
+    cmp.getCell(cr, i + 2).value = args.byCompanyTotal.find((c) => c.company === company)?.premium ?? 0
+    styleCell(cmp, cr, i + 2, { bold: true, numFmt: '#,##0', bg: GOLD_SOFT })
+  })
+  setA4Landscape(cmp, Math.max(cmpCols, 2), cr, false)
+
+  /* ===== 3) 담보목록 ===== */
+  const list = workbook.addWorksheet('담보목록')
+  list.columns = [
+    { header: '보험사', key: 'company', width: 12 },
+    { header: '담보명', key: 'coverageName', width: 60 },
+    { header: '가입금액', key: 'amount', width: 14 },
+    { header: '납입기간·만기', key: 'term', width: 20 },
+    { header: '보험료(원)', key: 'premium', width: 12 }
+  ]
+  list.getRow(1).font = { bold: true }
+  for (const row of args.rows) {
+    const digits = row.premium.replace(/[^\d]/g, '')
+    const added = list.addRow({ ...row, premium: digits && /^[\d,\s원]+$/.test(row.premium) ? Number(digits) : row.premium })
+    added.getCell('premium').numFmt = '#,##0'
+  }
+  list.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, args.rows.length + 1), column: 5 } }
+  list.views = [{ state: 'frozen', ySplit: 1 }]
+  setA4Landscape(list, 5, Math.max(1, args.rows.length + 1), false)
+
+  const out = await workbook.xlsx.writeBuffer()
+  return new Blob([out], { type: XLSX_MIME })
+}

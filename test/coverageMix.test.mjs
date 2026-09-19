@@ -1,0 +1,169 @@
+/**
+ * 조합 설계안(담보별 최저가 쪼개기) 테스트.
+ *
+ * 돈이 걸린 계산이라 규칙을 여기에 고정한다.
+ * - 비교 기준은 가입금액 1,000만원당 월 보험료(단가)
+ * - 가입금액을 못 읽으면 보험료로만 비교하고 '확인 필요'
+ * - 보장 범위가 다른 담보(뇌혈관 vs 뇌졸중)는 섞어 비교하지 않는다
+ *
+ * 실행: node --test test/coverageMix.test.mjs
+ */
+
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { build } from 'esbuild'
+
+async function load(src) {
+  const result = await build({ entryPoints: [src], bundle: true, format: 'esm', write: false, platform: 'node' })
+  const dir = await mkdtemp(join(tmpdir(), 'sj-mix-'))
+  const file = join(dir, 'mod.mjs')
+  await writeFile(file, result.outputFiles[0].text, 'utf8')
+  return import(file)
+}
+
+const { buildMix, mixKeyOf, parseAmountManwon, parsePremiumWon } = await load(
+  'src/renderer/src/services/commercial/coverageMix.ts'
+)
+
+const item = (company, coverageName, amount, premium) => ({
+  company,
+  coverageName,
+  amount,
+  premium,
+  plan: 'comprehensive',
+  groupKey: 'comp-diagnosis'
+})
+
+test('가입금액을 만원 단위로 읽는다', () => {
+  assert.equal(parseAmountManwon('3,000만원'), 3000)
+  assert.equal(parseAmountManwon('5000만원'), 5000)
+  assert.equal(parseAmountManwon('1억원'), 10000)
+  assert.equal(parseAmountManwon('1억5,000만원'), 15000)
+  assert.equal(parseAmountManwon('30,000,000원'), 3000)
+  assert.equal(parseAmountManwon('확인필요'), null)
+  assert.equal(parseAmountManwon(''), null)
+})
+
+test('보험료를 원 단위로 읽는다', () => {
+  assert.equal(parsePremiumWon('12,340원'), 12340)
+  assert.equal(parsePremiumWon('8,900'), 8900)
+  assert.equal(parsePremiumWon('-'), null)
+})
+
+test('보장 범위가 다른 담보는 섞어 비교하지 않는다', () => {
+  const keys = ['뇌혈관질환진단비', '뇌졸중진단비', '뇌출혈진단비', '허혈성심장질환진단비', '급성심근경색진단비'].map(
+    (n) => mixKeyOf(n).key
+  )
+  assert.equal(new Set(keys).size, keys.length, '서로 다른 키여야 합니다')
+})
+
+test('회사마다 다른 표기의 같은 담보는 한 줄로 모은다', () => {
+  assert.equal(mixKeyOf('(무)암진단비(유사암제외)').key, mixKeyOf('일반암진단비').key)
+  assert.notEqual(mixKeyOf('암진단비').key, mixKeyOf('유사암진단비').key)
+})
+
+test('가입금액이 같으면 보험료가 싼 회사를 고른다', () => {
+  const mix = buildMix([
+    item('A생명', '암진단비', '3,000만원', '18,000원'),
+    item('B화재', '암진단비', '3,000만원', '15,000원')
+  ])
+  assert.equal(mix.rows.length, 1)
+  assert.equal(mix.rows[0].best.company, 'B화재')
+  assert.equal(mix.mixPremium, 15000)
+  assert.equal(mix.rows[0].needsReview, false)
+})
+
+test('가입금액이 다르면 1,000만원당 단가로 고른다 (싼 보험료에 속지 않는다)', () => {
+  // A: 3,000만원에 18,000원 → 1,000만원당 6,000원
+  // B: 1,000만원에  9,000원 → 1,000만원당 9,000원 (보험료는 싸지만 단가는 비싸다)
+  const mix = buildMix([
+    item('A생명', '암진단비', '3,000만원', '18,000원'),
+    item('B화재', '암진단비', '1,000만원', '9,000원')
+  ])
+  assert.equal(mix.rows[0].best.company, 'A생명')
+  assert.equal(mix.rows[0].amountsDiffer, true)
+  assert.equal(mix.rows[0].candidates.find((c) => c.company === 'A생명').unitPrice, 6000)
+  assert.equal(mix.rows[0].candidates.find((c) => c.company === 'B화재').unitPrice, 9000)
+})
+
+test('가입금액을 못 읽으면 보험료로만 비교하고 확인 필요로 표시한다', () => {
+  const mix = buildMix([
+    item('A생명', '암진단비', '확인필요', '18,000원'),
+    item('B화재', '암진단비', '확인필요', '15,000원')
+  ])
+  assert.equal(mix.rows[0].best.company, 'B화재')
+  assert.equal(mix.rows[0].needsReview, true)
+})
+
+test('담보별로 회사를 쪼갠다 — 암은 A, 뇌·심장은 B', () => {
+  const mix = buildMix([
+    item('A생명', '암진단비', '3,000만원', '12,000원'),
+    item('A생명', '뇌혈관질환진단비', '2,000만원', '20,000원'),
+    item('A생명', '급성심근경색진단비', '2,000만원', '18,000원'),
+    item('B화재', '암진단비', '3,000만원', '16,000원'),
+    item('B화재', '뇌혈관질환진단비', '2,000만원', '11,000원'),
+    item('B화재', '급성심근경색진단비', '2,000만원', '9,000원')
+  ])
+  const pick = (label) => mix.rows.find((r) => r.label === label).best.company
+  assert.equal(pick('암진단비(일반암)'), 'A생명')
+  assert.equal(pick('뇌혈관질환진단비'), 'B화재')
+  assert.equal(pick('급성심근경색진단비'), 'B화재')
+
+  // 조합 = 12,000 + 11,000 + 9,000
+  assert.equal(mix.mixPremium, 32000)
+  assert.deepEqual(mix.usedCompanies.slice().sort(), ['A생명', 'B화재'])
+
+  // 한 회사로만 가면 A는 50,000원 / B는 36,000원 → 가장 싼 단일은 B(36,000원)
+  assert.equal(mix.cheapestSingle.company, 'B화재')
+  assert.equal(mix.cheapestSingle.premium, 36000)
+  assert.equal(mix.savedVsSingle, 4000)
+})
+
+test('제안서 3개도 그대로 비교한다', () => {
+  const mix = buildMix([
+    item('A생명', '암진단비', '3,000만원', '12,000원'),
+    item('B화재', '암진단비', '3,000만원', '16,000원'),
+    item('C손보', '암진단비', '3,000만원', '9,000원'),
+    item('A생명', '골절진단비', '100만원', '900원'),
+    item('B화재', '골절진단비', '100만원', '700원'),
+    item('C손보', '골절진단비', '100만원', '1,200원')
+  ])
+  assert.equal(mix.byCompany.length, 3)
+  assert.equal(mix.rows.find((r) => r.label === '암진단비(일반암)').best.company, 'C손보')
+  assert.equal(mix.rows.find((r) => r.label === '골절진단비').best.company, 'B화재')
+  assert.equal(mix.mixPremium, 9700)
+})
+
+test('한 회사에만 있는 담보는 비교가 아니라 단독으로 표시한다', () => {
+  const mix = buildMix([
+    item('A생명', '암진단비', '3,000만원', '12,000원'),
+    item('B화재', '암진단비', '3,000만원', '16,000원'),
+    item('A생명', '깁스치료비', '30만원', '500원')
+  ])
+  const cast = mix.rows.find((r) => r.label === '깁스치료비')
+  assert.equal(cast.soleOffer, true)
+  assert.equal(cast.best.company, 'A생명')
+  // B는 깁스치료비가 없으므로 '전 담보 보유'가 아니다 → 단일 회사 비교 대상에서 빠진다
+  assert.equal(mix.cheapestSingle.company, 'A생명')
+})
+
+test('같은 회사에 같은 담보가 두 줄이면 보험료를 합치고 가입금액은 큰 쪽을 쓴다', () => {
+  const mix = buildMix([
+    item('A생명', '암진단비', '2,000만원', '8,000원'),
+    item('A생명', '암진단비(갱신형)', '3,000만원', '5,000원')
+  ])
+  const only = mix.rows[0].candidates[0]
+  assert.equal(only.premiumWon, 13000)
+  assert.equal(only.amountManwon, 3000)
+})
+
+test('담보가 없으면 빈 결과를 낸다', () => {
+  const mix = buildMix([])
+  assert.deepEqual(mix.rows, [])
+  assert.equal(mix.mixPremium, 0)
+  assert.equal(mix.cheapestSingle, null)
+  assert.equal(mix.savedVsSingle, null)
+})
