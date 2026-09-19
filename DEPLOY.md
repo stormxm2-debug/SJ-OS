@@ -8,7 +8,32 @@
 
 ## 1. PC 데스크톱 앱 (.exe)
 
-### 설치본 만들기
+### 자동 배포 (기본)
+
+**`package.json` 의 `version` 을 올려서 `main` 에 push 하면** GitHub Actions
+(`.github/workflows/release-desktop.yml`)가 검사 → 설치본 빌드 → GitHub Releases 업로드까지
+합니다. 직원 PC의 앱은 다음에 켤 때 새 버전을 자동으로 받습니다.
+
+```
+1) package.json 의 "version" 을 올린다   (예: 1.0.44 → 1.0.45)
+2) main 에 push
+```
+
+Secret 을 따로 등록할 필요가 없습니다. GitHub 가 주는 토큰으로 릴리스를 만듭니다.
+
+**왜 버전을 올려야만 배포되나** — 앱이 `autoUpdater.autoDownload = true` 라, 릴리스가
+올라가는 순간 직원 PC가 곧바로 새 버전을 내려받습니다. push 한 번마다 배포하면 사고가
+나므로, "버전을 올린다"는 분명한 행동을 배포 스위치로 삼았습니다.
+
+- `package.json` 이 바뀐 push 에서만 동작합니다. 코드만 고친 push 로는 배포되지 않습니다
+- 이미 같은 버전의 릴리스가 있으면 아무 것도 하지 않습니다(중복 배포 방지)
+- 타입검사·테스트를 통과하지 못하면 빌드하지 않습니다
+- 릴리스 업로드가 실패해도 설치본은 Actions 의 Artifacts 에 30일간 남습니다
+- 진행 상황: GitHub 저장소 → **Actions** 탭 → **데스크톱 앱 배포**
+
+같은 버전을 다시 만들어야 하면 Actions 탭에서 **Run workflow** → `force` 체크.
+
+### 설치본 만들기 (수동 — 급할 때)
 ```bash
 npm run dist
 ```

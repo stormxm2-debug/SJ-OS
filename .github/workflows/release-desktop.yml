@@ -1,0 +1,152 @@
+# SJ INVEST — 데스크톱 앱(.exe) 자동 배포
+#
+# package.json 의 version 을 올려 main 에 push 하면, Windows 설치본을 만들어
+# GitHub Releases 에 올린다. 직원 PC의 앱은 electron-updater 로 자동 업데이트된다.
+#
+# **버전을 올렸을 때만 배포한다.** 앱은 autoDownload = true 라 릴리스가 올라가는 순간
+# 직원 PC가 새 버전을 내려받기 시작한다. 그래서 push 한 번마다 배포하지 않고,
+# "버전을 올린다"는 분명한 행동을 배포 스위치로 삼는다.
+# 이미 같은 버전의 릴리스가 있으면 아무 것도 하지 않는다(중복 배포 방지).
+#
+# 배포하려면:
+#   1) package.json 의 "version" 을 올린다 (예: 1.0.44 → 1.0.45)
+#   2) main 에 push (package.json 이 바뀐 push 에서만 동작한다)
+#   → Actions 가 검사 → 빌드 → 릴리스까지 한다
+#
+# Secret 은 따로 등록할 필요가 없다. GitHub 가 주는 GITHUB_TOKEN 으로 릴리스를 만든다.
+# 코드 서명 인증서는 아직 없어서, 설치 시 Windows SmartScreen 경고가 뜨는 것은 그대로다.
+
+name: 데스크톱 앱 배포
+
+on:
+  push:
+    branches: [main]
+    # 버전은 package.json 에만 있다. 다른 파일만 고친 push 로는 배포되지 않는다.
+    paths: ['package.json']
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '같은 버전의 릴리스가 이미 있어도 다시 만들기(기존 릴리스를 덮어씁니다)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-desktop
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # 1단계 — 리눅스에서 빠르게 검사하고, 배포할 버전인지 판단한다.
+  # (윈도우 러너는 느리고 비싸서, 배포가 확정된 뒤에만 쓴다)
+  check:
+    name: 검사 · 배포 여부 판단
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      should_release: ${{ steps.decide.outputs.yes }}
+
+    steps:
+      - name: 코드 받기
+        uses: actions/checkout@v4
+
+      - name: Node 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 의존성 설치
+        # 검사 단계에는 Electron 바이너리(약 100MB)가 필요 없다.
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+
+      - name: 타입 검사
+        run: npm run typecheck
+
+      - name: 테스트
+        run: npm test
+
+      - name: 버전 읽기
+        id: version
+        run: echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: 이미 배포된 버전인지 확인
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
+        run: |
+          if [ "$FORCE" = "true" ]; then
+            echo "손으로 강제 실행 — v$VERSION 을 다시 만듭니다."
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          elif gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$VERSION 릴리스가 이미 있습니다. 배포하지 않습니다."
+            echo "배포하려면 package.json 의 version 을 올려서 push 하세요." >> "$GITHUB_STEP_SUMMARY"
+            echo "yes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "새 버전 v$VERSION — 배포합니다."
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # 2단계 — 윈도우에서 설치본을 만들어 GitHub Releases 에 올린다.
+  release:
+    name: 설치본 빌드 · 릴리스
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: 코드 받기
+        uses: actions/checkout@v4
+
+      - name: Node 준비
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 의존성 설치
+        # 여기서는 Electron 바이너리가 있어야 설치본을 만들 수 있다.
+        run: npm ci
+
+      - name: 설치본 빌드 · 릴리스
+        # electron-builder 가 package.json 의 build.publish 설정(GitHub Releases)대로 올린다.
+        # --publish always: 빌드가 끝나면 바로 릴리스에 올린다.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm run build
+          npx electron-builder --win --publish always
+
+      - name: 릴리스 결과
+        shell: bash
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          {
+            echo "### 데스크톱 앱 v$VERSION 배포 완료"
+            echo ""
+            echo "https://github.com/$GITHUB_REPOSITORY/releases/tag/v$VERSION"
+            echo ""
+            echo "직원 PC의 SJ INVEST 앱이 다음에 켜질 때 자동으로 새 버전을 내려받습니다."
+            echo ""
+            echo "새로 설치하는 PC는 위 릴리스의 \`SJ INVEST Setup $VERSION.exe\` 를 받으면 됩니다."
+            echo "(코드 서명 인증서가 없어 설치 시 Windows SmartScreen 경고가 뜹니다 → 추가 정보 → 실행)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 설치본 보관 (릴리스 실패 대비)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sj-invest-setup-${{ needs.check.outputs.version }}
+          path: |
+            release/*.exe
+            release/*.yml
+          if-no-files-found: ignore
+          retention-days: 30
