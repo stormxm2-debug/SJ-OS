@@ -19,6 +19,7 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "proxy:dev": "npm --prefix sj-ai-proxy run dev",
     "proxy:check": "node --check sj-ai-proxy/server.mjs",
+    "deploy": "npm run build:web && npx -y wrangler pages deploy dist --project-name=sj-invest --branch=main",
     "test": "node --test test/*.test.*",
     "proxy:status": "node scripts/proxy-status.mjs",
     "proxy:env": "node scripts/check-proxy-env.mjs",

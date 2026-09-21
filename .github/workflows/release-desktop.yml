@@ -10,7 +10,9 @@
 #
 # 배포하려면:
 #   1) package.json 의 "version" 을 올린다 (예: 1.0.44 → 1.0.45)
-#   2) main 에 push (package.json 이 바뀐 push 에서만 동작한다)
+#   2) main 에 push
+#      (package.json 이 바뀐 push 에서만 깨어나고, 그중에서도 version 이 실제로
+#       올라간 push 에서만 배포한다 — 스크립트만 고친 push 로는 배포되지 않는다)
 #   → Actions 가 검사 → 빌드 → 릴리스까지 한다
 #
 # Secret 은 따로 등록할 필요가 없다. GitHub 가 주는 GITHUB_TOKEN 으로 릴리스를 만든다.
@@ -51,6 +53,9 @@ jobs:
     steps:
       - name: 코드 받기
         uses: actions/checkout@v4
+        with:
+          # 이전 커밋의 package.json 을 읽어 버전이 실제로 올라갔는지 본다.
+          fetch-depth: 0
 
       - name: Node 준비
         uses: actions/setup-node@v4
@@ -74,24 +79,38 @@ jobs:
         id: version
         run: echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: 이미 배포된 버전인지 확인
+      - name: 배포할지 판단
         id: decide
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.value }}
+          BEFORE: ${{ github.event.before }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
         run: |
+          skip() { echo "yes=false" >> "$GITHUB_OUTPUT"; echo "$1"; echo "$1" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          go()   { echo "yes=true"  >> "$GITHUB_OUTPUT"; echo "$1"; }
+
           if [ "$FORCE" = "true" ]; then
-            echo "손으로 강제 실행 — v$VERSION 을 다시 만듭니다."
-            echo "yes=true" >> "$GITHUB_OUTPUT"
-          elif gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "v$VERSION 릴리스가 이미 있습니다. 배포하지 않습니다."
-            echo "배포하려면 package.json 의 version 을 올려서 push 하세요." >> "$GITHUB_STEP_SUMMARY"
-            echo "yes=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "새 버전 v$VERSION — 배포합니다."
-            echo "yes=true" >> "$GITHUB_OUTPUT"
+            go "손으로 강제 실행 — v$VERSION 을 다시 만듭니다."
+            exit 0
           fi
+
+          # 1) 이 push 에서 version 이 실제로 바뀌었는지 본다.
+          #    package.json 을 다른 이유로(스크립트 추가 등) 고친 push 로는 배포되지 않게.
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            PREV=$(git show "$BEFORE:package.json" 2>/dev/null | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || echo '')
+            if [ -n "$PREV" ] && [ "$PREV" = "$VERSION" ]; then
+              skip "version 이 $VERSION 그대로입니다(이번 push 는 package.json 의 다른 부분만 바꿨습니다). 배포하지 않습니다."
+            fi
+            [ -n "$PREV" ] && echo "version $PREV → $VERSION"
+          fi
+
+          # 2) 같은 버전이 이미 릴리스돼 있으면 중복 배포하지 않는다.
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            skip "v$VERSION 릴리스가 이미 있습니다. 배포하려면 package.json 의 version 을 올려서 push 하세요."
+          fi
+
+          go "새 버전 v$VERSION — 배포합니다."
 
   # 2단계 — 윈도우에서 설치본을 만들어 GitHub Releases 에 올린다.
   release:

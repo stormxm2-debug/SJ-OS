@@ -21,6 +21,9 @@
 
 Secret 을 따로 등록할 필요가 없습니다. GitHub 가 주는 토큰으로 릴리스를 만듭니다.
 
+`package.json` 이 바뀐 push 에서만 깨어나고, 그중에서도 **`version` 이 실제로 올라간
+push 에서만** 배포합니다. 스크립트만 고친 push 로는 배포되지 않습니다.
+
 **왜 버전을 올려야만 배포되나** — 앱이 `autoUpdater.autoDownload = true` 라, 릴리스가
 올라가는 순간 직원 PC가 곧바로 새 버전을 내려받습니다. push 한 번마다 배포하면 사고가
 나므로, "버전을 올린다"는 분명한 행동을 배포 스위치로 삼았습니다.
@@ -55,7 +58,23 @@ npm run dist
 
 **실제 운영 주소: https://sj-invest.pages.dev (Cloudflare Pages, 직접 업로드 방식)**
 
-### 자동 배포 (기본)
+### SJ 앱에서 배포 (버튼 한 번)
+
+SJ INVEST 앱의 배포 화면에서 바로 올릴 수 있습니다. 앱이 `npm run deploy` 를 실행하고,
+그 스크립트가 웹을 빌드해 Cloudflare Pages 로 올립니다.
+
+```
+npm run deploy
+= npm run build:web && npx wrangler pages deploy dist --project-name=sj-invest --branch=main
+```
+
+- **이 PC의 wrangler 로그인**을 그대로 씁니다. 토큰을 따로 만들 필요가 없습니다
+  (최초 1회만 `npx wrangler login`)
+- 앱이 먼저 `npm run typecheck` 와 `npm run build` 로 점검(preflight)한 뒤,
+  **사장님이 승인해야** 실행합니다
+- 터미널에서 `npm run deploy` 로 직접 돌려도 같습니다
+
+### 자동 배포 (GitHub Actions)
 
 `main` 에 push 하면 GitHub Actions(`.github/workflows/deploy-web.yml`)가
 **타입검사 → 테스트 → 빌드 → Cloudflare Pages 배포**까지 알아서 합니다.
