@@ -58,6 +58,16 @@ npm run dist
 
 **실제 운영 주소: https://sj-invest.pages.dev (Cloudflare Pages, 직접 업로드 방식)**
 
+### 새 PC에 처음 세팅할 때
+
+1. **Node.js** 설치 — https://nodejs.org 의 LTS 버전
+2. **GitHub Desktop** 에서 `Clone a repository from the Internet...` →
+   **`stormxm2-debug/SJ-OS`** 선택 → Clone
+   (목록의 `SJ-OS.` 은 점이 붙은 다른 저장소다. 헷갈리지 말 것)
+3. 아래 **바탕화면 런처 만들기** 를 한 번 실행
+4. 런처를 눌러 배포. 처음 실행이면 런처가 `npm install` 을 알아서 돌린다(몇 분 소요)
+5. 웹 배포는 최초 1회 `npx wrangler login` 으로 Cloudflare 인증이 필요하다
+
 ### 바탕화면 런처 만들기 (처음 한 번 / 아이콘이 없어졌을 때)
 
 `scripts\make-desktop-shortcuts.bat` 을 더블클릭하면 바탕화면에 런처 2개를 만듭니다.
