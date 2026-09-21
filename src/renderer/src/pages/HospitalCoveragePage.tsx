@@ -390,19 +390,33 @@ export default function HospitalCoveragePage(): JSX.Element {
 
   const itemsOfPlan = (doc: ProposalDoc, key: PlanKey): CoverageItem[] => doc.items.filter((it) => it.plan === key)
 
-  const planCounts = (key: PlanKey): { total: number; checked: number; premium: number } => {
+  /**
+   * 플랜별 건수와 **회사별** 월 보험료.
+   *
+   * 보험료를 회사끼리 더하면 안 된다. 서로 비교하려고 올린 제안서라서,
+   * A사 10만원 + B사 10만원을 더한 20만원은 아무도 내지 않는 금액이다.
+   * (최종 합계표도 같은 이유로 회사별로만 더한다 — hospitalCoverage.SummaryRow)
+   */
+  const planCounts = (
+    key: PlanKey
+  ): { total: number; checked: number; byCompany: { company: string; premium: number }[] } => {
     let total = 0
     let checked = 0
-    let premium = 0
+    const premiums = new Map<string, number>()
     for (const doc of docs) {
+      const company = doc.company.trim() || '회사 미확인'
       for (const it of itemsOfPlan(doc, key)) {
         total += 1
         if (!it.checked) continue
         checked += 1
-        premium += Number(it.premium.replace(/[^\d]/g, '')) || 0
+        const won = Number(it.premium.replace(/[^\d]/g, '')) || 0
+        premiums.set(company, (premiums.get(company) ?? 0) + won)
       }
     }
-    return { total, checked, premium }
+    const byCompany = [...premiums.entries()]
+      .map(([company, premium]) => ({ company, premium }))
+      .sort((a, b) => a.premium - b.premium)
+    return { total, checked, byCompany }
   }
 
   const planGroups = groupsOfPlan(plan)
@@ -823,133 +837,150 @@ export default function HospitalCoveragePage(): JSX.Element {
             <div className="rounded-2xl border border-slate-800 bg-white p-6 text-center text-[13px] text-slate-500 shadow-sm">먼저 제안서를 올려주세요.</div>
           ) : (
             <>
-              {/* 플랜 고르기 — 제안서 한 건에 섞여 있는 담보를 네 플랜으로 갈라 본다 */}
-              <div className="flex flex-wrap gap-1.5">
+              {/* 1) 어떤 보험을 볼지 고르기 */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {PLANS.map((p) => {
                   const c = planCounts(p.key)
                   const active = plan === p.key
+                  const none = c.total === 0
                   return (
                     <button
                       key={p.key}
                       type="button"
                       onClick={() => setPlan(p.key)}
                       className={[
-                        'rounded-xl border px-3 py-2 text-left transition',
-                        active ? 'border-indigo-500 bg-indigo-50' : 'border-slate-800 bg-white hover:border-indigo-300'
+                        'rounded-2xl border-2 px-3 py-3 text-center transition',
+                        active
+                          ? 'border-indigo-500 bg-indigo-50 shadow-sm'
+                          : none
+                            ? 'border-slate-800 bg-white opacity-50'
+                            : 'border-slate-800 bg-white hover:border-indigo-300'
                       ].join(' ')}
                     >
-                      <span className={['block text-[13px] font-bold', active ? 'text-indigo-700' : 'text-slate-200'].join(' ')}>{p.label}</span>
-                      <span className="block text-[11px] font-medium text-slate-500 tabular-nums">
-                        {c.total === 0 ? '해당 담보 없음' : `${c.checked}/${c.total}건`}
+                      <span className={['block text-[15px] font-extrabold', active ? 'text-indigo-700' : 'text-slate-100'].join(' ')}>
+                        {p.label}
+                      </span>
+                      <span className="mt-0.5 block text-[12px] font-semibold text-slate-500 tabular-nums">
+                        {none ? '없음' : `담보 ${c.total}개`}
                       </span>
                     </button>
                   )
                 })}
               </div>
 
-              <p className="px-1 text-[11px] text-slate-500">{PLANS.find((p) => p.key === plan)?.hint}</p>
-
-              {/* 담보 그룹 — 기본 셋팅에서 켜고 끈 값이 이 기기에 저장돼 다음 제안서부터 자동 적용된다 */}
-              {planGroups.length > 0 ? (
+              {/* 2) 회사별 월 보험료 — 회사끼리 더하지 않고 나란히 보여준다 */}
+              {current.byCompany.length > 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-white p-3 shadow-sm">
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <h3 className="text-[12px] font-bold text-slate-100">담보 그룹</h3>
-                      {isPlanDefault(plan, planPrefs) ? (
-                        <span className="rounded-full border border-slate-800 bg-slate-950 px-2 py-0.5 text-[10px] font-semibold text-slate-500">기본 셋팅</span>
-                      ) : (
-                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">내 설정 저장됨</span>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5">
-                      <button type="button" onClick={() => onSetAllGroups(true)} className="rounded-lg border border-slate-800 bg-white px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-950">모두 켜기</button>
-                      <button type="button" onClick={() => onSetAllGroups(false)} className="rounded-lg border border-slate-800 bg-white px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-950">모두 끄기</button>
-                      <button type="button" onClick={onResetPlan} className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-white px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-950">
-                        <RotateCcw className="h-3 w-3" /> 기본으로
-                      </button>
-                    </div>
+                  <h3 className="mb-2 text-[13px] font-bold text-slate-100">
+                    회사별 {planLabel} 월 보험료
+                    <span className="ml-1.5 text-[11px] font-medium text-slate-500">체크한 담보만 더한 금액입니다</span>
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {current.byCompany.map((c, i) => (
+                      <div
+                        key={c.company}
+                        className={[
+                          'rounded-xl border-2 px-3 py-2.5',
+                          i === 0 && current.byCompany.length > 1 ? 'border-emerald-400 bg-emerald-50' : 'border-slate-800 bg-slate-950'
+                        ].join(' ')}
+                      >
+                        <div className="flex items-center gap-1">
+                          <span className="text-[12px] font-bold text-slate-200">{c.company}</span>
+                          {i === 0 && current.byCompany.length > 1 ? (
+                            <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-bold text-white">제일 쌈</span>
+                          ) : null}
+                        </div>
+                        <div className="mt-0.5 text-[18px] font-extrabold tabular-nums text-slate-100">
+                          {c.premium ? won(c.premium) : '-'}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {planGroups.map((g) => {
-                      const on = isGroupOn(plan, g.key, planPrefs)
-                      const found = docs.reduce((n, d) => n + d.items.filter((it) => it.groupKey === g.key).length, 0)
-                      return (
-                        <button
-                          key={g.key}
-                          type="button"
-                          onClick={() => onToggleGroup(g)}
-                          className={[
-                            'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition',
-                            on ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-800 bg-white text-slate-500 hover:border-indigo-300'
-                          ].join(' ')}
-                        >
-                          {on ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
-                          {g.label}
-                          <span className="text-[11px] font-medium tabular-nums opacity-70">{found}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <p className="mt-2 text-[11px] text-slate-500">
-                    켜고 끈 설정은 이 기기에 저장돼 다음에 제안서를 올릴 때 그대로 적용됩니다.
-                  </p>
                 </div>
               ) : null}
 
-              {/* 조합 설계안 — 담보별로 가장 싼 회사로 쪼갠 결과 */}
+              {/* 3) 쪼개기 결과 — 이 화면의 주인공 */}
               {mix.rows.length > 0 ? (
-                <div className="space-y-2 rounded-2xl border border-indigo-200 bg-white p-3 shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="text-[13px] font-bold text-slate-100">
-                        조합 설계안 <span className="text-[11px] font-medium text-slate-500">담보마다 가장 저렴한 회사로 쪼갬</span>
-                      </h3>
-                      <p className="mt-0.5 text-[11px] text-slate-500">
-                        비교 기준: 가입금액 1,000만원당 월 보험료 · 제안서 {mixCompanies.length}건 · 담보 {mix.rows.length}개
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <button type="button" onClick={explainPlan} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50">
-                        <Sparkles className="h-3.5 w-3.5" /> AI 설명 3가지
-                      </button>
-                      <button type="button" onClick={downloadPlanExcel} disabled={Boolean(busy)} className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:bg-slate-950 disabled:opacity-50">
-                        <Download className="h-3.5 w-3.5" /> 엑셀 받기
-                      </button>
-                    </div>
+                <div className="space-y-3 rounded-2xl border-2 border-indigo-300 bg-white p-4 shadow-sm">
+                  <div>
+                    <h3 className="text-[15px] font-extrabold text-slate-100">담보마다 싼 회사로 나누면?</h3>
+                    <p className="mt-0.5 text-[12px] text-slate-500">
+                      제안서 {mixCompanies.length}건을 담보 {mix.rows.length}개로 쪼개서 하나씩 더 싼 쪽을 골랐습니다
+                    </p>
                   </div>
 
-                  {/* 합계 요약 */}
-                  <div className="flex flex-wrap gap-2 text-[12px]">
-                    <span className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 font-bold text-indigo-700">
-                      조합 월 보험료 {mix.mixPremium ? won(mix.mixPremium) : '확인 필요'}
-                    </span>
-                    {mix.cheapestSingle ? (
-                      <span className="rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 font-semibold text-slate-300">
-                        한 회사만({mix.cheapestSingle.company}) {won(mix.cheapestSingle.premium)}
-                      </span>
-                    ) : null}
-                    {mix.savedVsSingle !== null && mix.savedVsSingle > 0 ? (
-                      <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 font-bold text-emerald-700">
-                        월 {won(mix.savedVsSingle)} 절약 · 연 {won(mix.savedVsSingle * 12)}
-                      </span>
-                    ) : null}
-                    {mix.usedCompanies.length > 1 ? (
-                      <span className="rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 font-semibold text-slate-300">
-                        보험사 {mix.usedCompanies.length}곳 조합
-                      </span>
-                    ) : null}
+                  {/* 큰 숫자 — 얼마 내고, 얼마 아끼나 */}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-xl bg-[#0e1e3a] px-4 py-3 text-white">
+                      <div className="text-[12px] font-semibold opacity-80">나눠서 가입하면 매달</div>
+                      <div className="mt-0.5 text-[26px] font-extrabold leading-tight tabular-nums">
+                        {mix.mixPremium ? won(mix.mixPremium) : '확인 필요'}
+                      </div>
+                    </div>
+                    {mix.savedVsSingle !== null && mix.savedVsSingle > 0 && mix.cheapestSingle ? (
+                      <div className="rounded-xl bg-emerald-600 px-4 py-3 text-white">
+                        <div className="text-[12px] font-semibold opacity-90">한 회사에 다 넣는 것보다</div>
+                        <div className="mt-0.5 text-[26px] font-extrabold leading-tight tabular-nums">
+                          매달 {won(mix.savedVsSingle)} 아낌
+                        </div>
+                        <div className="mt-0.5 text-[11px] opacity-90">
+                          1년이면 {won(mix.savedVsSingle * 12)} · {mix.cheapestSingle.company} 한 곳이면 {won(mix.cheapestSingle.premium)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border-2 border-slate-800 bg-slate-950 px-4 py-3">
+                        <div className="text-[12px] font-semibold text-slate-500">한 회사에 다 넣기</div>
+                        <div className="mt-0.5 text-[14px] font-bold text-slate-300">
+                          모든 담보를 가진 회사가 없어 비교하지 않았습니다
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* AI 설명 3가지 */}
-                  {planNote ? (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-[12px] font-bold text-amber-900">{planNote.headline}</p>
-                        <div className="flex items-center gap-1.5">
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                            {planNote.source === 'ai' ? 'AI 설명' : '기본 설명(서버 미연결)'}
+                  {/* 담보별로 어디를 골랐나 — 한 줄에 하나씩, 읽기 쉽게 */}
+                  <div className="space-y-1.5">
+                    {mix.rows.map((row) => {
+                      const others = row.candidates.filter((c) => c.company !== row.best?.company && c.premiumWon)
+                      const cheapestOther = others.sort((a, b) => (a.premiumWon ?? 0) - (b.premiumWon ?? 0))[0]
+                      const save =
+                        cheapestOther?.premiumWon && row.best?.premiumWon ? cheapestOther.premiumWon - row.best.premiumWon : 0
+                      return (
+                        <div key={row.key} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2">
+                          <span className="min-w-[8rem] flex-1 text-[13px] font-bold text-slate-100">{row.label}</span>
+                          <span className="rounded-lg bg-indigo-600 px-2 py-1 text-[12px] font-bold text-white">
+                            {row.best?.company}
                           </span>
-                          <button type="button" onClick={copyPlanNote} className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100">
+                          <span className="text-[14px] font-extrabold tabular-nums text-slate-100">
+                            {row.best?.premiumWon ? won(row.best.premiumWon) : '확인 필요'}
+                          </span>
+                          {save > 0 ? (
+                            <span className="text-[11px] font-bold text-emerald-600">{won(save)} 아낌</span>
+                          ) : row.soleOffer ? (
+                            <span className="text-[11px] text-slate-500">이 회사에만 있음</span>
+                          ) : null}
+                          {row.needsReview ? (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">가입금액 확인</span>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <p className="text-[11px] leading-relaxed text-slate-500">
+                    같은 보장금액으로 맞춰 비교합니다(가입금액 1,000만원당 보험료). 보장 범위가 다른 담보(뇌혈관질환과 뇌졸중 등)는
+                    섞지 않고 따로 비교합니다.
+                  </p>
+
+                  {/* AI 설명 */}
+                  {planNote ? (
+                    <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[13px] font-extrabold text-amber-900">{planNote.headline}</p>
+                        <div className="flex items-center gap-1.5">
+                          <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                            {planNote.source === 'ai' ? 'AI가 씀' : '기본 설명'}
+                          </span>
+                          <button type="button" onClick={copyPlanNote} className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100">
                             복사
                           </button>
                         </div>
@@ -957,7 +988,7 @@ export default function HospitalCoveragePage(): JSX.Element {
                       <ol className="mt-2 space-y-1.5">
                         {planNote.points.map((point, i) => (
                           <li key={point} className="flex gap-2 text-[12px] leading-relaxed text-amber-900">
-                            <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-200 text-[10px] font-bold">{i + 1}</span>
+                            <span className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">{i + 1}</span>
                             <span>{point}</span>
                           </li>
                         ))}
@@ -965,62 +996,69 @@ export default function HospitalCoveragePage(): JSX.Element {
                     </div>
                   ) : null}
 
-                  {/* 담보별 회사 비교표 */}
-                  <div className="overflow-x-auto rounded-xl border border-slate-800">
-                    <table className="w-full min-w-[640px] text-left text-[12px]">
-                      <thead>
-                        <tr className="border-b border-slate-800 bg-slate-950 text-[11px] text-slate-500">
-                          <th className="px-2 py-2 font-semibold">담보</th>
-                          <th className="px-2 py-2 font-semibold">고른 회사</th>
-                          <th className="px-2 py-2 text-right font-semibold">가입금액(만원)</th>
-                          <th className="px-2 py-2 text-right font-semibold">월 보험료</th>
-                          <th className="px-2 py-2 text-right font-semibold">1천만원당</th>
-                          <th className="px-2 py-2 font-semibold">다른 회사</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {mix.rows.map((row) => {
-                          const others = row.candidates.filter((c) => c.company !== row.best?.company)
-                          return (
-                            <tr key={row.key} className="border-b border-slate-800 last:border-0">
-                              <td className="px-2 py-1.5 font-semibold text-slate-200">
-                                {row.label}
-                                {row.needsReview ? <span className="ml-1 text-[10px] font-bold text-amber-700">가입금액 확인</span> : null}
-                              </td>
-                              <td className="px-2 py-1.5">
-                                <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 font-bold text-indigo-700">{row.best?.company}</span>
-                                {row.soleOffer ? <span className="ml-1 text-[10px] text-slate-500">단독</span> : null}
-                              </td>
-                              <td className="px-2 py-1.5 text-right tabular-nums">{row.best?.amountManwon?.toLocaleString('ko-KR') ?? '-'}</td>
-                              <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-slate-200">{row.best?.premiumWon ? won(row.best.premiumWon) : '-'}</td>
-                              <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{row.best?.unitPrice ? won(row.best.unitPrice) : '-'}</td>
-                              <td className="px-2 py-1.5 text-[11px] text-slate-500">
-                                {others.length === 0
-                                  ? '-'
-                                  : others.map((c) => `${c.company} ${c.premiumWon ? won(c.premiumWon) : '확인 필요'}`).join(' · ')}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                  {/* 버튼 — 크게 */}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button type="button" onClick={explainPlan} disabled={Boolean(busy)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border-2 border-amber-300 bg-amber-50 px-3 py-2.5 text-[13px] font-extrabold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50">
+                      <Sparkles className="h-4 w-4" /> 고객에게 설명할 말 3가지
+                    </button>
+                    <button type="button" onClick={downloadPlanExcel} disabled={Boolean(busy)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border-2 border-slate-700 bg-white px-3 py-2.5 text-[13px] font-extrabold text-slate-200 transition hover:bg-slate-950 disabled:opacity-50">
+                      <Download className="h-4 w-4" /> 엑셀로 받기
+                    </button>
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    보장 범위가 다른 담보(뇌혈관질환 vs 뇌졸중 등)는 일부러 따로 비교합니다. 가입금액을 읽지 못한 담보는 보험료로만 비교하며 '가입금액 확인'으로 표시됩니다.
-                  </p>
                 </div>
               ) : null}
 
+              {/* 4) 담보 그룹 — 접어두고, 필요할 때만 연다 */}
+              {planGroups.length > 0 ? (
+                <details className="rounded-2xl border border-slate-800 bg-white shadow-sm">
+                  <summary className="cursor-pointer px-4 py-3 text-[13px] font-bold text-slate-100">
+                    어떤 담보를 넣을지 고르기
+                    <span className="ml-1.5 text-[11px] font-medium text-slate-500">
+                      {isPlanDefault(plan, planPrefs) ? '기본 설정 그대로' : '내가 바꾼 설정 저장됨'}
+                    </span>
+                  </summary>
+                  <div className="border-t border-slate-800 p-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {planGroups.map((g) => {
+                        const on = isGroupOn(plan, g.key, planPrefs)
+                        const found = docs.reduce((n, d) => n + d.items.filter((it) => it.groupKey === g.key).length, 0)
+                        return (
+                          <button
+                            key={g.key}
+                            type="button"
+                            onClick={() => onToggleGroup(g)}
+                            className={[
+                              'inline-flex items-center gap-1.5 rounded-xl border-2 px-3 py-2 text-[12px] font-bold transition',
+                              on ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-800 bg-white text-slate-500'
+                            ].join(' ')}
+                          >
+                            {on ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                            {g.label}
+                            <span className="text-[11px] font-semibold tabular-nums opacity-70">{found}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <button type="button" onClick={() => onSetAllGroups(true)} className="rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:bg-slate-950">모두 켜기</button>
+                      <button type="button" onClick={() => onSetAllGroups(false)} className="rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:bg-slate-950">모두 끄기</button>
+                      <button type="button" onClick={onResetPlan} className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:bg-slate-950">
+                        <RotateCcw className="h-3.5 w-3.5" /> 기본으로
+                      </button>
+                    </div>
+                    <p className="mt-2 text-[11px] text-slate-500">여기서 켜고 끈 설정은 저장돼서, 다음에 제안서를 올릴 때 그대로 적용됩니다.</p>
+                  </div>
+                </details>
+              ) : null}
+
+              {/* 5) 담보 하나하나 보기 — 평소엔 접어둔다 */}
               <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-                <div className="flex flex-wrap gap-1.5 text-[11px]">
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-700">확인 필요</span>
-                  <span className="rounded-full border border-slate-800 bg-slate-950 px-2.5 py-0.5 font-semibold text-slate-500">
-                    {plan === 'hospital' ? '양식에 없는 담보(기본 해제)' : `체크한 담보 보험료 ${won(current.premium)}`}
-                  </span>
-                </div>
+                <span className="text-[12px] font-bold text-slate-500">
+                  담보 하나하나 확인 · 체크 {current.checked}/{current.total}개
+                </span>
                 <div className="flex gap-1.5">
                   <button type="button" onClick={() => setAllChecked(true)} className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:bg-slate-950">
-                    <CheckSquare className="h-3.5 w-3.5" /> {plan === 'hospital' ? '분류된 담보 모두 체크' : '이 플랜 모두 체크'}
+                    <CheckSquare className="h-3.5 w-3.5" /> 모두 체크
                   </button>
                   <button type="button" onClick={() => setAllChecked(false)} className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 hover:bg-slate-950">
                     <Square className="h-3.5 w-3.5" /> 전체 해제
@@ -1030,10 +1068,11 @@ export default function HospitalCoveragePage(): JSX.Element {
 
               {docs.map((doc) => {
                 const rows = itemsOfPlan(doc, plan)
+                // 평소엔 접어 둔다. 결과(쪼개기)가 먼저 보이고, 확인할 때만 펼친다.
                 return (
-                  <details key={doc.id} open className="rounded-2xl border border-slate-800 bg-white shadow-sm">
+                  <details key={doc.id} className="rounded-2xl border border-slate-800 bg-white shadow-sm">
                     <summary className="cursor-pointer px-4 py-2.5 text-[13px] font-bold text-slate-100">
-                      {doc.company || '회사 미확인'} <span className="font-normal text-slate-500">— {doc.fileName} (체크 {rows.filter((it) => it.checked).length}/{rows.length})</span>
+                      {doc.company || '회사 미확인'} <span className="font-normal text-slate-500">— 담보 {rows.length}개 중 {rows.filter((it) => it.checked).length}개 체크</span>
                     </summary>
                     {rows.length === 0 ? (
                       <div className="border-t border-slate-800 px-4 py-4 text-[12px] text-slate-500">이 제안서에는 해당 플랜 담보가 없습니다.</div>
