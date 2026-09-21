@@ -300,3 +300,37 @@ export function buildMix(items: MixInputItem[]): MixResult {
     usedCompanies: [...new Set(rows.map((r) => r.best?.company).filter((c): c is string => Boolean(c)))]
   }
 }
+
+/* ---------- 보장군(같은 목적, 다른 범위) ---------- */
+
+/**
+ * 회사마다 "같은 자리"에 넣는 담보가 다르다. 뇌 진단비가 대표적이다 —
+ * A사는 뇌혈관질환, B사는 뇌졸중, C사는 뇌출혈만 넣는다.
+ *
+ * 이걸 각각 다른 줄로 두면 비교표가 0으로 가득 차서 못 본다. 그래서 한 줄로 모으되,
+ * **회사마다 실제로 무엇이 들어갔는지 칸에 표시**한다. 보장 범위가 달라 값이 다르다는
+ * 사실을 숨기면 안 되기 때문이다(뇌혈관질환 ⊃ 뇌졸중 ⊃ 뇌출혈).
+ *
+ * 범위가 겹치지 않는 담보(일반암 vs 유사암처럼 보험금이 따로 나오는 것)는 묶지 않는다.
+ */
+const FAMILIES: { key: string; label: string; members: string[] }[] = [
+  { key: 'fam-brain', label: '뇌 진단비', members: ['comp-brain-vessel', 'comp-stroke', 'comp-brain-bleed'] },
+  { key: 'fam-heart', label: '심장 진단비', members: ['comp-heart-isch', 'comp-heart-ami'] }
+]
+
+export interface CoverageFamily {
+  /** 비교표에서 한 줄로 묶는 키 */
+  key: string
+  /** 줄 제목 */
+  label: string
+  /** 여러 담보를 묶은 줄인지(칸마다 실제 담보를 같이 보여줘야 한다) */
+  grouped: boolean
+}
+
+/** 대표 담보 키 → 비교표에서 묶일 보장군. 묶이지 않으면 자기 자신. */
+export function familyOf(mixKey: string, label: string): CoverageFamily {
+  const family = FAMILIES.find((f) => f.members.includes(mixKey))
+  return family
+    ? { key: family.key, label: family.label, grouped: true }
+    : { key: mixKey, label, grouped: false }
+}

@@ -24,7 +24,7 @@ async function load(src) {
   return import(file)
 }
 
-const { buildMix, mixKeyOf, parseAmountManwon, parsePremiumWon } = await load(
+const { buildMix, mixKeyOf, familyOf, parseAmountManwon, parsePremiumWon } = await load(
   'src/renderer/src/services/commercial/coverageMix.ts'
 )
 
@@ -166,4 +166,34 @@ test('담보가 없으면 빈 결과를 낸다', () => {
   assert.equal(mix.mixPremium, 0)
   assert.equal(mix.cheapestSingle, null)
   assert.equal(mix.savedVsSingle, null)
+})
+
+test('뇌·심장 담보는 회사마다 달라도 비교표에서 한 줄로 모은다', () => {
+  const fam = (name) => {
+    const { key, label } = mixKeyOf(name)
+    return familyOf(key, label)
+  }
+  // 회사마다 넣는 담보가 달라도 같은 줄에서 비교돼야 한다.
+  assert.equal(fam('뇌혈관질환진단비').key, 'fam-brain')
+  assert.equal(fam('뇌졸중진단비').key, 'fam-brain')
+  assert.equal(fam('뇌출혈진단비').key, 'fam-brain')
+  assert.equal(fam('허혈성심장질환진단비').key, 'fam-heart')
+  assert.equal(fam('급성심근경색증진단비').key, 'fam-heart')
+
+  // 묶인 줄은 칸마다 실제 담보를 같이 보여줘야 하므로 표시가 필요하다.
+  assert.equal(fam('뇌졸중진단비').grouped, true)
+  assert.equal(fam('뇌졸중진단비').label, '뇌 진단비')
+})
+
+test('보험금이 따로 나오는 담보는 묶지 않는다', () => {
+  const fam = (name) => {
+    const { key, label } = mixKeyOf(name)
+    return familyOf(key, label)
+  }
+  // 일반암과 유사암은 각각 보험금이 나오므로 한 줄로 합치면 안 된다.
+  assert.notEqual(fam('암진단비').key, fam('유사암진단비').key)
+  assert.equal(fam('암진단비').grouped, false)
+  // 수술비·사망도 그대로 둔다.
+  assert.equal(fam('질병수술비').grouped, false)
+  assert.equal(fam('상해사망').grouped, false)
 })

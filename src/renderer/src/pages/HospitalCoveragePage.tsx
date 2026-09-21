@@ -26,7 +26,7 @@ import {
   type MatrixEntry,
   type PlanMixRow
 } from '@renderer/services/commercial/templateFill'
-import { buildMix, mixKeyOf, parseAmountManwon, parsePremiumWon, type MixResult } from '@renderer/services/commercial/coverageMix'
+import { buildMix, mixKeyOf, familyOf, parseAmountManwon, parsePremiumWon, type MixResult } from '@renderer/services/commercial/coverageMix'
 import { explainMix, buildBasicExplanation, explanationToText, type MixExplanation } from '@renderer/services/commercial/coverageMixAi'
 import {
   PLANS,
@@ -451,52 +451,95 @@ export default function HospitalCoveragePage(): JSX.Element {
 
   /* ---------- 담보 × 보험사 비교표 ---------- */
 
+  interface CompareCell {
+    premium: number | null
+    /** 이 회사가 실제로 넣은 담보 이름. 묶인 줄에서 회사마다 다를 때 보여준다. */
+    scope: string
+  }
+
   interface CompareRow {
     key: string
     label: string
-    /** 이 담보를 한 군데라도 체크했는지 */
+    /** 묶인 줄인지 — 회사마다 다른 담보가 들어갔을 수 있다 */
+    grouped: boolean
+    /** 실제로 회사마다 다른 담보가 들어갔는지 */
+    scopesDiffer: boolean
     checked: boolean
-    /** 가입금액(만원). 회사마다 다르면 가장 큰 값. */
     amountManwon: number | null
-    /** 회사별 월 보험료(원). 그 회사 제안서에 없으면 null. */
-    byCompany: Record<string, number | null>
-    /** 이 줄을 이루는 원본 담보들 — 체크를 켜고 끌 때 쓴다 */
+    byCompany: Record<string, CompareCell | null>
+    /** 값이 있는 회사 수 — 1곳뿐이면 비교가 아니라 '한 곳에만 있는 담보' */
+    offeredBy: number
     items: { docId: string; itemKey: string }[]
   }
 
   /**
    * 담보를 세로, 보험사를 가로로 놓은 비교표.
    *
-   * 체크를 끈 담보도 표에는 남겨 둔다(다시 켤 수 있어야 하므로).
-   * 회사마다 담보명이 달라 mixKeyOf 로 같은 담보끼리 한 줄에 모은다.
+   * 회사마다 같은 자리에 다른 담보를 넣는다(A사 뇌혈관질환, B사 뇌졸중). 각각 다른 줄로
+   * 두면 표가 0으로 가득 차 못 보므로 familyOf 로 한 줄에 모으고, 칸마다 그 회사가 실제로
+   * 넣은 담보를 함께 보여준다 — 값이 다른 이유를 숨기지 않기 위해서다.
+   *
+   * 체크를 끈 담보도 표에 남긴다(다시 켤 수 있어야 하므로).
    */
   const compareRows: CompareRow[] = useMemo(() => {
-    const byKey = new Map<string, CompareRow>()
+    const byKey = new Map<string, CompareRow & { scopes: Set<string> }>()
     for (const doc of docs) {
       const company = doc.company.trim() || '회사 미확인'
       for (const it of doc.items) {
         if (it.plan !== plan) continue
-        const { key, label } = mixKeyOf(it.coverageName)
-        if (!key) continue
+        const mixKey = mixKeyOf(it.coverageName)
+        if (!mixKey.key) continue
+        const fam = familyOf(mixKey.key, mixKey.label)
         const row =
-          byKey.get(key) ??
-          ({ key, label, checked: false, amountManwon: null, byCompany: {}, items: [] } as CompareRow)
+          byKey.get(fam.key) ??
+          ({
+            key: fam.key,
+            label: fam.label,
+            grouped: fam.grouped,
+            scopesDiffer: false,
+            checked: false,
+            amountManwon: null,
+            byCompany: {},
+            offeredBy: 0,
+            items: [],
+            scopes: new Set<string>()
+          } as CompareRow & { scopes: Set<string> })
+
         const won = parsePremiumWon(it.premium)
-        // 같은 회사에 같은 담보가 여러 줄이면 보험료는 더하고 가입금액은 큰 쪽을 쓴다(조합 계산과 같은 규칙).
-        row.byCompany[company] = (row.byCompany[company] ?? 0) + (won ?? 0) || null
+        const prev = row.byCompany[company]
+        // 같은 회사에 같은 자리 담보가 여러 줄이면 보험료는 더하고 가입금액은 큰 쪽을 쓴다.
+        row.byCompany[company] = {
+          premium: (prev?.premium ?? 0) + (won ?? 0) || null,
+          scope: prev?.scope || mixKey.label
+        }
+        row.scopes.add(mixKey.label)
         const amount = parseAmountManwon(it.amount)
         if (amount !== null) row.amountManwon = Math.max(row.amountManwon ?? 0, amount)
         if (it.checked) row.checked = true
         row.items.push({ docId: doc.id, itemKey: it.key })
-        byKey.set(key, row)
+        byKey.set(fam.key, row)
       }
     }
-    // 보험료가 큰 담보부터 — 고객이 먼저 보는 순서
-    return [...byKey.values()].sort((a, b) => {
-      const max = (r: CompareRow): number => Math.max(0, ...Object.values(r.byCompany).map((v) => v ?? 0))
-      return max(b) - max(a)
-    })
+
+    return [...byKey.values()]
+      .map((row) => ({
+        ...row,
+        scopesDiffer: row.grouped && row.scopes.size > 1,
+        offeredBy: Object.values(row.byCompany).filter((c) => c?.premium).length
+      }))
+      .sort((a, b) => {
+        // 여러 회사가 가진 담보를 위로, 그 안에서는 보험료가 큰 담보부터.
+        if ((a.offeredBy > 1) !== (b.offeredBy > 1)) return a.offeredBy > 1 ? -1 : 1
+        const max = (r: CompareRow): number =>
+          Math.max(0, ...Object.values(r.byCompany).map((c) => c?.premium ?? 0))
+        return max(b) - max(a)
+      })
   }, [docs, plan])
+
+  /** 여러 회사가 가진 담보 — 진짜 비교가 되는 줄 */
+  const comparableRows = compareRows.filter((r) => r.offeredBy > 1)
+  /** 한 곳에만 있는 담보 — 비교가 아니라 참고. 표 아래에 접어 둔다. */
+  const soleRows = compareRows.filter((r) => r.offeredBy <= 1)
 
   /** 체크한 담보만 더한 회사별 합계. 회사끼리는 절대 더하지 않는다. */
   const compareTotals = useMemo(() => {
@@ -505,7 +548,7 @@ export default function HospitalCoveragePage(): JSX.Element {
       let sum = 0
       for (const row of compareRows) {
         if (!row.checked) continue
-        sum += row.byCompany[company] ?? 0
+        sum += row.byCompany[company]?.premium ?? 0
       }
       totals.set(company, sum)
     }
@@ -522,6 +565,17 @@ export default function HospitalCoveragePage(): JSX.Element {
     [mixCompanies, compareTotals]
   )
 
+  /** 담보 한 줄을 통째로 켜고 끈다(회사 구분 없이). */
+  const toggleCompareRow = (row: CompareRow, next: boolean): void =>
+    setDocs((prev) =>
+      prev.map((d) => ({
+        ...d,
+        items: d.items.map((it) =>
+          row.items.some((r) => r.docId === d.id && r.itemKey === it.key) ? { ...it, checked: next } : it
+        )
+      }))
+    )
+
   /**
    * 담보별로 조합이 고른 회사. 비교표의 파란 칸을 이 값으로 칠해
    * '표에서 파란 칸' 과 '우리 추천' 이 항상 같게 만든다.
@@ -535,16 +589,6 @@ export default function HospitalCoveragePage(): JSX.Element {
     return picks
   }, [mix])
 
-  /** 담보 한 줄을 통째로 켜고 끈다(회사 구분 없이). */
-  const toggleCompareRow = (row: CompareRow, next: boolean): void =>
-    setDocs((prev) =>
-      prev.map((d) => ({
-        ...d,
-        items: d.items.map((it) =>
-          row.items.some((r) => r.docId === d.id && r.itemKey === it.key) ? { ...it, checked: next } : it
-        )
-      }))
-    )
 
   /* ---------- 내려받기 ---------- */
 
@@ -1052,8 +1096,8 @@ export default function HospitalCoveragePage(): JSX.Element {
                     <div>
                       <h3 className="text-[14px] font-extrabold text-slate-100">보험사별 담보 비교표</h3>
                       <p className="mt-0.5 text-[11px] text-slate-500">
-                        <span className="font-bold text-blue-600">파란 칸</span>이 담보마다 우리가 고른 곳(같은 보장금액 기준 제일 싼 곳),{' '}
-                        <span className="font-bold text-rose-600">빨간 숫자</span>가 제일 비싼 곳입니다 · 0은 그 회사에 없는 담보
+                        <span className="rounded bg-sky-100 px-1 font-bold text-blue-700">파란 칸</span>이 담보마다 고른 회사,{' '}
+                        <span className="font-bold text-rose-600">빨간 숫자</span>가 제일 비싼 곳입니다
                       </p>
                     </div>
                     <div className="flex gap-1.5">
@@ -1069,9 +1113,8 @@ export default function HospitalCoveragePage(): JSX.Element {
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse text-[12px]">
                       <thead>
-                        {/* 회사명 + 체크한 담보 합계. 회사끼리 더하지 않고 나란히 비교한다. */}
                         <tr>
-                          <th className="sticky left-0 z-10 min-w-[190px] border-b-2 border-slate-800 bg-[#0e1e3a] px-3 py-2 text-left text-[12px] font-bold text-white">
+                          <th className="sticky left-0 z-10 min-w-[200px] border-b-2 border-slate-800 bg-[#0e1e3a] px-3 py-2 text-left text-[12px] font-bold text-white">
                             담보 <span className="font-normal opacity-70">/ 가입금액</span>
                           </th>
                           {compareCompanies.map((company) => {
@@ -1079,24 +1122,15 @@ export default function HospitalCoveragePage(): JSX.Element {
                             const best = cheapestTotal !== null && total === cheapestTotal
                             const worst = dearestTotal !== null && total === dearestTotal && !best
                             return (
-                              <th key={company} className="min-w-[104px] border-b-2 border-l border-slate-800 bg-[#0e1e3a] px-2 py-2 text-center">
+                              <th key={company} className="min-w-[108px] border-b-2 border-l border-slate-800 bg-[#0e1e3a] px-2 py-2 text-center align-top">
                                 <div className="text-[12px] font-bold text-white">{company}</div>
-                                <div
-                                  className={[
-                                    'mt-0.5 text-[15px] font-extrabold tabular-nums',
-                                    best ? 'text-sky-300' : worst ? 'text-rose-300' : 'text-white'
-                                  ].join(' ')}
-                                >
+                                <div className={['mt-0.5 text-[16px] font-extrabold tabular-nums', best ? 'text-sky-300' : worst ? 'text-rose-300' : 'text-white'].join(' ')}>
                                   {total ? total.toLocaleString('ko-KR') : '-'}
                                 </div>
                                 {best ? (
-                                  <div className="mt-0.5 inline-block rounded-full bg-sky-400 px-1.5 py-0.5 text-[9px] font-bold text-[#0e1e3a]">
-                                    최저
-                                  </div>
+                                  <div className="mt-0.5 inline-block rounded-full bg-sky-400 px-1.5 py-0.5 text-[9px] font-bold text-[#0e1e3a]">가장 쌈</div>
                                 ) : worst ? (
-                                  <div className="mt-0.5 inline-block rounded-full bg-rose-400 px-1.5 py-0.5 text-[9px] font-bold text-[#0e1e3a]">
-                                    최고
-                                  </div>
+                                  <div className="mt-0.5 inline-block rounded-full bg-rose-400 px-1.5 py-0.5 text-[9px] font-bold text-[#0e1e3a]">가장 비쌈</div>
                                 ) : null}
                               </th>
                             )
@@ -1104,56 +1138,55 @@ export default function HospitalCoveragePage(): JSX.Element {
                         </tr>
                       </thead>
                       <tbody>
-                        {compareRows.map((row) => {
+                        {comparableRows.map((row, idx) => {
                           const values = compareCompanies
-                            .map((c) => row.byCompany[c])
-                            .filter((v): v is number => v !== null && v > 0)
+                            .map((c) => row.byCompany[c]?.premium)
+                            .filter((v): v is number => typeof v === 'number' && v > 0)
                           const max = values.length > 1 ? Math.max(...values) : null
-                          // 체크된 담보는 조합이 고른 회사를, 체크 안 된 담보는 그냥 보험료가 제일 싼 곳을 칠한다.
                           const pickedCompany =
                             mixPickByKey.get(row.key) ??
-                            (values.length > 1
-                              ? compareCompanies.find((c) => row.byCompany[c] === Math.min(...values))
-                              : undefined)
+                            compareCompanies.find((c) => row.byCompany[c]?.premium === Math.min(...values))
                           return (
-                            <tr key={row.key} className={row.checked ? '' : 'opacity-45'}>
-                              <th className="sticky left-0 z-10 border-b border-slate-800 bg-white px-3 py-1.5 text-left font-normal">
-                                <label className="flex cursor-pointer items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={row.checked}
-                                    onChange={(e) => toggleCompareRow(row, e.target.checked)}
-                                    className="h-4 w-4 shrink-0 accent-indigo-600"
-                                  />
+                            <tr key={row.key} className={[row.checked ? '' : 'opacity-40', idx % 2 ? 'bg-slate-950/40' : ''].join(' ')}>
+                              <th className={['sticky left-0 z-10 border-b border-slate-800 px-3 py-2 text-left font-normal', idx % 2 ? 'bg-slate-950' : 'bg-white'].join(' ')}>
+                                <label className="flex cursor-pointer items-start gap-2">
+                                  <input type="checkbox" checked={row.checked} onChange={(e) => toggleCompareRow(row, e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-indigo-600" />
                                   <span className="flex-1">
-                                    <span className="block text-[12px] font-bold text-slate-100">{row.label}</span>
-                                    {row.amountManwon ? (
-                                      <span className="block text-[11px] text-slate-500 tabular-nums">
-                                        {row.amountManwon.toLocaleString('ko-KR')}만원
-                                      </span>
-                                    ) : null}
+                                    <span className="block text-[12.5px] font-bold leading-tight text-slate-100">{row.label}</span>
+                                    <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                                      {row.amountManwon ? (
+                                        <span className="text-[11px] tabular-nums text-slate-500">{row.amountManwon.toLocaleString('ko-KR')}만원</span>
+                                      ) : null}
+                                      {row.scopesDiffer ? (
+                                        <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-800">회사마다 보장범위 다름</span>
+                                      ) : null}
+                                    </span>
                                   </span>
                                 </label>
                               </th>
                               {compareCompanies.map((company) => {
-                                const v = row.byCompany[company]
-                                const isMin = Boolean(v) && company === pickedCompany
-                                const isMax = max !== null && v === max && !isMin
+                                const cell = row.byCompany[company]
+                                const v = cell?.premium ?? null
+                                const isPick = Boolean(v) && company === pickedCompany
+                                const isMax = max !== null && v === max && !isPick
                                 return (
                                   <td
                                     key={company}
                                     className={[
-                                      'border-b border-l border-slate-800 px-2 py-1.5 text-center tabular-nums',
-                                      !v
-                                        ? 'text-slate-500'
-                                        : isMin
-                                          ? 'bg-sky-50 font-extrabold text-blue-700'
-                                          : isMax
-                                            ? 'font-bold text-rose-600'
-                                            : 'font-semibold text-slate-200'
+                                      'border-b border-l border-slate-800 px-2 py-2 text-center align-middle tabular-nums',
+                                      !v ? 'text-slate-600' : isPick ? 'bg-sky-100 font-extrabold text-blue-700' : isMax ? 'font-bold text-rose-600' : 'font-semibold text-slate-200'
                                     ].join(' ')}
                                   >
-                                    {v ? v.toLocaleString('ko-KR') : 0}
+                                    {v ? (
+                                      <>
+                                        <span className="block text-[13px]">{v.toLocaleString('ko-KR')}</span>
+                                        {row.scopesDiffer ? (
+                                          <span className="mt-0.5 block text-[9.5px] font-medium leading-tight opacity-70">{cell?.scope}</span>
+                                        ) : null}
+                                      </>
+                                    ) : (
+                                      <span className="text-[12px]">없음</span>
+                                    )}
                                   </td>
                                 )
                               })}
@@ -1164,8 +1197,34 @@ export default function HospitalCoveragePage(): JSX.Element {
                     </table>
                   </div>
 
-                  <p className="border-t border-slate-800 px-4 py-2 text-[11px] text-slate-500">
-                    체크를 끄면 위 합계에서 빠집니다. 회사마다 담보 이름이 달라도 같은 담보끼리 한 줄로 모았습니다.
+                  {/* 한 곳에만 있는 담보 — 비교가 안 되는 줄이라 표를 어지럽힌다. 접어 둔다. */}
+                  {soleRows.length > 0 ? (
+                    <details className="border-t border-slate-800">
+                      <summary className="cursor-pointer px-4 py-2.5 text-[12px] font-bold text-slate-500">
+                        한 회사에만 있는 담보 {soleRows.length}개 — 비교 대상이 아니라 따로 뺐습니다
+                      </summary>
+                      <div className="space-y-1 border-t border-slate-800 px-4 py-2">
+                        {soleRows.map((row) => {
+                          const only = compareCompanies.find((c) => row.byCompany[c]?.premium)
+                          const cell = only ? row.byCompany[only] : null
+                          return (
+                            <label key={row.key} className={['flex cursor-pointer flex-wrap items-center gap-2 rounded-lg border border-slate-800 px-2.5 py-1.5', row.checked ? 'bg-white' : 'bg-slate-950 opacity-60'].join(' ')}>
+                              <input type="checkbox" checked={row.checked} onChange={(e) => toggleCompareRow(row, e.target.checked)} className="h-4 w-4 accent-indigo-600" />
+                              <span className="flex-1 text-[12px] font-bold text-slate-100">{row.label}</span>
+                              {only ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700">{only}</span> : null}
+                              <span className="text-[12px] font-bold tabular-nums text-slate-200">
+                                {cell?.premium ? cell.premium.toLocaleString('ko-KR') : '-'}
+                              </span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </details>
+                  ) : null}
+
+                  <p className="border-t border-slate-800 px-4 py-2 text-[11px] leading-relaxed text-slate-500">
+                    회사마다 담보 이름이 달라도 같은 자리 담보끼리 한 줄로 모았습니다. 보장범위가 다르면 칸 아래에 그 회사가
+                    실제로 넣은 담보를 적어 뒀습니다. 체크를 끄면 위 합계에서 빠집니다.
                   </p>
                 </div>
               ) : null}
