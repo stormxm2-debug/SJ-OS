@@ -24,7 +24,7 @@ async function load(src) {
   return import(file)
 }
 
-const { buildMix, mixKeyOf, familyOf, parseAmountManwon, parsePremiumWon } = await load(
+const { buildMix, mixKeyOf, familyOf, unitBasis, unitPriceAt, parseAmountManwon, parsePremiumWon } = await load(
   'src/renderer/src/services/commercial/coverageMix.ts'
 )
 
@@ -196,4 +196,39 @@ test('보험금이 따로 나오는 담보는 묶지 않는다', () => {
   // 수술비·사망도 그대로 둔다.
   assert.equal(fam('질병수술비').grouped, false)
   assert.equal(fam('상해사망').grouped, false)
+})
+
+test('담보 크기에 맞는 단가 단위를 고른다', () => {
+  // 진단비처럼 큰 담보
+  assert.deepEqual(unitBasis(3000), { perManwon: 1000, label: '1,000만원당' })
+  assert.deepEqual(unitBasis(1000), { perManwon: 1000, label: '1,000만원당' })
+  // 골절·화상 같은 소액 담보
+  assert.deepEqual(unitBasis(500), { perManwon: 100, label: '100만원당' })
+  assert.deepEqual(unitBasis(100), { perManwon: 100, label: '100만원당' })
+  // 입원일당처럼 일당으로 가입하는 담보
+  assert.deepEqual(unitBasis(10), { perManwon: 1, label: '1만원당' })
+  assert.deepEqual(unitBasis(3), { perManwon: 1, label: '1만원당' })
+  // 가입금액을 못 읽으면 단가도 없다
+  assert.equal(unitBasis(null), null)
+  assert.equal(unitBasis(0), null)
+})
+
+test('단위당 보험료를 계산한다', () => {
+  // 암진단비 3,000만원에 51,300원 -> 1,000만원당 17,100원
+  assert.equal(unitPriceAt(51300, 3000, unitBasis(3000)), 17100)
+  // 골절진단비 100만원에 900원 -> 100만원당 900원
+  assert.equal(unitPriceAt(900, 100, unitBasis(100)), 900)
+  // 입원일당 10만원에 2,500원 -> 1만원당 250원
+  assert.equal(unitPriceAt(2500, 10, unitBasis(10)), 250)
+  // 못 읽은 값은 계산하지 않는다
+  assert.equal(unitPriceAt(null, 3000, unitBasis(3000)), null)
+  assert.equal(unitPriceAt(51300, null, null), null)
+})
+
+test('단위를 바꿔도 한 줄 안에서 회사 순위는 그대로다', () => {
+  // 보여주기용 단위가 달라져도 어디가 싼지는 변하지 않아야 한다.
+  const a = unitPriceAt(18000, 3000, unitBasis(3000))
+  const b = unitPriceAt(21000, 3000, unitBasis(3000))
+  assert.ok(a < b)
+  assert.ok(18000 / 3000 < 21000 / 3000)
 })

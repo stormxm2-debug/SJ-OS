@@ -26,7 +26,16 @@ import {
   type MatrixEntry,
   type PlanMixRow
 } from '@renderer/services/commercial/templateFill'
-import { buildMix, mixKeyOf, familyOf, parseAmountManwon, parsePremiumWon, type MixResult } from '@renderer/services/commercial/coverageMix'
+import {
+  buildMix,
+  mixKeyOf,
+  familyOf,
+  unitBasis,
+  unitPriceAt,
+  parseAmountManwon,
+  parsePremiumWon,
+  type MixResult
+} from '@renderer/services/commercial/coverageMix'
 import { explainMix, buildBasicExplanation, explanationToText, type MixExplanation } from '@renderer/services/commercial/coverageMixAi'
 import {
   PLANS,
@@ -453,6 +462,8 @@ export default function HospitalCoveragePage(): JSX.Element {
 
   interface CompareCell {
     premium: number | null
+    /** 이 회사의 가입금액(만원). 회사마다 다르면 보험료만 비교하면 안 된다. */
+    amountManwon: number | null
     /** 이 회사가 실제로 넣은 담보 이름. 묶인 줄에서 회사마다 다를 때 보여준다. */
     scope: string
   }
@@ -465,7 +476,10 @@ export default function HospitalCoveragePage(): JSX.Element {
     /** 실제로 회사마다 다른 담보가 들어갔는지 */
     scopesDiffer: boolean
     checked: boolean
+    /** 이 줄에서 가장 큰 가입금액 — 단가 단위를 고를 때 쓴다 */
     amountManwon: number | null
+    /** 회사마다 가입금액이 다른지 — 다르면 보험료만 보면 속는다 */
+    amountsDiffer: boolean
     byCompany: Record<string, CompareCell | null>
     /** 값이 있는 회사 수 — 1곳뿐이면 비교가 아니라 '한 곳에만 있는 담보' */
     offeredBy: number
@@ -499,6 +513,7 @@ export default function HospitalCoveragePage(): JSX.Element {
             scopesDiffer: false,
             checked: false,
             amountManwon: null,
+            amountsDiffer: false,
             byCompany: {},
             offeredBy: 0,
             items: [],
@@ -506,14 +521,15 @@ export default function HospitalCoveragePage(): JSX.Element {
           } as CompareRow & { scopes: Set<string> })
 
         const won = parsePremiumWon(it.premium)
+        const amount = parseAmountManwon(it.amount)
         const prev = row.byCompany[company]
         // 같은 회사에 같은 자리 담보가 여러 줄이면 보험료는 더하고 가입금액은 큰 쪽을 쓴다.
         row.byCompany[company] = {
           premium: (prev?.premium ?? 0) + (won ?? 0) || null,
+          amountManwon: amount === null ? prev?.amountManwon ?? null : Math.max(prev?.amountManwon ?? 0, amount),
           scope: prev?.scope || mixKey.label
         }
         row.scopes.add(mixKey.label)
-        const amount = parseAmountManwon(it.amount)
         if (amount !== null) row.amountManwon = Math.max(row.amountManwon ?? 0, amount)
         if (it.checked) row.checked = true
         row.items.push({ docId: doc.id, itemKey: it.key })
@@ -525,6 +541,12 @@ export default function HospitalCoveragePage(): JSX.Element {
       .map((row) => ({
         ...row,
         scopesDiffer: row.grouped && row.scopes.size > 1,
+        amountsDiffer:
+          new Set(
+            Object.values(row.byCompany)
+              .filter((c) => c?.premium && c.amountManwon)
+              .map((c) => c!.amountManwon)
+          ).size > 1,
         offeredBy: Object.values(row.byCompany).filter((c) => c?.premium).length
       }))
       .sort((a, b) => {
@@ -1097,7 +1119,8 @@ export default function HospitalCoveragePage(): JSX.Element {
                       <h3 className="text-[14px] font-extrabold text-slate-100">보험사별 담보 비교표</h3>
                       <p className="mt-0.5 text-[11px] text-slate-500">
                         <span className="rounded bg-sky-100 px-1 font-bold text-blue-700">파란 칸</span>이 담보마다 고른 회사,{' '}
-                        <span className="font-bold text-rose-600">빨간 숫자</span>가 제일 비싼 곳입니다
+                        <span className="font-bold text-rose-600">빨간 숫자</span>가 제일 비싼 곳입니다 · 큰 숫자는 월 보험료,{' '}
+                        아랫줄 작은 숫자는 같은 금액으로 맞췄을 때의 보험료(진단비 1,000만원당 · 소액담보 100만원당 · 입원일당 1만원당)
                       </p>
                     </div>
                     <div className="flex gap-1.5">
@@ -1146,6 +1169,9 @@ export default function HospitalCoveragePage(): JSX.Element {
                           const pickedCompany =
                             mixPickByKey.get(row.key) ??
                             compareCompanies.find((c) => row.byCompany[c]?.premium === Math.min(...values))
+                          // 담보 크기에 맞는 단가 단위(1,000만원당 / 100만원당 / 1만원당).
+                          // 가입금액이 회사마다 달라도 어디가 싼지 한눈에 보게 하는 값이다.
+                          const basis = unitBasis(row.amountManwon)
                           return (
                             <tr key={row.key} className={[row.checked ? '' : 'opacity-40', idx % 2 ? 'bg-slate-950/40' : ''].join(' ')}>
                               <th className={['sticky left-0 z-10 border-b border-slate-800 px-3 py-2 text-left font-normal', idx % 2 ? 'bg-slate-950' : 'bg-white'].join(' ')}>
@@ -1154,8 +1180,16 @@ export default function HospitalCoveragePage(): JSX.Element {
                                   <span className="flex-1">
                                     <span className="block text-[12.5px] font-bold leading-tight text-slate-100">{row.label}</span>
                                     <span className="mt-0.5 flex flex-wrap items-center gap-1">
-                                      {row.amountManwon ? (
-                                        <span className="text-[11px] tabular-nums text-slate-500">{row.amountManwon.toLocaleString('ko-KR')}만원</span>
+                                      {row.amountManwon && !row.amountsDiffer ? (
+                                        <span className="text-[11px] tabular-nums text-slate-500">
+                                          {row.amountManwon.toLocaleString('ko-KR')}만원
+                                        </span>
+                                      ) : null}
+                                      {basis ? (
+                                        <span className="text-[11px] text-slate-600">아랫줄 = {basis.label}</span>
+                                      ) : null}
+                                      {row.amountsDiffer ? (
+                                        <span className="rounded bg-sky-100 px-1 py-0.5 text-[9px] font-bold text-blue-700">회사마다 가입금액 다름</span>
                                       ) : null}
                                       {row.scopesDiffer ? (
                                         <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-800">회사마다 보장범위 다름</span>
@@ -1167,6 +1201,9 @@ export default function HospitalCoveragePage(): JSX.Element {
                               {compareCompanies.map((company) => {
                                 const cell = row.byCompany[company]
                                 const v = cell?.premium ?? null
+                                // 단가는 그 회사가 실제로 가입한 금액으로 낸다.
+                                // 줄의 최대 금액으로 나누면 적게 가입한 회사가 싸 보인다.
+                                const unit = unitPriceAt(v, cell?.amountManwon ?? null, basis)
                                 const isPick = Boolean(v) && company === pickedCompany
                                 const isMax = max !== null && v === max && !isPick
                                 return (
@@ -1179,7 +1216,17 @@ export default function HospitalCoveragePage(): JSX.Element {
                                   >
                                     {v ? (
                                       <>
+                                        {row.amountsDiffer && cell?.amountManwon ? (
+                                          <span className="block text-[10px] font-semibold leading-tight opacity-70">
+                                            {cell.amountManwon.toLocaleString('ko-KR')}만원
+                                          </span>
+                                        ) : null}
                                         <span className="block text-[13px]">{v.toLocaleString('ko-KR')}</span>
+                                        {unit ? (
+                                          <span className="mt-0.5 block text-[10px] font-semibold leading-tight opacity-60">
+                                            {unit.toLocaleString('ko-KR')}
+                                          </span>
+                                        ) : null}
                                         {row.scopesDiffer ? (
                                           <span className="mt-0.5 block text-[9.5px] font-medium leading-tight opacity-70">{cell?.scope}</span>
                                         ) : null}
@@ -1212,8 +1259,11 @@ export default function HospitalCoveragePage(): JSX.Element {
                               <input type="checkbox" checked={row.checked} onChange={(e) => toggleCompareRow(row, e.target.checked)} className="h-4 w-4 accent-indigo-600" />
                               <span className="flex-1 text-[12px] font-bold text-slate-100">{row.label}</span>
                               {only ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700">{only}</span> : null}
+                              {cell?.amountManwon ? (
+                                <span className="text-[11px] tabular-nums text-slate-500">{cell.amountManwon.toLocaleString('ko-KR')}만원</span>
+                              ) : null}
                               <span className="text-[12px] font-bold tabular-nums text-slate-200">
-                                {cell?.premium ? cell.premium.toLocaleString('ko-KR') : '-'}
+                                {cell?.premium ? `${cell.premium.toLocaleString('ko-KR')}원` : '-'}
                               </span>
                             </label>
                           )
@@ -1223,8 +1273,10 @@ export default function HospitalCoveragePage(): JSX.Element {
                   ) : null}
 
                   <p className="border-t border-slate-800 px-4 py-2 text-[11px] leading-relaxed text-slate-500">
-                    회사마다 담보 이름이 달라도 같은 자리 담보끼리 한 줄로 모았습니다. 보장범위가 다르면 칸 아래에 그 회사가
-                    실제로 넣은 담보를 적어 뒀습니다. 체크를 끄면 위 합계에서 빠집니다.
+                    회사마다 담보 이름이 달라도 같은 자리 담보끼리 한 줄로 모았습니다. 가입금액이 회사마다 다르면 칸 위에 그
+                    회사의 가입금액을, 보장범위가 다르면 칸 아래에 그 회사가 실제로 넣은 담보를 적어 뒀습니다.
+                    칸 가운데 큰 숫자는 월 보험료, 그 아래 작은 숫자는 가입금액을 같게 맞췄을 때의 보험료라 회사끼리 바로 견줄 수 있습니다.
+                    체크를 끄면 위 합계에서 빠집니다.
                   </p>
                 </div>
               ) : null}

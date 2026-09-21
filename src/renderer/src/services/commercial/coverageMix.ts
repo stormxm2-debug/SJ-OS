@@ -334,3 +334,38 @@ export function familyOf(mixKey: string, label: string): CoverageFamily {
     ? { key: family.key, label: family.label, grouped: true }
     : { key: mixKey, label, grouped: false }
 }
+
+/* ---------- 단가 표시 단위 ---------- */
+
+export interface UnitBasis {
+  /** 몇 만원을 한 단위로 볼지 */
+  perManwon: number
+  /** 화면에 쓰는 이름 */
+  label: string
+}
+
+/**
+ * 담보 크기에 맞는 단가 단위를 고른다.
+ *
+ * 암진단비(3,000만원)와 깁스치료비(30만원)를 같은 단위로 보여주면 한쪽은 자릿수가
+ * 너무 크거나 0에 가까워 읽을 수 없다. FC 가 실제로 쓰는 단위에 맞춘다.
+ *
+ *   1,000만원 이상 -> 1,000만원당  (진단비·사망 등 큰 담보)
+ *     100만원 이상 -> 100만원당    (골절·화상 등 소액 담보)
+ *     그 미만      -> 1만원당      (입원일당처럼 일당으로 가입하는 담보)
+ *
+ * 단위를 바꿔도 한 줄 안에서 회사 순위는 그대로다(같은 수로 나누기 때문).
+ * 그래서 어디가 싼지 고르는 계산에는 영향이 없고, 보여주기용이다.
+ */
+export function unitBasis(amountManwon: number | null): UnitBasis | null {
+  if (!amountManwon || amountManwon <= 0) return null
+  if (amountManwon >= 1000) return { perManwon: 1000, label: '1,000만원당' }
+  if (amountManwon >= 100) return { perManwon: 100, label: '100만원당' }
+  return { perManwon: 1, label: '1만원당' }
+}
+
+/** 그 단위당 월 보험료(원). 반올림해서 원 단위로 돌려준다. */
+export function unitPriceAt(premiumWon: number | null, amountManwon: number | null, basis: UnitBasis | null): number | null {
+  if (!premiumWon || !amountManwon || !basis) return null
+  return Math.round((premiumWon / amountManwon) * basis.perManwon)
+}
