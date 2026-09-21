@@ -72,11 +72,63 @@ const NOTE_LINE = /^\s*[※*▶◈·]|^\s*주\s*\)/
 
 /* ---------- 문서 단위 정보 ---------- */
 
-export function detectCompany(pages: PageItems[], fileName = ''): string | null {
-  const haystack = documentLines(pages, 4).join(' ').replace(/\s/g, '') + fileName.replace(/\s/g, '')
-  for (const [pattern, name] of COMPANY_PATTERNS) {
-    if (pattern.test(haystack)) return name
+/**
+ * 보험사 이름 뒤에 이런 말이 붙으면 **인수 보험사가 아니라 판매 대리점(GA)** 이다.
+ *
+ * 실제 제안서에서 확인한 사례:
+ *   DB손해보험 제안서 -> "삼성화재_더프라임파트너(박지현)"
+ *   메리츠화재 제안서 -> "(주)삼성화재금융서비스보험대리점(더프라임파트너)"
+ * 둘 다 같은 대리점 소속이라, 이걸 거르지 않으면 모든 제안서가 그 대리점 이름으로 읽힌다.
+ */
+// 밑줄은 파일명 구분자로도 쓰이므로('DB손해보험_103040.pdf'), 뒤에 대리점을 뜻하는
+// 말이 이어질 때만 대리점으로 본다('삼성화재_더프라임파트너').
+const AGENCY_AFTER =
+  /(금융서비스|보험대리점|대리점|에이전시|파트너|_[가-힣A-Za-z0-9]{0,12}(파트너|대리점|지점|에이전시))/
+
+/**
+ * 회사명 대신 상품 브랜드만 적힌 제안서가 있다.
+ * DB손해보험은 본문에 회사명 없이 '프로미라이프'(상품 브랜드)만 쓰는 경우가 있다.
+ */
+const BRAND_ALIASES: [RegExp, string][] = [
+  [/프로미라이프|프로미/, 'DB손해보험'],
+  [/굿앤굿/, '현대해상'],
+  [/무배당한화/, '한화손해보험']
+]
+
+/** 대리점으로 쓰인 회사명을 지운 본문. 인수 보험사만 남긴다. */
+function withoutAgencyNames(text: string): string {
+  let out = text
+  for (const [, name] of COMPANY_PATTERNS) {
+    out = out.replace(new RegExp(name + AGENCY_AFTER.source, 'g'), '')
   }
+  // 회사명 표기가 조금씩 다른 경우까지 (예: '삼성화재금융서비스')
+  return out.replace(/[가-힣A-Za-z]{2,6}(화재|생명|손해보험|손보)(금융서비스|보험대리점|대리점|파트너)/g, '')
+}
+
+/**
+ * 제안서를 발행한 보험사를 찾는다.
+ *
+ * 예전에는 COMPANY_PATTERNS 를 위에서부터 훑어 **먼저 맞는 것**을 썼다. 그래서 목록에서
+ * 앞선 회사가 문서 어딘가에 한 번만 나와도 이겨버렸다(DB 제안서가 '삼성화재'로 읽힌 원인).
+ *
+ * 이제는 점수로 고른다: 파일명에 있으면 크게 가산하고, 본문에서는 나온 횟수를 센다.
+ * 대리점으로 쓰인 회사명은 세기 전에 지운다.
+ */
+export function detectCompany(pages: PageItems[], fileName = ''): string | null {
+  const body = withoutAgencyNames(documentLines(pages, 4).join(' ').replace(/\s/g, ''))
+  const file = withoutAgencyNames(fileName.replace(/\s/g, ''))
+
+  const count = (pattern: RegExp, text: string): number =>
+    (text.match(new RegExp(pattern.source, 'g')) ?? []).length
+
+  let best: { name: string; score: number } | null = null
+  for (const [pattern, name] of [...COMPANY_PATTERNS, ...BRAND_ALIASES]) {
+    // 파일명은 FC 가 직접 붙인 이름이라 본문보다 믿을 만하다.
+    const score = (count(pattern, file) > 0 ? 100 : 0) + count(pattern, body)
+    if (score > 0 && (!best || score > best.score)) best = { name, score }
+  }
+  if (best) return best.name
+
   return /흥생/.test(fileName) ? '흥국생명' : null
 }
 
