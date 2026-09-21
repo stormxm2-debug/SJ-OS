@@ -1,6 +1,6 @@
 {
   "name": "sj-ai-company",
-  "version": "1.0.45",
+  "version": "1.0.46",
   "private": true,
   "description": "SJ AI Company — a desktop AI engineering organization. The CEO gives one instruction; the AI company executes. (MVP shell)",
   "author": "SJ AI Company",
@@ -36,7 +36,7 @@
         "provider": "github",
         "owner": "stormxm2-debug",
         "repo": "SJ-OS",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ],
     "directories": {

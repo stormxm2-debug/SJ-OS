@@ -6,7 +6,9 @@
 # **버전을 올렸을 때만 배포한다.** 앱은 autoDownload = true 라 릴리스가 올라가는 순간
 # 직원 PC가 새 버전을 내려받기 시작한다. 그래서 push 한 번마다 배포하지 않고,
 # "버전을 올린다"는 분명한 행동을 배포 스위치로 삼는다.
-# 이미 같은 버전의 릴리스가 있으면 아무 것도 하지 않는다(중복 배포 방지).
+# 이미 같은 버전이 공개돼 있으면 아무 것도 하지 않는다(중복 배포 방지).
+# 릴리스는 초안으로 먼저 만들고, 설치본과 latest.yml 이 모두 올라간 뒤에 공개한다 —
+# 반쯤 올라간 릴리스가 직원 PC 에 보이지 않게 하기 위해서다.
 #
 # 배포하려면:
 #   1) package.json 의 "version" 을 올린다 (예: 1.0.44 → 1.0.45)
@@ -102,12 +104,17 @@ jobs:
             if [ -n "$PREV" ] && [ "$PREV" = "$VERSION" ]; then
               skip "version 이 $VERSION 그대로입니다(이번 push 는 package.json 의 다른 부분만 바꿨습니다). 배포하지 않습니다."
             fi
-            [ -n "$PREV" ] && echo "version $PREV → $VERSION"
+            if [ -n "$PREV" ]; then echo "version $PREV → $VERSION"; fi
           fi
 
-          # 2) 같은 버전이 이미 릴리스돼 있으면 중복 배포하지 않는다.
-          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            skip "v$VERSION 릴리스가 이미 있습니다. 배포하려면 package.json 의 version 을 올려서 push 하세요."
+          # 2) 같은 버전이 이미 공개돼 있으면 중복 배포하지 않는다.
+          #    초안(draft)은 지난 배포가 중간에 끊긴 흔적이므로, 막지 않고 다시 시도한다.
+          DRAFT=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || echo 'none')
+          if [ "$DRAFT" = "false" ]; then
+            skip "v$VERSION 릴리스가 이미 공개돼 있습니다. 배포하려면 package.json 의 version 을 올려서 push 하세요."
+          fi
+          if [ "$DRAFT" = "true" ]; then
+            echo "v$VERSION 초안 릴리스가 남아 있습니다 — 그 자리에 다시 올립니다."
           fi
 
           go "새 버전 v$VERSION — 배포합니다."
@@ -134,14 +141,50 @@ jobs:
         # 여기서는 Electron 바이너리가 있어야 설치본을 만들 수 있다.
         run: npm ci
 
-      - name: 설치본 빌드 · 릴리스
-        # electron-builder 가 package.json 의 build.publish 설정(GitHub Releases)대로 올린다.
-        # --publish always: 빌드가 끝나면 바로 릴리스에 올린다.
+      # 릴리스 자리를 먼저 '초안' 으로 만들어 둔다.
+      #
+      # electron-builder 는 파일마다 업로더를 띄운다(.exe 와 .blockmap). 릴리스가 없으면
+      # 둘이 동시에 릴리스를 만들려 들고, 진 쪽이 422 Validation Failed 로 빌드를 끝낸다.
+      # v1.0.45 가 그렇게 .exe 만 올라가고 latest.yml 없이 공개돼, 직원 PC 가 자동
+      # 업데이트를 보지 못했다. 자리를 미리 만들어 두면 둘 다 그 자리에 올리기만 한다.
+      #
+      # 초안으로 두는 이유: 파일이 다 올라가기 전에는 직원 PC 에 보이지 않아야 한다.
+      - name: 릴리스 자리 만들기 (초안)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$VERSION 릴리스가 이미 있습니다 — 그 자리에 올립니다."
+          else
+            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft \
+              --target "$GITHUB_SHA" --title "v$VERSION" \
+              --notes "SJ INVEST v$VERSION"
+          fi
+
+      - name: 설치본 빌드 · 업로드
+        # electron-builder 가 package.json 의 build.publish 설정(GitHub Releases)대로
+        # 위에서 만든 초안 릴리스에 파일을 올린다.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           npm run build
           npx electron-builder --win --publish always
+
+      # 파일이 다 올라간 것을 확인한 뒤에만 공개한다.
+      # latest.yml 이 없으면 직원 PC 의 앱이 새 버전을 알아채지 못한다(설치본만 덩그러니 남는다).
+      - name: 릴리스 공개 (초안 → 공개)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > assets.txt
+          echo "올라간 파일:"; cat assets.txt
+          grep -q '\.exe$'      assets.txt || { echo "::error::설치본(.exe)이 릴리스에 없습니다"; exit 1; }
+          grep -q '^latest\.yml$' assets.txt || { echo "::error::latest.yml 이 없습니다 — 자동 업데이트가 동작하지 않습니다"; exit 1; }
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
 
       - name: 릴리스 결과
         shell: bash
