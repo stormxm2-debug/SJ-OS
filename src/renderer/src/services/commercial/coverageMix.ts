@@ -91,11 +91,15 @@ export function parseAmountManwon(text: string): number | null {
 
   // '억' 뒤에 남은 만원 부분만 본다. ('1억5,000만원' → 5,000만원)
   const rest = eok ? s.slice(s.indexOf('억') + 1) : s
-  const man = rest.match(/([\d,.]+)만/)
-  if (man) {
-    const v = Number(man[1].replace(/,/g, ''))
-    if (Number.isFinite(v)) {
-      total += v
+  // 회사마다 표기가 다르다: '3,000만원' 도 있고 '5천만원' '1백만원' 처럼 쓰는 곳도 있다
+  // (DB손해보험 가입담보요약). 천·백·십을 못 읽으면 가입금액이 통째로 비어, 단가 비교가
+  // 안 되고 그 회사가 대결에서 빠져버린다.
+  const man = rest.match(/([\d,.]+)?([천백십])?만/)
+  if (man && (man[1] || man[2])) {
+    const base = man[1] ? Number(man[1].replace(/,/g, '')) : 1
+    const unit = man[2] === '천' ? 1000 : man[2] === '백' ? 100 : man[2] === '십' ? 10 : 1
+    if (Number.isFinite(base)) {
+      total += base * unit
       matched = true
     }
   }
@@ -154,6 +158,9 @@ const MIX_KEYS: MixKey[] = [
   { key: 'driver-suspend', label: '면허정지 위로금', pattern: /면허정지/ },
   { key: 'driver-surcharge', label: '자동차보험료 할증지원금', pattern: /보험료할증/ },
 
+  /* 종합 — 납입면제 (설명에 '진단'·'후유장해' 가 들어 있어 진단비보다 먼저 본다) */
+  { key: 'comp-waiver', label: '보험료 납입면제', pattern: /납입면제|납면/ },
+
   /* 종합 — 진단비 (넓은 담보부터) */
   { key: 'comp-cancer-minor', label: '유사암진단비', pattern: /유사암|소액암|제자리암|경계성종양|기타피부암|갑상선암/ },
   { key: 'comp-cancer-re', label: '재진단암진단비', pattern: /재진단암|암재진단|2차암/ },
@@ -161,7 +168,7 @@ const MIX_KEYS: MixKey[] = [
   { key: 'comp-brain-vessel', label: '뇌혈관질환진단비', pattern: /뇌혈관/ },
   { key: 'comp-stroke', label: '뇌졸중진단비', pattern: /뇌졸중/ },
   { key: 'comp-brain-bleed', label: '뇌출혈진단비', pattern: /뇌출혈|뇌경색/ },
-  { key: 'comp-heart-isch', label: '허혈성심장질환진단비', pattern: /허혈성심장|특정심장|심혈관/ },
+  { key: 'comp-heart-isch', label: '허혈성심장질환진단비', pattern: /허혈성심장|허혈성심질환|허혈심장|특정심장|심혈관/ },
   { key: 'comp-heart-ami', label: '급성심근경색진단비', pattern: /급성심근경색|심근경색/ },
 
   /* 종합 — 수술 */
@@ -260,6 +267,10 @@ export function buildMix(items: MixInputItem[]): MixResult {
         : [...pool].sort((a, b) => (usableUnit ? a.unitPrice! - b.unitPrice! : a.premiumWon! - b.premiumWon!))[0]
 
     const amounts = candidates.map((c) => c.amountManwon).filter((v): v is number => v !== null)
+    // 한 회사라도 가입금액을 못 읽으면 그 회사는 단가 비교에서 빠진다. 조용히 빼면 안 되므로
+    // 확인 필요로 표시한다(화면에서 FC 가 금액을 직접 채울 수 있다).
+    const someAmountMissing = candidates.some((c) => c.unitPrice === null && c.premiumWon !== null)
+
     rows.push({
       key,
       label: bucket.label,
@@ -267,7 +278,7 @@ export function buildMix(items: MixInputItem[]): MixResult {
       groupKey: bucket.groupKey,
       candidates: [...candidates].sort((a, b) => (a.premiumWon ?? Infinity) - (b.premiumWon ?? Infinity)),
       best,
-      needsReview: !usableUnit,
+      needsReview: !usableUnit || someAmountMissing,
       amountsDiffer: amounts.length > 1 && new Set(amounts).size > 1,
       soleOffer: candidates.length === 1
     })

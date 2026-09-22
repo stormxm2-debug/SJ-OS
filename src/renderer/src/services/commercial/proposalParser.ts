@@ -109,7 +109,8 @@ const MONEY_LIKE = /^(확인 필요|(?:[\d,.]+\s*(?:십|백|천|만|억)*\s*)+�
 // 쉼표는 세 자리마다, 소수점은 "5.4만원"처럼 두 자리 이하만 허용
 const STRICT_MONEY =
   /^(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?\s*(?:[십백천만억]+)?(?:\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?\s*[십백천만억]+)*\s*원?$/
-const PURE_NUMBER = /^\d+$/
+// 표 왼쪽의 특약 순번. '12' 도 있고 '12.' '12)' 도 있다.
+const PURE_NUMBER = /^\d+[.)]?$/
 
 /* ---------- PDF 글자 추출 ---------- */
 
@@ -214,9 +215,22 @@ function isBalanced(text: string): boolean {
   return count('(') === count(')') && count('[') === count(']')
 }
 
+/**
+ * 표 머리글 칸인지 — 설명 문장 속 '보험료' 를 머리글로 오인하지 않으려고 길이를 제한한다.
+ *
+ * 다만 '납기/만기(갱신종료시기)' 처럼 한 칸에 두 열 이름과 괄호 설명이 같이 들어간 머리글이
+ * 있다(DB손해보험 가입담보요약). 10자로 자르면 이 칸을 놓쳐 만기 열이 없는 표가 되고,
+ * 만기 글자가 보험료 칸으로 밀려 들어가 표 전체가 버려졌다. 그래서 숫자·영문 없이
+ * 한글과 괄호로만 된 칸은 좀 더 길어도 머리글로 인정한다(문장은 띄어쓰기가 있어 걸러진다).
+ */
+const HEADER_CELL_LONG_MAX_LEN = 20
+const HEADER_CELL_SHAPE = /^[가-힣()/·~\-]+$/
+
 function isHeaderCell(word: TextItem): boolean {
   const compact = normalizeHeaderText(word.str)
-  return compact.length <= HEADER_CELL_MAX_LEN && ALL_HEADER_KEYWORDS.some((kw) => compact.includes(kw))
+  if (!ALL_HEADER_KEYWORDS.some((kw) => compact.includes(kw))) return false
+  if (compact.length <= HEADER_CELL_MAX_LEN) return true
+  return compact.length <= HEADER_CELL_LONG_MAX_LEN && HEADER_CELL_SHAPE.test(compact) && !/\s/.test(word.str.trim())
 }
 
 // 여러 줄로 나뉜 헤더("보험" / "기간")를 같은 x 위치끼리 위아래로 이어붙인다.
@@ -541,7 +555,10 @@ export function parseCoverageTable(pages: PageItems[]): ParseResult {
     }
 
     const nameItems = rec.leftItems.filter((it) => !isCategoryLabel(it))
-    const fragment = cellsToText(nameItems)
+    // 순번이 담보명과 한 칸에 붙어 나오는 제안서가 있다("1. (건강고지)상해사망…").
+    // 담보명에 남으면 화면과 엑셀에 번호가 그대로 찍힌다. '5대골절' 처럼 숫자로 시작하는
+    // 담보명은 점·괄호가 없어 그대로 남는다.
+    const fragment = cellsToText(nameItems).replace(/^\s*\d{1,3}\s*[.)]\s*/, '')
 
     if (!rec.hasData) {
       if (!fragment) continue

@@ -92,7 +92,9 @@ const AGENCY_AFTER =
 const BRAND_ALIASES: [RegExp, string][] = [
   [/프로미라이프|프로미/, 'DB손해보험'],
   [/굿앤굿/, '현대해상'],
-  [/무배당한화/, '한화손해보험']
+  [/무배당한화/, '한화손해보험'],
+  // 흥국화재는 표지에 회사명 없이 '무배당 흥Good The건강한 …' 처럼 브랜드만 쓴다.
+  [/흥Good|흥굿/, '흥국화재']
 ]
 
 /** 대리점으로 쓰인 회사명을 지운 본문. 인수 보험사만 남긴다. */
@@ -114,8 +116,13 @@ function withoutAgencyNames(text: string): string {
  * 이제는 점수로 고른다: 파일명에 있으면 크게 가산하고, 본문에서는 나온 횟수를 센다.
  * 대리점으로 쓰인 회사명은 세기 전에 지운다.
  */
+/** 회사명을 찾을 때 읽는 쪽수. 표지에 없고 안내 쪽에만 적힌 제안서가 있다. */
+const COMPANY_SCAN_PAGES = 12
+
 export function detectCompany(pages: PageItems[], fileName = ''): string | null {
-  const body = withoutAgencyNames(documentLines(pages, 4).join(' ').replace(/\s/g, ''))
+  // 앞 4쪽만 보던 때는 6쪽 '보험 회사 흥국화재해상보험(주)' 를 놓쳐 회사 미확인이 됐다.
+  // 인수 보험사는 문서 전체에서 반복되므로, 다 세고 가장 많이 나온 회사를 고른다.
+  const body = withoutAgencyNames(documentLines(pages, COMPANY_SCAN_PAGES).join(' ').replace(/\s/g, ''))
   const file = withoutAgencyNames(fileName.replace(/\s/g, ''))
 
   const count = (pattern: RegExp, text: string): number =>

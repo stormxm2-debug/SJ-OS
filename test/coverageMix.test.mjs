@@ -322,3 +322,36 @@ test('한 회사가 같은 자리 담보를 둘 다 넣었으면 그 회사 몫�
   // 2,000만원에 20,000원(단가 10,000) vs 2,000만원에 18,600원(단가 9,300)
   assert.equal(mix.rows[0].best.company, 'B화재')
 })
+
+test('천·백 단위로 쓴 가입금액도 읽는다', () => {
+  // DB손해보험 가입담보요약은 '5천만원' '1백만원' 처럼 적는다.
+  assert.equal(parseAmountManwon('5천만원'), 5000)
+  assert.equal(parseAmountManwon('1천만원'), 1000)
+  assert.equal(parseAmountManwon('1백만원'), 100)
+  assert.equal(parseAmountManwon('5백만원'), 500)
+  assert.equal(parseAmountManwon('십만원'), 10)
+  assert.equal(parseAmountManwon('1억5천만원'), 15000)
+  // 숫자로 쓴 표기는 그대로
+  assert.equal(parseAmountManwon('3,000만원'), 3000)
+  assert.equal(parseAmountManwon('10만원'), 10)
+})
+
+test('회사마다 다른 이름의 같은 담보를 같은 줄로 본다 — 허혈성심질환·납입면제', () => {
+  // 흥국화재는 '허혈성심질환', DB는 '허혈심장질환' 으로 쓴다.
+  assert.equal(mixKeyOf('허혈성심질환진단비').key, mixKeyOf('허혈심장질환진단비').key)
+  // 납입면제는 설명에 '진단'·'후유장해' 가 들어 있어 진단비로 잘못 잡혔다.
+  assert.equal(mixKeyOf('보험료납입면제대상보장(12대사유)').key, 'comp-waiver')
+  assert.equal(
+    mixKeyOf('보험료 납입면제대상보장(6대질병진단 및 상해·질병후유장해(80%이상))').key,
+    'comp-waiver'
+  )
+})
+
+test('한 회사만 가입금액을 못 읽으면 확인 필요로 알린다', () => {
+  // 조용히 빼면 그 회사가 대결에서 사라진 것을 FC 가 알 수 없다.
+  const mix = buildMix([
+    item('A생명', '암진단비', '3,000만원', '18,000원'),
+    item('B화재', '암진단비', '확인필요', '15,000원')
+  ])
+  assert.equal(mix.rows[0].needsReview, true)
+})

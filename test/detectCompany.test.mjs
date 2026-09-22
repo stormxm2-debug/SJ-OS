@@ -113,3 +113,24 @@ test('아무것도 못 찾으면 null', () => {
 test('흥생 파일명은 예전처럼 흥국생명으로 본다', () => {
   assert.equal(detectCompany([pageOf('가입제안서')], '흥생_제안서.pdf'), '흥국생명')
 })
+
+test('브랜드만 적힌 흥국화재 제안서를 찾는다', () => {
+  // 실제 제안서 표지: 회사명 없이 상품 브랜드만 적혀 있었다.
+  const pages = [
+    pageOf('고객님을 위한 가입제안서', '무배당 흥Good The건강한 4565 종합보험', '(주)삼성화재금융서비스더프라임파트너')
+  ]
+  assert.equal(detectCompany(pages, ''), '흥국화재')
+})
+
+test('회사명이 뒤쪽 안내 쪽에만 있어도 찾는다', () => {
+  // 앞 4쪽만 보던 때는 6쪽의 '보험 회사 …' 칸을 놓쳐 회사 미확인이 됐다.
+  const pages = [
+    pageOf('가입제안서'),
+    pageOf('중요사항 안내'),
+    pageOf('보장내용'),
+    pageOf('보장내용'),
+    pageOf('보장내용'),
+    pageOf('보 험 회 사 흥국화재해상보험(주)', '상품설명서')
+  ]
+  assert.equal(detectCompany(pages, ''), '흥국화재')
+})
