@@ -39,6 +39,12 @@ import {
 } from '@renderer/services/commercial/coverageMix'
 import { explainMix, buildBasicExplanation, explanationToText, type MixExplanation } from '@renderer/services/commercial/coverageMixAi'
 import {
+  loadViewPrefs,
+  setMode as setViewMode,
+  setCustomerStyle,
+  type ViewPrefs
+} from '@renderer/services/commercial/coverageViewPrefs'
+import {
   PLANS,
   classifyPlanGroup,
   groupsOfPlan,
@@ -173,10 +179,168 @@ async function analyzeProposal(file: File, prefs: PlanPrefs): Promise<ProposalDo
   }
 }
 
+/* ---------- 담보 한 개 = 카드 한 장 (회사 맞대결) ---------- */
+
+/** 카드 한 장에 필요한 값만 담는다 — 화면이 계산을 다시 하지 않도록 */
+export interface VersusOffer {
+  company: string
+  premiumWon: number
+  amountManwon: number | null
+  unitPrice: number | null
+  /** 고른 회사보다 얼마나 더 내는지(단가 비교일 때는 단가 기준) */
+  extra: number
+}
+
+export interface VersusCardData {
+  key: string
+  label: string
+  amountManwon: number | null
+  amountsDiffer: boolean
+  scopesDiffer: boolean
+  checked: boolean
+  /** 회사별로 실제 넣은 담보 이름 — 보장범위가 다를 때 보여준다 */
+  scopeOf: Record<string, string>
+  ranked: VersusOffer[]
+  /** 우리가 고른 회사 */
+  pick: string | null
+  /** 그 회사로 해서 매달 아끼는 돈 (가입금액이 같을 때만) */
+  saving: number | null
+  /** 단가 단위 이름 (1,000만원당 등) */
+  basisLabel: string | null
+  toggle: (next: boolean) => void
+}
+
+/**
+ * 담보 하나를 두고 회사를 맞붙인다.
+ *
+ * 표를 옆으로 넘기며 읽는 대신, 담보마다 "누가 이겼나" 를 한눈에 본다.
+ * 이긴 쪽만 초록으로 칠하고 진 쪽에는 얼마나 더 비싼지 적는다 —
+ * 고객 앞에서 그대로 짚어가며 설명할 수 있는 형태다.
+ *
+ * big = 고객에게 보여주는 화면. 글씨를 키우고 체크박스 같은 작업용 요소를 뺀다.
+ */
+function VersusCard({ card, big = false }: { card: VersusCardData; big?: boolean }): JSX.Element {
+  const two = card.ranked.length === 2
+  const title = big ? 'text-[19px]' : 'text-[15px]'
+  const price = big ? 'text-[28px]' : 'text-[22px]'
+  const name = big ? 'text-[14px]' : 'text-[12px]'
+
+  const box = (offer: VersusOffer): JSX.Element => {
+    const win = offer.company === card.pick
+    const scope = card.scopeOf[offer.company]
+    return (
+      <div
+        key={offer.company}
+        className={[
+          'flex-grow basis-0 rounded-2xl border-2 px-3 py-3',
+          two ? '' : 'min-w-[44%]',
+          win ? 'border-emerald-500 bg-emerald-50' : 'border-slate-800 bg-white'
+        ].join(' ')}
+      >
+        <div className={[name, 'font-bold', win ? 'text-emerald-700' : 'text-slate-500'].join(' ')}>{offer.company}</div>
+        <div
+          className={[
+            price,
+            'mt-0.5 font-extrabold leading-none tracking-tight tabular-nums',
+            win ? 'text-emerald-700' : 'text-slate-200'
+          ].join(' ')}
+        >
+          {offer.premiumWon.toLocaleString('ko-KR')}
+        </div>
+        {win ? (
+          <span className="mt-1.5 inline-block rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-extrabold text-white">
+            이김
+          </span>
+        ) : (
+          <div className="mt-1.5 text-[11px] font-bold text-rose-600 tabular-nums">
+            {card.amountsDiffer ? '단가 ' : ''}
+            {offer.extra > 0 ? `${offer.extra.toLocaleString('ko-KR')}원 더 비쌈` : '같음'}
+          </div>
+        )}
+        {card.amountsDiffer && offer.amountManwon ? (
+          <div className="mt-1 text-[10.5px] text-slate-500 tabular-nums">
+            {offer.amountManwon.toLocaleString('ko-KR')}만원
+            {offer.unitPrice ? ` · ${card.basisLabel} ${offer.unitPrice.toLocaleString('ko-KR')}원` : ''}
+          </div>
+        ) : null}
+        {card.scopesDiffer && scope ? <div className="mt-1 text-[10.5px] text-slate-500">{scope}</div> : null}
+      </div>
+    )
+  }
+
+  return (
+    <li
+      className={[
+        'rounded-2xl border-2 border-slate-800 bg-white p-3 shadow-sm',
+        card.checked ? '' : 'opacity-45'
+      ].join(' ')}
+    >
+      {big ? (
+        <div className="flex items-baseline justify-between gap-2">
+          <span className={[title, 'font-extrabold leading-tight text-slate-100'].join(' ')}>{card.label}</span>
+          {card.amountManwon && !card.amountsDiffer ? (
+            <span className="shrink-0 text-[13px] font-bold tabular-nums text-slate-500">
+              {card.amountManwon.toLocaleString('ko-KR')}만원
+            </span>
+          ) : null}
+        </div>
+      ) : (
+        <label className="flex cursor-pointer items-start gap-2.5">
+          <input
+            type="checkbox"
+            checked={card.checked}
+            onChange={(e) => card.toggle(e.target.checked)}
+            className="mt-0.5 h-5 w-5 shrink-0 accent-indigo-600"
+          />
+          <span className="flex flex-1 items-baseline justify-between gap-2">
+            <span className={[title, 'font-extrabold leading-tight text-slate-100'].join(' ')}>{card.label}</span>
+            {card.amountManwon && !card.amountsDiffer ? (
+              <span className="shrink-0 text-[12px] font-bold tabular-nums text-slate-500">
+                {card.amountManwon.toLocaleString('ko-KR')}만원
+              </span>
+            ) : null}
+          </span>
+        </label>
+      )}
+
+      {card.amountsDiffer ? (
+        <p className="mt-1 text-[11px] font-semibold text-blue-700">
+          회사마다 가입금액이 다릅니다 — 같은 금액으로 맞춰 비교했습니다
+        </p>
+      ) : null}
+
+      <div className={['mt-2.5 flex items-stretch gap-2', two ? '' : 'flex-wrap'].join(' ')}>
+        {two ? (
+          <>
+            {box(card.ranked[0])}
+            <div className="self-center text-[12px] font-extrabold text-slate-600">VS</div>
+            {box(card.ranked[1])}
+          </>
+        ) : (
+          card.ranked.map(box)
+        )}
+      </div>
+
+      {card.saving && card.pick ? (
+        <p
+          className={[
+            'mt-2.5 rounded-xl bg-emerald-50 px-3 py-2 font-bold leading-relaxed text-emerald-800',
+            big ? 'text-[14px]' : 'text-[12px]'
+          ].join(' ')}
+        >
+          {card.pick}로 하면 매달 {won(card.saving)} 아낍니다 (1년 {won(card.saving * 12)})
+        </p>
+      ) : null}
+    </li>
+  )
+}
+
 export default function HospitalCoveragePage(): JSX.Element {
   const [tab, setTab] = useState<TabKey>('upload')
   const [plan, setPlan] = useState<PlanKey>('hospital')
   const [planPrefs, setPlanPrefs] = useState<PlanPrefs>(() => loadPlanPrefs())
+  // 설계사용으로 볼지, 고객에게 보여줄지 — 고른 값은 기기에 남는다.
+  const [view, setView] = useState<ViewPrefs>(() => loadViewPrefs())
   // 플랜별 AI 설명(조합 설계안이 왜 좋은지 3가지). 플랜을 바꿔도 각각 남는다.
   const [mixNotes, setMixNotes] = useState<Partial<Record<PlanKey, MixExplanation>>>({})
   const [pending, setPending] = useState<File[]>([])
@@ -622,7 +786,7 @@ export default function HospitalCoveragePage(): JSX.Element {
    *
    * 정렬은 "아끼는 돈이 큰 담보" 순이다. 어디서 돈이 갈리는지가 먼저 보여야 한다.
    */
-  const coverageCards = useMemo(() => {
+  const coverageCards: VersusCardData[] = useMemo(() => {
     return comparableRows
       .map((row) => {
         const basis = unitBasis(row.amountManwon)
@@ -638,23 +802,55 @@ export default function HospitalCoveragePage(): JSX.Element {
         )
         // 조합이 고른 회사를 그대로 강조한다 — 카드와 추천이 어긋나면 FC 가 헷갈린다.
         const pick = mixPickByKey.get(row.key) ?? ranking.best?.company ?? null
-        // 가입금액이 같을 때만 "매달 얼마 아낌" 을 원 단위로 말할 수 있다.
+        // 가입금액이 같고 우리가 고른 회사가 실제 1등일 때만 "매달 얼마 아낌" 을 말할 수 있다.
         const saving =
           !row.amountsDiffer && ranking.ranked.length > 1 && pick === ranking.ranked[0].company
             ? ranking.ranked[1].premiumWon - ranking.ranked[0].premiumWon
             : null
-        return { row, basis, ranking, pick, saving }
+        const pickOffer = ranking.ranked.find((o) => o.company === pick)
+        const scopeOf: Record<string, string> = {}
+        for (const [company, cell] of Object.entries(row.byCompany)) if (cell?.scope) scopeOf[company] = cell.scope
+
+        return {
+          key: row.key,
+          label: row.label,
+          amountManwon: row.amountManwon,
+          amountsDiffer: row.amountsDiffer,
+          scopesDiffer: row.scopesDiffer,
+          checked: row.checked,
+          scopeOf,
+          // 고른 회사와 견준 차이. 혹시 더 싼 곳이 있으면 extra 가 음수가 되어 '같음' 으로 표시된다.
+          ranked: ranking.ranked.map((o) => ({
+            company: o.company,
+            premiumWon: o.premiumWon,
+            amountManwon: o.amountManwon,
+            unitPrice: o.unitPrice,
+            extra: row.amountsDiffer
+              ? o.score - (pickOffer?.score ?? o.score)
+              : o.premiumWon - (pickOffer?.premiumWon ?? o.premiumWon)
+          })),
+          pick,
+          saving,
+          basisLabel: basis?.label ?? null,
+          toggle: (next: boolean) => toggleCompareRow(row, next)
+        }
       })
-      .filter((card) => card.ranking.ranked.length > 0)
+      .filter((card) => card.ranked.length > 0)
       .sort((a, b) => (b.saving ?? 0) - (a.saving ?? 0))
+    // toggleCompareRow 는 setDocs 만 쓰므로 매 렌더 같은 일을 한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [comparableRows, compareCompanies, mixPickByKey])
+
+  /** 고객에게 보여줄 때는 체크한 담보만 나온다 */
+  const shownCards = useMemo(() => coverageCards.filter((c) => c.checked), [coverageCards])
+  const shownSoleRows = useMemo(() => soleRows.filter((r) => r.checked), [soleRows])
 
   /** 이 플랜에서 회사마다 몇 개를 맡고 매달 얼마인지 — 결론 카드의 역할 배지 */
   const planRoles = useMemo(() => {
     const roles = new Map<string, { count: number; premium: number }>()
     for (const card of coverageCards) {
-      if (!card.row.checked || !card.pick) continue
-      const premium = card.row.byCompany[card.pick]?.premium ?? 0
+      if (!card.checked || !card.pick) continue
+      const premium = card.ranked.find((o) => o.company === card.pick)?.premiumWon ?? 0
       const prev = roles.get(card.pick) ?? { count: 0, premium: 0 }
       roles.set(card.pick, { count: prev.count + 1, premium: prev.premium + premium })
     }
@@ -1082,6 +1278,192 @@ export default function HospitalCoveragePage(): JSX.Element {
                 })}
               </div>
 
+              {/* 보기 전환 — 설계사용(작업) / 고객용(보여주기).
+                  고객 앞에서는 체크박스나 설정이 보이면 안 된다. 고른 값은 기기에 저장된다. */}
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-white px-3 py-2.5 shadow-sm">
+                <div className="flex rounded-xl bg-slate-950 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setView(setViewMode(view, 'fc'))}
+                    className={[
+                      'rounded-lg px-3 py-1.5 text-[13px] font-extrabold transition',
+                      view.mode === 'fc' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                    ].join(' ')}
+                  >
+                    설계사용
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView(setViewMode(view, 'customer'))}
+                    className={[
+                      'rounded-lg px-3 py-1.5 text-[13px] font-extrabold transition',
+                      view.mode === 'customer' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                    ].join(' ')}
+                  >
+                    고객용
+                  </button>
+                </div>
+
+                <div className="flex flex-1 items-center justify-end gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500">고객에게 보여줄 방식</span>
+                  <button
+                    type="button"
+                    onClick={() => setView(setCustomerStyle(view, 'versus'))}
+                    className={[
+                      'rounded-lg border-2 px-2.5 py-1.5 text-[12px] font-extrabold transition',
+                      view.customerStyle === 'versus'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-slate-800 bg-white text-slate-300'
+                    ].join(' ')}
+                  >
+                    대결
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView(setCustomerStyle(view, 'receipt'))}
+                    className={[
+                      'rounded-lg border-2 px-2.5 py-1.5 text-[12px] font-extrabold transition',
+                      view.customerStyle === 'receipt'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-slate-800 bg-white text-slate-300'
+                    ].join(' ')}
+                  >
+                    견적서
+                  </button>
+                </div>
+              </div>
+
+              {view.mode === 'customer' ? (
+                /* ---------- 고객에게 보여주는 화면 ---------- */
+                <div className="space-y-3">
+                  {mix.rows.length === 0 ? (
+                    <div className="rounded-2xl border border-slate-800 bg-white p-6 text-center text-[13px] text-slate-500 shadow-sm">
+                      보여줄 담보가 없습니다. 설계사용으로 돌아가 담보를 골라주세요.
+                    </div>
+                  ) : view.customerStyle === 'versus' ? (
+                    <>
+                      <div className="rounded-2xl bg-[#0e1e3a] px-4 py-4 text-white">
+                        <div className="text-[13px] font-semibold opacity-80">{planLabel} · 담보마다 저렴한 회사로</div>
+                        <div className="mt-1 text-[34px] font-extrabold leading-none tracking-tight tabular-nums">
+                          매달 {mix.mixPremium ? won(mix.mixPremium) : '확인 필요'}
+                        </div>
+                        {mix.savedVsSingle !== null && mix.savedVsSingle > 0 ? (
+                          <div className="mt-2 inline-block rounded-xl bg-emerald-600 px-3 py-1.5 text-[14px] font-extrabold">
+                            한 곳에 다 넣기보다 매달 {won(mix.savedVsSingle)} 아낌
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <ul className="space-y-2">
+                        {shownCards.map((card) => (
+                          <VersusCard key={card.key} card={card} big />
+                        ))}
+                      </ul>
+
+                      {shownSoleRows.length > 0 ? (
+                        <div className="rounded-2xl border-2 border-slate-800 bg-white p-3 shadow-sm">
+                          <p className="text-[13px] font-extrabold text-slate-100">한 회사에만 있는 담보</p>
+                          <ul className="mt-2 space-y-1.5">
+                            {shownSoleRows.map((row) => {
+                              const only = compareCompanies.find((c) => row.byCompany[c]?.premium)
+                              const cell = only ? row.byCompany[only] : null
+                              return (
+                                <li key={row.key} className="flex items-baseline justify-between gap-2">
+                                  <span className="text-[14px] font-bold text-slate-200">{row.label}</span>
+                                  <span className="shrink-0 text-[13px] font-bold text-slate-500">
+                                    {only} <span className="tabular-nums text-slate-200">{cell?.premium ? won(cell.premium) : '-'}</span>
+                                  </span>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    /* 견적서 — 종이 한 장처럼. 그대로 보여주거나 출력한다. */
+                    <div className="rounded-2xl border border-slate-800 bg-white p-5 shadow-sm">
+                      <div className="border-b-2 border-slate-100 pb-3 text-center">
+                        <div className="text-[19px] font-extrabold tracking-[0.2em] text-slate-100">보험 설계안</div>
+                        <div className="mt-1 text-[12px] text-slate-500">{planLabel} · 담보마다 저렴한 회사로 나누어 설계</div>
+                      </div>
+
+                      <div className="flex justify-between border-b border-dashed border-slate-700 py-2 text-[11px] font-bold text-slate-500">
+                        <span>담보 · 가입금액</span>
+                        <span>회사 · 월 보험료</span>
+                      </div>
+
+                      <ul>
+                        {mix.rows.map((row) => (
+                          <li key={row.key} className="flex items-center justify-between gap-3 border-b border-dashed border-slate-800 py-2.5">
+                            <span className="flex-1">
+                              <span className="block text-[14px] font-bold text-slate-100">{row.label}</span>
+                              <span className="block text-[11.5px] text-slate-500">
+                                {row.best?.amountManwon ? `${row.best.amountManwon.toLocaleString('ko-KR')}만원` : '가입금액 확인 필요'}
+                                {row.best && row.best.coverageName !== row.label ? ` · ${row.best.coverageName}` : ''}
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-right">
+                              <span className="block text-[11.5px] font-bold text-indigo-700">{row.best?.company ?? '-'}</span>
+                              <span className="block text-[15px] font-extrabold tabular-nums text-slate-100">
+                                {row.best?.premiumWon ? row.best.premiumWon.toLocaleString('ko-KR') : '-'}
+                              </span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      <div className="mt-3 flex items-baseline justify-between border-t-2 border-slate-100 pt-3">
+                        <span className="text-[15px] font-extrabold text-slate-100">매달 내는 돈</span>
+                        <span className="text-[27px] font-extrabold tracking-tight tabular-nums text-slate-100">
+                          {mix.mixPremium ? won(mix.mixPremium) : '확인 필요'}
+                        </span>
+                      </div>
+
+                      {mix.cheapestSingle && mix.savedVsSingle !== null && mix.savedVsSingle > 0 ? (
+                        <div className="mt-3 space-y-1.5 rounded-xl bg-slate-950 px-4 py-3">
+                          <div className="flex justify-between text-[12.5px] text-slate-300">
+                            <span>한 회사에 다 넣으면 ({mix.cheapestSingle.company})</span>
+                            <span className="font-bold tabular-nums">{won(mix.cheapestSingle.premium)}</span>
+                          </div>
+                          <div className="flex justify-between text-[13.5px] font-extrabold text-emerald-700">
+                            <span>나눠서 아끼는 돈</span>
+                            <span className="tabular-nums">매달 {won(mix.savedVsSingle)}</span>
+                          </div>
+                          <div className="flex justify-between text-[12.5px] font-bold text-emerald-700">
+                            <span>1년이면</span>
+                            <span className="tabular-nums">{won(mix.savedVsSingle * 12)}</span>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <p className="mt-3 text-[10.5px] leading-relaxed text-slate-500">
+                        보장 범위가 다른 담보는 담보명 옆에 회사가 실제로 넣은 담보를 적었습니다.
+                        최종 보험료는 심사 결과에 따라 달라질 수 있습니다.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => setView(setViewMode(view, 'fc'))}
+                      className="rounded-xl border-2 border-slate-700 bg-white px-3 py-3 text-[14px] font-extrabold text-slate-200"
+                    >
+                      설계사용으로 돌아가기
+                    </button>
+                    <button
+                      type="button"
+                      onClick={downloadPlanExcel}
+                      disabled={Boolean(busy)}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border-2 border-slate-700 bg-white px-3 py-3 text-[14px] font-extrabold text-slate-200 disabled:opacity-50"
+                    >
+                      <Download className="h-4 w-4" /> 엑셀로 받기
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
               {/* 2) 결론 — 담보마다 싼 회사로 나누면 얼마인가 */}
               {mix.rows.length > 0 ? (
                 <div className="space-y-3 rounded-2xl border-2 border-indigo-300 bg-white p-4 shadow-sm">
@@ -1142,8 +1524,9 @@ export default function HospitalCoveragePage(): JSX.Element {
                   ) : null}
 
                   <p className="text-[11px] leading-relaxed text-slate-500">
-                    아래 카드에서 담보마다 <span className="font-bold text-emerald-700">✓ 표시된 회사</span>가 고른 곳입니다.
-                    같은 보장금액으로 맞춰 비교하고, 보장 범위가 다른 담보(뇌혈관질환과 뇌졸중 등)는 섞지 않습니다.
+                    아래에서 담보마다 <span className="font-bold text-emerald-700">초록으로 이긴 회사</span>가 고른 곳입니다.
+                    같은 보장금액으로 맞춰 비교하고, 회사마다 넣는 담보가 다른 자리(뇌혈관질환과 뇌졸중 등)는 한 줄에서 맞붙여
+                    한 곳만 고릅니다 — 둘 다 더해 보험료가 부풀려지지 않게 합니다.
                   </p>
 
                   {/* AI 설명 */}
@@ -1183,112 +1566,16 @@ export default function HospitalCoveragePage(): JSX.Element {
                 </div>
               ) : null}
 
-              {/* 3) 담보 카드 — 담보 하나에 카드 하나. 옆으로 넘기지 않고 세로로만 읽는다.
-                  막대가 길면 비싼 곳. 숫자를 읽지 않아도 어디가 싼지 보이게 하는 게 목적이다. */}
+              {/* 3) 담보 카드 — 담보 하나를 두고 회사를 맞붙인다(설계사용). */}
               {coverageCards.length > 0 ? (
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-1 px-1">
-                    <h3 className="text-[14px] font-extrabold text-slate-100">담보별로 어디가 싼지</h3>
-                    <p className="text-[11.5px] text-slate-500">돈이 많이 갈리는 담보부터 · 막대가 짧은 곳이 쌉니다</p>
+                    <h3 className="text-[14px] font-extrabold text-slate-100">담보별 대결</h3>
+                    <p className="text-[11.5px] text-slate-500">돈이 많이 갈리는 담보부터</p>
                   </div>
-
                   <ul className="space-y-2">
-                    {coverageCards.map(({ row, basis, ranking, pick, saving }) => (
-                      <li
-                        key={row.key}
-                        className={[
-                          'rounded-2xl border-2 bg-white p-3 shadow-sm transition',
-                          row.checked ? 'border-slate-800' : 'border-slate-800 opacity-45'
-                        ].join(' ')}
-                      >
-                        <label className="flex cursor-pointer items-start gap-2.5">
-                          <input
-                            type="checkbox"
-                            checked={row.checked}
-                            onChange={(e) => toggleCompareRow(row, e.target.checked)}
-                            className="mt-0.5 h-5 w-5 shrink-0 accent-indigo-600"
-                          />
-                          <span className="flex-1">
-                            <span className="block text-[15px] font-extrabold leading-tight text-slate-100">{row.label}</span>
-                            <span className="mt-0.5 block text-[11.5px] text-slate-500">
-                              {row.amountsDiffer
-                                ? '회사마다 가입금액이 다릅니다 — 같은 금액으로 맞춰 비교했습니다'
-                                : row.amountManwon
-                                  ? `가입금액 ${row.amountManwon.toLocaleString('ko-KR')}만원`
-                                  : '가입금액을 못 읽어 보험료로만 비교했습니다'}
-                              {row.scopesDiffer ? ' · 회사마다 보장범위가 다릅니다' : ''}
-                            </span>
-                          </span>
-                        </label>
-
-                        <ol className="mt-2.5 space-y-2">
-                          {ranking.ranked.map((offer) => {
-                            const win = offer.company === pick
-                            // 고른 회사와 견준 차이. 혹시 더 싼 곳이 있으면 그대로 말한다(숨기지 않는다).
-                            const pickOffer = ranking.ranked.find((o) => o.company === pick)
-                            const diff = row.amountsDiffer
-                              ? offer.score - (pickOffer?.score ?? offer.score)
-                              : offer.premiumWon - (pickOffer?.premiumWon ?? offer.premiumWon)
-                            // 가입금액이 다른 줄은 단가로 견준다(칸 아래에 단위를 적어 둔다).
-                            const head = row.amountsDiffer ? '단가 ' : ''
-                            const gapText =
-                              diff > 0
-                                ? `${head}+${diff.toLocaleString('ko-KR')}원`
-                                : diff < 0
-                                  ? `${head}-${Math.abs(diff).toLocaleString('ko-KR')}원`
-                                  : '같음'
-                            return (
-                              <li key={offer.company}>
-                                <div className="flex items-baseline justify-between gap-2">
-                                  <span className={['text-[13px] font-bold', win ? 'text-emerald-700' : 'text-slate-300'].join(' ')}>
-                                    {win ? '✓ ' : ''}
-                                    {offer.company}
-                                  </span>
-                                  <span
-                                    className={[
-                                      'shrink-0 tabular-nums text-[15px] font-extrabold',
-                                      win ? 'text-emerald-700' : 'text-slate-200'
-                                    ].join(' ')}
-                                  >
-                                    {won(offer.premiumWon)}
-                                  </span>
-                                </div>
-                                <div className="mt-1 flex items-center gap-2">
-                                  <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-800">
-                                    <span
-                                      className={['block h-full rounded-full', win ? 'bg-emerald-500' : 'bg-slate-600'].join(' ')}
-                                      style={{ width: `${Math.max(8, Math.round(offer.ratio * 100))}%` }}
-                                    />
-                                  </span>
-                                  <span
-                                    className={[
-                                      'w-[92px] shrink-0 text-right text-[11px] font-bold tabular-nums',
-                                      win ? 'text-emerald-700' : 'text-slate-500'
-                                    ].join(' ')}
-                                  >
-                                    {win ? '가장 쌈' : gapText}
-                                  </span>
-                                </div>
-                                {row.amountsDiffer && offer.amountManwon ? (
-                                  <div className="mt-0.5 text-[10.5px] text-slate-500">
-                                    {offer.amountManwon.toLocaleString('ko-KR')}만원
-                                    {offer.unitPrice ? ` · ${basis?.label} ${offer.unitPrice.toLocaleString('ko-KR')}원` : ''}
-                                  </div>
-                                ) : null}
-                                {row.scopesDiffer ? (
-                                  <div className="mt-0.5 text-[10.5px] text-slate-500">{row.byCompany[offer.company]?.scope}</div>
-                                ) : null}
-                              </li>
-                            )
-                          })}
-                        </ol>
-
-                        {saving && pick ? (
-                          <p className="mt-2 rounded-xl bg-emerald-50 px-2.5 py-1.5 text-[12px] font-bold leading-relaxed text-emerald-800">
-                            이 담보는 {pick} — 매달 {won(saving)} 아낍니다 (1년 {won(saving * 12)})
-                          </p>
-                        ) : null}
-                      </li>
+                    {coverageCards.map((card) => (
+                      <VersusCard key={card.key} card={card} />
                     ))}
                   </ul>
                 </div>
@@ -1632,6 +1919,8 @@ export default function HospitalCoveragePage(): JSX.Element {
                   </details>
                 )
               })}
+                </>
+              )}
             </>
           )}
         </div>

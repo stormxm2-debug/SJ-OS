@@ -107,10 +107,11 @@ test('담보별로 회사를 쪼갠다 — 암은 A, 뇌·심장은 B', () => {
     item('B화재', '뇌혈관질환진단비', '2,000만원', '11,000원'),
     item('B화재', '급성심근경색진단비', '2,000만원', '9,000원')
   ])
+  // 뇌·심장은 보장군 이름으로 한 줄이 된다(회사마다 넣는 담보가 다르기 때문).
   const pick = (label) => mix.rows.find((r) => r.label === label).best.company
   assert.equal(pick('암진단비(일반암)'), 'A생명')
-  assert.equal(pick('뇌혈관질환진단비'), 'B화재')
-  assert.equal(pick('급성심근경색진단비'), 'B화재')
+  assert.equal(pick('뇌 진단비'), 'B화재')
+  assert.equal(pick('심장 진단비'), 'B화재')
 
   // 조합 = 12,000 + 11,000 + 9,000
   assert.equal(mix.mixPremium, 32000)
@@ -294,4 +295,30 @@ test('아무 값도 없으면 빈 결과', () => {
   assert.deepEqual(r.ranked, [])
   assert.equal(r.best, null)
   assert.equal(r.gap, null)
+})
+
+test('같은 자리 담보는 한 줄로 보고 두 번 더하지 않는다', () => {
+  // A사는 뇌혈관질환, B사는 뇌졸중만 넣었다. 나누면 둘 다 산 것으로 더해져 보험료가 부풀려진다.
+  const mix = buildMix([
+    item('A생명', '뇌혈관질환진단비', '2,000만원', '24,800원'),
+    item('B화재', '뇌졸중진단비', '2,000만원', '18,600원')
+  ])
+  assert.equal(mix.rows.length, 1)
+  assert.equal(mix.rows[0].label, '뇌 진단비')
+  assert.equal(mix.rows[0].best.company, 'B화재')
+  assert.equal(mix.mixPremium, 18600)
+})
+
+test('한 회사가 같은 자리 담보를 둘 다 넣었으면 그 회사 몫은 합친다', () => {
+  const mix = buildMix([
+    item('A생명', '뇌혈관질환진단비', '2,000만원', '14,000원'),
+    item('A생명', '뇌졸중진단비', '1,000만원', '6,000원'),
+    item('B화재', '뇌졸중진단비', '2,000만원', '18,600원')
+  ])
+  assert.equal(mix.rows.length, 1)
+  const a = mix.rows[0].candidates.find((c) => c.company === 'A생명')
+  assert.equal(a.premiumWon, 20000)
+  assert.equal(a.amountManwon, 2000)
+  // 2,000만원에 20,000원(단가 10,000) vs 2,000만원에 18,600원(단가 9,300)
+  assert.equal(mix.rows[0].best.company, 'B화재')
 })

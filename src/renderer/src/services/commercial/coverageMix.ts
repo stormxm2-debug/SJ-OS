@@ -218,8 +218,11 @@ export function buildMix(items: MixInputItem[]): MixResult {
   for (const item of items) {
     const company = item.company.trim()
     if (!company) continue
-    const { key, label } = mixKeyOf(item.coverageName)
-    if (!key) continue
+    const raw = mixKeyOf(item.coverageName)
+    if (!raw.key) continue
+    // 같은 자리 담보(뇌혈관 vs 뇌졸중)는 한 줄로 본다.
+    // 나누면 A사 뇌혈관과 B사 뇌졸중을 둘 다 산 것으로 더해져 조합 보험료가 부풀려진다.
+    const { key, label } = familyOf(raw.key, raw.label)
 
     const bucket = byKey.get(key) ?? { label, plan: item.plan, groupKey: item.groupKey, byCompany: new Map<string, MixCandidate>() }
     const amount = parseAmountManwon(item.amount)
