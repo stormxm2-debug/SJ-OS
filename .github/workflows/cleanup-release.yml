@@ -1,0 +1,47 @@
+# 릴리스 지우기 (손으로만 실행)
+#
+# 잘못 올라간 릴리스를 지운다. Actions 탭 → "릴리스 지우기" → Run workflow →
+# 지울 태그(예: v1.0.45)를 적고 실행한다. 저절로 돌지 않는다.
+#
+# 이 파일은 v1.0.45(설치본만 있고 latest.yml 이 빠진 릴리스)를 지우려고 만들었다.
+# 쓰고 나면 지워도 된다.
+
+name: 릴리스 지우기
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '지울 릴리스 태그 (예: v1.0.45)'
+        required: true
+        type: string
+      delete_tag:
+        description: '깃 태그도 같이 지우기'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  delete:
+    name: 릴리스 지우기
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 지우기
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          ALSO_TAG: ${{ inputs.delete_tag }}
+        run: |
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::$TAG 릴리스가 없습니다."
+            exit 1
+          fi
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+          echo "$TAG 릴리스를 지웠습니다." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ALSO_TAG" = "true" ]; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG"
+            echo "깃 태그 $TAG 도 지웠습니다." >> "$GITHUB_STEP_SUMMARY"
+          fi
