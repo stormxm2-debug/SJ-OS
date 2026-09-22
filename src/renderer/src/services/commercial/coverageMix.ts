@@ -369,3 +369,73 @@ export function unitPriceAt(premiumWon: number | null, amountManwon: number | nu
   if (!premiumWon || !amountManwon || !basis) return null
   return Math.round((premiumWon / amountManwon) * basis.perManwon)
 }
+
+/* ---------- 담보 한 개를 회사별로 줄 세우기 ---------- */
+
+export interface CompanyOffer {
+  company: string
+  premiumWon: number
+  amountManwon: number | null
+}
+
+export interface RankedOffer extends CompanyOffer {
+  /** 이 회사의 단위당 보험료(가입금액을 읽었을 때만) */
+  unitPrice: number | null
+  /** 비교에 실제로 쓴 값 — 가입금액을 읽었으면 단가, 못 읽었으면 보험료 */
+  score: number
+  /** 제일 비싼 곳 대비 길이(0~1). 막대 길이로 쓴다 */
+  ratio: number
+  /** 제일 싼 곳보다 얼마나 더 내는지(score 기준). 1등은 0 */
+  extra: number
+  best: boolean
+}
+
+export interface CoverageRanking {
+  ranked: RankedOffer[]
+  best: RankedOffer | null
+  /** 1등과 2등의 차이. 회사가 하나뿐이면 null */
+  gap: number | null
+  /** 회사마다 가입금액이 달라 보험료를 그대로 비교할 수 없는 줄인지 */
+  amountsDiffer: boolean
+}
+
+/**
+ * 담보 하나를 두고 회사를 싼 순으로 줄 세운다.
+ *
+ * 표 대신 담보마다 카드를 보여주기 위한 계산이다. 화면에는 막대 길이(ratio)와
+ * "얼마 더 비싼지"(extra)만 있으면 되고, FC 는 숫자를 읽지 않아도 길이로 안다.
+ *
+ * 가입금액을 읽었으면 단가로 비교한다. 3,000만원 18,000원과 2,000만원 14,000원을
+ * 보험료로만 줄 세우면 적게 가입한 쪽이 싸 보이기 때문이다.
+ * 한 회사라도 가입금액을 못 읽으면 그 줄은 보험료로 비교하고 amountsDiffer 로 알린다.
+ */
+export function rankOffers(offers: CompanyOffer[], basis: UnitBasis | null): CoverageRanking {
+  const usable = offers.filter((o) => o.premiumWon > 0)
+  if (usable.length === 0) return { ranked: [], best: null, gap: null, amountsDiffer: false }
+
+  const amounts = new Set(usable.map((o) => o.amountManwon))
+  const everyAmountKnown = usable.every((o) => Boolean(o.amountManwon))
+  const amountsDiffer = amounts.size > 1
+
+  const scored = usable.map((o) => {
+    const unitPrice = unitPriceAt(o.premiumWon, o.amountManwon, basis)
+    // 가입금액을 모두 읽었을 때만 단가로 비교한다. 하나라도 모르면 사과와 배를 섞는 셈이다.
+    return { ...o, unitPrice, score: everyAmountKnown && unitPrice ? unitPrice : o.premiumWon }
+  })
+
+  const sorted = [...scored].sort((a, b) => a.score - b.score)
+  const cheapest = sorted[0].score
+  const dearest = sorted[sorted.length - 1].score
+
+  return {
+    ranked: sorted.map((o, i) => ({
+      ...o,
+      ratio: dearest > 0 ? o.score / dearest : 0,
+      extra: o.score - cheapest,
+      best: i === 0
+    })),
+    best: { ...sorted[0], ratio: dearest > 0 ? cheapest / dearest : 0, extra: 0, best: true },
+    gap: sorted.length > 1 ? sorted[1].score - cheapest : null,
+    amountsDiffer
+  }
+}

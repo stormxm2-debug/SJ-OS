@@ -24,7 +24,7 @@ async function load(src) {
   return import(file)
 }
 
-const { buildMix, mixKeyOf, familyOf, unitBasis, unitPriceAt, parseAmountManwon, parsePremiumWon } = await load(
+const { buildMix, mixKeyOf, familyOf, unitBasis, unitPriceAt, rankOffers, parseAmountManwon, parsePremiumWon } = await load(
   'src/renderer/src/services/commercial/coverageMix.ts'
 )
 
@@ -231,4 +231,67 @@ test('단위를 바꿔도 한 줄 안에서 회사 순위는 그대로다', () =
   const b = unitPriceAt(21000, 3000, unitBasis(3000))
   assert.ok(a < b)
   assert.ok(18000 / 3000 < 21000 / 3000)
+})
+
+/* ---------- 담보 카드: 회사 줄 세우기 ---------- */
+
+const offer = (company, premiumWon, amountManwon) => ({ company, premiumWon, amountManwon })
+
+test('회사를 싼 순으로 줄 세우고 1등을 표시한다', () => {
+  const r = rankOffers(
+    [offer('A생명', 18000, 3000), offer('B화재', 12000, 3000), offer('C손보', 15000, 3000)],
+    unitBasis(3000)
+  )
+  assert.deepEqual(r.ranked.map((o) => o.company), ['B화재', 'C손보', 'A생명'])
+  assert.equal(r.best.company, 'B화재')
+  assert.equal(r.ranked[0].best, true)
+  assert.equal(r.ranked[1].best, false)
+})
+
+test('막대 길이는 제일 비싼 곳이 꽉 차고, 나머지는 그 비율이다', () => {
+  const r = rankOffers([offer('A생명', 10000, 1000), offer('B화재', 20000, 1000)], unitBasis(1000))
+  assert.equal(r.ranked[1].ratio, 1)
+  assert.equal(r.ranked[0].ratio, 0.5)
+})
+
+test('1등보다 얼마나 더 내는지 알려준다', () => {
+  const r = rankOffers([offer('A생명', 12000, 3000), offer('B화재', 15000, 3000)], unitBasis(3000))
+  // 같은 가입금액이면 단가 차이가 곧 보험료 차이 비율이다(3,000만원 -> 1,000만원당)
+  assert.equal(r.ranked[0].extra, 0)
+  assert.equal(r.ranked[1].extra, 1000)
+  assert.equal(r.gap, 1000)
+})
+
+test('가입금액이 다르면 단가로 줄 세운다 — 싼 보험료에 속지 않는다', () => {
+  // A: 3,000만원 18,000원 -> 1,000만원당 6,000원
+  // B: 1,000만원  9,000원 -> 1,000만원당 9,000원
+  const r = rankOffers([offer('A생명', 18000, 3000), offer('B화재', 9000, 1000)], unitBasis(3000))
+  assert.equal(r.best.company, 'A생명')
+  assert.equal(r.amountsDiffer, true)
+})
+
+test('가입금액을 못 읽은 회사가 있으면 보험료로 비교한다', () => {
+  const r = rankOffers([offer('A생명', 18000, 3000), offer('B화재', 15000, null)], unitBasis(3000))
+  assert.equal(r.best.company, 'B화재')
+  assert.equal(r.ranked[0].score, 15000)
+})
+
+test('회사가 하나뿐이면 비교하지 않는다', () => {
+  const r = rankOffers([offer('A생명', 12000, 3000)], unitBasis(3000))
+  assert.equal(r.gap, null)
+  assert.equal(r.best.company, 'A생명')
+  assert.equal(r.ranked[0].ratio, 1)
+})
+
+test('보험료가 없는 회사는 줄에서 뺀다', () => {
+  const r = rankOffers([offer('A생명', 0, 3000), offer('B화재', 12000, 3000)], unitBasis(3000))
+  assert.equal(r.ranked.length, 1)
+  assert.equal(r.best.company, 'B화재')
+})
+
+test('아무 값도 없으면 빈 결과', () => {
+  const r = rankOffers([], unitBasis(3000))
+  assert.deepEqual(r.ranked, [])
+  assert.equal(r.best, null)
+  assert.equal(r.gap, null)
 })
