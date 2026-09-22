@@ -841,6 +841,32 @@ export default function HospitalCoveragePage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [comparableRows, compareCompanies, mixPickByKey])
 
+  /**
+   * 왜 맞대결이 안 되는지 — 화면이 빈 채로 남지 않게 이유를 만든다.
+   *
+   * 실제로 이런 일이 있었다. 제안서 2건을 올렸는데 한 건은 회사명을 못 읽어
+   * '회사 미확인' 이 되고, 다른 한 건은 이 플랜에 담보가 0개였다. 그래서 비교할
+   * 상대가 없어 카드가 하나도 안 나왔는데, 화면에는 아무 설명도 없었다.
+   */
+  const compareBlocker = useMemo(() => {
+    if (docs.length === 0 || coverageCards.length > 0) return null
+    const perDoc = docs.map((doc) => ({
+      id: doc.id,
+      fileName: doc.fileName,
+      company: doc.company.trim(),
+      count: doc.items.filter((it) => it.plan === plan).length
+    }))
+    const withItems = perDoc.filter((d) => d.count > 0)
+    const companies = new Set(withItems.map((d) => d.company || '회사 미확인'))
+    const reason =
+      withItems.length === 0
+        ? '이 플랜에 담보가 하나도 없습니다. 위에서 다른 플랜을 눌러보세요.'
+        : companies.size < 2
+          ? '이 플랜에 담보가 있는 제안서가 한 곳뿐입니다. 비교하려면 다른 회사 제안서도 올려주세요.'
+          : '두 제안서에 같은 자리 담보가 없습니다. 아래 "표로 한 번에 보기" 에서 담보 이름을 확인해주세요.'
+    return { perDoc, reason, needsCompany: perDoc.some((d) => !d.company) }
+  }, [docs, plan, coverageCards])
+
   /** 고객에게 보여줄 때는 체크한 담보만 나온다 */
   const shownCards = useMemo(() => coverageCards.filter((c) => c.checked), [coverageCards])
   const shownSoleRows = useMemo(() => soleRows.filter((r) => r.checked), [soleRows])
@@ -1464,6 +1490,43 @@ export default function HospitalCoveragePage(): JSX.Element {
                 </div>
               ) : (
                 <>
+              {/* 맞대결이 안 될 때 — 이유와 고치는 방법을 그 자리에서 보여준다 */}
+              {compareBlocker ? (
+                <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+                  <h3 className="text-[14px] font-extrabold text-amber-900">지금은 회사끼리 맞대결할 수 없습니다</h3>
+                  <p className="mt-1 text-[12.5px] leading-relaxed text-amber-900">{compareBlocker.reason}</p>
+
+                  <ul className="mt-3 space-y-2">
+                    {compareBlocker.perDoc.map((d) => (
+                      <li key={d.id} className="rounded-xl border border-amber-200 bg-white px-3 py-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[12px] font-bold text-slate-200">{d.fileName}</span>
+                          <span className="text-[12px] font-bold text-slate-500">{planLabel} 담보 {d.count}개</span>
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <span className="text-[11.5px] font-bold text-slate-500">보험사</span>
+                          <input
+                            value={d.company}
+                            onChange={(e) => updateDoc(d.id, { company: e.target.value })}
+                            placeholder="회사명을 직접 입력"
+                            className={[
+                              'flex-1 rounded-lg border px-2.5 py-1.5 text-[13px] font-bold text-slate-200 outline-none focus:border-indigo-400',
+                              d.company ? 'border-slate-700 bg-white' : 'border-amber-400 bg-amber-50'
+                            ].join(' ')}
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {compareBlocker.needsCompany ? (
+                    <p className="mt-2 text-[11.5px] font-semibold text-amber-900">
+                      회사명을 못 읽은 제안서가 있습니다. 위 칸에 회사명을 적으면 바로 비교가 시작됩니다.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
               {/* 2) 결론 — 담보마다 싼 회사로 나누면 얼마인가 */}
               {mix.rows.length > 0 ? (
                 <div className="space-y-3 rounded-2xl border-2 border-indigo-300 bg-white p-4 shadow-sm">
@@ -1495,8 +1558,8 @@ export default function HospitalCoveragePage(): JSX.Element {
                     ) : (
                       <div className="rounded-xl border-2 border-slate-800 bg-slate-950 px-4 py-3">
                         <div className="text-[12px] font-semibold text-slate-500">한 회사에 다 넣기</div>
-                        <div className="mt-0.5 text-[14px] font-bold text-slate-300">
-                          모든 담보를 가진 회사가 없어 비교하지 않았습니다
+                        <div className="mt-0.5 text-[13px] font-bold leading-relaxed text-slate-300">
+                          고른 담보를 전부 가진 회사가 한 곳도 없어, 한 회사로만 가입하는 경우와는 비교하지 않았습니다
                         </div>
                       </div>
                     )}
