@@ -184,6 +184,7 @@ async function analyzeProposal(file: File, prefs: PlanPrefs): Promise<ProposalDo
 /** 카드 한 장에 필요한 값만 담는다 — 화면이 계산을 다시 하지 않도록 */
 export interface VersusOffer {
   company: string
+  /** 이 회사에 이 담보가 없으면 0 */
   premiumWon: number
   amountManwon: number | null
   unitPrice: number | null
@@ -200,7 +201,8 @@ export interface VersusCardData {
   checked: boolean
   /** 회사별로 실제 넣은 담보 이름 — 보장범위가 다를 때 보여준다 */
   scopeOf: Record<string, string>
-  ranked: VersusOffer[]
+  /** 제안서 올린 순서 그대로 — 자리를 고정한다 */
+  offers: VersusOffer[]
   /** 우리가 고른 회사 */
   pick: string | null
   /** 그 회사로 해서 매달 아끼는 돈 (가입금액이 같을 때만) */
@@ -220,7 +222,7 @@ export interface VersusCardData {
  * big = 고객에게 보여주는 화면. 글씨를 키우고 체크박스 같은 작업용 요소를 뺀다.
  */
 function VersusCard({ card, big = false }: { card: VersusCardData; big?: boolean }): JSX.Element {
-  const two = card.ranked.length === 2
+  const two = card.offers.length === 2
   const title = big ? 'text-[19px]' : 'text-[15px]'
   const price = big ? 'text-[28px]' : 'text-[22px]'
   const name = big ? 'text-[14px]' : 'text-[12px]'
@@ -228,6 +230,17 @@ function VersusCard({ card, big = false }: { card: VersusCardData; big?: boolean
   const box = (offer: VersusOffer): JSX.Element => {
     const win = offer.company === card.pick
     const scope = card.scopeOf[offer.company]
+    if (!offer.premiumWon) {
+      return (
+        <div
+          key={offer.company}
+          className={['flex-grow basis-0 rounded-2xl border-2 border-dashed border-slate-800 px-3 py-3', two ? '' : 'min-w-[44%]'].join(' ')}
+        >
+          <div className={[name, 'font-bold text-slate-500'].join(' ')}>{offer.company}</div>
+          <div className="mt-1 text-[13px] font-bold text-slate-500">이 담보 없음</div>
+        </div>
+      )
+    }
     return (
       <div
         key={offer.company}
@@ -312,12 +325,12 @@ function VersusCard({ card, big = false }: { card: VersusCardData; big?: boolean
       <div className={['mt-2.5 flex items-stretch gap-2', two ? '' : 'flex-wrap'].join(' ')}>
         {two ? (
           <>
-            {box(card.ranked[0])}
+            {box(card.offers[0])}
             <div className="self-center text-[12px] font-extrabold text-slate-600">VS</div>
-            {box(card.ranked[1])}
+            {box(card.offers[1])}
           </>
         ) : (
-          card.ranked.map(box)
+          card.offers.map(box)
         )}
       </div>
 
@@ -341,6 +354,13 @@ export default function HospitalCoveragePage(): JSX.Element {
   const [planPrefs, setPlanPrefs] = useState<PlanPrefs>(() => loadPlanPrefs())
   // 설계사용으로 볼지, 고객에게 보여줄지 — 고른 값은 기기에 남는다.
   const [view, setView] = useState<ViewPrefs>(() => loadViewPrefs())
+  /**
+   * FC 가 직접 묶은 담보 짝. 키는 `${docId}|${itemKey}`, 값은 짝 이름(pair-1 …).
+   * 회사마다 특약 이름이 달라 자동으로는 못 붙는 담보를 화면에서 손으로 묶는다.
+   */
+  const [pairOf, setPairOf] = useState<Record<string, string>>({})
+  /** 짝을 만들 때 먼저 고른 담보 */
+  const [pairPick, setPairPick] = useState<{ docId: string; itemKey: string; company: string; label: string } | null>(null)
   // 플랜별 AI 설명(조합 설계안이 왜 좋은지 3가지). 플랜을 바꿔도 각각 남는다.
   const [mixNotes, setMixNotes] = useState<Partial<Record<PlanKey, MixExplanation>>>({})
   const [pending, setPending] = useState<File[]>([])
@@ -597,6 +617,9 @@ export default function HospitalCoveragePage(): JSX.Element {
   const current = planCounts(plan)
   const planLabel = PLANS.find((p) => p.key === plan)?.label ?? ''
 
+  /** 담보 한 줄을 가리키는 키 (제안서 안에서 유일) */
+  const itemId = (docId: string, itemKey: string): string => `${docId}|${itemKey}`
+
   /* ---------- 조합 설계안 (담보별 최저 보험료) ---------- */
 
   // 체크한 담보만 조합에 넣는다. 회사는 제안서의 보험사명 기준.
@@ -610,11 +633,13 @@ export default function HospitalCoveragePage(): JSX.Element {
           amount: it.amount,
           premium: it.premium,
           plan: it.plan,
-          groupKey: it.groupKey
+          groupKey: it.groupKey,
+          // FC 가 손으로 묶은 짝은 이름과 상관없이 한 줄에서 맞대결한다.
+          pairKey: pairOf[itemId(doc.id, it.key)] ?? null
         }))
     )
     return buildMix(items)
-  }, [docs, plan])
+  }, [docs, plan, pairOf])
 
   const mixCompanies = useMemo(
     () => [...new Set(docs.map((d) => d.company.trim() || '회사 미확인'))],
@@ -668,7 +693,10 @@ export default function HospitalCoveragePage(): JSX.Element {
         if (it.plan !== plan) continue
         const mixKey = mixKeyOf(it.coverageName)
         if (!mixKey.key) continue
-        const fam = familyOf(mixKey.key, mixKey.label)
+        const auto = familyOf(mixKey.key, mixKey.label)
+        // 직접 묶은 짝이 있으면 그걸 쓴다. 칸마다 실제 담보 이름을 보여주려고 grouped 로 둔다.
+        const manual = pairOf[itemId(doc.id, it.key)]
+        const fam = manual ? { key: manual, label: mixKey.label, grouped: true } : auto
         const row =
           byKey.get(fam.key) ??
           ({
@@ -721,7 +749,7 @@ export default function HospitalCoveragePage(): JSX.Element {
           Math.max(0, ...Object.values(r.byCompany).map((c) => c?.premium ?? 0))
         return max(b) - max(a)
       })
-  }, [docs, plan])
+  }, [docs, plan, pairOf])
 
   /** 여러 회사가 가진 담보 — 진짜 비교가 되는 줄 */
   const comparableRows = compareRows.filter((r) => r.offeredBy > 1)
@@ -819,23 +847,28 @@ export default function HospitalCoveragePage(): JSX.Element {
           scopesDiffer: row.scopesDiffer,
           checked: row.checked,
           scopeOf,
-          // 고른 회사와 견준 차이. 혹시 더 싼 곳이 있으면 extra 가 음수가 되어 '같음' 으로 표시된다.
-          ranked: ranking.ranked.map((o) => ({
-            company: o.company,
-            premiumWon: o.premiumWon,
-            amountManwon: o.amountManwon,
-            unitPrice: o.unitPrice,
-            extra: row.amountsDiffer
-              ? o.score - (pickOffer?.score ?? o.score)
-              : o.premiumWon - (pickOffer?.premiumWon ?? o.premiumWon)
-          })),
+          // 자리는 제안서 순서로 고정하고, 고른 회사와 견준 차이만 적는다.
+          // (담보마다 좌우가 바뀌면 어느 쪽이 어느 제안서인지 매번 읽어야 한다)
+          offers: compareCompanies.map((company) => {
+            const found = ranking.ranked.find((o) => o.company === company)
+            if (!found) return { company, premiumWon: 0, amountManwon: null, unitPrice: null, extra: 0 }
+            return {
+              company,
+              premiumWon: found.premiumWon,
+              amountManwon: found.amountManwon,
+              unitPrice: found.unitPrice,
+              extra: row.amountsDiffer
+                ? found.score - (pickOffer?.score ?? found.score)
+                : found.premiumWon - (pickOffer?.premiumWon ?? found.premiumWon)
+            }
+          }),
           pick,
           saving,
           basisLabel: basis?.label ?? null,
           toggle: (next: boolean) => toggleCompareRow(row, next)
         }
       })
-      .filter((card) => card.ranked.length > 0)
+      .filter((card) => card.offers.some((o) => o.premiumWon > 0))
       .sort((a, b) => (b.saving ?? 0) - (a.saving ?? 0))
     // toggleCompareRow 는 setDocs 만 쓰므로 매 렌더 같은 일을 한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -871,12 +904,69 @@ export default function HospitalCoveragePage(): JSX.Element {
   const shownCards = useMemo(() => coverageCards.filter((c) => c.checked), [coverageCards])
   const shownSoleRows = useMemo(() => soleRows.filter((r) => r.checked), [soleRows])
 
+  /**
+   * 한 회사에만 있는 담보를 회사별로 모은다.
+   *
+   * 회사마다 특약 이름이 아주 달라 자동으로는 못 붙는 담보가 있다.
+   * ('창상봉합술치료비' vs '상해흉터복원수술비') 이런 건 FC 가 직접 묶어야 맞대결이 된다.
+   */
+  const soleByCompany = useMemo(() => {
+    return compareCompanies.map((company) => ({
+      company,
+      rows: soleRows
+        .filter((row) => Boolean(row.byCompany[company]?.premium))
+        .map((row) => ({ row, cell: row.byCompany[company]! }))
+    }))
+  }, [soleRows, compareCompanies])
+
+  /** 지금 묶여 있는 짝 — 화면에 "A담보 ↔ B담보" 로 보여주고 풀 수 있게 한다 */
+  const pairList = useMemo(() => {
+    const byPair = new Map<string, { company: string; label: string }[]>()
+    for (const doc of docs) {
+      const company = doc.company.trim() || '회사 미확인'
+      for (const it of doc.items) {
+        const key = pairOf[itemId(doc.id, it.key)]
+        if (!key) continue
+        const list = byPair.get(key) ?? []
+        if (!list.some((v) => v.company === company)) list.push({ company, label: it.coverageName })
+        byPair.set(key, list)
+      }
+    }
+    return [...byPair.entries()].map(([key, members]) => ({ key, members }))
+  }, [docs, pairOf])
+
+  /** 담보 한 줄(여러 조각일 수 있다)을 통째로 짝에 넣는다 */
+  const addToPair = (rowItems: { docId: string; itemKey: string }[], company: string, label: string): void => {
+    const first = rowItems[0]
+    if (!first) return
+    if (!pairPick) {
+      setPairPick({ docId: first.docId, itemKey: first.itemKey, company, label })
+      return
+    }
+    if (pairPick.company === company) {
+      // 같은 회사끼리는 맞대결이 되지 않는다 — 방금 고른 것을 바꿔 준다.
+      setPairPick({ docId: first.docId, itemKey: first.itemKey, company, label })
+      return
+    }
+    const key = `pair-${Date.now().toString(36)}`
+    const picked = pairPick
+    setPairOf((prev) => {
+      const next = { ...prev, [itemId(picked.docId, picked.itemKey)]: key }
+      for (const r of rowItems) next[itemId(r.docId, r.itemKey)] = key
+      return next
+    })
+    setPairPick(null)
+  }
+
+  const unpair = (key: string): void =>
+    setPairOf((prev) => Object.fromEntries(Object.entries(prev).filter(([, v]) => v !== key)))
+
   /** 이 플랜에서 회사마다 몇 개를 맡고 매달 얼마인지 — 결론 카드의 역할 배지 */
   const planRoles = useMemo(() => {
     const roles = new Map<string, { count: number; premium: number }>()
     for (const card of coverageCards) {
       if (!card.checked || !card.pick) continue
-      const premium = card.ranked.find((o) => o.company === card.pick)?.premiumWon ?? 0
+      const premium = card.offers.find((o) => o.company === card.pick)?.premiumWon ?? 0
       const prev = roles.get(card.pick) ?? { count: 0, premium: 0 }
       roles.set(card.pick, { count: prev.count + 1, premium: prev.premium + premium })
     }
@@ -1634,7 +1724,9 @@ export default function HospitalCoveragePage(): JSX.Element {
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-baseline justify-between gap-1 px-1">
                     <h3 className="text-[14px] font-extrabold text-slate-100">담보별 대결</h3>
-                    <p className="text-[11.5px] text-slate-500">돈이 많이 갈리는 담보부터</p>
+                    <p className="text-[11.5px] text-slate-500">
+                      자리는 제안서 순서 그대로 ({compareCompanies.join(' · ')}) · 초록 ✓ 가 싼 쪽
+                    </p>
                   </div>
                   <ul className="space-y-2">
                     {coverageCards.map((card) => (
@@ -1644,46 +1736,113 @@ export default function HospitalCoveragePage(): JSX.Element {
                 </div>
               ) : null}
 
-              {/* 한 곳에만 있는 담보 — 비교가 안 되니 카드로 만들지 않고 목록으로 접어 둔다. */}
+              {/* 회사마다 다른 특약 — 자동으로는 못 붙는다. FC 가 직접 묶고, 넣고 뺀다. */}
               {soleRows.length > 0 ? (
                 <details className="rounded-2xl border border-slate-800 bg-white shadow-sm">
                   <summary className="cursor-pointer px-4 py-3 text-[13px] font-bold text-slate-100">
-                    한 회사에만 있는 담보 {soleRows.length}개
-                    <span className="ml-1.5 text-[11px] font-medium text-slate-500">비교할 상대가 없습니다</span>
+                    회사마다 다른 특약 {soleRows.length}개
+                    <span className="ml-1.5 text-[11px] font-medium text-slate-500">직접 묶어서 비교할 수 있습니다</span>
                   </summary>
-                  <div className="space-y-1 border-t border-slate-800 px-3 py-2">
-                    {soleRows.map((row) => {
-                      const only = compareCompanies.find((c) => row.byCompany[c]?.premium)
-                      const cell = only ? row.byCompany[only] : null
-                      return (
-                        <label
-                          key={row.key}
-                          className={[
-                            'flex cursor-pointer flex-wrap items-center gap-2 rounded-xl border border-slate-800 px-2.5 py-2',
-                            row.checked ? 'bg-white' : 'bg-slate-950 opacity-60'
-                          ].join(' ')}
+
+                  <div className="border-t border-slate-800 p-3">
+                    <p className="text-[11.5px] leading-relaxed text-slate-500">
+                      한쪽 제안서에만 있거나, 이름이 너무 달라 자동으로 맞붙이지 못한 담보입니다. 같은 성격이라고 보시면{' '}
+                      <span className="font-bold text-indigo-700">묶기</span>를 양쪽에서 한 번씩 눌러주세요. 위에 대결 카드로 올라갑니다.
+                      체크를 끄면 합계에서 빠집니다.
+                    </p>
+
+                    {pairPick ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border-2 border-indigo-300 bg-indigo-50 px-3 py-2">
+                        <span className="text-[12px] font-bold text-indigo-700">
+                          {pairPick.company} · {pairPick.label}
+                        </span>
+                        <span className="text-[12px] font-semibold text-indigo-700">→ 반대쪽 회사에서 짝이 될 담보의 묶기를 누르세요</span>
+                        <button
+                          type="button"
+                          onClick={() => setPairPick(null)}
+                          className="ml-auto rounded-lg border border-indigo-300 bg-white px-2 py-1 text-[11px] font-bold text-indigo-700"
                         >
-                          <input
-                            type="checkbox"
-                            checked={row.checked}
-                            onChange={(e) => toggleCompareRow(row, e.target.checked)}
-                            className="h-5 w-5 accent-indigo-600"
-                          />
-                          <span className="flex-1 text-[13px] font-bold text-slate-100">{row.label}</span>
-                          {only ? (
-                            <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700">{only}</span>
-                          ) : null}
-                          {cell?.amountManwon ? (
-                            <span className="text-[11px] tabular-nums text-slate-500">
-                              {cell.amountManwon.toLocaleString('ko-KR')}만원
+                          취소
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {pairList.length > 0 ? (
+                      <div className="mt-2 space-y-1">
+                        {pairList.map((pair) => (
+                          <div
+                            key={pair.key}
+                            className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2"
+                          >
+                            <span className="text-[12px] font-bold text-emerald-800">
+                              {pair.members.map((m) => `${m.company} ${m.label}`).join('  ↔  ')}
                             </span>
-                          ) : null}
-                          <span className="text-[13px] font-extrabold tabular-nums text-slate-200">
-                            {cell?.premium ? won(cell.premium) : '-'}
-                          </span>
-                        </label>
-                      )
-                    })}
+                            <button
+                              type="button"
+                              onClick={() => unpair(pair.key)}
+                              className="ml-auto rounded-lg border border-emerald-300 bg-white px-2 py-1 text-[11px] font-bold text-emerald-800"
+                            >
+                              풀기
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {soleByCompany.map(({ company, rows }) => (
+                        <div key={company}>
+                          <div className="mb-1.5 flex items-baseline justify-between gap-2 px-0.5">
+                            <span className="text-[12.5px] font-extrabold text-slate-100">{company}</span>
+                            <span className="text-[11px] font-semibold text-slate-500">{rows.length}개</span>
+                          </div>
+                          <ul className="space-y-1">
+                            {rows.map(({ row, cell }) => {
+                              const picked = pairPick?.company === company && row.items.some((i) => i.itemKey === pairPick.itemKey)
+                              return (
+                                <li
+                                  key={row.key}
+                                  className={[
+                                    'flex items-center gap-2 rounded-xl border px-2.5 py-2',
+                                    picked ? 'border-indigo-400 bg-indigo-50' : 'border-slate-800 bg-white',
+                                    row.checked ? '' : 'opacity-55'
+                                  ].join(' ')}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={row.checked}
+                                    onChange={(e) => toggleCompareRow(row, e.target.checked)}
+                                    className="h-5 w-5 shrink-0 accent-indigo-600"
+                                  />
+                                  <span className="flex-1">
+                                    <span className="block text-[12.5px] font-bold leading-tight text-slate-100">{row.label}</span>
+                                    <span className="block text-[11px] tabular-nums text-slate-500">
+                                      {cell.amountManwon ? `${cell.amountManwon.toLocaleString('ko-KR')}만원 · ` : ''}
+                                      {cell.premium ? won(cell.premium) : '-'}
+                                    </span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => addToPair(row.items, company, row.label)}
+                                    className={[
+                                      'shrink-0 rounded-lg border-2 px-2 py-1 text-[11px] font-extrabold',
+                                      picked ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-slate-700 bg-white text-slate-300'
+                                    ].join(' ')}
+                                  >
+                                    {picked ? '고름' : '묶기'}
+                                  </button>
+                                </li>
+                              )
+                            })}
+                            {rows.length === 0 ? (
+                              <li className="rounded-xl border border-dashed border-slate-800 px-2.5 py-3 text-center text-[11.5px] text-slate-500">
+                                이 회사만 가진 담보가 없습니다
+                              </li>
+                            ) : null}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </details>
               ) : null}

@@ -24,6 +24,14 @@ export interface MixInputItem {
   premium: string
   plan: PlanKey
   groupKey: string | null
+  /**
+   * FC 가 직접 묶은 짝의 키.
+   *
+   * 회사마다 특약 이름이 전혀 달라 자동으로는 못 붙이는 담보가 있다
+   * ('창상봉합술치료비' vs '상해치료비'). 그럴 때 FC 가 화면에서 둘을 묶으면
+   * 이름과 상관없이 한 줄에서 맞대결한다. 자동 분류보다 항상 우선한다.
+   */
+  pairKey?: string | null
 }
 
 /** 한 회사의 해당 담보 후보. */
@@ -229,7 +237,10 @@ export function buildMix(items: MixInputItem[]): MixResult {
     if (!raw.key) continue
     // 같은 자리 담보(뇌혈관 vs 뇌졸중)는 한 줄로 본다.
     // 나누면 A사 뇌혈관과 B사 뇌졸중을 둘 다 산 것으로 더해져 조합 보험료가 부풀려진다.
-    const { key, label } = familyOf(raw.key, raw.label)
+    const family = familyOf(raw.key, raw.label)
+    // FC 가 직접 묶었으면 그 묶음이 이긴다.
+    const key = item.pairKey || family.key
+    const label = item.pairKey ? raw.label : family.label
 
     const bucket = byKey.get(key) ?? { label, plan: item.plan, groupKey: item.groupKey, byCompany: new Map<string, MixCandidate>() }
     const amount = parseAmountManwon(item.amount)

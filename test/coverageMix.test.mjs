@@ -355,3 +355,25 @@ test('한 회사만 가입금액을 못 읽으면 확인 필요로 알린다', (
   ])
   assert.equal(mix.rows[0].needsReview, true)
 })
+
+test('FC 가 직접 묶은 짝은 이름이 달라도 한 줄에서 맞대결한다', () => {
+  // 회사마다 특약 이름이 전혀 달라 자동으로는 못 붙는 경우
+  const mix = buildMix([
+    { ...item('A생명', '창상봉합술치료비', '30만원', '621원'), pairKey: 'pair-1' },
+    { ...item('B화재', '상해흉터복원수술비', '30만원', '480원'), pairKey: 'pair-1' }
+  ])
+  assert.equal(mix.rows.length, 1)
+  assert.equal(mix.rows[0].candidates.length, 2)
+  assert.equal(mix.rows[0].best.company, 'B화재')
+  assert.equal(mix.rows[0].soleOffer, false)
+  assert.equal(mix.mixPremium, 480)
+})
+
+test('묶지 않으면 각자 한 줄로 남는다', () => {
+  const mix = buildMix([
+    item('A생명', '창상봉합술치료비', '30만원', '621원'),
+    item('B화재', '상해흉터복원수술비', '30만원', '480원')
+  ])
+  assert.equal(mix.rows.length, 2)
+  assert.equal(mix.rows.every((r) => r.soleOffer), true)
+})
