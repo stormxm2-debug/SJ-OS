@@ -160,6 +160,20 @@ async function analyzeProposal(file: File, prefs: PlanPrefs): Promise<ProposalDo
     }
   })
 
+  // 주계약(상품 자체)은 어느 플랜의 담보도 아니지만 보험료는 실제로 낸다.
+  // 담보가 가장 많은 플랜에 붙여, 그 플랜 합계가 제안서 총 보험료와 맞게 한다.
+  const mainPlan = ((): PlanKey => {
+    const counts = new Map<PlanKey, number>()
+    for (const it of items) if (it.plan !== 'comprehensive' || it.groupKey) counts.set(it.plan, (counts.get(it.plan) ?? 0) + 1)
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'comprehensive'
+  })()
+  for (const it of items) {
+    if (mixKeyOf(it.coverageName).key !== 'main-contract') continue
+    it.plan = mainPlan
+    it.groupKey = null
+    it.checked = true
+  }
+
   const allWarnings = [...warnings]
   if (pages.length > 0 && scannedPages.length === pages.length) {
     allWarnings.unshift('글자가 없는 스캔 PDF입니다. 지금은 글자가 들어 있는 PDF만 읽을 수 있습니다.')
@@ -893,11 +907,18 @@ export default function HospitalCoveragePage(): JSX.Element {
     const companies = new Set(withItems.map((d) => d.company || '회사 미확인'))
     const reason =
       withItems.length === 0
-        ? '이 플랜에 담보가 하나도 없습니다. 위에서 다른 플랜을 눌러보세요.'
+        ? '이 플랜에 담보가 하나도 없습니다.'
         : companies.size < 2
           ? '이 플랜에 담보가 있는 제안서가 한 곳뿐입니다. 비교하려면 다른 회사 제안서도 올려주세요.'
-          : '두 제안서에 같은 자리 담보가 없습니다. 아래 "표로 한 번에 보기" 에서 담보 이름을 확인해주세요.'
-    return { perDoc, reason, needsCompany: perDoc.some((d) => !d.company) }
+          : '두 제안서에 같은 자리 담보가 없습니다. 아래 "회사마다 다른 특약" 에서 직접 묶어 비교할 수 있습니다.'
+
+    // 담보가 다른 플랜에 몰려 있는 경우가 많다(간병·입원 상품을 종합담보 탭에서 보는 경우).
+    // 어느 플랜에 몇 개가 있는지 알려주면 한 번에 찾아간다.
+    const elsewhere = PLANS.filter((p) => p.key !== plan)
+      .map((p) => ({ plan: p, count: docs.reduce((n, d) => n + d.items.filter((it) => it.plan === p.key).length, 0) }))
+      .filter((v) => v.count > 0)
+
+    return { perDoc, reason, elsewhere, needsCompany: perDoc.some((d) => !d.company) }
   }, [docs, plan, coverageCards])
 
   /** 고객에게 보여줄 때는 체크한 담보만 나온다 */
@@ -1585,6 +1606,22 @@ export default function HospitalCoveragePage(): JSX.Element {
                 <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
                   <h3 className="text-[14px] font-extrabold text-amber-900">지금은 회사끼리 맞대결할 수 없습니다</h3>
                   <p className="mt-1 text-[12.5px] leading-relaxed text-amber-900">{compareBlocker.reason}</p>
+
+                  {compareBlocker.elsewhere.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[12px] font-bold text-amber-900">담보는 여기에 있습니다</span>
+                      {compareBlocker.elsewhere.map(({ plan: p, count }) => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => setPlan(p.key)}
+                          className="rounded-lg border-2 border-amber-400 bg-white px-2.5 py-1 text-[12px] font-extrabold text-amber-900"
+                        >
+                          {p.label} {count}개
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
 
                   <ul className="mt-3 space-y-2">
                     {compareBlocker.perDoc.map((d) => (

@@ -116,6 +116,24 @@ export const PLAN_GROUPS: PlanGroup[] = [
     defaultOn: true
   },
 
+  /* ---------- 입원비 ---------- */
+  // 입원비플랜 본체는 hospitalCoverage 가 양식 항목으로 분류한다(isHospital).
+  // 여기 둘은 양식에는 없지만 입원 담보라, 종합담보로 흘러가 표를 어지럽히던 것들이다.
+  {
+    key: 'hosp-ext',
+    plan: 'hospital',
+    label: '입원 연장(181일 이상)',
+    pattern: /181일이상|181[-~]\d+일|\(181/,
+    defaultOn: true
+  },
+  {
+    key: 'hosp-icu',
+    plan: 'hospital',
+    label: '중환자실 입원',
+    pattern: /중환자실/,
+    defaultOn: true
+  },
+
   /* ---------- 종합 ---------- */
   // 골절·화상을 진단비보다 먼저 본다: '골절진단비'·'화상진단비'는 이름에 '진단비'가 들어가지만
   // 암·뇌·심장 진단비가 아니라 소액 담보다.

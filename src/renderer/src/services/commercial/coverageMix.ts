@@ -147,6 +147,27 @@ interface MixKey {
  *   → 같은 키로 묶어 비교하면 좁은 담보가 싸다는 이유로 이겨버린다.
  */
 const MIX_KEYS: MixKey[] = [
+  /* 주계약 — 담보가 아니라 상품 자체. 회사끼리 비교는 되지만 담보로 섞이면 안 된다. */
+  { key: 'main-contract', label: '주계약(기본계약)', pattern: /(?:건강|종합|간편|치매|암|실손|상해|질병|운전자|어린이|간병|입원|누리는)보험(?!료)/ },
+
+  /* 입원·간병 — 생명보험 제안서는 상품명이 담보명에 통째로 들어와 이름으로는 붙지 않는다.
+     회사가 뭐라 부르든 '무엇에 대한 일당인가' 로 묶는다. 좁은 것부터 본다. */
+  { key: 'hosp-nursing', label: '간호간병통합 입원일당', pattern: /간호.?간병통합/ },
+  { key: 'hosp-care-yoyang', label: '간병인사용 입원일당(요양병원)', pattern: /(간병인사용|간병사용|간병인).*요양병원(?!제외)/ },
+  { key: 'hosp-care', label: '간병인사용 입원일당', pattern: /간병인사용|간병사용|간병인/ },
+  { key: 'hosp-icu', label: '중환자실 입원일당', pattern: /중환자실/ },
+  { key: 'hosp-s1', label: '상급종합병원 1인실', pattern: /상급종합.*1인실/ },
+  { key: 'hosp-s23', label: '상급종합병원 2~3인실', pattern: /상급종합.*2[-~]3인실/ },
+  { key: 'hosp-s45', label: '상급종합병원 4~5인실', pattern: /상급종합.*4[-~]5인실/ },
+  { key: 'hosp-s', label: '상급종합병원 입원일당', pattern: /상급종합.*입원/ },
+  { key: 'hosp-g1', label: '종합병원 1인실', pattern: /종합병원.*1인실/ },
+  { key: 'hosp-g23', label: '종합병원 2~3인실', pattern: /종합병원.*2[-~]3인실/ },
+  { key: 'hosp-g45', label: '종합병원 4~5인실', pattern: /종합병원.*4[-~]5인실/ },
+  { key: 'hosp-g', label: '종합병원 입원일당', pattern: /종합병원.*입원/ },
+  { key: 'hosp-1', label: '1인실 입원일당', pattern: /1인실/ },
+  { key: 'hosp-23', label: '2~3인실 입원일당', pattern: /2[-~]3인실/ },
+  { key: 'hosp-45', label: '4~5인실 입원일당', pattern: /4[-~]5인실/ },
+
   /* 실손 */
   { key: 'actual-massage', label: '비급여 도수·체외충격파·증식치료', pattern: /도수치료|체외충격파|증식치료/ },
   { key: 'actual-injection', label: '비급여 주사료', pattern: /비급여주사|주사료/ },
@@ -198,7 +219,10 @@ const MIX_KEYS: MixKey[] = [
   { key: 'comp-fracture', label: '골절진단비', pattern: /골절/ },
   { key: 'comp-burn', label: '화상진단비', pattern: /화상/ },
   { key: 'comp-cast', label: '깁스치료비', pattern: /깁스|부목/ },
-  { key: 'comp-er', label: '응급실내원비', pattern: /응급실|응급치료/ }
+  { key: 'comp-er', label: '응급실내원비', pattern: /응급실|응급치료/ },
+
+  /* 가장 넓은 패턴 — 위에서 아무것도 안 걸린 '입원' 담보 */
+  { key: 'hosp-day', label: '입원일당', pattern: /입원/ }
 ]
 
 /**
@@ -207,14 +231,32 @@ const MIX_KEYS: MixKey[] = [
  * 떼지 않으면 '암진단비(유사암제외)' 가 유사암 담보로 잡혀, 일반암과 유사암을 섞어
  * 비교하게 된다. 보험료 차이가 큰 담보라 그대로 두면 조합이 완전히 틀어진다.
  */
-const EXCLUSION = /\([^()]*제외[^()]*\)/g
+/**
+ * 괄호 안 '○○제외' 는 보장에서 빼는 항목이라 담보명에서 뗀다.
+ * 단 '(요양병원제외)' 는 뗄 수 없다 — 요양병원 간병인담보와 그 외 간병인담보는
+ * 각각 따로 가입하고 보험료도 따로 내는 다른 담보라, 떼면 한 줄로 합쳐져 버린다.
+ */
+const EXCLUSION = /\((?![^()]*요양병원)[^()]*제외[^()]*\)/g
 
 /** 담보명 → 대표 담보. 못 찾으면 이름 자체를 키로 쓴다(같은 이름끼리는 여전히 묶인다). */
+/**
+ * '181일 이상' 은 따로 파는 담보가 아니라 **어떤 입원 담보의 연장**이다.
+ * 간병인 연장과 간호간병 연장을 한 줄로 합치면 안 되므로, 연장 표시를 뗀 이름으로
+ * 무슨 담보인지 먼저 찾고 거기에 연장 표시를 붙인다.
+ */
+const EXTENSION = /\(?181일이상\)?|181[-~]\d+일|\(181[^)]*\)/g
+
 export function mixKeyOf(coverageName: string): { key: string; label: string } {
-  const name = normalizeCoverageName(coverageName).replace(EXCLUSION, '')
-  if (!name) return { key: '', label: '' }
+  const cleaned = normalizeCoverageName(coverageName).replace(EXCLUSION, '')
+  if (!cleaned) return { key: '', label: '' }
+
+  const isExtension = EXTENSION.test(cleaned)
+  EXTENSION.lastIndex = 0
+  const name = isExtension ? cleaned.replace(EXTENSION, '') : cleaned
+
   const found = MIX_KEYS.find((k) => k.pattern.test(name))
-  return found ? { key: found.key, label: found.label } : { key: `raw:${name}`, label: coverageName.trim() }
+  const base = found ? { key: found.key, label: found.label } : { key: `raw:${name}`, label: coverageName.trim() }
+  return isExtension ? { key: `${base.key}-ext`, label: `${base.label} (181일 이상)` } : base
 }
 
 /* ---------- 조합 만들기 ---------- */

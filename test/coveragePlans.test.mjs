@@ -96,7 +96,13 @@ test('종합 기본 셋팅은 진단비·수술·사망·골절 네 그룹이고
   assert.equal(etc?.defaultOn, false)
 })
 
-test('입원비플랜은 그룹을 쓰지 않는다(기존 양식 항목 분류를 그대로 쓴다)', () => {
-  assert.deepEqual(groupsOfPlan('hospital'), [])
+test('입원비플랜 본체는 양식 항목 분류를 그대로 쓰고, 양식에 없는 입원 담보만 그룹으로 받는다', () => {
+  // 181일 이상 연장과 중환자실은 양식에는 없지만 입원 담보다.
+  // 그룹이 없던 때는 종합담보로 흘러가 진단비 표를 어지럽혔다.
+  assert.deepEqual(groupsOfPlan('hospital').map((g) => g.key), ['hosp-ext', 'hosp-icu'])
+  assert.equal(classifyPlanGroup('(무)첫날부터중환자실입원(1~60일)특약', false).plan, 'hospital')
+  assert.equal(classifyPlanGroup('(무)간병인사용입원(181일이상)S', false).plan, 'hospital')
+  // 이미 양식으로 분류된 담보는 그대로 둔다
+  assert.equal(classifyPlanGroup('(무)첫날부터입원S', true), null)
   assert.equal(PLANS.length, 4)
 })

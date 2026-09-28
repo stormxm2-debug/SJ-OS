@@ -377,3 +377,52 @@ test('묶지 않으면 각자 한 줄로 남는다', () => {
   assert.equal(mix.rows.length, 2)
   assert.equal(mix.rows.every((r) => r.soleOffer), true)
 })
+
+/* ---------- 입원·간병 담보 (생명보험 제안서) ---------- */
+
+test('상품명이 담보명에 통째로 들어와도 같은 입원 담보로 묶는다', () => {
+  // 실제 제안서 담보명 — 회사마다 이름이 전혀 다르다.
+  const heung = '(무)첫날부터입원S(사망시적립액미지급형)(해약환급금미지급형V2)'
+  const hana = '(무)첫날부터입원(1~120일)특약(해약환급금 미지급형, 일반심사형)'
+  assert.equal(mixKeyOf(heung).key, mixKeyOf(hana).key)
+  assert.equal(mixKeyOf(heung).label, '입원일당')
+})
+
+test('요양병원 간병인담보와 그 외 간병인담보는 따로 본다', () => {
+  // 한 제안서에 둘 다 들어 있고 보험료도 따로 낸다. 합치면 한 회사 몫이 두 배가 된다.
+  const yoyang = '(무)질병및재해(치매포함)간병인사용입원S(요양병원)(사망시적립액미지급형)'
+  const other = '(무)질병및재해(치매포함)간병인사용입원S(요양병원제외)(사망시적립액미지급형)'
+  assert.notEqual(mixKeyOf(yoyang).key, mixKeyOf(other).key)
+  assert.equal(mixKeyOf(yoyang).label, '간병인사용 입원일당(요양병원)')
+  assert.equal(mixKeyOf(other).label, '간병인사용 입원일당')
+  // 회사가 달라도 같은 자리끼리 붙는다
+  assert.equal(mixKeyOf(other).key, mixKeyOf('(무)입원간병인사용(요양병원제외)특약').key)
+})
+
+test('간호간병통합·병실별 담보를 회사 표기와 상관없이 묶는다', () => {
+  assert.equal(
+    mixKeyOf('(무)질병및재해(치매포함)간호간병통합서비스입원S').key,
+    mixKeyOf('(무)입원간호간병통합서비스사용(요양병원제외)특약').key
+  )
+  assert.equal(mixKeyOf('(무)첫날부터상급종합병원1인실입원(1일-30일)S').label, '상급종합병원 1인실')
+  assert.equal(mixKeyOf('(무)첫날부터종합병원2-3인실입원(1일-30일)S').label, '종합병원 2~3인실')
+  assert.equal(mixKeyOf('(무)첫날부터중환자실입원(1~60일)특약').label, '중환자실 입원일당')
+})
+
+test('181일 이상은 그 담보의 연장으로 본다 — 연장끼리도 섞지 않는다', () => {
+  const careExt = mixKeyOf('(무)질병및재해(치매포함)간병인사용입원(181일이상)S(요양병원제외)')
+  const nursingExt = mixKeyOf('(무)질병및재해(치매포함)간호간병통합서비스입원(181일이상)S')
+  assert.equal(careExt.label, '간병인사용 입원일당 (181일 이상)')
+  assert.notEqual(careExt.key, nursingExt.key)
+  // 연장은 기본 담보와도 다른 줄이다(둘 다 가입하고 둘 다 낸다)
+  assert.notEqual(careExt.key, mixKeyOf('(무)질병및재해(치매포함)간병인사용입원S(요양병원제외)').key)
+})
+
+test('주계약(상품 자체)은 담보와 섞지 않고 주계약끼리 비교한다', () => {
+  const heung = '(무)흥국생명3.10.5.5고당플러스간편건강보험(납입면제형)(고혈압및당뇨병고지형)'
+  const hana = '(무)하나로누리는건강보험(해약환급금 미지급형, 일반심사형)'
+  assert.equal(mixKeyOf(heung).key, 'main-contract')
+  assert.equal(mixKeyOf(hana).key, 'main-contract')
+  // 보험료 납입면제는 주계약이 아니다
+  assert.equal(mixKeyOf('(무)암납입면제S').key, 'comp-waiver')
+})
