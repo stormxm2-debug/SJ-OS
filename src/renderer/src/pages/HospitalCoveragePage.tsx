@@ -21,6 +21,7 @@ import {
   fillTemplate,
   buildSummaryWorkbook,
   buildPlanWorkbook,
+  buildThreeSheetWorkbook,
   downloadBlob,
   type SheetInfo,
   type MatrixEntry,
@@ -1090,6 +1091,39 @@ export default function HospitalCoveragePage(): JSX.Element {
       })
       downloadBlob(blob, `가입제안서_담보정리_${stamp()}.xlsx`)
       setNotice('엑셀 파일을 내려받았습니다.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '엑셀 파일을 만드는 중 오류가 발생했습니다.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // 3장 포맷 엑셀 — ①종합비교 ②담보비교 ③보험사별 상세. 업로드한 제안서 전체(체크 여부 무관)를
+  // 보험사별로 묶어 세 장짜리 비교표로 내보낸다.
+  const downloadThreeSheetExcel = async (): Promise<void> => {
+    setError(null)
+    if (docs.length === 0) {
+      setError('내보낼 제안서가 없습니다. 제안서를 먼저 올려주세요.')
+      return
+    }
+    try {
+      setBusy('3장 포맷 엑셀을 만드는 중…')
+      const proposals = docs.map((d) => {
+        const feeSum = d.items.reduce((n, it) => n + (Number(it.premium.replace(/[^\d]/g, '')) || 0), 0)
+        return {
+          insurer: d.company.trim() || '회사 미확인',
+          product: d.fileName.replace(/\.pdf$/i, ''),
+          total: d.totalPremium ?? feeSum,
+          rows: d.items.map((it) => ({
+            name: it.coverageName,
+            amount: it.amount,
+            fee: Number(it.premium.replace(/[^\d]/g, '')) || 0
+          }))
+        }
+      })
+      const blob = await buildThreeSheetWorkbook(proposals)
+      downloadBlob(blob, `가입제안서_3장포맷_${stamp()}.xlsx`)
+      setNotice('3장 포맷 엑셀을 내려받았습니다.')
     } catch (e) {
       setError(e instanceof Error ? e.message : '엑셀 파일을 만드는 중 오류가 발생했습니다.')
     } finally {
@@ -2354,7 +2388,11 @@ export default function HospitalCoveragePage(): JSX.Element {
             <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
               <h2 className="text-sm font-bold text-slate-100">엑셀 받기</h2>
               <p className="mt-1 text-[12px] text-slate-500">양식 없이 바로 받기 — A4 가로 한 장: 회사별 담보 표 + 합계 · 페이백 안내 · 이 보험의 장점 (+ 담보목록 시트)</p>
-              <div className="mt-2 flex justify-end">
+              <p className="mt-1 text-[12px] text-slate-500">3장 포맷 — ①종합비교(보험사별 월 보험료) ②담보비교(담보 항목별 가입금액·보험료) ③보험사별 상세</p>
+              <div className="mt-2 flex flex-wrap justify-end gap-2">
+                <button type="button" disabled={Boolean(busy)} onClick={() => void downloadThreeSheetExcel()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-white px-3 py-2 text-[12px] font-bold text-slate-200 hover:bg-slate-950 disabled:opacity-50">
+                  <FileSpreadsheet className="h-3.5 w-3.5" /> 3장 포맷 엑셀
+                </button>
                 <button type="button" disabled={Boolean(busy)} onClick={() => void downloadExcel()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-2 text-[12px] font-bold text-white hover:opacity-90 disabled:opacity-50">
                   <Download className="h-3.5 w-3.5" /> 엑셀 받기
                 </button>
@@ -2403,6 +2441,9 @@ export default function HospitalCoveragePage(): JSX.Element {
                 <FileSpreadsheet className="h-3.5 w-3.5" /> 양식에 채워서 받기
               </button>
             ) : null}
+            <button type="button" disabled={Boolean(busy)} onClick={() => void downloadThreeSheetExcel()} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-white px-3 py-1.5 text-[12px] font-bold text-slate-200 hover:bg-slate-950 disabled:opacity-50">
+              <FileSpreadsheet className="h-3.5 w-3.5" /> 3장 포맷
+            </button>
             <button type="button" disabled={Boolean(busy)} onClick={() => void downloadExcel()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-1.5 text-[12px] font-bold text-white hover:opacity-90 disabled:opacity-50">
               <Download className="h-3.5 w-3.5" /> 엑셀 받기
             </button>

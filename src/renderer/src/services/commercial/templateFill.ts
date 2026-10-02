@@ -672,3 +672,168 @@ export async function buildPlanWorkbook(args: {
   const out = await workbook.xlsx.writeBuffer()
   return new Blob([out], { type: XLSX_MIME })
 }
+
+/* =========================================================================
+ * 3장 포맷 엑셀 (가입제안서 비교)
+ *  ① 종합비교: 보험사 · 상품명 · 담보건수 · 월 보험료
+ *  ② 담보비교: 담보 종류(키워드 분류) × 보험사 가입금액
+ *  ③ 보험사별 상세: 담보명 · 가입금액 · 월 보험료 (+ 합계)
+ * ======================================================================= */
+
+export interface ThreeSheetRow {
+  name: string
+  amount: string
+  fee: number
+}
+export interface ThreeSheetProposal {
+  insurer: string
+  product: string
+  total: number
+  rows: ThreeSheetRow[]
+}
+
+const TS_CATEGORY_ORDER = [
+  '상해 입원일당',
+  '질병/일반 입원일당',
+  '상급종합병원 입원일당',
+  '종합병원 입원일당',
+  '중환자실 입원일당',
+  '간병인사용(요양병원제외)',
+  '간병인사용(요양병원)',
+  '간호·간병통합 입원일당',
+  '응급실 내원',
+  '사망/주계약'
+]
+
+function tsCategoryOf(nmRaw: string): string | null {
+  const s = (nmRaw || '').replace(/\s/g, '')
+  if (/간호간병|간호·간병|간호\.?간병통합/.test(s)) return '간호·간병통합 입원일당'
+  if (/간병인|간병사용/.test(s)) return /요양병원(?!제외)|요양\)/.test(s) && !/제외/.test(s) ? '간병인사용(요양병원)' : '간병인사용(요양병원제외)'
+  if (/중환자/.test(s)) return '중환자실 입원일당'
+  if (/상급종합/.test(s)) return '상급종합병원 입원일당'
+  if (/종합병원/.test(s)) return '종합병원 입원일당'
+  if (/응급/.test(s)) return '응급실 내원'
+  if (/상해.*입원|입원.*상해/.test(s)) return '상해 입원일당'
+  if (/질병.*입원|첫날부터입원|입원일당/.test(s)) return '질병/일반 입원일당'
+  if (/사망|주계약|기본계약/.test(s)) return '사망/주계약'
+  return null
+}
+
+function tsSheetName(base: string, used: Set<string>): string {
+  const clean = (base || '제안서').replace(/[[\]:*?/\\]/g, ' ').slice(0, 28).trim() || '제안서'
+  let name = clean
+  let i = 2
+  while (used.has(name)) name = `${clean.slice(0, 26)}_${i++}`
+  used.add(name)
+  return name
+}
+
+export async function buildThreeSheetWorkbook(proposals: ThreeSheetProposal[]): Promise<Blob> {
+  const ExcelJS = await loadExcelJs()
+  const wb = new ExcelJS.Workbook()
+  const NAVY = 'FF0E1E3A'
+  const HEAD = 'FF1F3A63'
+  const LITE = 'FFF2F5FA'
+  const font = 'Malgun Gothic'
+  const line = { style: 'thin' as const, color: { argb: 'FFC5CCD8' } }
+  const boxed = { top: line, left: line, bottom: line, right: line }
+  const fill = (argb: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb } })
+  const headRow = (sheet: Worksheet, row: number, cols: string[]): void => {
+    cols.forEach((t, i) => {
+      const c = sheet.getCell(row, i + 1)
+      c.value = t
+      c.font = { name: font, size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+      c.fill = fill(HEAD)
+      c.border = boxed
+    })
+  }
+  const put = (sheet: Worksheet, row: number, col: number, val: CellValue, o: { bold?: boolean; align?: 'left' | 'center' | 'right'; bg?: string; num?: boolean; color?: string } = {}): void => {
+    const c = sheet.getCell(row, col)
+    c.value = val
+    c.font = { name: font, size: 10, bold: Boolean(o.bold), color: o.color ? { argb: o.color } : undefined }
+    c.alignment = { horizontal: o.align ?? 'left', vertical: 'middle' }
+    c.border = boxed
+    if (o.bg) c.fill = fill(o.bg)
+    if (o.num) c.numFmt = '#,##0'
+  }
+
+  // ① 종합비교
+  const s1 = wb.addWorksheet('종합비교', { views: [{ showGridLines: false }] })
+  s1.getColumn(1).width = 18
+  s1.getColumn(2).width = 52
+  s1.getColumn(3).width = 10
+  s1.getColumn(4).width = 15
+  s1.mergeCells(1, 1, 1, 4)
+  s1.getCell(1, 1).value = '가입제안서 비교 — 종합'
+  s1.getCell(1, 1).font = { name: font, size: 15, bold: true, color: { argb: 'FFFFFFFF' } }
+  s1.getCell(1, 1).alignment = { horizontal: 'center', vertical: 'middle' }
+  s1.getCell(1, 1).fill = fill(NAVY)
+  s1.getRow(1).height = 26
+  headRow(s1, 3, ['보험사', '상품명', '담보 건수', '월 보험료(원)'])
+  let r = 4
+  for (const p of proposals) {
+    put(s1, r, 1, p.insurer || '-', { bold: true })
+    put(s1, r, 2, p.product || '-')
+    put(s1, r, 3, p.rows.length, { align: 'center' })
+    put(s1, r, 4, p.total || 0, { align: 'right', num: true, bold: true })
+    r++
+  }
+  put(s1, r, 1, '', {})
+  put(s1, r, 2, '각 상품은 대체(비교) 안이며 합산 대상이 아닙니다. 월 보험료로 비교하세요.', { color: 'FF9F2529' })
+  put(s1, r, 3, '(참고)합산', { align: 'center', color: 'FF9F2529' })
+  put(s1, r, 4, proposals.reduce((n, p) => n + (p.total || 0), 0), { align: 'right', num: true, bold: true, color: 'FF9F2529' })
+
+  // ② 담보비교
+  const s2 = wb.addWorksheet('담보비교', { views: [{ showGridLines: false }] })
+  const lastCol = 1 + proposals.length
+  s2.getColumn(1).width = 30
+  for (let c = 2; c <= lastCol; c++) s2.getColumn(c).width = 16
+  s2.mergeCells(1, 1, 1, lastCol)
+  s2.getCell(1, 1).value = '담보 종류별 가입금액 비교 (근사 분류 — 상세는 보험사별 시트 확인)'
+  s2.getCell(1, 1).font = { name: font, size: 13, bold: true, color: { argb: 'FFFFFFFF' } }
+  s2.getCell(1, 1).alignment = { horizontal: 'center', vertical: 'middle' }
+  s2.getCell(1, 1).fill = fill(NAVY)
+  s2.getRow(1).height = 24
+  headRow(s2, 3, ['담보 종류', ...proposals.map((p) => p.insurer || p.product.slice(0, 10))])
+  r = 4
+  for (const cat of TS_CATEGORY_ORDER) {
+    put(s2, r, 1, cat, { bold: true, bg: LITE })
+    proposals.forEach((p, i) => {
+      const hit = p.rows.find((row) => tsCategoryOf(row.name) === cat)
+      put(s2, r, i + 2, hit ? hit.amount : '-', { align: 'center', color: hit ? undefined : 'FFAAB2C0' })
+    })
+    r++
+  }
+  put(s2, r, 1, '월 보험료(원)', { bold: true, bg: HEAD, color: 'FFFFFFFF' })
+  proposals.forEach((p, i) => put(s2, r, i + 2, p.total || 0, { align: 'right', num: true, bold: true, color: 'FF2F63E6' }))
+
+  // ③ 보험사별 상세
+  const used = new Set<string>(['종합비교', '담보비교'])
+  proposals.forEach((p, idx) => {
+    const d = wb.addWorksheet(tsSheetName(p.insurer || `제안서${idx + 1}`, used), { views: [{ showGridLines: false }] })
+    d.getColumn(1).width = 54
+    d.getColumn(2).width = 16
+    d.getColumn(3).width = 15
+    d.mergeCells(1, 1, 1, 3)
+    d.getCell(1, 1).value = p.product || p.insurer || `제안서 ${idx + 1}`
+    d.getCell(1, 1).font = { name: font, size: 12, bold: true, color: { argb: 'FFFFFFFF' } }
+    d.getCell(1, 1).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    d.getCell(1, 1).fill = fill(NAVY)
+    d.getRow(1).height = 28
+    headRow(d, 3, ['담보명', '가입금액', '월 보험료(원)'])
+    let rr = 4
+    for (const row of p.rows) {
+      put(d, rr, 1, row.name)
+      put(d, rr, 2, row.amount, { align: 'center' })
+      put(d, rr, 3, row.fee || 0, { align: 'right', num: true })
+      rr++
+    }
+    put(d, rr, 1, '합계 (월 보험료)', { bold: true, bg: LITE })
+    put(d, rr, 2, '', { bg: LITE })
+    put(d, rr, 3, p.total || 0, { align: 'right', num: true, bold: true, color: 'FF2F63E6', bg: LITE })
+  })
+
+  const out = await wb.xlsx.writeBuffer()
+  return new Blob([out], { type: XLSX_MIME })
+}
