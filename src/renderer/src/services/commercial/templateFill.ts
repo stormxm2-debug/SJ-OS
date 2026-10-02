@@ -745,6 +745,37 @@ function tsMatchesCategory(nmRaw: string, cat: string): boolean {
   return false
 }
 
+/**
+ * 가입금액 문자열을 만원 단위 숫자로. "1,000만원"→1000, "2만원"→2, "4.5만원"→4.5,
+ * "1억"→10000. 파싱 불가면 null.
+ */
+function tsAmountManwon(amountRaw: string): number | null {
+  const s = (amountRaw || '').replace(/\s|,/g, '')
+  let total = 0
+  let matched = false
+  const eok = s.match(/([\d.]+)억/)
+  if (eok) {
+    total += parseFloat(eok[1]) * 10000
+    matched = true
+  }
+  const man = s.match(/([\d.]+)만/)
+  if (man) {
+    total += parseFloat(man[1])
+    matched = true
+  }
+  return matched ? total : null
+}
+
+/**
+ * 일당이 아니라 "가입금액(정액)"으로 보이는 큰 금액인지(일당은 보통 20만원 이하).
+ * NH 올원더풀(요양·간병 1,000만형)·NH 건강플러스(첫날부터입원 3,000만형)처럼
+ * 일당 비교표에 섞이면 오류처럼 보이는 값을 가려낸다.
+ */
+function tsIsLumpSum(amountRaw: string): boolean {
+  const v = tsAmountManwon(amountRaw)
+  return v !== null && v >= 500
+}
+
 function tsSheetName(base: string, used: Set<string>): string {
   const clean = (base || '제안서').replace(/[[\]:*?/\\]/g, ' ').slice(0, 28).trim() || '제안서'
   let name = clean
@@ -823,11 +854,23 @@ export async function buildThreeSheetWorkbook(proposals: ThreeSheetProposal[]): 
   s2.getRow(1).height = 24
   headRow(s2, 3, ['담보 종류', ...proposals.map((p) => p.insurer || p.product.slice(0, 10))])
   r = 4
+  let hasLump = false
   for (const cat of TS_CATEGORY_ORDER) {
     put(s2, r, 1, cat, { bold: true, bg: LITE })
+    const dailyCat = cat !== '사망/주계약' // 사망/주계약은 원래 가입금액(정액) 칸
     proposals.forEach((p, i) => {
       const hit = p.rows.find((row) => tsMatchesCategory(row.name, cat))
-      put(s2, r, i + 2, hit ? hit.amount : '-', { align: 'center', color: hit ? undefined : 'FFAAB2C0' })
+      if (!hit) {
+        put(s2, r, i + 2, '-', { align: 'center', color: 'FFAAB2C0' })
+        return
+      }
+      // 일당 칸에 들어온 큰 금액(가입금액·정액형)은 일당처럼 보이지 않게 '정액' 표시.
+      if (dailyCat && tsIsLumpSum(hit.amount)) {
+        hasLump = true
+        put(s2, r, i + 2, `${hit.amount} (정액)`, { align: 'center', color: 'FF9F6B00' })
+      } else {
+        put(s2, r, i + 2, hit.amount, { align: 'center' })
+      }
     })
     r++
   }
@@ -835,7 +878,10 @@ export async function buildThreeSheetWorkbook(proposals: ThreeSheetProposal[]): 
   proposals.forEach((p, i) => put(s2, r, i + 2, p.total || 0, { align: 'right', num: true, bold: true, color: 'FF2F63E6' }))
   r += 2
   s2.mergeCells(r, 1, r, lastCol)
-  s2.getCell(r, 1).value = '※ 상해·질병 구분이 없는 통합 입원담보(첫날부터입원 등)는 상해·질병 칸에 함께 표시됩니다. 정확한 내역은 보험사별 상세 시트를 확인하세요.'
+  const note = hasLump
+    ? '※ 상해·질병 구분이 없는 통합 입원담보(첫날부터입원 등)는 상해·질병 칸에 함께 표시됩니다. ‘(정액)’은 일당이 아니라 가입금액(정액 보장)형 담보로, 일당 금액과 직접 비교되지 않습니다(NH 등). 정확한 내역은 보험사별 상세 시트를 확인하세요.'
+    : '※ 상해·질병 구분이 없는 통합 입원담보(첫날부터입원 등)는 상해·질병 칸에 함께 표시됩니다. 정확한 내역은 보험사별 상세 시트를 확인하세요.'
+  s2.getCell(r, 1).value = note
   s2.getCell(r, 1).font = { name: font, size: 9, color: { argb: 'FF66718A' } }
   s2.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }
 
