@@ -847,7 +847,7 @@ export async function buildThreeSheetWorkbook(proposals: ThreeSheetProposal[]): 
   s2.getColumn(1).width = 30
   for (let c = 2; c <= lastCol; c++) s2.getColumn(c).width = 16
   s2.mergeCells(1, 1, 1, lastCol)
-  s2.getCell(1, 1).value = '담보 종류별 가입금액 비교 (근사 분류 — 상세는 보험사별 시트 확인)'
+  s2.getCell(1, 1).value = '담보 종류별 가입금액·월 보험료 비교 (근사 분류 — 상세는 보험사별 시트 확인)'
   s2.getCell(1, 1).font = { name: font, size: 13, bold: true, color: { argb: 'FFFFFFFF' } }
   s2.getCell(1, 1).alignment = { horizontal: 'center', vertical: 'middle' }
   s2.getCell(1, 1).fill = fill(NAVY)
@@ -882,6 +882,41 @@ export async function buildThreeSheetWorkbook(proposals: ThreeSheetProposal[]): 
     ? '※ 상해·질병 구분이 없는 통합 입원담보(첫날부터입원 등)는 상해·질병 칸에 함께 표시됩니다. ‘(정액)’은 일당이 아니라 가입금액(정액 보장)형 담보로, 일당 금액과 직접 비교되지 않습니다(NH 등). 정확한 내역은 보험사별 상세 시트를 확인하세요.'
     : '※ 상해·질병 구분이 없는 통합 입원담보(첫날부터입원 등)는 상해·질병 칸에 함께 표시됩니다. 정확한 내역은 보험사별 상세 시트를 확인하세요.'
   s2.getCell(r, 1).value = note
+  s2.getCell(r, 1).font = { name: font, size: 9, color: { argb: 'FF66718A' } }
+  s2.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }
+
+  // ②-B 담보 종류별 월 보험료 — 같은 카테고리에 속한 담보들의 보험료 합
+  r += 2
+  s2.mergeCells(r, 1, r, lastCol)
+  s2.getCell(r, 1).value = '담보 종류별 월 보험료 (해당 담보 보험료 합, 원)'
+  s2.getCell(r, 1).font = { name: font, size: 12, bold: true, color: { argb: 'FFFFFFFF' } }
+  s2.getCell(r, 1).alignment = { horizontal: 'center', vertical: 'middle' }
+  s2.getCell(r, 1).fill = fill(NAVY)
+  s2.getRow(r).height = 22
+  r++
+  headRow(s2, r, ['담보 종류', ...proposals.map((p) => p.insurer || p.product.slice(0, 10))])
+  r++
+  // 보험료는 특약당 한 번만 집계해야 하므로 '대표 카테고리'(tsCategoryOf) 기준으로 합산한다.
+  // (가입금액 표는 통합담보를 상해·질병 두 칸에 모두 보여주지만, 보험료를 양쪽에 더하면
+  //  이중 집계되어 합이 전체 월 보험료를 넘어가므로 여기서는 대표 카테고리에만 더한다.)
+  const shownSum = proposals.map(() => 0)
+  for (const cat of TS_CATEGORY_ORDER) {
+    put(s2, r, 1, cat, { bold: true, bg: LITE })
+    proposals.forEach((p, i) => {
+      const feeSum = p.rows.filter((row) => tsCategoryOf(row.name) === cat).reduce((n, row) => n + (row.fee || 0), 0)
+      shownSum[i] += feeSum
+      put(s2, r, i + 2, feeSum > 0 ? feeSum : '-', { align: feeSum > 0 ? 'right' : 'center', num: feeSum > 0, color: feeSum > 0 ? undefined : 'FFAAB2C0' })
+    })
+    r++
+  }
+  put(s2, r, 1, '비교 담보 보험료 합(원)', { bold: true, bg: LITE })
+  proposals.forEach((p, i) => put(s2, r, i + 2, shownSum[i], { align: 'right', num: true, bold: true }))
+  r++
+  put(s2, r, 1, '전체 월 보험료(원)', { bold: true, bg: HEAD, color: 'FFFFFFFF' })
+  proposals.forEach((p, i) => put(s2, r, i + 2, p.total || 0, { align: 'right', num: true, bold: true, color: 'FF2F63E6' }))
+  r += 2
+  s2.mergeCells(r, 1, r, lastCol)
+  s2.getCell(r, 1).value = '※ 월 보험료는 각 담보 종류에 속한 특약들의 보험료 합계입니다(특약당 1회만 집계 — 통합 입원담보는 질병/일반 행에 합산). 납입면제·암진단 등 비교 대상이 아닌 담보는 제외되므로, 비교 담보 보험료 합은 전체 월 보험료보다 작습니다.'
   s2.getCell(r, 1).font = { name: font, size: 9, color: { argb: 'FF66718A' } }
   s2.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }
 
