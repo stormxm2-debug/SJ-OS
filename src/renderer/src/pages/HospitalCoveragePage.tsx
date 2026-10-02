@@ -182,11 +182,29 @@ async function analyzeProposal(file: File, prefs: PlanPrefs): Promise<ProposalDo
     allWarnings.push(`${scannedPages.join(', ')}쪽은 스캔 이미지라 읽지 못했습니다.`)
   }
 
+  const totalPremium = findTotalPremium(pages)
+  // 읽어낸 담보 보험료 합이 제안서 총 보험료와 크게 다르면 일부 담보를 놓쳤을 수 있다.
+  // 자동 추출이 빠뜨린 줄을 FC가 바로 알아채도록 스스로 불일치를 알린다(값은 고치지 않는다).
+  const reviewCount = items.filter((it) => it.premium.includes(REVIEW)).length
+  const parsedPremiumSum = items.reduce((n, it) => n + (Number(it.premium.replace(/[^\d]/g, '')) || 0), 0)
+  if (totalPremium && totalPremium > 0 && parsedPremiumSum > 0) {
+    const diff = Math.abs(parsedPremiumSum - totalPremium)
+    if (diff > 500 && diff / totalPremium > 0.02) {
+      const more = parsedPremiumSum > totalPremium
+      allWarnings.push(
+        `읽어낸 담보 보험료 합 ${parsedPremiumSum.toLocaleString('ko-KR')}원이 제안서 총 보험료 ${totalPremium.toLocaleString('ko-KR')}원보다 ${more ? '많습니다' : '적습니다'}(차이 ${diff.toLocaleString('ko-KR')}원).` +
+          (more
+            ? ' 할인 전 금액이 합산됐거나 중복 인식이 있을 수 있으니 상세를 확인해주세요.'
+            : `${reviewCount > 0 ? ` 금액을 못 읽은 담보 ${reviewCount}건이 있습니다.` : ''} 일부 담보를 못 읽었거나 할인·면제가 적용됐을 수 있으니 상세를 확인해주세요.`)
+      )
+    }
+  }
+
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     fileName: file.name,
     company,
-    totalPremium: findTotalPremium(pages),
+    totalPremium,
     payback: detectPayback(pages) || classified.some((c) => c.payback),
     paybackNote: describePayback(pages, company),
     warnings: allWarnings,
