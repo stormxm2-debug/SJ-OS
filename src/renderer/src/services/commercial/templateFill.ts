@@ -719,6 +719,32 @@ function tsCategoryOf(nmRaw: string): string | null {
   return null
 }
 
+/**
+ * 상해·질병 구분이 없는 "통합 기본 입원일당"인지. 첫날부터입원 / 그냥 입원일당처럼
+ * 한 담보로 상해·질병을 모두 보장하는 것을 말한다(종합·상급·중환자·간병·간호·응급은
+ * tsCategoryOf 에서 먼저 걸러지므로 여기까지 오지 않는다). 이런 담보는 ②담보비교에서
+ * 상해·질병 칸 양쪽에 함께 보여준다.
+ */
+function tsIsCombinedInpatient(nmRaw: string): boolean {
+  const s = (nmRaw || '').replace(/\s/g, '')
+  if (/상해|질병/.test(s)) return false
+  return /첫날부터입원|입원일당/.test(s)
+}
+
+/** 담보명이 해당 카테고리 칸에 들어갈지. 통합 기본 입원일당은 상해·질병 두 칸 모두 매칭. */
+function tsMatchesCategory(nmRaw: string, cat: string): boolean {
+  const primary = tsCategoryOf(nmRaw)
+  if (primary === cat) return true
+  if (
+    (cat === '상해 입원일당' || cat === '질병/일반 입원일당') &&
+    primary === '질병/일반 입원일당' &&
+    tsIsCombinedInpatient(nmRaw)
+  ) {
+    return true
+  }
+  return false
+}
+
 function tsSheetName(base: string, used: Set<string>): string {
   const clean = (base || '제안서').replace(/[[\]:*?/\\]/g, ' ').slice(0, 28).trim() || '제안서'
   let name = clean
@@ -800,13 +826,18 @@ export async function buildThreeSheetWorkbook(proposals: ThreeSheetProposal[]): 
   for (const cat of TS_CATEGORY_ORDER) {
     put(s2, r, 1, cat, { bold: true, bg: LITE })
     proposals.forEach((p, i) => {
-      const hit = p.rows.find((row) => tsCategoryOf(row.name) === cat)
+      const hit = p.rows.find((row) => tsMatchesCategory(row.name, cat))
       put(s2, r, i + 2, hit ? hit.amount : '-', { align: 'center', color: hit ? undefined : 'FFAAB2C0' })
     })
     r++
   }
   put(s2, r, 1, '월 보험료(원)', { bold: true, bg: HEAD, color: 'FFFFFFFF' })
   proposals.forEach((p, i) => put(s2, r, i + 2, p.total || 0, { align: 'right', num: true, bold: true, color: 'FF2F63E6' }))
+  r += 2
+  s2.mergeCells(r, 1, r, lastCol)
+  s2.getCell(r, 1).value = '※ 상해·질병 구분이 없는 통합 입원담보(첫날부터입원 등)는 상해·질병 칸에 함께 표시됩니다. 정확한 내역은 보험사별 상세 시트를 확인하세요.'
+  s2.getCell(r, 1).font = { name: font, size: 9, color: { argb: 'FF66718A' } }
+  s2.getCell(r, 1).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }
 
   // ③ 보험사별 상세
   const used = new Set<string>(['종합비교', '담보비교'])
