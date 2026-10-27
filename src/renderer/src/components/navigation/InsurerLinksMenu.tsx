@@ -55,20 +55,33 @@ function monogram(name: string): string {
   return name.replace(/[^가-힣A-Za-z]/g, '').slice(0, 2) || name.slice(0, 2)
 }
 
+/** 호스트에서 브랜드 도메인(등록가능 도메인) 추출 — 서브도메인 제거, .co.kr 등 2단계 TLD 처리. */
+function registrableDomain(host: string): string {
+  const parts = host.split('.').filter(Boolean)
+  if (parts.length <= 2) return host
+  const last2 = parts.slice(-2).join('.')
+  const twoLevelTlds = ['co.kr', 'or.kr', 'ne.kr', 'go.kr', 're.kr', 'pe.kr', 'com.cn', 'co.jp']
+  return (twoLevelTlds.includes(last2) ? parts.slice(-3) : parts.slice(-2)).join('.')
+}
+
 /**
- * 보험사 로고 — 전산 도메인의 파비콘(실제 로고 마크)을 불러온다.
- * 로고 에셋을 따로 두지 않고, 실패하면 브랜드색 모노그램으로 자동 대체한다.
+ * 보험사 로고 — 각 사 브랜드 도메인의 실제 로고를 웹에서 불러온다.
+ * 로고 에셋을 번들하지 않고, 로고서비스 → 파비콘 → 브랜드색 모노그램 순으로 자동 대체한다.
+ * (로고는 각 보험사 실제 로고이며, 임의로 그리지 않는다.)
  */
 function InsurerLogo({ l, px }: { l: InsurerLink; px: number }): JSX.Element {
-  const [failed, setFailed] = useState(false)
+  const [idx, setIdx] = useState(0)
   let host = ''
   try {
     host = new URL(l.url).hostname
   } catch {
     /* 주소 파싱 불가 → 모노그램 */
   }
-  const src = host ? `https://www.google.com/s2/favicons?sz=128&domain=${host}` : ''
-  if (failed || !src) {
+  const sources = host
+    ? [`https://logo.clearbit.com/${registrableDomain(host)}`, `https://www.google.com/s2/favicons?sz=128&domain=${host}`]
+    : []
+
+  if (idx >= sources.length) {
     return (
       <span
         className="flex shrink-0 items-center justify-center rounded-full border-2 font-extrabold"
@@ -80,10 +93,10 @@ function InsurerLogo({ l, px }: { l: InsurerLink; px: number }): JSX.Element {
   }
   return (
     <img
-      src={src}
+      src={sources[idx]}
       alt={`${l.name} 로고`}
       loading="lazy"
-      onError={() => setFailed(true)}
+      onError={() => setIdx((i) => i + 1)}
       className="shrink-0 rounded-full border-2 bg-white object-contain p-0.5"
       style={{ width: px, height: px, borderColor: l.color }}
     />
