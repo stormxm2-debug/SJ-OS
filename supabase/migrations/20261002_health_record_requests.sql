@@ -54,7 +54,8 @@ create policy health_record_requests_delete
 
 -- updated_at 자동 갱신(전용 트리거 함수 — 이름 충돌 방지).
 create or replace function public.health_record_requests_touch()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql
+set search_path = '' as $$
 begin
   new.updated_at := now();
   return new;

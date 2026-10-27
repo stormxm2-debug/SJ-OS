@@ -35,12 +35,19 @@ const DEFAULT_MESSAGE = `[가족 간병인 접수 안내]
 ▶ 접수: ${FORM_URL_FALLBACK}
 
 접수 시 아래 정보가 필요합니다.
-• 환자 성함 / 생년월일
-• 연락처 (환자·보호자)
-• 입원 병원 / 병동 / 병실 구분
-• 간병 시작 희망일 / 예상 기간
-• 진단명 및 현재 상태 (거동·식사·의식 등)
-• 주소
+
+[환자]
+• 환자 성함
+• 환자 연락처 (없을 경우 보호자 연락처 가능)
+• 환자 주민번호
+• 입원 병원명
+• 간병 시작 날짜
+
+[간병인]
+• 간병인 이름
+• 간병인 연락처
+• 간병인 주민번호
+• 간병인 계좌번호 / 은행명
 
 접수 후 담당 간병 매니저가 연락드립니다.
 문의: (담당 FC 성함 / 연락처)`
@@ -92,11 +99,11 @@ export default function FamilyCaregiverPage(): JSX.Element {
     /* keep raw */
   }
 
-  const copyBtn = (tag: string, value: string): JSX.Element => (
+  const bigCopyBtn = (tag: string, value: string): JSX.Element => (
     <button
       type="button"
       onClick={() => void copy(tag, value)}
-      className="shrink-0 rounded-md border border-slate-700 bg-white px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-slate-950"
+      className="shrink-0 rounded-lg bg-[#0e1e3a] px-4 py-3 text-[14px] font-bold text-white transition hover:opacity-90"
     >
       {copied === tag ? '복사됨' : '복사'}
     </button>
@@ -137,29 +144,33 @@ export default function FamilyCaregiverPage(): JSX.Element {
             <ExternalLink className="h-4 w-4" /> 접수 폼 열기
           </button>
 
-          {/* 공유 로그인 정보 */}
-          <div className="mt-5 w-full max-w-sm rounded-xl border border-slate-800 bg-slate-950 p-3 text-left">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[12px] font-bold text-slate-200">접수 폼 로그인</span>
-              <span className="text-[10px] text-slate-500">복사해서 입력</span>
+          {/* 공유 로그인 정보 — 눈에 확 보이게 크게 */}
+          <div className="mt-6 w-full max-w-lg rounded-2xl border-2 border-[#e6c877] bg-slate-950 p-5 text-left shadow-md">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-[15px] font-extrabold text-[#e6c877]">접수 폼 로그인</span>
+              <span className="text-[12px] font-semibold text-slate-400">복사해서 입력</span>
             </div>
             {login?.login_id || login?.password ? (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="w-10 shrink-0 text-[11px] font-semibold text-slate-400">아이디</span>
-                  <code className="flex-1 rounded-md border border-slate-800 bg-white px-2 py-1 text-[12px] font-semibold text-slate-100">{login?.login_id || '-'}</code>
-                  {copyBtn('id', login?.login_id || '')}
+              <div className="space-y-3">
+                <div>
+                  <div className="mb-1 text-[13px] font-bold text-slate-400">아이디</div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 select-all rounded-lg border border-slate-700 bg-white px-3 py-3 text-[22px] font-extrabold tracking-wide text-slate-100">{login?.login_id || '-'}</code>
+                    {bigCopyBtn('id', login?.login_id || '')}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-10 shrink-0 text-[11px] font-semibold text-slate-400">비번</span>
-                  <code className="flex-1 rounded-md border border-slate-800 bg-white px-2 py-1 text-[12px] font-semibold text-slate-100">{login?.password || '-'}</code>
-                  {copyBtn('pw', login?.password || '')}
+                <div>
+                  <div className="mb-1 text-[13px] font-bold text-slate-400">비밀번호</div>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 select-all rounded-lg border border-slate-700 bg-white px-3 py-3 text-[22px] font-extrabold tracking-wide text-slate-100">{login?.password || '-'}</code>
+                    {bigCopyBtn('pw', login?.password || '')}
+                  </div>
                 </div>
               </div>
             ) : (
-              <p className="text-[11px] text-slate-500">로그인 정보를 불러오는 중… (로그인 후 표시됩니다)</p>
+              <p className="text-[13px] text-slate-500">로그인 정보를 불러오는 중… (로그인 후 표시됩니다)</p>
             )}
-            <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+            <p className="mt-3 text-[12px] leading-relaxed text-slate-500">
               보안상 다른 사이트 입력칸은 자동 입력이 안 됩니다. 폼을 연 뒤 위 값을 복사해 로그인하세요.
             </p>
           </div>
