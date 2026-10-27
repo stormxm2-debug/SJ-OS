@@ -55,6 +55,41 @@ function monogram(name: string): string {
   return name.replace(/[^가-힣A-Za-z]/g, '').slice(0, 2) || name.slice(0, 2)
 }
 
+/**
+ * 보험사 로고 — 전산 도메인의 파비콘(실제 로고 마크)을 불러온다.
+ * 로고 에셋을 따로 두지 않고, 실패하면 브랜드색 모노그램으로 자동 대체한다.
+ */
+function InsurerLogo({ l, px }: { l: InsurerLink; px: number }): JSX.Element {
+  const [failed, setFailed] = useState(false)
+  let host = ''
+  try {
+    host = new URL(l.url).hostname
+  } catch {
+    /* 주소 파싱 불가 → 모노그램 */
+  }
+  const src = host ? `https://www.google.com/s2/favicons?sz=128&domain=${host}` : ''
+  if (failed || !src) {
+    return (
+      <span
+        className="flex shrink-0 items-center justify-center rounded-full border-2 font-extrabold"
+        style={{ width: px, height: px, fontSize: px * 0.34, background: `${l.color}1f`, color: l.color, borderColor: l.color }}
+      >
+        {monogram(l.name)}
+      </span>
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt={`${l.name} 로고`}
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className="shrink-0 rounded-full border-2 bg-white object-contain p-0.5"
+      style={{ width: px, height: px, borderColor: l.color }}
+    />
+  )
+}
+
 /** 지금 브라우저가 엣지인지 (엣지 UA는 Chrome 문자열도 포함하므로 Edg/ 우선). */
 function isEdgeBrowser(): boolean {
   return navigator.userAgent.includes('Edg/')
@@ -507,6 +542,7 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                         onClick={() => setSelected(l)}
                         className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-slate-800 bg-white p-1.5 text-center transition active:bg-slate-900"
                       >
+                        <InsurerLogo l={l} px={26} />
                         <span className="break-keep text-[11px] font-bold leading-tight text-slate-100">{l.name}</span>
                         <span className="flex items-center gap-0.5 text-[10px] font-extrabold" style={{ color: l.color }}>
                           <Phone className="h-2.5 w-2.5" style={{ color: l.color }} />
@@ -562,12 +598,7 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                       style={{ borderTopWidth: 3, borderTopColor: l.color }}
                     >
                       <div className="flex flex-1 flex-col items-center justify-center gap-1">
-                        <span
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-extrabold"
-                          style={{ background: `${l.color}1f`, color: l.color }}
-                        >
-                          {monogram(l.name)}
-                        </span>
+                        <InsurerLogo l={l} px={30} />
                         <span className="break-keep text-[12px] font-bold leading-tight text-slate-100">{l.name}</span>
                         <span
                           className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-extrabold tracking-tight"
