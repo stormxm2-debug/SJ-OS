@@ -30,6 +30,8 @@ export interface InsurerLink {
   edge: boolean
   /** 브랜드 근사색 (모노그램·포인트용) */
   color: string
+  /** 로고용 공식 홈페이지 도메인 — 전산 주소와 브랜드 도메인이 다를 때만 지정(로고서비스 정확도↑). */
+  homepage?: string
   /** ARS 메뉴 한 줄 요약 — 공식 확인된 회사만 */
   ars?: string
   /** 상품공시실(약관·판매상품 공시) 링크 */
@@ -52,7 +54,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: 'DB손해보험', portal: '영업포탈 통합로그인', url: 'https://www.mdbins.com/', group: '손해보험',
-    csPhone: '1588-0100', chrome: true, edge: false, color: '#009490',
+    csPhone: '1588-0100', chrome: true, edge: false, color: '#009490', homepage: 'idbins.com',
     ars: '1 긴급출동 · 2 차사고접수 · 3 신규가입 · 4 보험금청구 · 5 장기 상담·해지 · 6 자동차 상담·해지 · 7 대출 · 8 증명서 · 9 납입변경 · 0 상담사',
     disclosure: 'https://www.idbins.com/FWMAIV1534.do'
   },
@@ -87,7 +89,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: '하나손해보험', portal: 'SFA 영업지원', url: 'https://sfa.saleshana.com/index.html', group: '손해보험',
-    csPhone: '1566-3000', chrome: true, edge: false, color: '#009178',
+    csPhone: '1566-3000', chrome: true, edge: false, color: '#009178', homepage: 'hanainsure.co.kr',
     ars: '1 고장출동 · 2 차사고접수 · 3 보험가입 · 4 자동차 계약변경 · 5 장기 계약변경·납입 · 6 보험금청구 · 8 계약대출 · 9 증명서 · 0 상담사',
     disclosure: 'https://www.hanainsure.co.kr/w/disclosure/product/saleProduct'
   },
@@ -156,7 +158,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: '미래에셋생명', portal: '설계사 전산', url: 'https://www.loveageplan.com/', group: '생명보험',
-    csPhone: '1588-0220', chrome: true, edge: true, color: '#F58220',
+    csPhone: '1588-0220', chrome: true, edge: true, color: '#F58220', homepage: 'miraeasset.com',
     ars: '1 사고보험금 접수 · 2 가상계좌 발급 · 3 빠른조회·지급 · 4 변액상담 · 5 장애인·고령 상담 · 0 상담원',
     disclosure: 'https://life.miraeasset.com/micro/disclosure/product/PC-HO-080301-000000.do'
   },
