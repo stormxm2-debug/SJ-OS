@@ -124,6 +124,16 @@ export default function MobileShell(): JSX.Element {
           <span className="truncate text-[10px] text-slate-500">{session.name || '직원'} · {ROLE_LABEL[session.role]}</span>
         </div>
         <div className="flex items-center gap-1.5">
+          <a
+            href="https://www.ssfirefs.com/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="삼성화재 금융서비스 전산(블루넷) 열기"
+            className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#0b5fd6] to-[#1428A0] px-2 py-1 text-[10px] font-bold text-white active:brightness-110"
+          >
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded bg-white/25 text-[8px] font-black leading-none">B</span>
+            블루넷
+          </a>
           <InsurerLinksMenu compact />
           <button
             type="button"

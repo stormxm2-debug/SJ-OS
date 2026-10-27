@@ -38,6 +38,17 @@ export default function Topbar(): JSX.Element {
       </div>
 
       <div className="flex items-center gap-4">
+        <a
+          href="https://www.ssfirefs.com/login"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="삼성화재 금융서비스 전산(블루넷) 열기"
+          className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#0b5fd6] to-[#1428A0] px-3 py-2 text-sm font-bold text-white shadow-md transition hover:brightness-110"
+        >
+          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-white/25 text-[11px] font-black leading-none">B</span>
+          블루넷
+        </a>
+
         <InsurerLinksMenu />
 
         <button

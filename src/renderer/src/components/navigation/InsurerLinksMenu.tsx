@@ -508,8 +508,8 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                         className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-slate-800 bg-white p-1.5 text-center transition active:bg-slate-900"
                       >
                         <span className="break-keep text-[11px] font-bold leading-tight text-slate-100">{l.name}</span>
-                        <span className="flex items-center gap-0.5 text-[9px] font-semibold text-emerald-700">
-                          <Phone className="h-2.5 w-2.5" />
+                        <span className="flex items-center gap-0.5 text-[10px] font-extrabold" style={{ color: l.color }}>
+                          <Phone className="h-2.5 w-2.5" style={{ color: l.color }} />
                           {l.csPhone}
                         </span>
                       </button>
@@ -569,8 +569,11 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                           {monogram(l.name)}
                         </span>
                         <span className="break-keep text-[12px] font-bold leading-tight text-slate-100">{l.name}</span>
-                        <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-300">
-                          <Phone className="h-2.5 w-2.5 text-emerald-700" />
+                        <span
+                          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-extrabold tracking-tight"
+                          style={{ color: l.color, background: `${l.color}14` }}
+                        >
+                          <Phone className="h-3 w-3" style={{ color: l.color }} />
                           {l.csPhone}
                         </span>
                         <span className="flex items-center gap-1">
