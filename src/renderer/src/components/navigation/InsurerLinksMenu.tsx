@@ -77,8 +77,18 @@ function InsurerLogo({ l, px, fill = false }: { l: InsurerLink; px: number; fill
   } catch {
     /* 주소 파싱 불가 → 모노그램 */
   }
-  // 로고 후보 도메인: 공식 홈페이지(지정 시) → 전산 브랜드 도메인. 중복 제거.
-  const domains = [...new Set([l.homepage, host ? registrableDomain(host) : ''].filter(Boolean))] as string[]
+  // 로고 후보 도메인: 공식 홈페이지(지정 시) → 공시(상품공시) 사이트 → 전산 브랜드 도메인. 중복 제거.
+  let discHost = ''
+  try {
+    if (l.disclosure) discHost = new URL(l.disclosure).hostname
+  } catch {
+    /* 공시 주소 파싱 불가 → 생략 */
+  }
+  const domains = [
+    ...new Set(
+      [l.homepage, discHost ? registrableDomain(discHost) : '', host ? registrableDomain(host) : ''].filter(Boolean)
+    )
+  ] as string[]
   // 풀 로고(로고서비스) 우선 → 파비콘(DuckDuckGo·Google) → 이니셜.
   const sources = [
     ...domains.map((d) => `https://logo.clearbit.com/${d}`),
