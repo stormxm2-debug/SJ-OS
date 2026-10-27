@@ -69,7 +69,7 @@ function registrableDomain(host: string): string {
  * 로고 에셋을 번들하지 않고, 로고서비스 → 파비콘 → 브랜드색 모노그램 순으로 자동 대체한다.
  * (로고는 각 보험사 실제 로고이며, 임의로 그리지 않는다.)
  */
-function InsurerLogo({ l, px }: { l: InsurerLink; px: number }): JSX.Element {
+function InsurerLogo({ l, px, fill = false }: { l: InsurerLink; px: number; fill?: boolean }): JSX.Element {
   const [idx, setIdx] = useState(0)
   let host = ''
   try {
@@ -81,8 +81,16 @@ function InsurerLogo({ l, px }: { l: InsurerLink; px: number }): JSX.Element {
     ? [`https://logo.clearbit.com/${registrableDomain(host)}`, `https://www.google.com/s2/favicons?sz=128&domain=${host}`]
     : []
 
+  // 로고를 못 찾으면 브랜드색 이니셜로 대체. fill 모드는 박스 폭을 꽉 채운다.
   if (idx >= sources.length) {
-    return (
+    return fill ? (
+      <span
+        className="flex w-full items-center justify-center rounded-lg font-extrabold"
+        style={{ height: px, fontSize: px * 0.42, background: `${l.color}14`, color: l.color }}
+      >
+        {monogram(l.name)}
+      </span>
+    ) : (
       <span
         className="flex shrink-0 items-center justify-center rounded-full border-2 font-extrabold"
         style={{ width: px, height: px, fontSize: px * 0.34, background: `${l.color}1f`, color: l.color, borderColor: l.color }}
@@ -97,8 +105,8 @@ function InsurerLogo({ l, px }: { l: InsurerLink; px: number }): JSX.Element {
       alt={`${l.name} 로고`}
       loading="lazy"
       onError={() => setIdx((i) => i + 1)}
-      className="shrink-0 rounded-full border-2 bg-white object-contain p-0.5"
-      style={{ width: px, height: px, borderColor: l.color }}
+      className={fill ? 'w-full bg-white object-contain' : 'shrink-0 rounded-full border-2 bg-white object-contain p-0.5'}
+      style={fill ? { height: px } : { width: px, height: px, borderColor: l.color }}
     />
   )
 }
@@ -555,7 +563,7 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                         onClick={() => setSelected(l)}
                         className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-slate-800 bg-white p-1.5 text-center transition active:bg-slate-900"
                       >
-                        <InsurerLogo l={l} px={26} />
+                        <InsurerLogo l={l} px={36} fill />
                         <span className="break-keep text-[11px] font-bold leading-tight text-slate-100">{l.name}</span>
                         <span className="flex items-center gap-0.5 text-[10px] font-extrabold" style={{ color: l.color }}>
                           <Phone className="h-2.5 w-2.5" style={{ color: l.color }} />
@@ -611,7 +619,7 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
                       style={{ borderTopWidth: 3, borderTopColor: l.color }}
                     >
                       <div className="flex flex-1 flex-col items-center justify-center gap-1">
-                        <InsurerLogo l={l} px={30} />
+                        <InsurerLogo l={l} px={44} fill />
                         <span className="break-keep text-[12px] font-bold leading-tight text-slate-100">{l.name}</span>
                         <span
                           className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-extrabold tracking-tight"
