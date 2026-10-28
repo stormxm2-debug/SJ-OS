@@ -9,16 +9,36 @@ import {
 } from '@renderer/services/commercial/healthRecordService'
 
 /**
- * 고객 건강기록(공단·심평원) 조회 — CODEF 간편인증.
+ * 고객 건강기록(건강보험공단 「진료받은 내용」) 조회 — CODEF 간편인증.
  *
- * 1) 고객 정보 입력 → 간편인증 요청  2) 고객이 휴대폰(카카오/PASS)에서 승인
- * 3) 승인 완료 → 결과 조회(진료·검진 내역).  민감 의료정보이므로 동의 하에만 진행한다.
+ * 1) 고객 정보 입력 → 간편인증 요청  2) 고객이 휴대폰(카카오/네이버/통신사 등)에서 승인
+ * 3) 승인 완료 → 결과 조회(진료 내역).  민감 의료정보이므로 동의 하에만 진행한다.
  *
- * ※ CODEF 상품 URL·요청변수는 서버(엣지함수) 설정을 따른다. 아래 요청변수(param) 필드명은
- *    CODEF 콘솔의 「진료받은내용/건강검진」 상품 스펙에 맞춰 최종 확정한다(현재는 뼈대).
+ * 요청 변수(CODEF 상품 스펙 — /v1/kr/public/pp/nhis-list/medical-history, loginType "5" 간편인증):
+ *   organization "0002"(고정) · loginType "5" · loginTypeLevel(간편인증 수단) ·
+ *   userName(이름) · identity(생년월일 YYYYMMDD) · phoneNo(휴대폰) ·
+ *   telecom(loginTypeLevel="5" 통신사인증서일 때만) · startDate/endDate(YYYYMMDD).
+ *   ※ 간편인증은 주민번호를 쓰지 않으므로 RSA 암호화 필드가 없다(생년월일만 사용).
  */
 
-const TELECOMS = ['SKT', 'KT', 'LGU+', 'SKT알뜰폰', 'KT알뜰폰', 'LGU+알뜰폰']
+/** 간편인증 수단 (loginTypeLevel). CODEF 스펙값. */
+const AUTH_PROVIDERS: { v: string; label: string }[] = [
+  { v: '1', label: '카카오톡' },
+  { v: '6', label: '네이버' },
+  { v: '8', label: '토스' },
+  { v: '5', label: '통신사(PASS)' },
+  { v: '4', label: 'KB모바일' },
+  { v: '7', label: '신한인증서' },
+  { v: '3', label: '삼성패스' },
+  { v: '10', label: 'NH인증서' }
+]
+
+/** 통신사 (telecom) — loginTypeLevel="5"(통신사인증서)일 때만 필수. */
+const TELECOMS: { v: string; label: string }[] = [
+  { v: '0', label: 'SKT (알뜰폰 포함)' },
+  { v: '1', label: 'KT (알뜰폰 포함)' },
+  { v: '2', label: 'LG U+ (알뜰폰 포함)' }
+]
 
 const digits = (s: string): string => s.replace(/[^\d]/g, '')
 const todayStr = (): string => new Date().toISOString().slice(0, 10).replace(/-/g, '')
@@ -30,9 +50,12 @@ const monthsAgoStr = (n: number): string => {
 
 export default function HealthRecordPage(): JSX.Element {
   const [name, setName] = useState('')
-  const [rrn, setRrn] = useState('') // 주민번호 13자리
+  const [birth, setBirth] = useState('') // 생년월일 YYYYMMDD (간편인증 identity)
   const [phone, setPhone] = useState('')
-  const [telecom, setTelecom] = useState('SKT')
+  const [provider, setProvider] = useState('1') // loginTypeLevel (기본: 카카오톡)
+  const [telecom, setTelecom] = useState('0') // telecom (통신사인증서일 때만)
+  const [startDate, setStartDate] = useState(monthsAgoStr(12))
+  const [endDate, setEndDate] = useState(todayStr())
 
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -44,6 +67,8 @@ export default function HealthRecordPage(): JSX.Element {
   const [result, setResult] = useState<Record<string, unknown> | null>(null)
   const [history, setHistory] = useState<HealthRecordRequest[]>([])
 
+  const needTelecom = provider === '5'
+
   const refresh = async (): Promise<void> => {
     const r = await listHealthRecords()
     if (r.ok) setHistory(r.items)
@@ -52,19 +77,28 @@ export default function HealthRecordPage(): JSX.Element {
     void refresh()
   }, [])
 
-  // CODEF 요청 변수 — 상품 스펙대로 최종 확정. (조회기간: 최근 14개월, 최근 2개월 제외 권장)
-  const buildParam = (): Record<string, unknown> => ({
-    loginType: '5', // 간편인증 (상품 스펙에 맞춰 확정)
-    userName: name.trim(),
-    identity: digits(rrn), // 주민번호 — 서버에서 RSA 암호화
-    phoneNo: digits(phone),
-    telecom,
-    startDate: monthsAgoStr(14),
-    endDate: monthsAgoStr(2),
-    inquiryType: '0'
-  })
+  // CODEF 요청 변수 — 「진료받은 내용」 상품 스펙(간편인증) 그대로.
+  const buildParam = (): Record<string, unknown> => {
+    const p: Record<string, unknown> = {
+      organization: '0002', // 건강보험공단 (고정)
+      loginType: '5', // 간편인증
+      loginTypeLevel: provider, // 간편인증 수단
+      userName: name.trim(),
+      identity: digits(birth), // 생년월일 YYYYMMDD (주민번호 아님)
+      phoneNo: digits(phone),
+      startDate: digits(startDate),
+      endDate: digits(endDate)
+    }
+    if (needTelecom) p.telecom = telecom // 통신사인증서일 때만
+    return p
+  }
 
-  const canStart = name.trim() && digits(rrn).length === 13 && digits(phone).length >= 10
+  const canStart =
+    Boolean(name.trim()) &&
+    digits(birth).length === 8 &&
+    digits(phone).length >= 10 &&
+    digits(startDate).length === 8 &&
+    digits(endDate).length === 8
 
   const onStart = async (): Promise<void> => {
     setError(null)
@@ -73,15 +107,14 @@ export default function HealthRecordPage(): JSX.Element {
     setResult(null)
     setTwoWay(undefined)
     if (!canStart) {
-      setError('고객 성함·주민번호(13자리)·휴대폰 번호를 확인해주세요.')
+      setError('고객 성함·생년월일(YYYYMMDD 8자리)·휴대폰 번호·조회기간을 확인해주세요.')
       return
     }
     setBusy('고객 휴대폰으로 간편인증을 요청하는 중…')
     try {
       const r = await startHealthRecord({
         customerName: name.trim(),
-        param: buildParam(),
-        encryptFields: ['identity']
+        param: buildParam()
       })
       if (r.disabled) {
         setConfigNote(r.error ?? 'CODEF 연동이 아직 설정되지 않았습니다. 키·상품 URL을 등록하면 바로 동작합니다.')
@@ -138,10 +171,10 @@ export default function HealthRecordPage(): JSX.Element {
         <div className="flex flex-wrap items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-[#e6c877]" />
           <h1 className="text-sm font-extrabold text-white">고객 건강기록 조회</h1>
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/80">공단·심평원 · 간편인증(CODEF)</span>
+          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/80">건강보험공단 진료받은 내용 · 간편인증(CODEF)</span>
         </div>
         <p className="mt-1 text-[11px] text-white/60">
-          고객 동의 하에 간편인증으로 진료·검진 내역을 확인합니다. 민감 의료정보는 저장 시 접근 권한(RLS)으로 보호됩니다.
+          고객 동의 하에 간편인증으로 진료 내역을 확인합니다. 간편인증은 주민번호 없이 생년월일로 진행하며, 저장 시 접근 권한(RLS)으로 보호됩니다.
         </p>
       </div>
 
@@ -151,7 +184,7 @@ export default function HealthRecordPage(): JSX.Element {
           <div>
             <b className="font-bold">CODEF 연동 설정 필요</b> — {configNote}
             <div className="mt-1 text-[11px] text-amber-700">
-              Supabase 시크릿에 CODEF_CLIENT_ID / CODEF_CLIENT_SECRET / CODEF_PUBLIC_KEY / CODEF_HEALTH_PRODUCT_URL 을 등록하면 즉시 동작합니다.
+              Supabase 시크릿에 CODEF_CLIENT_ID / CODEF_CLIENT_SECRET / CODEF_PUBLIC_KEY 를 등록하면 즉시 동작합니다. (상품 URL은 서버 기본값 적용됨)
             </div>
           </div>
         </div>
@@ -167,26 +200,50 @@ export default function HealthRecordPage(): JSX.Element {
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동"
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
             </div>
-            <div>
-              <label className="text-[11px] font-semibold text-slate-400">주민등록번호 (13자리)</label>
-              <input value={rrn} onChange={(e) => setRrn(e.target.value)} inputMode="numeric" placeholder="앞 6자리-뒤 7자리"
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
-              <p className="mt-0.5 text-[10px] text-slate-500">서버에서 암호화되어 전송됩니다. 앱·화면에 저장되지 않습니다.</p>
-            </div>
             <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-[11px] font-semibold text-slate-400">생년월일 (YYYYMMDD · 8자리)</label>
+                <input value={birth} onChange={(e) => setBirth(e.target.value)} inputMode="numeric" maxLength={8} placeholder="19900101"
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
+              </div>
               <div className="flex-1">
                 <label className="text-[11px] font-semibold text-slate-400">휴대폰 번호</label>
                 <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="01012345678"
                   className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
               </div>
-              <div className="w-32">
-                <label className="text-[11px] font-semibold text-slate-400">통신사</label>
-                <select value={telecom} onChange={(e) => setTelecom(e.target.value)}
+            </div>
+            <div className="flex gap-2">
+              <div className={needTelecom ? 'flex-1' : 'w-full'}>
+                <label className="text-[11px] font-semibold text-slate-400">간편인증 수단</label>
+                <select value={provider} onChange={(e) => setProvider(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]">
-                  {TELECOMS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                  {AUTH_PROVIDERS.map((p) => (
+                    <option key={p.v} value={p.v}>{p.label}</option>
                   ))}
                 </select>
+              </div>
+              {needTelecom ? (
+                <div className="w-40">
+                  <label className="text-[11px] font-semibold text-slate-400">통신사</label>
+                  <select value={telecom} onChange={(e) => setTelecom(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]">
+                    {TELECOMS.map((t) => (
+                      <option key={t.v} value={t.v}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-[11px] font-semibold text-slate-400">조회 시작 (YYYYMMDD)</label>
+                <input value={startDate} onChange={(e) => setStartDate(e.target.value)} inputMode="numeric" maxLength={8}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
+              </div>
+              <div className="flex-1">
+                <label className="text-[11px] font-semibold text-slate-400">조회 종료 (YYYYMMDD)</label>
+                <input value={endDate} onChange={(e) => setEndDate(e.target.value)} inputMode="numeric" maxLength={8}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
               </div>
             </div>
           </div>
@@ -197,7 +254,7 @@ export default function HealthRecordPage(): JSX.Element {
             간편인증 요청
           </button>
           <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-            조회 범위: 최근 약 14개월(최근 2개월 제외). 요청 후 고객 휴대폰의 인증앱(카카오/PASS 등)에서 승인해야 합니다.
+            요청 후 고객 휴대폰의 인증앱(카카오/네이버/통신사PASS 등)에서 승인해야 합니다. 최근 몇 달 치는 공단 반영 전이라 조회가 안 될 수 있어요.
           </p>
         </div>
 
@@ -223,7 +280,7 @@ export default function HealthRecordPage(): JSX.Element {
             <div className="mt-3">
               <div className="mb-1 text-[11px] font-semibold text-slate-400">조회 결과</div>
               <pre className="max-h-72 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-100">{resultText}</pre>
-              <p className="mt-1 text-[10px] text-slate-500">※ 표시 형식은 CODEF 응답 스펙 확정 후 진료/검진 항목 표로 정리합니다.</p>
+              <p className="mt-1 text-[10px] text-slate-500">※ 표시 형식은 CODEF 응답 스펙 확정 후 진료 항목 표로 정리합니다.</p>
             </div>
           ) : null}
         </div>
