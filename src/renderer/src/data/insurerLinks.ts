@@ -50,7 +50,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: '메리츠화재', portal: '영업포탈', url: 'https://sales.meritzfire.com/', group: '손해보험',
-    csPhone: '1566-7711', chrome: true, edge: true, color: '#E60012',
+    csPhone: '1566-7711', chrome: true, edge: true, color: '#E60012', logo: 'meritz.png',
     ars: '1 차사고접수 · 2 긴급출동 · 3 보험료납입 · 4 계약조회·변경·해지 · 5 보험금신청 · 6 계약대출 · 7 증권·증명서 · 8 신규가입 · 0 상담사',
     disclosure: 'https://www.meritzfire.com/disclosure/product-announcement/product-list.do'
   },
@@ -62,7 +62,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: 'KB손해보험', portal: 'KB스마트비서 GA전용', url: 'https://nsales.kbinsure.co.kr/', group: '손해보험',
-    csPhone: '1544-0114', chrome: true, edge: true, color: '#B8860B',
+    csPhone: '1544-0114', chrome: true, edge: true, color: '#B8860B', logo: 'kbsonbo.png',
     ars: '1 차사고접수 · 2 고장출동 · 3 보험금 청구안내 · 4 장기 상담·변경·해지 · 5 대출 · 6 자동차 상담·변경·해지 · 7 정보변경·증명서 · 0 상담사',
     disclosure: 'https://www.kbinsure.co.kr/CG802030001.ec'
   },
@@ -74,7 +74,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: '한화손해보험', portal: '설계사 전산', url: 'https://portal.hwgeneralins.com/', group: '손해보험',
-    csPhone: '1566-8000', chrome: true, edge: true, color: '#F37321',
+    csPhone: '1566-8000', chrome: true, edge: true, color: '#F37321', logo: 'hanwhasonbo.png',
     ars: '1 차사고접수 · 2 고장출동 · 3 신규가입 · 4 장기 계약관리 · 5 보험금청구 · 6 자동차 계약관리 · 7 대출 · 8 증권·서류 · 0 상담사',
     disclosure: 'https://www.hwgeneralins.com/notice/ir/product-ing01.do'
   },
