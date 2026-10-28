@@ -17,6 +17,20 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 // CODEF 공식 SDK(easycodef-node)는 실제 호출 시점에만 동적 로드한다 — 설정 전/부팅 시
 // npm 로드 실패로 함수가 죽지 않게. (Deno npm: 지원)
 
+// 시크릿 이름을 대소문자 둘 다 허용한다 — 콘솔에서 소문자(client_id 등)로 넣어도 읽히도록.
+const envAny = (...names: string[]): string => {
+  for (const n of names) {
+    const v = Deno.env.get(n)
+    if (v) return v
+  }
+  return ''
+}
+
+// CODEF 「진료받은 내용」(건강보험공단) 상품 경로 — 데모/정식 공통(앞 도메인은 SDK가 서비스타입으로 결정).
+// 출처: developer.codef.io 엔드포인트. 데모 https://development.codef.io + 이 경로 / 정식 https://api.codef.io + 이 경로.
+// 시크릿(CODEF_HEALTH_PRODUCT_URL)이나 요청(body.product)로 덮어쓸 수 있고, 없으면 이 기본값을 쓴다.
+const DEFAULT_HEALTH_PRODUCT_URL = '/v1/kr/public/pp/nhis-list/medical-history'
+
 const CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -68,9 +82,9 @@ Deno.serve(async (req: Request) => {
   if (!uid || !caller) return json({ success: false, error: '로그인 후 사용할 수 있습니다.' }, 401)
 
   // 2) CODEF 설정 확인 (없으면 명확히 안내 — 추측 구현하지 않음)
-  const clientId = Deno.env.get('CODEF_CLIENT_ID') ?? ''
-  const clientSecret = Deno.env.get('CODEF_CLIENT_SECRET') ?? ''
-  const publicKey = Deno.env.get('CODEF_PUBLIC_KEY') ?? ''
+  const clientId = envAny('CODEF_CLIENT_ID', 'client_id')
+  const clientSecret = envAny('CODEF_CLIENT_SECRET', 'client_secret')
+  const publicKey = envAny('CODEF_PUBLIC_KEY', 'public_key')
   if (!clientId || !clientSecret || !publicKey) {
     return json({ success: false, code: 'CODEF_NOT_CONFIGURED', error: 'CODEF 키(CODEF_CLIENT_ID/SECRET/PUBLIC_KEY) 시크릿이 설정되지 않았습니다.' }, 503)
   }
@@ -82,7 +96,7 @@ Deno.serve(async (req: Request) => {
     return json({ success: false, error: '요청 형식이 올바르지 않습니다.' }, 400)
   }
 
-  const productUrl = (body.product && body.product.startsWith('/') ? body.product : '') || Deno.env.get('CODEF_HEALTH_PRODUCT_URL') || ''
+  const productUrl = (body.product && body.product.startsWith('/') ? body.product : '') || envAny('CODEF_HEALTH_PRODUCT_URL', 'health_product_url') || DEFAULT_HEALTH_PRODUCT_URL
   if (!productUrl) {
     return json(
       { success: false, code: 'CODEF_PRODUCT_URL_MISSING', error: 'CODEF 상품 URL이 없습니다. CODEF 콘솔의 「진료받은내용/건강검진」 상품 URL을 CODEF_HEALTH_PRODUCT_URL 시크릿에 넣어주세요.' },
