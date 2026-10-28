@@ -85,7 +85,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: '흥국화재', portal: '영업포털', url: 'https://sales.heungkukfire.co.kr/', group: '손해보험',
-    csPhone: '1688-1688', chrome: true, edge: true, color: '#E6007E',
+    csPhone: '1688-1688', chrome: true, edge: true, color: '#E6007E', logo: 'heungkukhwajae.png',
     ars: '1 차사고접수 · 2 긴급출동 · 3 신규가입 · 4 보험금청구 · 5 장기 납입·변경·해지 · 6 자동차상담 · 7 대출 · 8 증명서 · 0 상담사',
     disclosure: 'https://www.heungkukfire.co.kr/FRW/announce/insGoodsGongsiSale.do'
   },
@@ -97,18 +97,18 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: 'NH농협손해보험', portal: 'SFA 영업지원시스템', url: 'https://ss.nhfire.co.kr/', group: '손해보험',
-    csPhone: '1644-9000', chrome: true, edge: false, color: '#0079C1',
+    csPhone: '1644-9000', chrome: true, edge: false, color: '#0079C1', logo: 'nhsonbo.png',
     ars: '1 보이는ARS · 2 음성ARS → 1 계약조회·납입 · 2 계약대출 · 3 해지·환급금 · 4 사고접수·보장상담 · 0 상담사',
     disclosure: 'https://www.nhfire.co.kr/announce/productAnnounce/retrieveInsuranceProductsAnnounce.nhfire'
   },
   {
     name: '라이나손해보험', portal: 'GA 전산', url: 'https://ga.linagi.com/', group: '손해보험',
-    csPhone: '1566-5800', chrome: true, edge: true, color: '#1A1A1A',
+    csPhone: '1566-5800', chrome: true, edge: true, color: '#1A1A1A', logo: 'linasonbo.png',
     disclosure: 'https://www.chubb.com/kr-kr/disclosure/product.html'
   },
   {
     name: 'AIG손해보험', portal: 'GA 로그인', url: 'https://sso.aig.co.kr/gaLogin/gaLogin.jsp', group: '손해보험',
-    csPhone: '1544-2792', chrome: true, edge: true, color: '#001F60',
+    csPhone: '1544-2792', chrome: true, edge: true, color: '#001F60', logo: 'aigsonbo.png',
     disclosure: 'https://www.aig.co.kr/wo/dpwot001.html?menuId=MS702'
   },
   {
