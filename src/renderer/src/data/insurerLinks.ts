@@ -56,7 +56,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: 'DB손해보험', portal: '영업포탈 통합로그인', url: 'https://www.mdbins.com/', group: '손해보험',
-    csPhone: '1588-0100', chrome: true, edge: false, color: '#009490', homepage: 'idbins.com',
+    csPhone: '1588-0100', chrome: true, edge: false, color: '#009490', homepage: 'idbins.com', logo: 'dbsonbo.png',
     ars: '1 긴급출동 · 2 차사고접수 · 3 신규가입 · 4 보험금청구 · 5 장기 상담·해지 · 6 자동차 상담·해지 · 7 대출 · 8 증명서 · 9 납입변경 · 0 상담사',
     disclosure: 'https://www.idbins.com/FWMAIV1534.do'
   },
