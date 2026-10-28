@@ -55,9 +55,19 @@ interface Body {
   twoWay?: { jobIndex: number; threadIndex: number; jti: string; twoWayTimestamp: number }
 }
 
-/** CODEF 응답을 안전하게 파싱 — 성공/추가인증필요/오류를 구분. */
+/** CODEF 응답을 안전하게 파싱 — 성공/추가인증필요/오류를 구분.
+ *  easycodef-node 의 requestProduct 는 응답을 JSON "문자열"로 돌려줄 수 있으므로,
+ *  문자열이면 먼저 파싱한다(이미 객체면 그대로). */
 function classify(res: unknown): { kind: 'ok' | 'twoway' | 'error'; code: string; message: string; data: Record<string, unknown> } {
-  const r = (res ?? {}) as { result?: { code?: string; message?: string }; data?: Record<string, unknown> }
+  let obj: unknown = res
+  if (typeof res === 'string') {
+    try {
+      obj = JSON.parse(res)
+    } catch {
+      obj = {}
+    }
+  }
+  const r = (obj ?? {}) as { result?: { code?: string; message?: string }; data?: Record<string, unknown> }
   const code = r.result?.code ?? ''
   const message = r.result?.message ?? ''
   const data = (r.data ?? {}) as Record<string, unknown>
@@ -125,6 +135,8 @@ Deno.serve(async (req: Request) => {
 
     const res = await codef.requestProduct(productUrl, EasyCodefConstant.SERVICE_TYPE_DEMO, param)
     const out = classify(res)
+    // 진단 로그(민감 의료정보는 제외 — 응답 타입과 코드/메시지만).
+    console.log('[health-record] codef', { resType: typeof res, kind: out.kind, code: out.code, message: out.message, mode: body.mode })
 
     // 4) 상태/결과 저장 (health_record_requests, RLS: 본인/owner·admin)
     const persist = async (patch: Record<string, unknown>): Promise<string | null> => {
