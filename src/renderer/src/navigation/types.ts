@@ -14,6 +14,7 @@ export type View =
   | { name: 'content-studio' }
   | { name: 'knowledge' }
   | { name: 'family-caregiver' }
+  | { name: 'health-record' }
   | { name: 'security-center' }
   | { name: 'sales-activity' }
   | { name: 'schedule' }
