@@ -32,6 +32,8 @@ export interface InsurerLink {
   color: string
   /** 로고용 공식 홈페이지 도메인 — 전산 주소와 브랜드 도메인이 다를 때만 지정(로고서비스 정확도↑). */
   homepage?: string
+  /** 번들된 로고 파일명 — public/insurer-logos/ 에 둔 파일(대표가 제공한 공식 로고). 지정 시 최우선 사용. */
+  logo?: string
   /** ARS 메뉴 한 줄 요약 — 공식 확인된 회사만 */
   ars?: string
   /** 상품공시실(약관·판매상품 공시) 링크 */
@@ -42,7 +44,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   // 손해보험 (13)
   {
     name: '삼성화재', portal: 'Dream Portal (영업포탈)', url: 'https://erp.samsungfire.com/', group: '손해보험',
-    csPhone: '1588-5114', chrome: true, edge: true, color: '#1428A0',
+    csPhone: '1588-5114', chrome: true, edge: true, color: '#1428A0', logo: 'samsunghwajae.png',
     ars: '1 차사고접수 · 2 긴급출동 · 3 계약조회·변경·해지 · 4 가입문의 · 5 보험금청구 · 6 대출 · 9 증명서 · 0 상담사',
     disclosure: 'https://www.samsungfire.com/page/VH.REIF0011.do'
   },

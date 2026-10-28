@@ -89,8 +89,9 @@ function InsurerLogo({ l, px, fill = false }: { l: InsurerLink; px: number; fill
       [l.homepage, discHost ? registrableDomain(discHost) : '', host ? registrableDomain(host) : ''].filter(Boolean)
     )
   ] as string[]
-  // 풀 로고(로고서비스) 우선 → 파비콘(DuckDuckGo·Google) → 이니셜.
+  // 번들 로고(대표 제공, 최우선) → 풀 로고(로고서비스) → 파비콘(DuckDuckGo·Google) → 이니셜.
   const sources = [
+    ...(l.logo ? [`/insurer-logos/${l.logo}`] : []),
     ...domains.map((d) => `https://logo.clearbit.com/${d}`),
     ...domains.map((d) => `https://icons.duckduckgo.com/ip3/${d}.ico`),
     ...(host ? [`https://www.google.com/s2/favicons?sz=128&domain=${host}`] : [])
