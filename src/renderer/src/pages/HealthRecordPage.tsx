@@ -54,8 +54,8 @@ export default function HealthRecordPage(): JSX.Element {
   const [phone, setPhone] = useState('')
   const [provider, setProvider] = useState('1') // loginTypeLevel (기본: 카카오톡)
   const [telecom, setTelecom] = useState('0') // telecom (통신사인증서일 때만)
-  const [startDate, setStartDate] = useState(monthsAgoStr(12))
-  const [endDate, setEndDate] = useState(todayStr())
+  const [startDate, setStartDate] = useState(monthsAgoStr(13))
+  const [endDate, setEndDate] = useState(monthsAgoStr(1))
 
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -93,12 +93,14 @@ export default function HealthRecordPage(): JSX.Element {
     return p
   }
 
-  const canStart =
-    Boolean(name.trim()) &&
-    digits(birth).length === 8 &&
-    digits(phone).length >= 10 &&
+  // 조회기간: 8자리씩이고, 시작<종료이며 종료일이 미래가 아니어야 한다(YYYYMMDD 문자열 비교로 충분).
+  const validPeriod =
     digits(startDate).length === 8 &&
-    digits(endDate).length === 8
+    digits(endDate).length === 8 &&
+    digits(startDate) < digits(endDate) &&
+    digits(endDate) <= todayStr()
+  const canStart =
+    Boolean(name.trim()) && digits(birth).length === 8 && digits(phone).length >= 10 && validPeriod
 
   const onStart = async (): Promise<void> => {
     setError(null)
@@ -106,8 +108,9 @@ export default function HealthRecordPage(): JSX.Element {
     setConfigNote(null)
     setResult(null)
     setTwoWay(undefined)
+    setRequestId(undefined)
     if (!canStart) {
-      setError('고객 성함·생년월일(YYYYMMDD 8자리)·휴대폰 번호·조회기간을 확인해주세요.')
+      setError('고객 성함·생년월일(YYYYMMDD 8자리)·휴대폰 번호를 확인하고, 조회 시작일이 종료일보다 앞서도록 해주세요.')
       return
     }
     setBusy('고객 휴대폰으로 간편인증을 요청하는 중…')
@@ -149,10 +152,19 @@ export default function HealthRecordPage(): JSX.Element {
         return
       }
       if (!r.ok) {
-        setError(r.error ?? '아직 승인 전이거나 조회에 실패했습니다. 고객 승인 후 다시 시도해주세요.')
+        // CF-13001: 조회기간 오류 / CF-00025: 이미 소진된 인증 세션 → 요청부터 다시.
+        const deadSession = r.code === 'CF-00025' || /완료된 요청|만료|CF-00025/.test(r.error ?? '')
+        if (deadSession) {
+          setTwoWay(undefined)
+          setRequestId(undefined)
+          setError('인증 세션이 끝났습니다(1회용). 「간편인증 요청」부터 다시 하세요 — 요청 → 카톡 승인 → 결과 조회를 한 번씩만.')
+        } else {
+          setError(r.error ?? '아직 승인 전이거나 조회에 실패했습니다. 고객 승인 후 다시 시도해주세요.')
+        }
         return
       }
       setResult(r.result ?? {})
+      setTwoWay(undefined) // 2-way 세션은 1회용 — 성공 후 재조회 방지(새 조회는 다시 요청).
       setNotice('건강기록을 받아왔습니다.')
       void refresh()
     } catch {
@@ -254,7 +266,7 @@ export default function HealthRecordPage(): JSX.Element {
             간편인증 요청
           </button>
           <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-            요청 후 고객 휴대폰의 인증앱(카카오/네이버/통신사PASS 등)에서 승인해야 합니다. 최근 몇 달 치는 공단 반영 전이라 조회가 안 될 수 있어요.
+            순서: <b className="text-slate-300">간편인증 요청 → 고객 휴대폰 인증앱(카카오/네이버/통신사PASS 등)에서 승인 → 결과 조회</b>. 각 단계는 한 번씩만 — 결과 조회가 안 되면 「간편인증 요청」부터 다시 하세요. 최근 1~2개월 치는 공단 반영 전이라 조회가 안 될 수 있어, 기본 조회기간은 한 달 전까지로 잡아뒀습니다.
           </p>
         </div>
 
