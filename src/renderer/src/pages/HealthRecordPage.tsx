@@ -81,6 +81,10 @@ const ymd = (v: unknown): string => {
   return d.length === 8 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}` : String(v ?? '') || '-'
 }
 
+/** 조회 결과 보관·열람 기간(일). 지나면 cron 이 결과를 비우고 '만료' 처리한다. */
+const RETAIN_DAYS = 30
+const daysSince = (iso: string): number => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+
 interface CatRow {
   type: string
   count: number
@@ -235,6 +239,17 @@ export default function HealthRecordPage(): JSX.Element {
     }
   }
 
+  // 저장된(과거) 결과 다시 보기 — 완료 건이고 보관기간(30일) 안이면 그 결과를 결과 영역에 띄운다.
+  const viewSaved = (h: HealthRecordRequest): void => {
+    if (!h.result) return
+    setError(null)
+    setConfigNote(null)
+    setTwoWay(undefined)
+    setResult(h.result)
+    setNotice(`저장된 결과를 불러왔습니다 — ${h.customerName || '고객'} · ${new Date(h.createdAt).toLocaleDateString('ko-KR')}`)
+    setTimeout(() => document.getElementById('hr-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
   return (
     <div className="space-y-4">
       {/* 헤더 */}
@@ -355,28 +370,54 @@ export default function HealthRecordPage(): JSX.Element {
         </div>
       </div>
 
-      {result ? <ResultReport result={result} /> : null}
+      {result ? (
+        <div id="hr-result">
+          <ResultReport result={result} />
+        </div>
+      ) : null}
 
       {notice ? <div className="rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[12px] font-semibold text-emerald-700">{notice}</div> : null}
       {error ? <div className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[12px] font-semibold text-rose-700">{error}</div> : null}
 
-      {/* 최근 요청 */}
+      {/* 최근 요청 — 완료 건은 30일간 저장되어 다시 열람 가능 */}
       <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-slate-100">최근 요청</h2>
           <button type="button" onClick={() => void refresh()} className="text-[11px] font-semibold text-slate-400 hover:text-slate-200">새로고침</button>
         </div>
+        <p className="mt-0.5 text-[11px] text-slate-500">완료된 조회 결과는 <b className="text-slate-300">{RETAIN_DAYS}일간 보관</b>되어 다시 열람할 수 있고, 이후 자동 만료됩니다.</p>
         {history.length === 0 ? (
           <p className="mt-2 text-[12px] text-slate-500">아직 요청이 없습니다.</p>
         ) : (
           <div className="mt-2 divide-y divide-slate-800">
-            {history.map((h) => (
-              <div key={h.id} className="flex items-center justify-between py-2 text-[12px]">
-                <span className="font-semibold text-slate-200">{h.customerName || '고객 미지정'}</span>
-                <span className="text-slate-500">{new Date(h.createdAt).toLocaleString('ko-KR')}</span>
-                <StatusBadge status={h.status} />
-              </div>
-            ))}
+            {history.map((h) => {
+              const age = daysSince(h.createdAt)
+              const canView = h.status === 'completed' && !!h.result && age <= RETAIN_DAYS
+              const daysLeft = Math.max(0, RETAIN_DAYS - age)
+              return (
+                <div key={h.id} className="flex items-center gap-2 py-2 text-[12px]">
+                  <span className="min-w-0 flex-1 truncate font-semibold text-slate-200">{h.customerName || '고객 미지정'}</span>
+                  <span className="shrink-0 text-slate-500">{new Date(h.createdAt).toLocaleString('ko-KR')}</span>
+                  {canView ? (
+                    <span className="shrink-0 text-[10px] font-semibold text-slate-400">{daysLeft}일 남음</span>
+                  ) : null}
+                  <StatusBadge status={h.status} />
+                  {canView ? (
+                    <button
+                      type="button"
+                      onClick={() => viewSaved(h)}
+                      className="shrink-0 rounded-lg border border-slate-700 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-200 transition hover:bg-slate-950"
+                    >
+                      결과 보기
+                    </button>
+                  ) : (
+                    <span className="shrink-0 w-[52px] text-right text-[10px] text-slate-400">
+                      {h.status === 'completed' ? '보관 만료' : ''}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -444,18 +485,19 @@ function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Elem
             </div>
           </div>
 
-          {/* 진료 상세 내역 */}
+          {/* 진료 상세 내역 (건강보험공단 「진료받은 내용」이 제공하는 전 필드) */}
           <div className="mt-4">
-            <div className="mb-1 text-[11px] font-semibold text-slate-400">진료 상세 내역</div>
+            <div className="mb-1 text-[11px] font-semibold text-slate-400">진료 상세 내역 · 치료/투약</div>
             <div className="overflow-x-auto rounded-xl border border-slate-800">
               <table className="w-full whitespace-nowrap text-[12px]">
                 <thead>
                   <tr className="bg-slate-950 text-slate-300">
                     <th className="px-3 py-2 text-left font-semibold">병의원·약국</th>
                     <th className="px-3 py-2 text-left font-semibold">진료개시일</th>
-                    <th className="px-3 py-2 text-left font-semibold">진료형태</th>
-                    <th className="px-3 py-2 text-right font-semibold">방문(입원)</th>
+                    <th className="px-3 py-2 text-left font-semibold">진료형태(치료)</th>
+                    <th className="px-3 py-2 text-right font-semibold">처방횟수</th>
                     <th className="px-3 py-2 text-right font-semibold">투약일수</th>
+                    <th className="px-3 py-2 text-right font-semibold">방문(입원)일수</th>
                     <th className="px-3 py-2 text-right font-semibold">본인부담금</th>
                     <th className="px-3 py-2 text-right font-semibold">공단부담금</th>
                   </tr>
@@ -463,11 +505,14 @@ function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Elem
                 <tbody className="divide-y divide-slate-800 text-slate-200">
                   {records.map((r, i) => (
                     <tr key={i}>
-                      <td className="px-3 py-2">{r.resHospitalName || '-'}</td>
+                      <td className="px-3 py-2 font-medium">{r.resHospitalName || '-'}</td>
                       <td className="px-3 py-2">{ymd(r.resTreatStartDate)}</td>
-                      <td className="px-3 py-2">{r.resTreatType || '-'}</td>
+                      <td className="px-3 py-2">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">{r.resTreatType || '-'}</span>
+                      </td>
+                      <td className="px-3 py-2 text-right">{num(r.resPrescribeCnt)}회</td>
+                      <td className="px-3 py-2 text-right font-semibold text-[#8a6a1f]">{num(r.resPrescribeDays)}일분</td>
                       <td className="px-3 py-2 text-right">{num(r.resVisitDays)}일</td>
-                      <td className="px-3 py-2 text-right">{num(r.resPrescribeDays)}일</td>
                       <td className="px-3 py-2 text-right">{won(r.resDeductibleAmt)}</td>
                       <td className="px-3 py-2 text-right">{won(r.resPublicCharge)}</td>
                     </tr>
@@ -475,7 +520,10 @@ function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Elem
                 </tbody>
               </table>
             </div>
-            <p className="mt-1 text-[10px] text-slate-500">※ 건강보험공단 「진료받은 내용」 기준. 민감 의료정보이므로 열람 권한(RLS)으로 보호됩니다.</p>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+              ※ 「진료받은 내용」(건강보험공단)이 제공하는 전 항목입니다 — <b>진료형태</b>(처방조제/외래/입원 등 = 받은 치료 구분), <b>처방횟수·투약일수</b>(투약정보), <b>방문(입원)일수</b>, 본인/공단 부담금.
+              <br />개별 <b>약품명·질병(진단)명</b>은 이 상품 범위 밖이라, 더 상세히 보려면 「내가먹는약 한눈에」·「진료 및 투약정보」 상품 연동이 필요합니다(아래 안내).
+            </p>
           </div>
         </>
       )}
