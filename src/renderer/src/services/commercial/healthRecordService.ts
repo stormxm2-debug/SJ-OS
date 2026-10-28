@@ -109,8 +109,14 @@ export function startHealthRecord(input: StartInput): Promise<StartResult> {
   return call({ mode: 'start', ...input })
 }
 
-/** 2차: 고객 승인 후 결과 조회. */
-export function confirmHealthRecord(args: { requestId?: string; product?: string; param: Record<string, unknown>; twoWay: TwoWayInfo }): Promise<StartResult> {
+/** 2차: 고객 승인 후 결과 조회. (민감 필드는 encryptFields 로 서버에서 RSA 암호화) */
+export function confirmHealthRecord(args: {
+  requestId?: string
+  product?: string
+  param: Record<string, unknown>
+  twoWay: TwoWayInfo
+  encryptFields?: string[]
+}): Promise<StartResult> {
   return call({ mode: 'confirm', ...args })
 }
 
