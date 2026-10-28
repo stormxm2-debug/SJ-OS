@@ -78,6 +78,10 @@ async function call(payload: Record<string, unknown>, timeoutMs = 150000): Promi
       body: JSON.stringify(payload),
       signal: controller.signal
     })
+    // 엣지함수가 아직 배포되지 않았으면(404) 설정 안내로 처리.
+    if (res.status === 404) {
+      return { ok: false, disabled: true, code: 'CODEF_NOT_DEPLOYED', error: '건강기록 조회 서버(엣지함수)가 아직 배포되지 않았습니다. CODEF 키·상품 URL 준비 후 배포하면 동작합니다.' }
+    }
     const data = (await res.json().catch(() => null)) as Record<string, unknown> | null
     if (!data) return { ok: false, error: `요청 실패 (HTTP ${res.status})` }
     const disabled = data.code === 'CODEF_NOT_CONFIGURED' || data.code === 'CODEF_PRODUCT_URL_MISSING' || res.status === 404
