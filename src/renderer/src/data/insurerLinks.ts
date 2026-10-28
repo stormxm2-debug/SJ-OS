@@ -80,7 +80,7 @@ export const INSURER_LINKS: InsurerLink[] = [
   },
   {
     name: '롯데손해보험', portal: '영업지원 (let NGS)', url: 'https://lottero.lotteins.co.kr/', group: '손해보험',
-    csPhone: '1588-3344', chrome: true, edge: true, color: '#DA291C',
+    csPhone: '1588-3344', chrome: true, edge: true, color: '#DA291C', logo: 'lottesonbo.png',
     disclosure: 'https://www.lotteins.co.kr/web/C/D/H/cdh190.jsp'
   },
   {
