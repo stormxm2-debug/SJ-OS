@@ -14,8 +14,8 @@
 //  (SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY 는 기본 제공)
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-// CODEF 공식 SDK. Deno는 npm: 지원. (런타임 호환 이슈 시 직접 fetch 구현으로 교체)
-import { EasyCodef, EasyCodefConstant, EasyCodefUtil } from 'npm:easycodef-node@1'
+// CODEF 공식 SDK(easycodef-node)는 실제 호출 시점에만 동적 로드한다 — 설정 전/부팅 시
+// npm 로드 실패로 함수가 죽지 않게. (Deno npm: 지원)
 
 const CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -90,8 +90,9 @@ Deno.serve(async (req: Request) => {
     )
   }
 
-  // 3) CODEF 호출
+  // 3) CODEF 호출 — SDK는 이 시점에만 동적 로드(호환 이슈가 함수 부팅을 막지 않도록).
   try {
+    const { EasyCodef, EasyCodefConstant, EasyCodefUtil } = await import('npm:easycodef-node@1')
     const codef = new EasyCodef()
     codef.setPublicKey(publicKey)
     codef.setClientInfoForDemo(clientId, clientSecret)
