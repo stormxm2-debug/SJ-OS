@@ -47,6 +47,63 @@ const monthsAgoStr = (n: number): string => {
   return d.toISOString().slice(0, 10).replace(/-/g, '')
 }
 
+/** CODEF 「진료받은 내용」 응답 레코드(건강보험공단 스펙). */
+interface TreatRecord {
+  resUserNm?: string
+  resHospitalName?: string // 병의원(약국) 명칭
+  resTreatStartDate?: string // 진료개시일 YYYYMMDD
+  resTreatType?: string // 진료형태 (처방조제/외래/입원 등)
+  resPrescribeCnt?: string // 처방횟수
+  resDeductibleAmt?: string // 본인부담금
+  resVisitDays?: string // 방문(입원)일수
+  resPrescribeDays?: string // 투약일수
+  resPublicCharge?: string // 공단부담금
+}
+
+/** 응답(data)에서 진료 레코드 배열을 꺼낸다 — 배열이면 그대로, 객체면 첫 배열 속성. */
+const toRecords = (result: unknown): TreatRecord[] => {
+  if (Array.isArray(result)) return result as TreatRecord[]
+  if (result && typeof result === 'object') {
+    for (const v of Object.values(result as Record<string, unknown>)) {
+      if (Array.isArray(v)) return v as TreatRecord[]
+    }
+  }
+  return []
+}
+
+const num = (v: unknown): number => {
+  const n = Number(String(v ?? '').replace(/[^\d.-]/g, ''))
+  return Number.isFinite(n) ? n : 0
+}
+const won = (v: unknown): string => `${num(v).toLocaleString('ko-KR')}원`
+const ymd = (v: unknown): string => {
+  const d = String(v ?? '').replace(/[^\d]/g, '')
+  return d.length === 8 ? `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}` : String(v ?? '') || '-'
+}
+
+interface CatRow {
+  type: string
+  count: number
+  deductible: number
+  publicCharge: number
+}
+/** 진료형태별 카테고리 집계 + 합계. */
+const summarize = (recs: TreatRecord[]): { cats: CatRow[]; total: CatRow } => {
+  const map = new Map<string, CatRow>()
+  const total: CatRow = { type: '합계', count: recs.length, deductible: 0, publicCharge: 0 }
+  for (const r of recs) {
+    const type = (r.resTreatType || '기타').trim()
+    const cur = map.get(type) ?? { type, count: 0, deductible: 0, publicCharge: 0 }
+    cur.count += 1
+    cur.deductible += num(r.resDeductibleAmt)
+    cur.publicCharge += num(r.resPublicCharge)
+    map.set(type, cur)
+    total.deductible += num(r.resDeductibleAmt)
+    total.publicCharge += num(r.resPublicCharge)
+  }
+  return { cats: [...map.values()].sort((a, b) => b.count - a.count), total }
+}
+
 export default function HealthRecordPage(): JSX.Element {
   const [name, setName] = useState('')
   const [birth, setBirth] = useState('') // 생년월일 YYYYMMDD (간편인증 identity)
@@ -178,8 +235,6 @@ export default function HealthRecordPage(): JSX.Element {
     }
   }
 
-  const resultText = useMemo(() => (result ? JSON.stringify(result, null, 2) : ''), [result])
-
   return (
     <div className="space-y-4">
       {/* 헤더 */}
@@ -293,14 +348,14 @@ export default function HealthRecordPage(): JSX.Element {
           </button>
 
           {result ? (
-            <div className="mt-3">
-              <div className="mb-1 text-[11px] font-semibold text-slate-400">조회 결과</div>
-              <pre className="max-h-72 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-100">{resultText}</pre>
-              <p className="mt-1 text-[10px] text-slate-500">※ 표시 형식은 CODEF 응답 스펙 확정 후 진료 항목 표로 정리합니다.</p>
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12px] font-semibold text-emerald-700">
+              조회가 완료됐습니다. 아래 <b>「조회 결과」</b>에서 카테고리 보고서와 상세 내역을 확인하세요.
             </div>
           ) : null}
         </div>
       </div>
+
+      {result ? <ResultReport result={result} /> : null}
 
       {notice ? <div className="rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[12px] font-semibold text-emerald-700">{notice}</div> : null}
       {error ? <div className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[12px] font-semibold text-rose-700">{error}</div> : null}
@@ -325,6 +380,105 @@ export default function HealthRecordPage(): JSX.Element {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/** 조회 결과를 카테고리 보고서(진료형태별 합계) + 상세 표로 정리. 원본 JSON 토글 제공. */
+function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Element {
+  const [showRaw, setShowRaw] = useState(false)
+  const records = useMemo(() => toRecords(result), [result])
+  const { cats, total } = useMemo(() => summarize(records), [records])
+  const raw = useMemo(() => JSON.stringify(result, null, 2), [result])
+  const userNm = records[0]?.resUserNm
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold text-slate-100">
+          조회 결과
+          {userNm ? <span className="text-slate-400"> · {userNm}</span> : null}
+          {records.length ? <span className="text-slate-400"> · 총 {records.length}건</span> : null}
+        </h2>
+        {records.length ? (
+          <button type="button" onClick={() => setShowRaw((v) => !v)} className="text-[11px] font-semibold text-slate-400 hover:text-slate-200">
+            {showRaw ? '표로 보기' : '원본(JSON) 보기'}
+          </button>
+        ) : null}
+      </div>
+
+      {records.length === 0 || showRaw ? (
+        <pre className="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-100">{raw}</pre>
+      ) : (
+        <>
+          {/* 카테고리 보고서 (진료형태별) */}
+          <div className="mt-3">
+            <div className="mb-1 text-[11px] font-semibold text-slate-400">카테고리 보고서 · 진료형태별</div>
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="bg-slate-950 text-slate-300">
+                    <th className="px-3 py-2 text-left font-semibold">진료형태</th>
+                    <th className="px-3 py-2 text-right font-semibold">건수</th>
+                    <th className="px-3 py-2 text-right font-semibold">본인부담금</th>
+                    <th className="px-3 py-2 text-right font-semibold">공단부담금</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {cats.map((c) => (
+                    <tr key={c.type}>
+                      <td className="px-3 py-2 font-semibold">{c.type}</td>
+                      <td className="px-3 py-2 text-right">{c.count}건</td>
+                      <td className="px-3 py-2 text-right">{c.deductible.toLocaleString('ko-KR')}원</td>
+                      <td className="px-3 py-2 text-right">{c.publicCharge.toLocaleString('ko-KR')}원</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-[#fdf7ea] font-bold text-[#8a6a1f]">
+                    <td className="px-3 py-2">합계</td>
+                    <td className="px-3 py-2 text-right">{total.count}건</td>
+                    <td className="px-3 py-2 text-right">{total.deductible.toLocaleString('ko-KR')}원</td>
+                    <td className="px-3 py-2 text-right">{total.publicCharge.toLocaleString('ko-KR')}원</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 진료 상세 내역 */}
+          <div className="mt-4">
+            <div className="mb-1 text-[11px] font-semibold text-slate-400">진료 상세 내역</div>
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="w-full whitespace-nowrap text-[12px]">
+                <thead>
+                  <tr className="bg-slate-950 text-slate-300">
+                    <th className="px-3 py-2 text-left font-semibold">병의원·약국</th>
+                    <th className="px-3 py-2 text-left font-semibold">진료개시일</th>
+                    <th className="px-3 py-2 text-left font-semibold">진료형태</th>
+                    <th className="px-3 py-2 text-right font-semibold">방문(입원)</th>
+                    <th className="px-3 py-2 text-right font-semibold">투약일수</th>
+                    <th className="px-3 py-2 text-right font-semibold">본인부담금</th>
+                    <th className="px-3 py-2 text-right font-semibold">공단부담금</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {records.map((r, i) => (
+                    <tr key={i}>
+                      <td className="px-3 py-2">{r.resHospitalName || '-'}</td>
+                      <td className="px-3 py-2">{ymd(r.resTreatStartDate)}</td>
+                      <td className="px-3 py-2">{r.resTreatType || '-'}</td>
+                      <td className="px-3 py-2 text-right">{num(r.resVisitDays)}일</td>
+                      <td className="px-3 py-2 text-right">{num(r.resPrescribeDays)}일</td>
+                      <td className="px-3 py-2 text-right">{won(r.resDeductibleAmt)}</td>
+                      <td className="px-3 py-2 text-right">{won(r.resPublicCharge)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-1 text-[10px] text-slate-500">※ 건강보험공단 「진료받은 내용」 기준. 민감 의료정보이므로 열람 권한(RLS)으로 보호됩니다.</p>
+          </div>
+        </>
+      )}
     </div>
   )
 }
