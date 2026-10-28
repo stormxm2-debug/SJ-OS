@@ -41,7 +41,6 @@ const TELECOMS: { v: string; label: string }[] = [
 ]
 
 const digits = (s: string): string => s.replace(/[^\d]/g, '')
-const todayStr = (): string => new Date().toISOString().slice(0, 10).replace(/-/g, '')
 const monthsAgoStr = (n: number): string => {
   const d = new Date()
   d.setMonth(d.getMonth() - n)
@@ -54,8 +53,8 @@ export default function HealthRecordPage(): JSX.Element {
   const [phone, setPhone] = useState('')
   const [provider, setProvider] = useState('1') // loginTypeLevel (기본: 카카오톡)
   const [telecom, setTelecom] = useState('0') // telecom (통신사인증서일 때만)
-  const [startDate, setStartDate] = useState(monthsAgoStr(13))
-  const [endDate, setEndDate] = useState(monthsAgoStr(1))
+  const [startDate, setStartDate] = useState(monthsAgoStr(14))
+  const [endDate, setEndDate] = useState(monthsAgoStr(2))
 
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -93,12 +92,17 @@ export default function HealthRecordPage(): JSX.Element {
     return p
   }
 
-  // 조회기간: 8자리씩이고, 시작<종료이며 종료일이 미래가 아니어야 한다(YYYYMMDD 문자열 비교로 충분).
+  // CODEF 「진료받은 내용」 조회기간 규칙: 조회일 기준 14개월 전부터 1년간만 가능하고,
+  // 최근 진료내역은 진료개시 2개월 이후에야 반영된다 → [14개월 전, 2개월 전] 창 안이어야 한다.
+  // (이 창을 벗어나면 CODEF가 CF-13001 기간오류를 돌려줌.) 전 구간이 12개월이라 1년 제한도 자동 충족.
+  const minStart = monthsAgoStr(14)
+  const maxEnd = monthsAgoStr(2)
   const validPeriod =
     digits(startDate).length === 8 &&
     digits(endDate).length === 8 &&
     digits(startDate) < digits(endDate) &&
-    digits(endDate) <= todayStr()
+    digits(startDate) >= minStart &&
+    digits(endDate) <= maxEnd
   const canStart =
     Boolean(name.trim()) && digits(birth).length === 8 && digits(phone).length >= 10 && validPeriod
 
@@ -110,7 +114,7 @@ export default function HealthRecordPage(): JSX.Element {
     setTwoWay(undefined)
     setRequestId(undefined)
     if (!canStart) {
-      setError('고객 성함·생년월일(YYYYMMDD 8자리)·휴대폰 번호를 확인하고, 조회 시작일이 종료일보다 앞서도록 해주세요.')
+      setError(`입력값을 확인해주세요. 조회기간은 「약 14개월 전 ~ 2개월 전」(${minStart} ~ ${maxEnd}) 안이어야 하고(최근 2개월은 공단 미반영), 시작일이 종료일보다 앞서야 합니다.`)
       return
     }
     setBusy('고객 휴대폰으로 간편인증을 요청하는 중…')
@@ -266,7 +270,7 @@ export default function HealthRecordPage(): JSX.Element {
             간편인증 요청
           </button>
           <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-            순서: <b className="text-slate-300">간편인증 요청 → 고객 휴대폰 인증앱(카카오/네이버/통신사PASS 등)에서 승인 → 결과 조회</b>. 각 단계는 한 번씩만 — 결과 조회가 안 되면 「간편인증 요청」부터 다시 하세요. 최근 1~2개월 치는 공단 반영 전이라 조회가 안 될 수 있어, 기본 조회기간은 한 달 전까지로 잡아뒀습니다.
+            순서: <b className="text-slate-300">간편인증 요청 → 고객 휴대폰 인증앱(카카오/네이버/통신사PASS 등)에서 승인 → 결과 조회</b>. 각 단계는 한 번씩만 — 결과 조회가 안 되면 「간편인증 요청」부터 다시 하세요. 조회 가능 기간은 <b className="text-slate-300">조회일 기준 14개월 전 ~ 2개월 전</b>(최근 2개월은 공단 반영 전)이라, 기본값을 그 창으로 자동 설정했습니다.
           </p>
         </div>
 
