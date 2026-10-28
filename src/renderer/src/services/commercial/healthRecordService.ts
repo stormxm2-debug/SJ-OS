@@ -154,8 +154,8 @@ export async function listHealthRecords(customerId?: string): Promise<{ ok: bool
     const cols = 'id, customer_id, customer_name, product, status, created_at, result, error'
     const q = db.from('health_record_requests').select(cols)
     const { data, error } = customerId
-      ? await q.eq('customer_id', customerId).order('created_at', { ascending: false }).limit(20)
-      : await q.order('created_at', { ascending: false }).limit(20)
+      ? await q.eq('customer_id', customerId).order('created_at', { ascending: false }).limit(50)
+      : await q.order('created_at', { ascending: false }).limit(50)
     if (error) return { ok: false, items: [], error: error.message }
     return { ok: true, items: ((data as Row[]) ?? []).map(mapRow) }
   } catch {
