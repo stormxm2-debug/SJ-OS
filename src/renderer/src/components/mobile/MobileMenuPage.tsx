@@ -4,6 +4,7 @@ import { useSession } from '@renderer/navigation/SessionContext'
 import { canAccessRoute } from '@renderer/navigation/roleAccess'
 import type { View } from '@renderer/navigation/types'
 import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeatures'
+import { isBetaMenu } from '@renderer/navigation/menuTiers'
 import {
   MOBILE_MENU,
   listFavorites,
@@ -174,6 +175,10 @@ export default function MobileMenuPage({
                       {item.view && isNewFeature(item.view.name) ? (
                         <span className="shrink-0 rounded-full bg-[#e6c877] px-1.5 py-0.5 text-[9px] font-bold leading-none text-[#0e1e3a]">
                           NEW
+                        </span>
+                      ) : isBetaMenu(item.key) ? (
+                        <span className="shrink-0 rounded-full border border-[#c6982f]/60 bg-[#fdf7ea] px-1.5 py-0.5 text-[9px] font-bold leading-none text-[#8a6a1f]">
+                          BETA
                         </span>
                       ) : null}
                       {item.adminOnly ? (
