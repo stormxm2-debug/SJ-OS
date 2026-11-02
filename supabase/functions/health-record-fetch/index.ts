@@ -26,16 +26,16 @@ const envAny = (...names: string[]): string => {
   return ''
 }
 
-// CODEF 공개키 정규화 — 콘솔 값은 머리/꼬리줄 없는 한 줄 Base64 여야 하는데, PEM 통째로
-// 붙여넣거나(-----BEGIN/END-----) 줄바꿈·공백·따옴표가 섞이면 RSA 암호화가
-// "PEM Base64 error: invalid Base64 encoding" 으로 실패한다. 순수 Base64 본문만 남긴다.
-const normalizePublicKey = (k: string): string =>
-  k
-    .replace(/-----BEGIN[^-]*-----/g, '')
-    .replace(/-----END[^-]*-----/g, '')
-    .replace(/["']/g, '')
-    .replace(/\s+/g, '')
-    .trim()
+// CODEF 공개키 정규화 — 두 단계로 처리한다.
+// 1) 표준 Base64 문자(A-Z a-z 0-9 + / =)만 남긴다. PEM 머리/꼬리줄·공백·따옴표·이스케이프를 모두 제거
+//    (CODEF 공개키는 URL-safe 가 아니라 -,_ 가 본문에 없음 — 안전).
+// 2) easycodef 의 encryptRSA 는 이 값을 "-----BEGIN PUBLIC KEY-----\n{key}\n-----END PUBLIC KEY-----"
+//    로 감싸는데, Supabase Edge(Deno)의 PEM 파서는 base64 본문이 64자마다 줄바꿈돼 있어야 한다
+//    (한 줄이면 "PEM Base64 error: invalid Base64 encoding"). 그래서 64자마다 줄바꿈을 넣어 둔다.
+const normalizePublicKey = (k: string): string => {
+  const b64 = k.replace(/[^A-Za-z0-9+/=]/g, '')
+  return b64.replace(/.{64}/g, '$&\n').replace(/\n$/, '')
+}
 
 // CODEF 「진료받은 내용」(건강보험공단) 상품 경로 — 데모/정식 공통(앞 도메인은 SDK가 서비스타입으로 결정).
 // 출처: developer.codef.io 엔드포인트. 데모 https://development.codef.io + 이 경로 / 정식 https://api.codef.io + 이 경로.
