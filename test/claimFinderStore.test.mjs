@@ -119,3 +119,26 @@ test('검토 저장도 미구성 시 비활성', async () => {
   assert.equal(r.ok, false)
   assert.equal(r.disabled, true)
 })
+
+test('getClient 예외 → ok:false 로 처리(비활성 아님, throw 안 함)', async () => {
+  const store = createClaimFinderStore({ getClient: async () => { throw new Error('init boom') } })
+  const r = await store.saveRun(baseRun)
+  assert.equal(r.ok, false)
+  assert.notEqual(r.disabled, true)
+  assert.match(r.error, /init boom/)
+  const rv = await store.addReview({ runId: 'run-1', candidateId: 'c1' })
+  assert.equal(rv.ok, false)
+  assert.match(rv.error, /init boom/)
+})
+
+test('서버가 id 없이 반환 → 성공 가장 금지(null id 실패)', async () => {
+  const client = {
+    from: () => ({ insert: () => ({ select: () => ({ single: async () => ({ data: {}, error: null }) }) }) })
+  }
+  const store = createClaimFinderStore({ getClient: async () => client })
+  const r = await store.saveRun(baseRun)
+  assert.equal(r.ok, false, 'id 없으면 ok:false')
+  assert.match(r.error, /id/)
+  const rv = await store.addReview({ runId: 'run-1', candidateId: 'c1' })
+  assert.equal(rv.ok, false)
+})

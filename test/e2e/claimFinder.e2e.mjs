@@ -143,6 +143,55 @@ test('저장 미구성 → 비활성 안내', { skip }, async () => {
   await page.context().close()
 })
 
+test('스테일 저장 폐기: A 저장 대기 중 B 분석 → A 저장 완료가 B 화면에 반영 안 됨', { skip }, async () => {
+  const page = await newPage({ customers, records, saveDelay: 500 })
+  // A 분석 후 저장 클릭(500ms 지연)
+  await page.selectOption('[data-testid=customer-select]', 'A')
+  await page.check('[data-testid=consent]')
+  await page.selectOption('[data-testid=record-select]', 'rA')
+  await page.click('[data-testid=analyze]')
+  await page.waitForSelector('[data-testid=result]')
+  await page.click('[data-testid=save]') // A 저장 시작(지연)
+  // 저장 완료 전에 B 로 전환 + 재분석(새 결과 scope)
+  await page.selectOption('[data-testid=customer-select]', 'B')
+  await page.check('[data-testid=consent]')
+  await page.selectOption('[data-testid=record-select]', 'rB')
+  await page.click('[data-testid=analyze]')
+  await page.waitForSelector('[data-testid=result]')
+  await page.waitForTimeout(700) // A 저장(500ms) 완료까지 대기
+  // B 화면의 저장 버튼은 여전히 "서버에 저장"(A 의 SAVE_DONE 이 폐기됨)
+  const saveText = await page.textContent('[data-testid=save]')
+  assert.ok(!saveText.includes('저장됨'), 'A 의 스테일 저장이 B 에 savedRunId 를 주입하면 안 됨')
+  // A saveRun 은 호출됐지만(payload customerId=A), B 화면 상태엔 영향 없음
+  const calls = await page.evaluate(() => globalThis.__CALLS)
+  const savedA = calls.find((c) => c[0] === 'saveRun' && c[1].customerId === 'A')
+  assert.ok(savedA, 'A 저장은 실제로 호출됨(그러나 완료가 폐기됨)')
+  // savedRunId 가 B 에 주입되지 않았으므로(저장 버튼이 "저장됨" 이 아님) B 검토는 A run 에 붙을 수 없다
+  // (onSaveReview 는 savedRunId 없으면 동작하지 않음 — 구조적 보장).
+  await page.context().close()
+})
+
+test('동의 철회/DEMO 전환 시 업로드 원문·확인·진행상태 초기화', { skip }, async () => {
+  const page = await newPage({ customers, records })
+  await page.selectOption('[data-testid=customer-select]', 'A')
+  await page.check('[data-testid=consent]')
+  await page.click('text=업로드 원본(검토용)')
+  await page.setInputFiles('[data-testid=ingest-file]', { name: 'hira.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(recResult)) })
+  await page.waitForSelector('[data-testid=ingest-result]')
+  // 동의 철회 → 업로드 결과 사라짐
+  await page.uncheck('[data-testid=consent]')
+  await page.waitForTimeout(50)
+  assert.equal(await page.$('[data-testid=ingest-result]'), null, '동의 철회 시 업로드 원문이 남으면 안 됨')
+  // 다시 업로드 후 DEMO 전환 → 업로드 결과 사라짐
+  await page.check('[data-testid=consent]')
+  await page.setInputFiles('[data-testid=ingest-file]', { name: 'hira.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(recResult)) })
+  await page.waitForSelector('[data-testid=ingest-result]')
+  await page.click('[data-testid=demo]')
+  await page.waitForSelector('[data-testid=result]')
+  assert.equal(await page.$('[data-testid=ingest-result]'), null, 'DEMO 전환 시 업로드 원문이 남으면 안 됨')
+  await page.context().close()
+})
+
 test('화면 대비: bg-white + text-slate-100 ≥ WCAG AA(4.5:1)', { skip }, async () => {
   const page = await newPage({ customers, records })
   const ratio = await page.evaluate(() => {

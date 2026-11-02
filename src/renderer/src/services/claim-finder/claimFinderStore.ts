@@ -79,7 +79,12 @@ export function createClaimFinderStore(deps: ClaimStoreDeps) {
       return { ok: false, error: '실데이터 저장에는 건강기록 연결(health_record_request_id)이 필요합니다.' }
     }
 
-    const db = await deps.getClient()
+    let db: ClaimStoreClient | null
+    try {
+      db = await deps.getClient()
+    } catch (e) {
+      return { ok: false, error: '저장 클라이언트 초기화 실패: ' + (e instanceof Error ? e.message : String(e)) }
+    }
     if (!db) return { ok: false, disabled: true, error: DISABLED_MSG }
 
     const row: Record<string, unknown> = {
@@ -98,7 +103,8 @@ export function createClaimFinderStore(deps: ClaimStoreDeps) {
     try {
       const { data, error } = await db.from('claim_finder_runs').insert(row).select('id').single()
       if (error) return { ok: false, error: error.message }
-      return { ok: true, id: data?.id }
+      if (!data?.id) return { ok: false, error: '저장은 됐으나 서버가 run id 를 반환하지 않았습니다(검토 저장 불가).' }
+      return { ok: true, id: data.id }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
     }
@@ -107,7 +113,12 @@ export function createClaimFinderStore(deps: ClaimStoreDeps) {
   async function addReview(input: SaveReviewInput): Promise<StoreResult> {
     if (!input.runId) return { ok: false, error: 'runId 가 필요합니다(저장된 실행에만 검토를 추가할 수 있습니다).' }
     if (!input.candidateId) return { ok: false, error: 'candidateId 가 필요합니다.' }
-    const db = await deps.getClient()
+    let db: ClaimStoreClient | null
+    try {
+      db = await deps.getClient()
+    } catch (e) {
+      return { ok: false, error: '저장 클라이언트 초기화 실패: ' + (e instanceof Error ? e.message : String(e)) }
+    }
     if (!db) return { ok: false, disabled: true, error: DISABLED_MSG }
     const row: Record<string, unknown> = {
       run_id: input.runId,
@@ -118,7 +129,8 @@ export function createClaimFinderStore(deps: ClaimStoreDeps) {
     try {
       const { data, error } = await db.from('claim_finder_reviews').insert(row).select('id').single()
       if (error) return { ok: false, error: error.message }
-      return { ok: true, id: data?.id }
+      if (!data?.id) return { ok: false, error: '검토 저장 응답에 id 가 없습니다.' }
+      return { ok: true, id: data.id }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) }
     }

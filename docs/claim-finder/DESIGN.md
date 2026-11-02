@@ -26,8 +26,9 @@
 7. **원본 수집(ingest)은 추측 금지·안전 비활성.** `ingest.ts` 는 형식/크기 검증 + 원본 해시(provenance) +
    JSON 구조적 파싱(어댑터 재사용). PDF 는 **자동 담보/금액 추출을 하지 않고** 페이지 원문만 제공(사람 확인·입력).
    PDF 추출기(pdfjs)는 DI 로 주입하며, 미주입 시 "비활성" 으로 명확히 보고(조용히 성공 금지). 실포맷 정확도 미검증.
-8. **UI 상태 위생은 순수 reducer(`uiState.ts`).** 고객 변경(외부 hub 포함)/동의 철회/DEMO 전환 시
-   이전 고객의 결과·검토메모가 남지 않도록 초기화. 결정론이라 단독 회귀 테스트(`claimUiState.test.mjs`)로 고정.
+8. **UI 상태 위생은 순수 reducer(`uiState.ts`) + 세대 가드(`asyncGuard.ts`).** 고객 변경(외부 hub 포함)/동의 철회/DEMO 전환 시
+   결과·검토메모·업로드·저장상태 초기화. 저장/검토는 **결과 scope 세대**를 캡처해 늦은 완료를 폐기하고,
+   저장은 **분석 당시 입력 스냅샷**으로 수행(라이브 값 금지) — 입력이 바뀌면 결과 무효화. 브라우저 E2E 로 경쟁 상태 검증.
 
 ## 재사용한 기존 자산
 - 고객: `services/commercial/customerService`(+`@shared/commercial/models` CustomerRecord), 교차기능 선택 `services/insurance-hub/insuranceHubStore`.
@@ -38,8 +39,10 @@
 ## 데이터 모델(파일만, 미적용)
 `supabase/migrations/20261102_claim_finder.sql`: `claim_finder_runs`(실행/결과 jsonb), `claim_finder_reviews`(사람 검토).
 RLS select/update/delete = `is_owner_or_admin() or staff_id = auth.uid()`. insert 는 강화:
-- runs: `staff_id=auth.uid()` + (DEMO면 실고객/요청 금지) 또는 (실데이터면 `claim_finder_run_link_ok` — 본인 소유·유효 동의·고객 일치). `health_record_request_id` FK.
-- reviews: `staff_id=auth.uid()` + `run_id` 접근 가능.
+- 공통 `claim_finder_run_valid`(DEMO 규칙 포함)를 runs SELECT/INSERT/UPDATE(using+with check)에 동일 적용 → 동의 철회 후 읽기·수정·리뷰 차단.
+- 불변 필드(staff_id/customer_id/health_record_request_id/is_demo)는 BEFORE UPDATE 트리거로 변경 금지.
+- reviews: `staff_id=auth.uid()` + `claim_finder_run_accessible(run_id)`(부모 run 접근+유효).
+- `health_record_request_id` FK **on delete cascade**(원본 건강기록 삭제 시 파생 run·검토 삭제 = 프라이버시). set null 은 FK UPDATE 가 불변 트리거와 충돌해 삭제가 막히므로 쓰지 않음(격리 DB 로 확인).
 ⚠️ 운영 스키마(status enum·consent_at·customers) 미확인 → 적용 전 재확인(미확인 시 fail-closed).
 
 ## 흐름

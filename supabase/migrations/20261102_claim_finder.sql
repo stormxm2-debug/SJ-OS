@@ -24,7 +24,11 @@ create table if not exists public.claim_finder_runs (
   customer_id uuid,                       -- public.customers.id (소유 고객) — 요청 행 통해 간접 검증
   customer_name text,                     -- 표시용 스냅샷
   health_record_request_id uuid           -- 연결한 진료기록(health_record_requests.id)
-    references public.health_record_requests (id) on delete set null,
+    -- ⚠️ on delete CASCADE(의도): 원본 건강기록이 삭제되면 그로부터 파생된 분석 run(및 검토)도 삭제한다
+    --    (동의 앵커가 사라진 민감 파생물을 남기지 않음 = 프라이버시 정책).
+    --    set null 로 두면 FK 가 run 을 UPDATE(hr_id→null)하려다 아래 불변 트리거에 막혀
+    --    원본 건강기록 삭제 자체가 실패한다(격리 DB 로 확인). → cascade 로 해결.
+    references public.health_record_requests (id) on delete cascade,
   coverage_analysis_ref text,             -- 보장분석 참조(현재 localStorage id 등)
   rules_version text not null,            -- 적용된 규칙 엔진 버전
   status text not null default 'completed'

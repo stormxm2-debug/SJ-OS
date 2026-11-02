@@ -51,6 +51,7 @@ export type ClaimUiAction =
   | { type: 'SET_NOTICE'; notice: string | null }
   | { type: 'SET_ERROR'; error: string | null }
   | { type: 'SAVE_DONE'; runId: string; notice?: string }
+  | { type: 'CLEAR_RESULT'; notice?: string } // 입력이 결과와 달라지면 결과 무효화(고객/동의 유지)
 
 export function claimUiReducer(state: ClaimUiState, action: ClaimUiAction): ClaimUiState {
   switch (action.type) {
@@ -73,6 +74,8 @@ export function claimUiReducer(state: ClaimUiState, action: ClaimUiAction): Clai
       return { ...state, result: action.result, isDemo: true, review: {}, filter: 'ALL', notice: action.notice ?? null, error: null, savedRunId: null }
     case 'SAVE_DONE':
       return { ...state, savedRunId: action.runId, notice: action.notice ?? state.notice }
+    case 'CLEAR_RESULT':
+      return state.result == null ? state : { ...clearedResult(state), notice: action.notice ?? null }
     case 'SET_FILTER':
       return { ...state, filter: action.filter }
     case 'SET_REVIEW':

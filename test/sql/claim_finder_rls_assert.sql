@@ -160,6 +160,19 @@ call pg_temp.try_write('20_revoked_review_insert_blocked', :'staffA'::uuid, fals
 call pg_temp.try_count('21_revoked_review_read_blocked', :'staffA'::uuid, false,
   format('select count(*) from public.claim_finder_reviews where run_id = %L', :'runA'), 0::bigint);
 
+-- ── 원본 건강기록 삭제 → 파생 run/검토 cascade (불변 트리거와 충돌 없음) ──────
+-- set null 이었다면 FK 가 run 을 UPDATE 하려다 불변 트리거에 막혀 이 DELETE 가 실패했을 것.
+-- cascade 이므로 성공해야 하며(ON_ERROR_STOP on → 실패 시 전체 중단), run/검토가 사라져야 한다.
+delete from public.health_record_requests where id = :'hrA';
+
+-- 22) 관리자 기준으로도 runA 는 물리적으로 삭제됨(cascade)
+call pg_temp.try_count('22_hr_delete_cascades_run', :'staffB'::uuid, true,
+  format('select count(*) from public.claim_finder_runs where id = %L', :'runA'), 0::bigint);
+
+-- 23) runA 의 검토도 cascade 로 삭제됨
+call pg_temp.try_count('23_hr_delete_cascades_reviews', :'staffB'::uuid, true,
+  format('select count(*) from public.claim_finder_reviews where run_id = %L', :'runA'), 0::bigint);
+
 -- ── 판정 ────────────────────────────────────────────────────────────────
 \echo '--- CLAIM FINDER RLS RESULTS ---'
 select name, case when passed then 'PASS' else 'FAIL' end as status, detail

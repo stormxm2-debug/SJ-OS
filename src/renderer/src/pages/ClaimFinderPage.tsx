@@ -48,9 +48,17 @@ const STATUS_ORDER: ClaimStatus[] = ['CONFIRMED_CONDITIONS', 'POTENTIAL', 'NEED_
 const wonOrNull = (n: number | null): string => (n == null ? '미산정(null)' : `${n.toLocaleString('ko-KR')}원`)
 
 type DataSource = 'record' | 'upload'
-/** 분석에 쓰인 자료의 저장 연계 정보(저장 가능 여부 판단). */
+/**
+ * 분석 '당시' 입력 스냅샷. 저장은 이 스냅샷으로 하고(라이브 값 사용 금지),
+ * 현재 입력이 스냅샷과 달라지면 결과를 무효화한다. gen 은 결과 scope 세대(늦은 저장/리뷰 폐기용).
+ */
 interface AnalyzedLink {
+  gen: number
   kind: 'record' | 'upload' | 'demo'
+  customerId: string | null
+  customerName: string | null
+  analysisId: string
+  source: DataSource | null
   healthRecordRequestId?: string | null
 }
 
@@ -82,6 +90,30 @@ export default function ClaimFinderPage(): JSX.Element {
 
   const recordsGuard = useRef(createGenerationGuard())
   const ingestGuard = useRef(createGenerationGuard())
+  const resultGuard = useRef(createGenerationGuard()) // 결과 scope — 늦은 저장/리뷰 완료 폐기용
+
+  // 업로드 상태 초기화 + 진행 중 파싱 폐기 + busy 해제(멈춤 방지).
+  const resetIngest = (): void => {
+    ingestGuard.current.invalidate()
+    setIngestResult(null)
+    setIngestConfirmed(false)
+    setIngestBusy(false)
+  }
+  // 결과가 입력과 불일치하게 되면 결과·검토·저장상태 무효화(스테일 완료도 폐기).
+  const invalidateResult = (): void => {
+    resultGuard.current.invalidate()
+    setLink(null)
+    dispatch({ type: 'CLEAR_RESULT' })
+  }
+  // 동의 토글: 해제 시 결과·검토·업로드·진행상태를 모두 비우고 스테일 완료 폐기.
+  const onConsent = (v: boolean): void => {
+    if (!v) {
+      resultGuard.current.invalidate()
+      setLink(null)
+      resetIngest()
+    }
+    dispatch({ type: 'SET_CONSENT', consent: v })
+  }
 
   useEffect(() => {
     void (async () => {
@@ -104,8 +136,10 @@ export default function ClaimFinderPage(): JSX.Element {
     setAnalysisConfirmed(false)
     setIngestResult(null)
     setIngestConfirmed(false)
+    setIngestBusy(false) // 전환 중 진행 스피너 멈춤 방지
     setLink(null)
     ingestGuard.current.invalidate() // 진행 중 파싱 폐기
+    resultGuard.current.invalidate() // 진행 중 저장/리뷰 완료 폐기
     const gen = recordsGuard.current.next()
     if (!customer) return
     void (async () => {
@@ -129,15 +163,19 @@ export default function ClaimFinderPage(): JSX.Element {
 
   const onIngestFile = async (file: File | undefined): Promise<void> => {
     if (!file) return
+    // ★ 새 선택은 먼저 이전 파싱 세대를 무효화(과대파일 경로 포함) → 늦은 이전 응답이 덮어쓰지 못함.
+    const gen = ingestGuard.current.next()
     setIngestResult(null)
     setIngestConfirmed(false)
+    setIngestBusy(false)
+    // 결과가 업로드 입력에 의존했다면(업로드 소스) 새 파일로 결과 무효화.
+    if (source === 'upload') invalidateResult()
     // 파싱 전 크기 제한(과대 업로드 즉시 차단).
     if (file.size > INGEST_LIMITS.maxBytes) {
       setIngestResult({ ok: false, fileName: file.name, bytes: file.size, warnings: [], errors: [`파일이 너무 큽니다(${file.size.toLocaleString('ko-KR')}B > 최대 ${INGEST_LIMITS.maxBytes.toLocaleString('ko-KR')}B).`] })
       return
     }
     setIngestBusy(true)
-    const gen = ingestGuard.current.next()
     try {
       const bytes = new Uint8Array(await file.arrayBuffer())
       const r = await ingestFile({ name: file.name, declaredType: file.type, bytes }, { extractPdfPages: extractPdfPagesForIngest })
@@ -159,17 +197,18 @@ export default function ClaimFinderPage(): JSX.Element {
     let analyzedLink: AnalyzedLink
     const warnings: string[] = []
 
+    const snap = { gen: 0, customerId: customer.id, customerName: customer.name, analysisId, source }
     if (source === 'record') {
       const rec = records.find((r) => r.id === recordId)
       if (!rec?.result) return dispatch({ type: 'SET_ERROR', error: '연결할 진료기록(완료된 건강기록 조회)을 선택하세요.' })
-      // ★ 경쟁 상태 방어: 선택된 레코드가 현재 고객의 것인지 재검증(전환 중 스테일 레코드 차단).
-      if (rec.customerId && rec.customerId !== customer.id) {
-        return dispatch({ type: 'SET_ERROR', error: '선택한 진료기록이 현재 고객의 것이 아닙니다(고객을 다시 확인하세요).' })
+      // ★ 경쟁 상태 방어: 레코드 고객이 현재 고객과 **정확히 일치**해야 함(값 없음도 차단 — fail-closed).
+      if (rec.customerId !== customer.id) {
+        return dispatch({ type: 'SET_ERROR', error: '선택한 진료기록이 현재 고객과 정확히 일치하지 않습니다(고객 식별자 누락/불일치 — 고객을 다시 확인하세요).' })
       }
       const t = treatmentsFromHealthRecordResult(rec.result, { requestId: rec.id })
       events = t.events
       warnings.push(...t.warnings)
-      analyzedLink = { kind: 'record', healthRecordRequestId: rec.id }
+      analyzedLink = { ...snap, kind: 'record', healthRecordRequestId: rec.id }
     } else {
       if (!ingestResult?.ok || ingestResult.kind !== 'health_record_json' || !ingestResult.events?.length) {
         return dispatch({ type: 'SET_ERROR', error: '업로드한 진료 JSON 이 유효하지 않습니다(원본 점검에서 먼저 확인하세요).' })
@@ -178,7 +217,7 @@ export default function ClaimFinderPage(): JSX.Element {
         return dispatch({ type: 'SET_ERROR', error: '업로드 자료가 현재 고객의 것임을 수동으로 확인(체크)해야 분석할 수 있습니다.' })
       }
       events = ingestResult.events
-      analyzedLink = { kind: 'upload' } // 서버 동의 앵커 없음 → 저장 불가(검토용)
+      analyzedLink = { ...snap, kind: 'upload', healthRecordRequestId: null } // 동의 앵커 없음 → 저장 불가(검토용)
     }
 
     // 보장분석은 안정 고객ID가 없어 자동 연결하지 않는다 — 선택 시 수동 확인 필수.
@@ -196,7 +235,7 @@ export default function ClaimFinderPage(): JSX.Element {
 
       const res = analyzeClaims({ treatments: events, contracts: withTerms.contracts, claimHistory: [], demo: false })
       res.warnings.push(...warnings)
-      setLink(analyzedLink)
+      setLink({ ...analyzedLink, gen: resultGuard.current.next() }) // 새 결과 scope 세대
       dispatch({
         type: 'ANALYZE_DONE',
         result: res,
@@ -212,8 +251,9 @@ export default function ClaimFinderPage(): JSX.Element {
   }
 
   const onDemo = (): void => {
+    resetIngest() // DEMO 전환 시 업로드 원문/확인/진행상태 초기화 + 늦은 파싱 폐기
     const res = analyzeClaims(buildDemoInput())
-    setLink({ kind: 'demo' })
+    setLink({ gen: resultGuard.current.next(), kind: 'demo', customerId: null, customerName: null, analysisId: '', source: null })
     dispatch({ type: 'DEMO_DONE', result: res, notice: 'DEMO 합성 데이터로 분석했습니다 (실제 HIRA/KB 포맷 미검증).' })
   }
 
@@ -224,17 +264,19 @@ export default function ClaimFinderPage(): JSX.Element {
     if (!isDemo && link.kind !== 'record') {
       return dispatch({ type: 'SET_ERROR', error: '업로드 원본 분석은 서버에 저장할 수 없습니다(동의 앵커 없음). 저장하려면 건강기록 조회 레코드를 연결해 분석하세요.' })
     }
+    const gen = link.gen // 분석 당시 결과 scope 세대
     setSaveBusy(true)
     dispatch({ type: 'SET_ERROR', error: null })
     try {
+      // ★ 저장은 분석 '당시 스냅샷'(link.*)으로 — 라이브 customer/analysisId 사용 금지.
       const r = await claimFinderStore.saveRun(
         isDemo
           ? { customerId: null, healthRecordRequestId: null, rulesVersion: result.rulesVersion, isDemo: true, result: result.candidates, warnings: result.warnings }
           : {
-              customerId: customer?.id ?? null,
-              customerName: customer?.name ?? null,
+              customerId: link.customerId,
+              customerName: link.customerName,
               healthRecordRequestId: link.healthRecordRequestId ?? null,
-              coverageAnalysisRef: analysisId || null,
+              coverageAnalysisRef: link.analysisId || null,
               rulesVersion: result.rulesVersion,
               isDemo: false,
               consentAt: new Date().toISOString(),
@@ -242,26 +284,32 @@ export default function ClaimFinderPage(): JSX.Element {
               warnings: result.warnings
             }
       )
+      // ★ 스테일 완료 폐기: 저장 대기 중 고객 전환/재분석/DEMO/동의철회 했으면 새 화면에 반영 금지.
+      if (!resultGuard.current.isCurrent(gen)) return
       if (r.ok && r.id) {
         dispatch({ type: 'SAVE_DONE', runId: r.id, notice: `저장 완료(run ${r.id.slice(0, 8)}…). 이제 후보별 검토를 서버에 기록할 수 있습니다.` })
       } else {
         dispatch({ type: 'SET_ERROR', error: (r.disabled ? '' : '저장 실패: ') + (r.error ?? '알 수 없는 오류') })
       }
     } finally {
-      setSaveBusy(false)
+      if (resultGuard.current.isCurrent(gen)) setSaveBusy(false)
     }
   }
 
   const onSaveReview = async (c: ClaimCandidate): Promise<void> => {
-    if (!savedRunId) return
+    if (!savedRunId || !link) return
+    const gen = link.gen
+    const runId = savedRunId
     setReviewBusy(c.id)
     try {
       const rv = review[c.id]
-      const r = await claimFinderStore.addReview({ runId: savedRunId, candidateId: c.id, statusOverride: rv?.status ?? c.status, note: rv?.note ?? null })
+      const r = await claimFinderStore.addReview({ runId, candidateId: c.id, statusOverride: rv?.status ?? c.status, note: rv?.note ?? null })
+      // ★ 스테일 완료 폐기: 대기 중 scope 가 바뀌었으면(다른 고객/결과) 반영 금지.
+      if (!resultGuard.current.isCurrent(gen)) return
       if (r.ok) dispatch({ type: 'SET_NOTICE', notice: `검토 저장됨(${c.coverageName}).` })
       else dispatch({ type: 'SET_ERROR', error: (r.disabled ? '' : '검토 저장 실패: ') + (r.error ?? '') })
     } finally {
-      setReviewBusy(null)
+      if (resultGuard.current.isCurrent(gen)) setReviewBusy(null)
     }
   }
 
@@ -302,7 +350,7 @@ export default function ClaimFinderPage(): JSX.Element {
             ))}
           </select>
           <label className="mt-3 flex items-start gap-2 text-[12px] text-slate-200">
-            <input type="checkbox" checked={consent} onChange={(e) => dispatch({ type: 'SET_CONSENT', consent: e.target.checked })} className="mt-0.5" data-testid="consent" />
+            <input type="checkbox" checked={consent} onChange={(e) => onConsent(e.target.checked)} className="mt-0.5" data-testid="consent" />
             <span>고객 동의 확인 — 본 고객의 진료기록·보장자료 대조 분석에 동의받았음. <span className="text-slate-500">(동의 없이는 분석 불가. 동의를 해제하면 표시된 결과·검토메모가 즉시 제거됩니다. 서버에서도 소유권·동의를 검증합니다.)</span></span>
           </label>
         </div>
@@ -311,13 +359,13 @@ export default function ClaimFinderPage(): JSX.Element {
         <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-bold text-slate-100">② 자료 연결</h2>
           <div className="mt-2 flex gap-1.5 text-[11px]">
-            <Chip active={source === 'record'} onClick={() => setSource('record')}>저장된 진료기록</Chip>
-            <Chip active={source === 'upload'} onClick={() => setSource('upload')}>업로드 원본(검토용)</Chip>
+            <Chip active={source === 'record'} onClick={() => { setSource('record'); invalidateResult() }}>저장된 진료기록</Chip>
+            <Chip active={source === 'upload'} onClick={() => { setSource('upload'); invalidateResult() }}>업로드 원본(검토용)</Chip>
           </div>
           {source === 'record' ? (
             <>
               <label className="mt-2 block text-[11px] font-semibold text-slate-400">진료기록(건강기록 조회 결과)</label>
-              <select value={recordId} onChange={(e) => setRecordId(e.target.value)} disabled={!customer} data-testid="record-select"
+              <select value={recordId} onChange={(e) => { setRecordId(e.target.value); invalidateResult() }} disabled={!customer} data-testid="record-select"
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f] disabled:opacity-50">
                 <option value="">{customer ? (records.length ? '— 진료기록 선택 —' : '완료된 진료기록 없음(건강기록 조회에서 먼저 조회)') : '먼저 고객 선택'}</option>
                 {records.map((r) => (
@@ -335,7 +383,7 @@ export default function ClaimFinderPage(): JSX.Element {
             />
           )}
           <label className="mt-2 block text-[11px] font-semibold text-slate-400">보장분석(KB 등 보유 담보) <span className="text-slate-500">· 선택</span></label>
-          <select value={analysisId} onChange={(e) => { setAnalysisId(e.target.value); setAnalysisConfirmed(false) }} data-testid="analysis-select"
+          <select value={analysisId} onChange={(e) => { setAnalysisId(e.target.value); setAnalysisConfirmed(false); invalidateResult() }} data-testid="analysis-select"
             className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]">
             <option value="">— 미연결(약관/서류 필요로 표시) —</option>
             {custAnalyses.map((a) => (
