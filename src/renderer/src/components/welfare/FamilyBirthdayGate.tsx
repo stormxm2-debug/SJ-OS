@@ -36,21 +36,8 @@ export default function FamilyBirthdayGate(): JSX.Element | null {
     return r
   }
 
-  // 로그인 시 1회 자동 안내 — 백엔드 연결됨 + 등록분 0건 + 이번 세션에 '다음에' 안 눌렀을 때만.
-  // (configured=false 데모/미연결 환경에서는 저장이 항상 실패하므로 자동으로 띄우지 않는다)
-  useEffect(() => {
-    if (!session.isLoggedIn) return
-    let alive = true
-    void load().then((r) => {
-      if (!alive) return
-      const skipped = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SKIP_KEY) === '1'
-      if (r.configured && r.items.length === 0 && !skipped) setOpen(true)
-    })
-    return () => {
-      alive = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.isLoggedIn])
+  // 로그인 시 자동 안내는 비활성화됨(대표 지시 2026-11-02): 더 이상 로그인 후 자동으로 뜨지 않는다.
+  // 등록은 메뉴에서 수동으로 열어 진행한다(아래 subscribeFamilyBirthdayGate).
 
   // 메뉴에서 수동으로 열기
   useEffect(() => {
