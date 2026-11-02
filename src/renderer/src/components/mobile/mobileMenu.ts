@@ -67,13 +67,23 @@ export interface MobileMenuCategory {
 }
 
 export const MOBILE_MENU: MobileMenuCategory[] = [
+  // 자주 쓰는 메뉴 — CEO 지시(2026-11)로 상단 고정. key 순서/목록은 menuTiers.TOP_MENU_KEYS와 맞춘다.
   {
-    title: '기본 업무',
+    title: '자주 쓰는 메뉴',
     items: [
       { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' } },
       { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' } },
-      { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' } },
       { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' } },
+      { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' } },
+      { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
+      { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
+      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } }
+    ]
+  },
+  {
+    title: '기본 업무',
+    items: [
+      { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' } },
       { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' } },
       { key: 'consultation', label: '상담기록', icon: ClipboardList, view: { name: 'consultation' } },
       { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' } },
@@ -86,13 +96,11 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' } },
       { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' } },
       { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' } },
-      { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' } },
       { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' } },
       { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' } },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' } },
       { key: 'coverage-analysis', label: '보장분석 정리', icon: ClipboardCheck, view: { name: 'coverage-analysis' } },
       { key: 'hospital-coverage', label: '가입제안서 담보 정리', icon: FileSpreadsheet, view: { name: 'hospital-coverage' } },
-      { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: FileText, view: { name: 'claim-assistant' } },
       { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' } },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' } },
@@ -107,10 +115,8 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
   {
     title: '실적·공지',
     items: [
-      { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
       { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' } },
       { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' } },
-      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } },
       // 인사 기록 게이트 재열기 액션 — ⚠ 라벨에 생일/복지 금지 (서프라이즈 유지, FamilyBirthdayGate 참고)
       { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardList, action: 'birthday-gate' },
       { key: 'my-password', label: '비밀번호 변경', icon: KeyRound, action: 'password-gate' }

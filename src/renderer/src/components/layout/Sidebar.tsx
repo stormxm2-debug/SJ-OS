@@ -66,6 +66,7 @@ import {
 import { useEffect, useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeatures'
+import { isBetaMenu } from '@renderer/navigation/menuTiers'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useAppMode, type AppMode } from '@renderer/navigation/AppModeContext'
 import { useSession } from '@renderer/navigation/SessionContext'
@@ -110,19 +111,30 @@ type NavGroup = {
  * keeping the main menu clean. Labels are display-only; route ids/logic unchanged.
  */
 const NAV_GROUPS: NavGroup[] = [
+  // 자주 쓰는 메뉴 — CEO 지시(2026-11)로 상단 고정. key/순서는 menuTiers.TOP_MENU_KEYS와 맞춘다.
+  {
+    label: '자주 쓰는 메뉴',
+    items: [
+      { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' }, match: ['attendance'] },
+      { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
+      { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
+      { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
+      { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
+      { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
+      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }
+    ]
+  },
   {
     label: '업무 홈',
     items: [
       { key: 'staff-home', label: '홈', icon: Home, view: { name: 'staff-home' }, match: ['staff-home'] },
       { key: 'dashboard', label: 'CEO 대시보드', icon: LayoutDashboard, view: { name: 'dashboard' }, match: ['dashboard'] },
-      { key: 'schedule', label: '오늘 일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
       { key: 'fcos', label: '내 업무', icon: Briefcase, view: { name: 'fcos' }, match: ['fcos'] }
     ]
   },
   {
     label: '고객 · 상담',
     items: [
-      { key: 'customer', label: '고객 관리', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
       { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
       { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
       { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
@@ -132,14 +144,11 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
       { key: 'coverage-analysis', label: '보장분석 정리', icon: ClipboardCheck, view: { name: 'coverage-analysis' }, match: ['coverage-analysis'] },
       { key: 'hospital-coverage', label: '가입제안서 담보 정리', icon: FileSpreadsheet, view: { name: 'hospital-coverage' }, match: ['hospital-coverage'] },
-      { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
       { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
       { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
       { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' }, match: ['knowledge'] },
-      { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
-  { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
       { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
       { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
       { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
@@ -154,7 +163,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: '영업활동',
     items: [
       { key: 'sales-activity', label: '영업활동', icon: ActivityIcon, view: { name: 'sales-activity' }, match: ['sales-activity'] },
-      { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
       { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' }, match: ['salary'] },
       { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] }
     ]
@@ -179,11 +187,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'registration-admin', label: '고객등록 관리', icon: ShieldCheck, view: { name: 'registration-admin' }, match: ['registration-admin'] },
       { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
       { key: 'security-center', label: '보안 모듈 학습', icon: Radar, view: { name: 'security-center' }, match: ['security-center'] },
-      // 아래 4개는 '직원 본인용' 항목 — 총무비서는 대표/직원 모드 토글이 없어 STAFF_NAV에
-      // 닿지 못하므로(관리자 메뉴만 렌더) 여기에도 둬야 출퇴근·공지·비밀번호 변경을 쓸 수 있다.
-      // 관리자에게는 중복 노출이지만 canAccessRoute로 걸러지지 않는 공용 화면이라 무해하다.
-      { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' }, match: ['attendance'] },
-      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+      // 출퇴근·공지사항은 상단 '자주 쓰는 메뉴'로 이동(2026-11). 본인용 인사정보/비밀번호는 여기 유지.
       { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardListIcon, action: 'birthday-gate' },
       { key: 'my-password', label: '비밀번호 변경', icon: KeyRound, action: 'password-gate' }
     ]
@@ -221,15 +225,20 @@ const NAV_GROUPS: NavGroup[] = [
  */
 const STAFF_NAV: NavItem[] = [
   { key: 'home', label: '홈', icon: Home, view: { name: 'staff-home' }, match: ['staff-home'] },
+  // 자주 쓰는 메뉴(상단 고정) — menuTiers.TOP_MENU_KEYS 순서.
   { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' }, match: ['attendance'] },
   { key: 'schedule', label: '오늘 일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
   { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
+  { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
+  { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
+  { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
+  { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+  // 이하 베타(renderItem에서 BETA 뱃지).
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
   { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
   { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' }, match: ['plan-request'] },
   { key: 'sales-activity', label: '영업활동', icon: ActivityIcon, view: { name: 'sales-activity' }, match: ['sales-activity'] },
-  { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' }, match: ['salary'] },
   { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] },
   { key: 'consultation', label: '상담', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
@@ -237,13 +246,11 @@ const STAFF_NAV: NavItem[] = [
   { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
   { key: 'coverage-analysis', label: '보장분석 정리', icon: ClipboardCheck, view: { name: 'coverage-analysis' }, match: ['coverage-analysis'] },
   { key: 'hospital-coverage', label: '가입제안서 담보 정리', icon: FileSpreadsheet, view: { name: 'hospital-coverage' }, match: ['hospital-coverage'] },
-  { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
   { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
   { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' }, match: ['knowledge'] },
-  { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
   { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
@@ -252,7 +259,6 @@ const STAFF_NAV: NavItem[] = [
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
   { key: 'app-install', label: '앱 설치·배포', icon: Download, view: { name: 'app-install' }, match: ['app-install'] },
-  { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
   { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardListIcon, action: 'birthday-gate' },
   { key: 'my-password', label: '비밀번호 변경', icon: KeyRound, action: 'password-gate' }
 ]
@@ -265,8 +271,15 @@ const STAFF_NAV: NavItem[] = [
  */
 const STAFF_NAV_MVP: NavItem[] = [
   { key: 'home', label: '홈', icon: Home, view: { name: 'staff-home' }, match: ['staff-home'] },
+  // 자주 쓰는 메뉴(상단 고정) — menuTiers.TOP_MENU_KEYS 순서.
   { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' }, match: ['attendance'] },
+  { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
   { key: 'customer', label: '고객관리', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
+  { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
+  { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
+  { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
+  { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+  // 이하 베타(renderItem에서 BETA 뱃지).
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
   { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
@@ -275,13 +288,11 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
   { key: 'coverage-analysis', label: '보장분석 정리', icon: ClipboardCheck, view: { name: 'coverage-analysis' }, match: ['coverage-analysis'] },
   { key: 'hospital-coverage', label: '가입제안서 담보 정리', icon: FileSpreadsheet, view: { name: 'hospital-coverage' }, match: ['hospital-coverage'] },
-  { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
   { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
   { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
   { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
   { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' }, match: ['knowledge'] },
-  { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
   { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
@@ -290,11 +301,8 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
   { key: 'app-install', label: '앱 설치·배포', icon: Download, view: { name: 'app-install' }, match: ['app-install'] },
-  { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
-  { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' }, match: ['salary'] },
   { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] },
-  { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
   { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardListIcon, action: 'birthday-gate' },
   { key: 'my-password', label: '비밀번호 변경', icon: KeyRound, action: 'password-gate' }
 ]
@@ -364,6 +372,10 @@ export default function Sidebar(): JSX.Element {
         {view && isNewFeature(view.name) ? (
           <span className="shrink-0 rounded-full bg-[#e6c877] px-1.5 py-0.5 text-[9px] font-bold leading-none text-[#0e1e3a]">
             NEW
+          </span>
+        ) : isBetaMenu(key) ? (
+          <span className="shrink-0 rounded-full border border-[#c6982f]/60 bg-[#fdf7ea] px-1.5 py-0.5 text-[9px] font-bold leading-none text-[#8a6a1f]">
+            BETA
           </span>
         ) : null}
       </button>
