@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ShieldCheck, Send, RefreshCw, Loader2, Smartphone, AlertTriangle } from 'lucide-react'
+import { ShieldCheck, Send, RefreshCw, Loader2, Smartphone, AlertTriangle, Eye, EyeOff } from 'lucide-react'
 import {
   startHealthRecord,
   confirmHealthRecord,
@@ -194,6 +194,7 @@ export default function HealthRecordPage(): JSX.Element {
 
   const [name, setName] = useState('')
   const [idValue, setIdValue] = useState('') // 생년월일(8) 또는 주민번호(13) — 상품에 따라
+  const [showRrn, setShowRrn] = useState(false) // 주민번호 화면 표시 여부(기본 가림)
   const [phone, setPhone] = useState('')
   const [provider, setProvider] = useState('1') // loginTypeLevel (기본: 카카오톡)
   const [telecom, setTelecom] = useState('0') // telecom (통신사인증서일 때만)
@@ -428,8 +429,14 @@ export default function HealthRecordPage(): JSX.Element {
                 ) : (
                   <>
                     <label className="text-[11px] font-semibold text-slate-400">주민등록번호 (13자리)</label>
-                    <input value={idValue} onChange={(e) => setIdValue(e.target.value)} inputMode="numeric" maxLength={14} placeholder="앞 6자리 + 뒤 7자리"
-                      className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
+                    <div className="relative mt-1">
+                      <input value={idValue} onChange={(e) => setIdValue(e.target.value)} type={showRrn ? 'text' : 'password'} inputMode="numeric" maxLength={14} placeholder="앞 6자리 + 뒤 7자리" autoComplete="off"
+                        className="w-full rounded-lg border border-slate-700 bg-white px-3 py-2 pr-9 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
+                      <button type="button" onClick={() => setShowRrn((v) => !v)} aria-label={showRrn ? '주민번호 숨기기' : '주민번호 보기'} tabIndex={-1}
+                        className="absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400 hover:text-slate-200">
+                        {showRrn ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
