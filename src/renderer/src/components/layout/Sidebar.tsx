@@ -309,6 +309,10 @@ const STAFF_NAV_MVP: NavItem[] = [
 
 const MODE_LABEL: Record<AppMode, string> = { ceo: '대표 모드', staff: '직원 모드' }
 
+// 임시 숨김(2026-11, 대표 지시) — 화면에서만 치우고 코드는 남겨둔다. 다시 켜려면 true로.
+const SHOW_SIDEBAR_JARVIS_BUTTON = false // 사이드바 하단 '자비스 열기' 버튼
+const SHOW_DEV_ROLE_SWITCH = false // '역할 전환 (개발용)' 데모 계정 전환
+
 export default function Sidebar(): JSX.Element {
   const { route, navigate } = useNavigation()
   const { mode, setMode } = useAppMode()
@@ -518,21 +522,23 @@ export default function Sidebar(): JSX.Element {
         )}
       </nav>
 
-      <div className="border-t border-slate-800 px-3 py-3">
-        <button
-          type="button"
-          onClick={() => jarvisService.open()}
-          title="자비스 열기"
-          aria-label="자비스 열기"
-          className="group flex w-full items-center gap-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/30 transition hover:shadow-lg hover:shadow-indigo-500/40"
-        >
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20">
-            <Bot className="h-4 w-4" />
-          </span>
-          자비스 열기
-          <Sparkles className="ml-auto h-3.5 w-3.5 text-[#fcd34d]" />
-        </button>
-      </div>
+      {SHOW_SIDEBAR_JARVIS_BUTTON ? (
+        <div className="border-t border-slate-800 px-3 py-3">
+          <button
+            type="button"
+            onClick={() => jarvisService.open()}
+            title="자비스 열기"
+            aria-label="자비스 열기"
+            className="group flex w-full items-center gap-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-3 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/30 transition hover:shadow-lg hover:shadow-indigo-500/40"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20">
+              <Bot className="h-4 w-4" />
+            </span>
+            자비스 열기
+            <Sparkles className="ml-auto h-3.5 w-3.5 text-[#fcd34d]" />
+          </button>
+        </div>
+      ) : null}
 
       {/* Session footer: current user + logout, plus an admin-only quick switcher */}
       <div className="border-t border-slate-800 px-3 py-3">
@@ -545,7 +551,7 @@ export default function Sidebar(): JSX.Element {
             <LogOut className="h-3.5 w-3.5" />
           </button>
         </div>
-        {admin ? (
+        {admin && SHOW_DEV_ROLE_SWITCH ? (
           <div>
             <div className="mb-1 px-1 text-[9px] font-bold uppercase tracking-wider text-slate-600">역할 전환 (개발용)</div>
             <div className="flex flex-wrap gap-1">

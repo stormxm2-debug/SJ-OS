@@ -208,7 +208,8 @@ export default function MobileShell(): JSX.Element {
       </nav>
 
       <JarvisPanel />
-      <JarvisClapListener />
+      {/* '박수로 자비스 열기' 플로팅 핀 — 대표 지시(2026-11) 임시 숨김. 복구하려면 false→true. */}
+      {false && <JarvisClapListener />}
       {/* wakeKey로 함께 리마운트 — 복귀 시 realtime 알림 구독을 새로 맺는다. */}
       <NotificationCenter key={`nc-${wakeKey}`} />
       {/* 하루 첫 접속 시 "오늘 접촉할 고객 N명" 브리핑 (자체생산 루틴 시작점) */}
