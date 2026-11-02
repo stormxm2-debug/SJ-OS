@@ -105,14 +105,10 @@ Deno.serve(async (req: Request) => {
   // 2) CODEF 설정 확인 (없으면 명확히 안내 — 추측 구현하지 않음)
   const clientId = envAny('CODEF_CLIENT_ID', 'client_id').trim()
   const clientSecret = envAny('CODEF_CLIENT_SECRET', 'client_secret').trim()
-  const rawPublicKey = envAny('CODEF_PUBLIC_KEY', 'public_key')
-  const publicKey = normalizePublicKey(rawPublicKey)
+  const publicKey = normalizePublicKey(envAny('CODEF_PUBLIC_KEY', 'public_key'))
   if (!clientId || !clientSecret || !publicKey) {
     return json({ success: false, code: 'CODEF_NOT_CONFIGURED', error: 'CODEF 키(CODEF_CLIENT_ID/SECRET/PUBLIC_KEY) 시크릿이 설정되지 않았습니다.' }, 503)
   }
-  // 진단 로그 — 공개키는 비밀이 아니므로 길이/정합성만 남긴다(값 자체는 로깅하지 않음).
-  // 정상 CODEF RSA-2048 공개키(Base64)는 보통 길이 ≈ 392, mod4 == 0. 크게 다르면 값이 잘렸거나 다른 값.
-  console.log('[health-record] pubkey-diag', { rawLen: rawPublicKey.length, normLen: publicKey.length, mod4: publicKey.length % 4, idLen: clientId.length, secLen: clientSecret.length })
 
   let body: Body
   try {
@@ -188,8 +184,6 @@ Deno.serve(async (req: Request) => {
     const id = await persist({ status: 'failed', error: `${out.code} ${out.message}`.trim() })
     return json({ success: false, status: 'failed', requestId: id, code: out.code, error: out.message || '조회에 실패했습니다.' })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'CODEF 호출 중 오류가 발생했습니다.'
-    // 진단: 공개키 길이/정합성을 에러에 덧붙인다(공개키라 비밀 아님). 정상 CODEF 키 ≈ 392, mod4=0.
-    return json({ success: false, error: `${msg} [pubkeyLen=${publicKey.length}, mod4=${publicKey.length % 4}]` }, 500)
+    return json({ success: false, error: e instanceof Error ? e.message : 'CODEF 호출 중 오류가 발생했습니다.' }, 500)
   }
 })
