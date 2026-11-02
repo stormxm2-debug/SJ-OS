@@ -27,15 +27,11 @@ const envAny = (...names: string[]): string => {
 }
 
 // CODEF 공개키 정규화 — 콘솔 값은 머리/꼬리줄 없는 한 줄 Base64 여야 하는데, PEM 통째로
-// 붙여넣거나(-----BEGIN/END-----) 줄바꿈·공백·따옴표가 섞이면 RSA 암호화가
-// "PEM Base64 error: invalid Base64 encoding" 으로 실패한다. 순수 Base64 본문만 남긴다.
-const normalizePublicKey = (k: string): string =>
-  k
-    .replace(/-----BEGIN[^-]*-----/g, '')
-    .replace(/-----END[^-]*-----/g, '')
-    .replace(/["']/g, '')
-    .replace(/\s+/g, '')
-    .trim()
+// 붙여넣거나(-----BEGIN/END-----) 줄바꿈·공백·따옴표·이스케이프(\n)가 섞이면 RSA 암호화가
+// "PEM Base64 error: invalid Base64 encoding" 으로 실패한다.
+// 표준 Base64 문자(A-Z a-z 0-9 + / =)만 남겨 어떤 형태로 붙여넣어도 동작하게 한다.
+// (CODEF 공개키는 URL-safe 가 아니므로 -,_ 가 본문에 없음 — 안전하게 제거 가능.)
+const normalizePublicKey = (k: string): string => k.replace(/[^A-Za-z0-9+/=]/g, '')
 
 // CODEF 「진료받은 내용」(건강보험공단) 상품 경로 — 데모/정식 공통(앞 도메인은 SDK가 서비스타입으로 결정).
 // 출처: developer.codef.io 엔드포인트. 데모 https://development.codef.io + 이 경로 / 정식 https://api.codef.io + 이 경로.
@@ -105,10 +101,14 @@ Deno.serve(async (req: Request) => {
   // 2) CODEF 설정 확인 (없으면 명확히 안내 — 추측 구현하지 않음)
   const clientId = envAny('CODEF_CLIENT_ID', 'client_id').trim()
   const clientSecret = envAny('CODEF_CLIENT_SECRET', 'client_secret').trim()
-  const publicKey = normalizePublicKey(envAny('CODEF_PUBLIC_KEY', 'public_key'))
+  const rawPublicKey = envAny('CODEF_PUBLIC_KEY', 'public_key')
+  const publicKey = normalizePublicKey(rawPublicKey)
   if (!clientId || !clientSecret || !publicKey) {
     return json({ success: false, code: 'CODEF_NOT_CONFIGURED', error: 'CODEF 키(CODEF_CLIENT_ID/SECRET/PUBLIC_KEY) 시크릿이 설정되지 않았습니다.' }, 503)
   }
+  // 진단 로그 — 공개키는 비밀이 아니므로 길이/정합성만 남긴다(값 자체는 로깅하지 않음).
+  // 정상 CODEF RSA-2048 공개키(Base64)는 보통 길이 ≈ 392, mod4 == 0. 크게 다르면 값이 잘렸거나 다른 값.
+  console.log('[health-record] pubkey-diag', { rawLen: rawPublicKey.length, normLen: publicKey.length, mod4: publicKey.length % 4, idLen: clientId.length, secLen: clientSecret.length })
 
   let body: Body
   try {
