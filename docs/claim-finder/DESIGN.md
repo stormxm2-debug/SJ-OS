@@ -18,8 +18,16 @@
    부족 서류, 판정 근거를 포함 → 원본 대조·감사 가능.
 5. **중복 방지/무병합.** CI 주계약·선지급 등은 `dedupeGroup`으로 합산 1건만(`sumConfirmedAmounts`).
    같은 날짜·기관이라도 서로 다른 진료 이벤트는 병합하지 않는다.
-6. **권한/동의.** 서버(RLS/엣지함수)가 실제 경계. `access.ts`는 그 규칙을 결정론 함수로 재현해
-   클라이언트 사전검증·테스트에 쓴다(우회 아님). 타 조직/타 고객 차단, 동의 유효성/철회 반영.
+6. **권한/동의 — 서버가 실제 경계.** `access.ts`(순수 함수)는 **사전검증일 뿐 경계가 아니다**.
+   실제 경계는 RLS 정책 + 쓰기시점 검증 함수(`claim_finder_run_link_ok`)다: 클라이언트가 staff_id 를
+   자기 것으로 넣어도, 본인 소유·유효 동의된 건강기록 요청과 **고객이 일치하지 않으면 DB가 insert 를 거부**한다.
+   reviews 는 `run_id` 소유를 확인(교차 run 리뷰 차단). → `test/claim_finder_rls.sh` 가 일회용 Postgres 에
+   RLS 를 적용해 교차 고객/직원 차단을 **실제로** 검증(프런트 가드 테스트와 구별). 단 합성 스키마라 운영 호환성 미보장.
+7. **원본 수집(ingest)은 추측 금지·안전 비활성.** `ingest.ts` 는 형식/크기 검증 + 원본 해시(provenance) +
+   JSON 구조적 파싱(어댑터 재사용). PDF 는 **자동 담보/금액 추출을 하지 않고** 페이지 원문만 제공(사람 확인·입력).
+   PDF 추출기(pdfjs)는 DI 로 주입하며, 미주입 시 "비활성" 으로 명확히 보고(조용히 성공 금지). 실포맷 정확도 미검증.
+8. **UI 상태 위생은 순수 reducer(`uiState.ts`).** 고객 변경(외부 hub 포함)/동의 철회/DEMO 전환 시
+   이전 고객의 결과·검토메모가 남지 않도록 초기화. 결정론이라 단독 회귀 테스트(`claimUiState.test.mjs`)로 고정.
 
 ## 재사용한 기존 자산
 - 고객: `services/commercial/customerService`(+`@shared/commercial/models` CustomerRecord), 교차기능 선택 `services/insurance-hub/insuranceHubStore`.
@@ -29,7 +37,10 @@
 
 ## 데이터 모델(파일만, 미적용)
 `supabase/migrations/20261102_claim_finder.sql`: `claim_finder_runs`(실행/결과 jsonb), `claim_finder_reviews`(사람 검토).
-RLS = `is_owner_or_admin() or staff_id = auth.uid()`(기존과 동일).
+RLS select/update/delete = `is_owner_or_admin() or staff_id = auth.uid()`. insert 는 강화:
+- runs: `staff_id=auth.uid()` + (DEMO면 실고객/요청 금지) 또는 (실데이터면 `claim_finder_run_link_ok` — 본인 소유·유효 동의·고객 일치). `health_record_request_id` FK.
+- reviews: `staff_id=auth.uid()` + `run_id` 접근 가능.
+⚠️ 운영 스키마(status enum·consent_at·customers) 미확인 → 적용 전 재확인(미확인 시 fail-closed).
 
 ## 흐름
 고객 선택 + 동의 → 진료기록(완료된 건강기록 결과) 연결 / 보장분석 선택 / 약관 자동연결 →

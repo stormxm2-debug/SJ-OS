@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Compass, ShieldCheck, AlertTriangle, Loader2, FileSearch, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useReducer, useState } from 'react'
+import { Compass, AlertTriangle, Loader2, FileSearch, UploadCloud } from 'lucide-react'
 import { listHealthRecords, type HealthRecordRequest } from '@renderer/services/commercial/healthRecordService'
 import { listAnalyses, type CoverageAnalysis } from '@renderer/services/commercial/coverageAnalysis'
 import { listPolicyTerms, type PolicyTerm } from '@renderer/services/insurance-claim/policyTermsService'
@@ -11,7 +11,6 @@ import {
   sumConfirmedAmounts,
   STATUS_LABEL,
   CLAIM_RULES_VERSION,
-  type AnalyzeResult,
   type ClaimCandidate,
   type ClaimStatus
 } from '@renderer/services/claim-finder/claimRules'
@@ -21,12 +20,16 @@ import {
   attachPolicyTerms
 } from '@renderer/services/claim-finder/adapters'
 import { buildDemoInput } from '@renderer/services/claim-finder/fixtures'
+import { claimUiReducer, INITIAL_UI_STATE } from '@renderer/services/claim-finder/uiState'
+import { ingestFile, type IngestResult } from '@renderer/services/claim-finder/ingest'
+import { extractPdfPagesForIngest } from '@renderer/services/claim-finder/pdfExtractor'
 
 /**
  * SJ CLAIM FINDER — 보험금 발굴(검토 지원).
  * 심평원 진료기록(JSON) × 보장분석 × 약관을 대조해 "검토 후보"와 "부족 서류"를 보여준다.
  * ★ 지급조건·금액은 결정론 규칙 + 검증된 약관으로만 판단(AI는 추출/후보검색 보조). 금액 미확정은 null(미산정).
  * ★ 이 결과는 "검토 전 후보"이며 "받을 수 있는 보험금"이 아니다. 보험사 지급확정과 별개.
+ * ★ 상태 위생: 고객 변경/동의 철회/DEMO 전환 시 이전 결과·검토메모는 reducer(uiState)가 초기화한다.
  */
 
 const STATUS_TONE: Record<ClaimStatus, string> = {
@@ -42,7 +45,6 @@ const wonOrNull = (n: number | null): string => (n == null ? '미산정(null)' :
 export default function ClaimFinderPage(): JSX.Element {
   const [customers, setCustomers] = useState<CustomerRecord[]>([])
   const [customer, setCustomer] = useState<CustomerRecord | null>(getHubCustomer())
-  const [consent, setConsent] = useState(false)
 
   const [records, setRecords] = useState<HealthRecordRequest[]>([])
   const [recordId, setRecordId] = useState<string>('')
@@ -50,14 +52,11 @@ export default function ClaimFinderPage(): JSX.Element {
   const [analysisId, setAnalysisId] = useState<string>('')
   const [terms, setTerms] = useState<PolicyTerm[]>([])
 
-  const [result, setResult] = useState<AnalyzeResult | null>(null)
-  const [isDemo, setIsDemo] = useState(false)
-  const [filter, setFilter] = useState<ClaimStatus | 'ALL'>('ALL')
-  const [review, setReview] = useState<Record<string, { status?: ClaimStatus; note?: string }>>({})
+  // 결과 수명주기(결과/검토/동의/DEMO/필터/안내) — 순수 reducer 로 상태 위생 보장.
+  const [ui, dispatch] = useReducer(claimUiReducer, { ...INITIAL_UI_STATE, customerId: customer?.id ?? null })
+  const { consent, result, isDemo, review, filter, notice, error } = ui
 
   const [busy, setBusy] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
     void (async () => {
@@ -70,11 +69,11 @@ export default function ClaimFinderPage(): JSX.Element {
     return subscribeHubCustomer((cu) => setCustomer(cu))
   }, [])
 
-  // 고객 바뀌면 그 고객의 건강기록·보장분석 후보 로드
+  // 고객 바뀌면(외부 hub 변경 포함) 결과/검토/동의 초기화 + 그 고객 자료 로드.
   useEffect(() => {
+    dispatch({ type: 'SELECT_CUSTOMER', customerId: customer?.id ?? null })
     setRecordId('')
     setAnalysisId('')
-    setResult(null)
     if (!customer) {
       setRecords([])
       return
@@ -89,7 +88,6 @@ export default function ClaimFinderPage(): JSX.Element {
     const c = customers.find((x) => x.id === id) ?? null
     setCustomer(c)
     setHubCustomer(c)
-    setConsent(false)
   }
 
   const custAnalyses = useMemo(
@@ -98,12 +96,10 @@ export default function ClaimFinderPage(): JSX.Element {
   )
 
   const onAnalyze = (): void => {
-    setError(null)
-    setNotice(null)
-    if (!customer) return setError('먼저 고객을 선택하세요.')
-    if (!consent) return setError('고객 동의 확인이 필요합니다(동의 없이는 분석할 수 없습니다).')
+    if (!customer) return dispatch({ type: 'SET_ERROR', error: '먼저 고객을 선택하세요.' })
+    if (!consent) return dispatch({ type: 'SET_ERROR', error: '고객 동의 확인이 필요합니다(동의 없이는 분석할 수 없습니다).' })
     const rec = records.find((r) => r.id === recordId)
-    if (!rec?.result) return setError('연결할 진료기록(완료된 건강기록 조회)을 선택하세요.')
+    if (!rec?.result) return dispatch({ type: 'SET_ERROR', error: '연결할 진료기록(완료된 건강기록 조회)을 선택하세요.' })
     const ca = custAnalyses.find((a) => a.id === analysisId) ?? null
 
     setBusy('대조·분석 중…')
@@ -123,30 +119,23 @@ export default function ClaimFinderPage(): JSX.Element {
         demo: false
       })
       res.warnings.push(...warnings)
-      setResult(res)
-      setIsDemo(false)
-      setReview({})
-      setFilter('ALL')
-      setNotice(
-        `분석 완료 — 후보 ${res.candidates.length}건 (규칙 ${res.rulesVersion}). ${
+      dispatch({
+        type: 'ANALYZE_DONE',
+        result: res,
+        notice: `분석 완료 — 후보 ${res.candidates.length}건 (규칙 ${res.rulesVersion}). ${
           ca ? '' : '※ 보장분석 미연결 → 대부분 「서류/약관 필요」로 표시됩니다.'
         }`
-      )
+      })
     } catch {
-      setError('분석 중 오류가 발생했습니다.')
+      dispatch({ type: 'SET_ERROR', error: '분석 중 오류가 발생했습니다.' })
     } finally {
       setBusy(null)
     }
   }
 
   const onDemo = (): void => {
-    setError(null)
     const res = analyzeClaims(buildDemoInput())
-    setResult(res)
-    setIsDemo(true)
-    setReview({})
-    setFilter('ALL')
-    setNotice('DEMO 합성 데이터로 분석했습니다 (실제 HIRA/KB 포맷 미검증).')
+    dispatch({ type: 'DEMO_DONE', result: res, notice: 'DEMO 합성 데이터로 분석했습니다 (실제 HIRA/KB 포맷 미검증).' })
   }
 
   const candidates = result?.candidates ?? []
@@ -186,8 +175,8 @@ export default function ClaimFinderPage(): JSX.Element {
             ))}
           </select>
           <label className="mt-3 flex items-start gap-2 text-[12px] text-slate-200">
-            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5" />
-            <span>고객 동의 확인 — 본 고객의 진료기록·보장자료 대조 분석에 동의받았음. <span className="text-slate-500">(동의 없이는 분석 불가. 서버에서도 소유권·동의를 검증합니다.)</span></span>
+            <input type="checkbox" checked={consent} onChange={(e) => dispatch({ type: 'SET_CONSENT', consent: e.target.checked })} className="mt-0.5" />
+            <span>고객 동의 확인 — 본 고객의 진료기록·보장자료 대조 분석에 동의받았음. <span className="text-slate-500">(동의 없이는 분석 불가. 동의를 해제하면 표시된 결과·검토메모가 즉시 제거됩니다. 서버에서도 소유권·동의를 검증합니다.)</span></span>
           </label>
         </div>
 
@@ -210,9 +199,12 @@ export default function ClaimFinderPage(): JSX.Element {
               <option key={a.id} value={a.id}>{a.customerName || '무제'} · {new Date(a.updatedAt).toLocaleDateString('ko-KR')}</option>
             ))}
           </select>
-          <p className="mt-1 text-[10px] text-slate-500">약관 보관함 {terms.length}건 연결 대기 — 담보명이 일치하면 조항·버전이 자동 연결됩니다. 원본 업로드→자동추출은 추후(어댑터 필요).</p>
+          <p className="mt-1 text-[10px] text-slate-500">약관 보관함 {terms.length}건 연결 대기 — 담보명이 일치하면 조항·버전이 자동 연결됩니다.</p>
         </div>
       </div>
+
+      {/* 원본 파일 점검(수집 기반) — 선택. 자동 분석 파이프라인과 분리된 검증 도구. */}
+      <IngestPanel />
 
       {/* ③ 실행 */}
       <div className="flex flex-wrap items-center gap-2">
@@ -248,9 +240,9 @@ export default function ClaimFinderPage(): JSX.Element {
 
           {/* 상태 필터 */}
           <div className="mt-3 flex flex-wrap gap-1.5">
-            <Chip active={filter === 'ALL'} onClick={() => setFilter('ALL')}>전체 {candidates.length}</Chip>
+            <Chip active={filter === 'ALL'} onClick={() => dispatch({ type: 'SET_FILTER', filter: 'ALL' })}>전체 {candidates.length}</Chip>
             {STATUS_ORDER.map((s) => (
-              <Chip key={s} active={filter === s} onClick={() => setFilter(s)}>{STATUS_LABEL[s]} {counts[s] ?? 0}</Chip>
+              <Chip key={s} active={filter === s} onClick={() => dispatch({ type: 'SET_FILTER', filter: s })}>{STATUS_LABEL[s]} {counts[s] ?? 0}</Chip>
             ))}
           </div>
 
@@ -270,14 +262,80 @@ export default function ClaimFinderPage(): JSX.Element {
                   key={c.id}
                   c={c}
                   review={review[c.id]}
-                  onReview={(patch) => setReview((prev) => ({ ...prev, [c.id]: { ...prev[c.id], ...patch } }))}
+                  onReview={(patch) => dispatch({ type: 'SET_REVIEW', id: c.id, patch })}
                 />
               ))
             )}
           </div>
           <p className="mt-3 text-[10px] text-slate-500">
-            ※ 사람 검토(상태 수정·메모)는 현재 화면 세션에 보관됩니다. 영구 보관 테이블(claim_finder_runs/검토이력)은 마이그레이션으로 준비돼 있으나 운영 DB에는 아직 적용하지 않았습니다.
+            ※ 사람 검토(상태 수정·메모)는 현재 화면 세션에 보관됩니다. 영구 보관 테이블(claim_finder_runs/검토이력)은 마이그레이션으로 준비돼 있으나 운영 DB에는 아직 적용하지 않았습니다. 저장을 연결하면 supabase 인증(JWT) 경로로 RLS 가 소유권·동의·교차접근을 서버에서 강제합니다.
           </p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** 원본 파일(JSON/PDF) 검증·미리보기 도구. 수집 기반(ingest)을 실제 앱에서 end-to-end 로 확인. */
+function IngestPanel(): JSX.Element {
+  const [res, setRes] = useState<IngestResult | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  const onFile = async (file: File | undefined): Promise<void> => {
+    if (!file) return
+    setBusy(true)
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const r = await ingestFile(
+        { name: file.name, declaredType: file.type, bytes },
+        { extractPdfPages: extractPdfPagesForIngest } // PDF 추출기 연결(미연결 시 안전 비활성)
+      )
+      setRes(r)
+    } catch {
+      setRes(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 text-left">
+        <UploadCloud className="h-4 w-4 text-[#c6982f]" />
+        <span className="text-sm font-bold text-slate-100">원본 파일 점검 (JSON/PDF) · 선택</span>
+        <span className="ml-auto text-[11px] text-slate-500">{open ? '접기' : '열기'}</span>
+      </button>
+      {open ? (
+        <div className="mt-3">
+          <p className="text-[11px] leading-relaxed text-slate-500">
+            심평원 진료 <b>JSON</b> 또는 KB 보장분석 <b>PDF</b> 원본의 형식·크기를 검증하고, 원본 해시(provenance)와 추출 가능 여부를 확인합니다.
+            JSON 은 관측된 필드만 매핑하며(추측 안 함), PDF 는 <b>자동으로 담보·금액을 추출하지 않고</b> 페이지 원문만 제공합니다(사람이 약관과 대조·입력). 실제 HIRA/KB 포맷 정확도는 미검증입니다.
+          </p>
+          <input
+            type="file"
+            accept=".json,application/json,.pdf,application/pdf"
+            onChange={(e) => void onFile(e.target.files?.[0])}
+            className="mt-2 block w-full text-[12px] text-slate-300 file:mr-3 file:rounded-lg file:border file:border-slate-700 file:bg-white file:px-3 file:py-1.5 file:text-[12px] file:font-bold file:text-slate-200"
+          />
+          {busy ? <p className="mt-2 text-[12px] text-slate-500"><Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />검증 중…</p> : null}
+          {res ? (
+            <div className={`mt-2 rounded-xl border px-3 py-2.5 text-[12px] ${res.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+              <div className="font-bold">{res.ok ? '검증 통과' : '검증 실패/확인 필요'} — {res.fileName} ({res.bytes.toLocaleString('ko-KR')}B)</div>
+              <div className="mt-0.5 text-[11px]">
+                종류: {res.kind ?? '미상'} {res.fileHash ? `· hash:${res.fileHash.slice(0, 12)}…` : ''}
+                {res.kind === 'health_record_json' && res.events ? ` · 진료 이벤트 ${res.events.length}건` : ''}
+                {res.kind === 'coverage_pdf' && res.pages ? ` · 페이지 ${res.pages.length}개(사람 확인 필요)` : ''}
+              </div>
+              {res.errors.length ? <ul className="mt-1 list-disc pl-5">{res.errors.map((e, i) => <li key={i}>{e}</li>)}</ul> : null}
+              {res.warnings.length ? (
+                <details className="mt-1 text-[11px]">
+                  <summary className="cursor-pointer font-semibold">경고 {res.warnings.length}건</summary>
+                  <ul className="mt-1 list-disc pl-5">{res.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                </details>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

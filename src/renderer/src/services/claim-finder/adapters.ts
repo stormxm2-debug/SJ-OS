@@ -106,7 +106,10 @@ export function treatmentsFromHealthRecordResult(
         date,
         institution: str(firstOf(r, ['resHospitalName', 'resPharmacyName', 'resOrgName'])),
         treatType: str(firstOf(r, ['resTreatType', 'resType', 'resTreatForm'])),
-        visitDays: toNum(firstOf(r, ['resAdmissionDays', 'resHospitalizationDays', 'resVisitDays'])),
+        visitDays: toNum(firstOf(r, ['resVisitDays'])),
+        // 공단 자료의 입원일수는 참고값으로만 매핑하고, 입원 '확정'은 별도 증빙(inpatientVerified)으로 한다.
+        admissionDays: toNum(firstOf(r, ['resAdmissionDays', 'resHospitalizationDays'])) ?? null,
+        inpatientVerified: false,
         prescribeDays: toNum(firstOf(r, ['resTotalDosingdays', 'resPrescribeDays', 'resMedicationDays'])),
         prescribeCnt: toNum(firstOf(r, ['resPrescribeCnt'])),
         deductibleAmt: toNum(firstOf(r, ['resDeductibleAmt', 'resSelfPay'])),

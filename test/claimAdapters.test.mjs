@@ -44,7 +44,10 @@ test('건강기록 결과 → 진료 이벤트 매핑(진단/수술명, 입원�
   assert.equal(e.diagnosisName, '대장암')
   assert.equal(e.procedureName, '결장절제술')
   assert.equal(e.surgeryVerified, false) // 이름만으론 미검증
-  assert.equal(e.visitDays, 10)
+  // 공단 입원일수는 admissionDays(참고값)로 매핑하고, 입원 '확정'은 별도 증빙 전까지 미검증으로 둔다.
+  assert.equal(e.admissionDays, 10)
+  assert.equal(e.inpatientVerified, false)
+  assert.equal(e.visitDays, undefined) // resVisitDays 없음 → 외래 통원일수 미확인
   assert.equal(e.deductibleAmt, 500000)
   assert.equal(e.source.kind, 'health_record_json')
   assert.ok(e.source.jsonPath.includes('resDetailTreatList[0]'))
