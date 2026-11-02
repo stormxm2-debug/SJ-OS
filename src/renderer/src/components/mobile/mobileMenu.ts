@@ -78,7 +78,8 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } },
-      { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' } }
+      { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' } },
+      { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' } }
     ]
   },
   {

@@ -122,7 +122,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
-      { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] }
+      { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
+      { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] }
     ]
   },
   {
@@ -234,6 +235,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
   { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
+  { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] },
   // 이하 베타(renderItem에서 BETA 뱃지).
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
@@ -280,6 +282,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
   { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
+  { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] },
   // 이하 베타(renderItem에서 BETA 뱃지).
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },

@@ -15,6 +15,7 @@ export type View =
   | { name: 'knowledge' }
   | { name: 'family-caregiver' }
   | { name: 'health-record' }
+  | { name: 'claim-finder' }
   | { name: 'security-center' }
   | { name: 'sales-activity' }
   | { name: 'schedule' }

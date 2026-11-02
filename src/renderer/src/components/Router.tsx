@@ -60,6 +60,7 @@ import ContentStudioPage from '@renderer/pages/ContentStudioPage'
 import KnowledgeBriefingPage from '@renderer/pages/KnowledgeBriefingPage'
 import FamilyCaregiverPage from '@renderer/pages/FamilyCaregiverPage'
 import HealthRecordPage from '@renderer/pages/HealthRecordPage'
+import ClaimFinderPage from '@renderer/pages/ClaimFinderPage'
 import SecurityCenterPage from '@renderer/pages/SecurityCenterPage'
 
 /** Renders the active view chosen by the navigation state. */
@@ -105,6 +106,8 @@ export default function Router(): JSX.Element {
       return <FamilyCaregiverPage />
     case 'health-record':
       return <HealthRecordPage />
+    case 'claim-finder':
+      return <ClaimFinderPage />
     case 'security-center':
       return <SecurityCenterPage />
     case 'sales-activity':
