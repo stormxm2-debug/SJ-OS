@@ -99,17 +99,25 @@ export default function ClaimFinderPage(): JSX.Element {
     setIngestConfirmed(false)
     setIngestBusy(false)
   }
-  // 결과가 입력과 불일치하게 되면 결과·검토·저장상태 무효화(스테일 완료도 폐기).
-  const invalidateResult = (): void => {
+  // 저장/검토 진행 플래그 해제. 결과 scope 가 바뀔 때마다 호출해 새 scope 에서 즉시 버튼이 살아나게 한다.
+  // (이전 in-flight 작업의 finally 는 isCurrent(gen) 일 때만 busy 를 만지므로 새 scope 를 덮어쓰지 않는다.)
+  const resetBusy = (): void => {
+    setSaveBusy(false)
+    setReviewBusy(null)
+  }
+  // 결과 scope 를 떠난다: 세대 무효화 + 링크/진행상태 비움(스테일 완료 폐기). 결과 비움은 선택.
+  const leaveResultScope = (clearResult: boolean): void => {
     resultGuard.current.invalidate()
     setLink(null)
-    dispatch({ type: 'CLEAR_RESULT' })
+    resetBusy()
+    if (clearResult) dispatch({ type: 'CLEAR_RESULT' })
   }
+  // 결과가 입력과 불일치하게 되면 결과·검토·저장상태 무효화(스테일 완료도 폐기).
+  const invalidateResult = (): void => leaveResultScope(true)
   // 동의 토글: 해제 시 결과·검토·업로드·진행상태를 모두 비우고 스테일 완료 폐기.
   const onConsent = (v: boolean): void => {
     if (!v) {
-      resultGuard.current.invalidate()
-      setLink(null)
+      leaveResultScope(false) // 결과는 reducer(SET_CONSENT)가 비움 — 여기선 scope/busy 만 정리
       resetIngest()
     }
     dispatch({ type: 'SET_CONSENT', consent: v })
@@ -138,6 +146,7 @@ export default function ClaimFinderPage(): JSX.Element {
     setIngestConfirmed(false)
     setIngestBusy(false) // 전환 중 진행 스피너 멈춤 방지
     setLink(null)
+    resetBusy() // 저장/검토 진행 플래그 해제 — 새 고객 결과의 버튼이 영구 비활성화되지 않도록
     ingestGuard.current.invalidate() // 진행 중 파싱 폐기
     resultGuard.current.invalidate() // 진행 중 저장/리뷰 완료 폐기
     const gen = recordsGuard.current.next()
@@ -235,6 +244,7 @@ export default function ClaimFinderPage(): JSX.Element {
 
       const res = analyzeClaims({ treatments: events, contracts: withTerms.contracts, claimHistory: [], demo: false })
       res.warnings.push(...warnings)
+      resetBusy() // 새 결과 scope 진입 — 이전 작업 플래그 즉시 해제
       setLink({ ...analyzedLink, gen: resultGuard.current.next() }) // 새 결과 scope 세대
       dispatch({
         type: 'ANALYZE_DONE',
@@ -252,6 +262,7 @@ export default function ClaimFinderPage(): JSX.Element {
 
   const onDemo = (): void => {
     resetIngest() // DEMO 전환 시 업로드 원문/확인/진행상태 초기화 + 늦은 파싱 폐기
+    resetBusy() // 새 결과 scope 진입 — 이전 저장/검토 플래그 즉시 해제
     const res = analyzeClaims(buildDemoInput())
     setLink({ gen: resultGuard.current.next(), kind: 'demo', customerId: null, customerName: null, analysisId: '', source: null })
     dispatch({ type: 'DEMO_DONE', result: res, notice: 'DEMO 합성 데이터로 분석했습니다 (실제 HIRA/KB 포맷 미검증).' })

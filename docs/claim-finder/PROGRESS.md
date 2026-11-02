@@ -7,15 +7,16 @@
 ## 0-0) 3차 리뷰 후속(v0.4) — head 116d2b0 검토 반영
 남은 "실제 상태 오염"과 DB 삭제 정책 결함을 수정. 순수 테스트 + 실 Postgres + 브라우저로 검증.
 
-A. **저장/검토 스테일 완료 폐기 + 입력 스냅샷** — `ClaimFinderPage.tsx`
+A. **저장/검토 스테일 완료 폐기 + 입력 스냅샷 + busy 재활성화** — `ClaimFinderPage.tsx`
    - 결과 scope 세대(`resultGuard`). `onSave`/`onSaveReview` 는 시작 시 세대를 캡처하고 await 후 `isCurrent` 가 아니면 폐기 → **A 저장 대기 중 B 전환/재분석/DEMO/동의철회 뒤 A 의 SAVE_DONE·알림이 새 화면에 주입되지 않음**.
    - 저장은 **분석 당시 스냅샷(link: customerId/customerName/analysisId/source/hrId)** 으로 수행(라이브 값 사용 금지). 고객/보장분석/소스가 바뀌면 `CLEAR_RESULT` 로 결과 무효화.
-   - 브라우저 검증: `A 저장(지연)→B 분석→A 저장 완료` 후 B 에 savedRunId 미주입(→ B 검토가 A run 에 못 붙음).
+   - **(v0.4.1) saveBusy/reviewBusy 를 scope 전환 helper(`leaveResultScope`/analyze·demo)에서 즉시 해제** → 저장 중 고객변경/재분석해도 새 결과의 저장·검토 버튼이 영구 비활성화되지 않음. in-flight finally 는 `isCurrent(gen)` 일 때만 busy 를 만져 새 작업을 덮어쓰지 않음.
+   - 브라우저 검증: `A 저장(지연)→B 분석→A 저장 완료` 후 B 미주입 **및 B 저장/검토 버튼이 실제 재동작**(완료→savedRunId, addReview 호출).
 B. **ingest 전범위 초기화 + busy/oversized/race** — 동의 철회·DEMO 전환 시 `resetIngest()`(원문·확인·busy 초기화 + 늦은 파싱 폐기). 고객 전환 `invalidate` 후 **ingestBusy 영구 true 멈춤 수정**(전환 시 busy=false). 새 파일(과대 포함) 선택 시 **먼저 이전 파싱 세대 invalidate**.
 C. **정확 일치 + 저장 견고화** — `rec.customerId === 현재 고객` **정확 일치 필수**(값 없음도 차단). `claimFinderStore`: `getClient` 예외를 결과(ok:false)로 처리, 서버가 **id 없이 반환하면 실패**(null-id 성공 금지).
 D. **FK 삭제 vs 불변 트리거 충돌 해결** — `on delete set null` 은 FK 가 run 을 UPDATE(hr_id→null)하려다 불변 트리거에 막혀 **원본 건강기록 삭제가 실패**(격리 DB 로 재현: `ERROR: immutable pid`). → **`on delete cascade`** 로 변경(원본 삭제 시 파생 run·검토도 삭제 = 프라이버시 정책). RLS 테스트에 cascade 시나리오 추가(22–23).
 
-검증(실제 실행): `typecheck`(web+node)·`build:web` ✅ · `npm test` **136/136** ✅ · `bash test/claim_finder_rls.sh` **23/23** ✅ · `node --test test/e2e/claimFinder.e2e.mjs` **10/10** ✅
+검증(실제 실행): `typecheck`(web+node)·`build:web` ✅ · `npm test` **136/136** ✅ · `bash test/claim_finder_rls.sh` **23/23** ✅ · `node --test test/e2e/claimFinder.e2e.mjs` **11/11** ✅
 
 ## 0-1) 2차 리뷰 후속(v0.3) — head 4c3cf49 검토 반영
 2차 리뷰 5개 결함을 모두 수정하고, 순수 테스트 외에 **실제 경쟁 상태·실 Postgres·브라우저 E2E** 로 검증했다.
@@ -77,7 +78,7 @@ D. **FK 삭제 vs 불변 트리거 충돌 해결** — `on delete set null` 은 
 - `npm test`(전체 `node --test test/*.test.*`) → **136/136 통과**, 무회귀.
   - 신규/갱신: `claimRules.test.mjs`(39), `claimAccess.test.mjs`(9), `claimAdapters.test.mjs`, `claimIngest.test.mjs`(11), `claimUiState.test.mjs`(8), `claimAsyncGuard.test.mjs`(3), `claimFinderStore.test.mjs`(9), `claimFinderRls.test.mjs`(1 — 실 Postgres RLS 래퍼; initdb 없으면 스킵).
 - 서버 경계 RLS 실검증: `bash test/claim_finder_rls.sh` → **23/23 시나리오 통과**(합성 격리 Postgres, 운영 미접속; 철회·불변식·cascade 포함).
-- 브라우저 E2E: `node --test test/e2e/claimFinder.e2e.mjs` → **10/10 통과**(Playwright/Chromium, 합성 어댑터·실 CSS; 운영 인증 우회 없음).
+- 브라우저 E2E: `node --test test/e2e/claimFinder.e2e.mjs` → **11/11 통과**(Playwright/Chromium, 합성 어댑터·실 CSS; 운영 인증 우회 없음). 스테일 저장 폐기 + **새 scope 저장/검토 버튼 재동작** 포함.
 
 ## 3) 미완/보류 + 사유
 - **운영 DB 미적용·미조회**: 지침. 저장/검토이력 영구화는 마이그레이션+(저장 시) supabase JWT 경로(RLS 강제)로 연결. 현재는 화면 세션 로컬 보관.

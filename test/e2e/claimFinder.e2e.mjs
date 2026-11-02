@@ -166,8 +166,32 @@ test('스테일 저장 폐기: A 저장 대기 중 B 분석 → A 저장 완료�
   const calls = await page.evaluate(() => globalThis.__CALLS)
   const savedA = calls.find((c) => c[0] === 'saveRun' && c[1].customerId === 'A')
   assert.ok(savedA, 'A 저장은 실제로 호출됨(그러나 완료가 폐기됨)')
-  // savedRunId 가 B 에 주입되지 않았으므로(저장 버튼이 "저장됨" 이 아님) B 검토는 A run 에 붙을 수 없다
-  // (onSaveReview 는 savedRunId 없으면 동작하지 않음 — 구조적 보장).
+  // ★ 새 scope(B)의 저장 버튼이 영구 비활성화되지 않고 실제 다시 동작해야 한다.
+  const disabledB = await page.getAttribute('[data-testid=save]', 'disabled')
+  assert.equal(disabledB, null, 'B 저장 버튼이 (스테일 A 저장 때문에) 비활성화되면 안 됨')
+  await page.click('[data-testid=save]')
+  await page.waitForTimeout(700) // B 저장(saveDelay 500ms) 완료
+  const saveTextB = await page.textContent('[data-testid=save]')
+  assert.ok(saveTextB.includes('저장됨'), 'B 저장이 실제로 완료돼 savedRunId 가 설정돼야 함')
+  const calls2 = await page.evaluate(() => globalThis.__CALLS)
+  assert.ok(calls2.some((c) => c[0] === 'saveRun' && c[1].customerId === 'B'), 'B saveRun 이 호출돼야 함')
+  await page.context().close()
+})
+
+test('새 scope 저장→검토 저장 실제 동작(DEMO): addReview 호출', { skip }, async () => {
+  const page = await newPage({ customers, records })
+  await page.click('[data-testid=demo]')
+  await page.waitForSelector('[data-testid=result]')
+  await page.click('[data-testid=save]')
+  await page.waitForTimeout(100)
+  const saveText = await page.textContent('[data-testid=save]')
+  assert.ok(saveText.includes('저장됨'), 'DEMO 저장 완료')
+  // 후보 카드 열고 검토 저장
+  await page.locator('text=원본 대조·검토 열기').first().click()
+  await page.locator('button', { hasText: '검토 저장' }).first().click()
+  await page.waitForTimeout(100)
+  const calls = await page.evaluate(() => globalThis.__CALLS)
+  assert.ok(calls.some((c) => c[0] === 'addReview'), '검토 저장이 실제로 호출돼야 함(버튼 비활성화 아님)')
   await page.context().close()
 })
 
