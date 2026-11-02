@@ -74,11 +74,12 @@ const HEALTH_PRODUCTS: HealthProduct[] = [
     idField: 'rrn',
     dateMode: 'range',
     periodWindow: { backMonths: 60, recentMonths: 0 }, // 최근 5년 ~ 오늘
-    encrypt: ['identity'], // 주민번호 RSA 암호화
+    // ⚠️ identity(주민번호)는 RSA 암호화하지 않는다 — CODEF 스펙상 certPassword만 암호화 대상이고
+    // 주민번호는 평문(TLS)으로 보낸다. 암호화하면 CODEF가 blob을 주민번호로 읽어 "주민번호 잘못됨" 거부.
     supportsSensitive: true, // type: 민감상병 포함여부
     supportsChild: true, // childYN: 자녀정보 포함여부
     kind: 'treatment',
-    note: '최근 5년 본인(및 자녀)의 진료내역·세부진료·처방조제정보 — 병원/약국·투약명·투약일수·입원일수·수술/치료내용. 주민번호로 조회하며 암호화 전송됩니다.'
+    note: '최근 5년 본인(및 자녀)의 진료내역·세부진료·처방조제정보 — 병원/약국·투약명·투약일수·입원일수·수술/치료내용. 주민번호로 본인확인(간편인증)하여 조회합니다.'
   }
 ]
 
@@ -492,7 +493,7 @@ export default function HealthRecordPage(): JSX.Element {
               </div>
             </div>
             {selected.idField === 'rrn' ? (
-              <p className="-mt-1 text-[10px] text-slate-500">※ 주민번호는 서버에서 암호화되어 전송되며 화면·앱에 저장되지 않습니다.</p>
+              <p className="-mt-1 text-[10px] text-slate-500">※ 주민번호는 보안 연결(HTTPS)로 전송되며 화면·앱에 저장되지 않습니다.</p>
             ) : null}
             <div className="flex gap-2">
               <div className={needTelecom ? 'flex-1' : 'w-full'}>
