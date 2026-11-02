@@ -30,6 +30,12 @@ interface HealthProduct {
   extraParams?: Record<string, string> // detailYN 등
   encrypt?: string[] // 서버 RSA 암호화 필드(주민번호 등)
   kind: 'treatment' | 'medicine' // 결과 렌더러
+  /** dateMode 'range' 조회기간 검증 창 — 상품별로 다름(없으면 기본값 사용). */
+  periodWindow?: { backMonths: number; recentMonths: number }
+  /** 민감상병 포함 토글(type 파라미터) 노출 여부. */
+  supportsSensitive?: boolean
+  /** 자녀정보 포함 토글(childYN 파라미터) 노출 여부. */
+  supportsChild?: boolean
   note: string
 }
 
@@ -58,6 +64,21 @@ const HEALTH_PRODUCTS: HealthProduct[] = [
     encrypt: ['identity'], // 주민번호 RSA 암호화
     kind: 'medicine',
     note: '최근 1년간 조제받은 의약품(약품명·성분·조제기관·투약일수). 주민번호로 조회하며 암호화 전송됩니다.'
+  },
+  {
+    key: 'my-medical-information',
+    label: '내진료정보열람 (심평원·최근 5년)',
+    short: '내진료정보열람',
+    url: '/v1/kr/public/hw/hira-list/my-medical-information',
+    organization: '0020',
+    idField: 'rrn',
+    dateMode: 'range',
+    periodWindow: { backMonths: 60, recentMonths: 0 }, // 최근 5년 ~ 오늘
+    encrypt: ['identity'], // 주민번호 RSA 암호화
+    supportsSensitive: true, // type: 민감상병 포함여부
+    supportsChild: true, // childYN: 자녀정보 포함여부
+    kind: 'treatment',
+    note: '최근 5년 본인(및 자녀)의 진료내역·세부진료·처방조제정보 — 병원/약국·투약명·투약일수·입원일수·수술/치료내용. 주민번호로 조회하며 암호화 전송됩니다.'
   }
 ]
 
@@ -89,16 +110,46 @@ const monthsAgoStr = (n: number): string => {
 
 type Row = Record<string, unknown>
 
-/** 응답(data)에서 레코드 배열을 꺼낸다 — 배열이면 그대로, 객체면 첫 배열 속성. */
-const toRecords = (result: unknown): Row[] => {
-  if (Array.isArray(result)) return result as Row[]
-  if (result && typeof result === 'object') {
-    for (const v of Object.values(result as Record<string, unknown>)) {
-      if (Array.isArray(v)) return v as Row[]
-    }
-  }
-  return []
+/** 응답 안의 목록(배열) 하나 = 한 섹션. 기본진료내역/세부진료·처방조제가 여러 배열로
+ *  나뉘어 와도 각각 표로 보여주기 위해 전부 수집한다(기존엔 첫 배열만 보여 누락됐음). */
+interface Section {
+  key: string
+  label: string
+  rows: Row[]
 }
+/** 알려진 CODEF 목록 키 → 한글 섹션명(없으면 키 그대로). */
+const SECTION_LABELS: Record<string, string> = {
+  resList: '진료내역',
+  resTreatmentList: '기본 진료내역',
+  resBasicList: '기본 진료내역',
+  resDetailList: '세부 진료내역',
+  resPrescribeList: '처방·조제내역',
+  resDrugList: '처방·조제내역',
+  resMedicineList: '처방·조제내역',
+  resOperationList: '수술내역',
+  resInfoList: '진료정보'
+}
+const sectionLabelOf = (k: string): string => SECTION_LABELS[k] ?? k
+
+/** result → 섹션 목록. 최상위가 배열이면 1섹션, 객체면 배열 속성마다 1섹션씩. */
+const collectSections = (result: unknown): Section[] => {
+  if (Array.isArray(result)) return result.length ? [{ key: 'list', label: '조회 내역', rows: result as Row[] }] : []
+  if (!result || typeof result !== 'object') return []
+  const obj = result as Record<string, unknown>
+  const out: Section[] = []
+  for (const [k, v] of Object.entries(obj)) {
+    if (Array.isArray(v) && v.length && typeof v[0] === 'object') out.push({ key: k, label: sectionLabelOf(k), rows: v as Row[] })
+  }
+  // 배열이 하나도 없지만 스칼라 필드가 있으면 1행짜리 정보 섹션으로.
+  if (out.length === 0 && Object.values(obj).some((v) => v !== null && typeof v !== 'object' && v !== '')) {
+    out.push({ key: 'info', label: '진료정보', rows: [obj as Row] })
+  }
+  return out
+}
+
+/** 진료(카테고리 보고서) 모양인지 — 진료형태/부담금/방문일수 필드가 있으면 진료형. */
+const isTreatmentShape = (rows: Row[]): boolean => rows.some((r) => 'resTreatType' in r || 'resPublicCharge' in r || 'resVisitDays' in r)
+const userNameOf = (rows: Row[]): string => String(rows.find((r) => r.resUserNm)?.resUserNm ?? '')
 
 const num = (v: unknown): number => {
   const n = Number(String(v ?? '').replace(/[^\d.-]/g, ''))
@@ -148,6 +199,8 @@ export default function HealthRecordPage(): JSX.Element {
   const [telecom, setTelecom] = useState('0') // telecom (통신사인증서일 때만)
   const [startDate, setStartDate] = useState(monthsAgoStr(14))
   const [endDate, setEndDate] = useState(monthsAgoStr(2))
+  const [includeSensitive, setIncludeSensitive] = useState(false) // type: 민감상병 포함
+  const [includeChild, setIncludeChild] = useState(false) // childYN: 자녀 포함
 
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -181,6 +234,13 @@ export default function HealthRecordPage(): JSX.Element {
     setError(null)
     setNotice(null)
     setConfigNote(null)
+    // 상품별 조회기간 창에 맞춰 기본 날짜를 다시 설정(요청변수가 달라지므로).
+    const p = HEALTH_PRODUCTS.find((x) => x.key === key) ?? HEALTH_PRODUCTS[0]
+    const win = p.periodWindow ?? { backMonths: 14, recentMonths: 2 }
+    setStartDate(monthsAgoStr(win.backMonths))
+    setEndDate(monthsAgoStr(win.recentMonths))
+    setIncludeSensitive(false)
+    setIncludeChild(false)
   }
 
   // CODEF 요청 변수 — 선택 상품 스펙(간편인증 loginType "5")대로.
@@ -199,12 +259,16 @@ export default function HealthRecordPage(): JSX.Element {
       p.endDate = digits(endDate)
     }
     if (needTelecom) p.telecom = telecom
+    if (selected.supportsSensitive) p.type = includeSensitive ? '1' : '0'
+    if (selected.supportsChild) p.childYN = includeChild ? '1' : '0'
     return p
   }
 
-  // 진료받은 내용(range)만의 조회기간 규칙: 조회일 기준 14개월 전 ~ 2개월 전(최근 2개월 미반영).
-  const minStart = monthsAgoStr(14)
-  const maxEnd = monthsAgoStr(2)
+  // 조회기간 규칙은 상품별(periodWindow)로 다름. 진료받은 내용: 14개월 전~2개월 전,
+  // 내진료정보열람: 60개월(5년) 전~오늘. 없으면 기본값(14/2)을 쓴다.
+  const period = selected.periodWindow ?? { backMonths: 14, recentMonths: 2 }
+  const minStart = monthsAgoStr(period.backMonths)
+  const maxEnd = monthsAgoStr(period.recentMonths)
   const validPeriod =
     !needDate ||
     (digits(startDate).length === 8 &&
@@ -224,7 +288,7 @@ export default function HealthRecordPage(): JSX.Element {
     setRequestId(undefined)
     if (!canStart) {
       const idMsg = selected.idField === 'birth' ? '생년월일(8자리)' : '주민등록번호(13자리)'
-      const dateMsg = needDate ? ` 조회기간은 「약 14개월 전 ~ 2개월 전」(${minStart} ~ ${maxEnd}) 안이어야 합니다.` : ''
+      const dateMsg = needDate ? ` 조회기간은 ${ymd(minStart)} ~ ${ymd(maxEnd)} 안이어야 합니다.` : ''
       setError(`고객 성함·${idMsg}·휴대폰 번호를 확인해주세요.${dateMsg}`)
       return
     }
@@ -414,6 +478,22 @@ export default function HealthRecordPage(): JSX.Element {
                 </div>
               </div>
             ) : null}
+            {selected.supportsSensitive || selected.supportsChild ? (
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-0.5">
+                {selected.supportsChild ? (
+                  <label className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-300">
+                    <input type="checkbox" checked={includeChild} onChange={(e) => setIncludeChild(e.target.checked)} className="h-3.5 w-3.5 accent-[#c6982f]" />
+                    자녀 정보 포함
+                  </label>
+                ) : null}
+                {selected.supportsSensitive ? (
+                  <label className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-300">
+                    <input type="checkbox" checked={includeSensitive} onChange={(e) => setIncludeSensitive(e.target.checked)} className="h-3.5 w-3.5 accent-[#c6982f]" />
+                    민감상병 포함
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart}
@@ -423,7 +503,7 @@ export default function HealthRecordPage(): JSX.Element {
           </button>
           <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
             순서: <b className="text-slate-300">간편인증 요청 → 고객 휴대폰 인증앱(카카오/네이버/통신사PASS 등)에서 승인 → 결과 조회</b>. 각 단계는 한 번씩만 — 결과 조회가 안 되면 「간편인증 요청」부터 다시 하세요.
-            {needDate ? <> 조회 가능 기간은 <b className="text-slate-300">조회일 기준 14개월 전 ~ 2개월 전</b>(최근 2개월은 공단 반영 전)이라 기본값을 그 창으로 설정했습니다.</> : <> 이 상품은 <b className="text-slate-300">최근 1년치</b>를 자동 조회합니다.</>}
+            {needDate ? <> 조회 가능 기간은 <b className="text-slate-300">{ymd(minStart)} ~ {ymd(maxEnd)}</b>{period.recentMonths >= 2 ? '(최근 2개월은 공단 반영 전)' : ''}이라 기본값을 그 창으로 설정했습니다.</> : <> 이 상품은 <b className="text-slate-300">최근 1년치</b>를 자동 조회합니다.</>}
           </p>
         </div>
 
@@ -501,13 +581,20 @@ export default function HealthRecordPage(): JSX.Element {
   )
 }
 
-/** 결과 렌더러 — 데이터 모양으로 진료(카테고리 보고서)/약품·기타(상세 표)를 자동 구분. */
+/** 결과 렌더러 — 응답 안의 모든 목록을 섹션별 표로. 각 섹션은 데이터 모양으로
+ *  진료(카테고리 보고서)/약품·기타(상세 표)를 자동 구분한다. */
 function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Element {
   const [showRaw, setShowRaw] = useState(false)
-  const records = useMemo(() => toRecords(result), [result])
+  const sections = useMemo(() => collectSections(result), [result])
   const raw = useMemo(() => JSON.stringify(result, null, 2), [result])
-  const isTreatment = records.some((r) => 'resTreatType' in r || 'resPublicCharge' in r)
-  const userNm = String(records[0]?.resUserNm ?? '')
+  const totalRows = sections.reduce((n, s) => n + s.rows.length, 0)
+  const userNm = useMemo(() => {
+    for (const s of sections) {
+      const n = userNameOf(s.rows)
+      if (n) return n
+    }
+    return String(result?.resUserNm ?? '')
+  }, [sections, result])
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
@@ -515,21 +602,31 @@ function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Elem
         <h2 className="text-sm font-bold text-slate-100">
           조회 결과
           {userNm ? <span className="text-slate-400"> · {userNm}</span> : null}
-          {records.length ? <span className="text-slate-400"> · 총 {records.length}건</span> : null}
+          {totalRows ? <span className="text-slate-400"> · 총 {totalRows}건</span> : null}
         </h2>
-        {records.length ? (
+        {sections.length ? (
           <button type="button" onClick={() => setShowRaw((v) => !v)} className="text-[11px] font-semibold text-slate-400 hover:text-slate-200">
             {showRaw ? '표로 보기' : '원본(JSON) 보기'}
           </button>
         ) : null}
       </div>
 
-      {records.length === 0 || showRaw ? (
+      {sections.length === 0 || showRaw ? (
         <pre className="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-100">{raw}</pre>
-      ) : isTreatment ? (
-        <TreatmentReport records={records} />
       ) : (
-        <GenericTable records={records} />
+        <div className="space-y-5">
+          {sections.map((s) => (
+            <div key={s.key}>
+              {sections.length > 1 ? (
+                <div className="mb-1.5 flex items-center gap-2">
+                  <span className="rounded-full bg-[#0e1e3a] px-2.5 py-0.5 text-[11px] font-bold text-white">{s.label}</span>
+                  <span className="text-[11px] font-semibold text-slate-400">{s.rows.length}건</span>
+                </div>
+              ) : null}
+              {isTreatmentShape(s.rows) ? <TreatmentReport records={s.rows} /> : <GenericTable records={s.rows} />}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -636,7 +733,37 @@ const FIELD_LABELS: Record<string, string> = {
   resManufacturer: '제조사',
   resEfficacy: '효능·효과',
   resTelNo: '전화번호',
-  resType: '구분'
+  resType: '구분',
+  // 내진료정보열람(심평원) — 기관/병원·약국
+  resHospitalNm: '처방기관(병원)',
+  resCareInstNm: '진료기관(병원)',
+  resMedicalInstNm: '의료기관',
+  resPharmacyNm: '조제기관(약국)',
+  resDrugInstNm: '조제기관(약국)',
+  resInstitutionName: '의료기관',
+  // 진료/치료·수술·상병
+  resTreatName: '진료내용',
+  resTreatContent: '진료내용',
+  resTreatType: '진료형태',
+  resOperationName: '수술명',
+  resSurgeryName: '수술명',
+  resSurgeryYn: '수술여부',
+  resDiseaseName: '상병명',
+  resSickName: '상병명',
+  resDiagnosisName: '진단명',
+  // 투약·방문·입원 일수
+  resMedicationDays: '투약일수',
+  resVisitDays: '방문/입원일수',
+  resAdmissionDays: '입원일수',
+  resHospitalizationDays: '입원일수',
+  resHospDays: '입원일수',
+  resVisitCnt: '방문횟수',
+  resPrescribeCnt: '처방횟수',
+  // 부담금
+  resDeductibleAmt: '본인부담금',
+  resPublicCharge: '공단부담금',
+  resTreatStartDate: '진료개시일',
+  resChildYn: '자녀구분'
 }
 const labelOf = (k: string): string => FIELD_LABELS[k] ?? k
 const cellOf = (v: unknown): string => {
