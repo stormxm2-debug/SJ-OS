@@ -26,6 +26,17 @@ const envAny = (...names: string[]): string => {
   return ''
 }
 
+// CODEF 공개키 정규화 — 콘솔 값은 머리/꼬리줄 없는 한 줄 Base64 여야 하는데, PEM 통째로
+// 붙여넣거나(-----BEGIN/END-----) 줄바꿈·공백·따옴표가 섞이면 RSA 암호화가
+// "PEM Base64 error: invalid Base64 encoding" 으로 실패한다. 순수 Base64 본문만 남긴다.
+const normalizePublicKey = (k: string): string =>
+  k
+    .replace(/-----BEGIN[^-]*-----/g, '')
+    .replace(/-----END[^-]*-----/g, '')
+    .replace(/["']/g, '')
+    .replace(/\s+/g, '')
+    .trim()
+
 // CODEF 「진료받은 내용」(건강보험공단) 상품 경로 — 데모/정식 공통(앞 도메인은 SDK가 서비스타입으로 결정).
 // 출처: developer.codef.io 엔드포인트. 데모 https://development.codef.io + 이 경로 / 정식 https://api.codef.io + 이 경로.
 // 시크릿(CODEF_HEALTH_PRODUCT_URL)이나 요청(body.product)로 덮어쓸 수 있고, 없으면 이 기본값을 쓴다.
@@ -92,9 +103,9 @@ Deno.serve(async (req: Request) => {
   if (!uid || !caller) return json({ success: false, error: '로그인 후 사용할 수 있습니다.' }, 401)
 
   // 2) CODEF 설정 확인 (없으면 명확히 안내 — 추측 구현하지 않음)
-  const clientId = envAny('CODEF_CLIENT_ID', 'client_id')
-  const clientSecret = envAny('CODEF_CLIENT_SECRET', 'client_secret')
-  const publicKey = envAny('CODEF_PUBLIC_KEY', 'public_key')
+  const clientId = envAny('CODEF_CLIENT_ID', 'client_id').trim()
+  const clientSecret = envAny('CODEF_CLIENT_SECRET', 'client_secret').trim()
+  const publicKey = normalizePublicKey(envAny('CODEF_PUBLIC_KEY', 'public_key'))
   if (!clientId || !clientSecret || !publicKey) {
     return json({ success: false, code: 'CODEF_NOT_CONFIGURED', error: 'CODEF 키(CODEF_CLIENT_ID/SECRET/PUBLIC_KEY) 시크릿이 설정되지 않았습니다.' }, 503)
   }
