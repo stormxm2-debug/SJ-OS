@@ -184,6 +184,8 @@ Deno.serve(async (req: Request) => {
     const id = await persist({ status: 'failed', error: `${out.code} ${out.message}`.trim() })
     return json({ success: false, status: 'failed', requestId: id, code: out.code, error: out.message || '조회에 실패했습니다.' })
   } catch (e) {
-    return json({ success: false, error: e instanceof Error ? e.message : 'CODEF 호출 중 오류가 발생했습니다.' }, 500)
+    const msg = e instanceof Error ? e.message : 'CODEF 호출 중 오류가 발생했습니다.'
+    // 진단: 공개키 길이/정합성을 에러에 덧붙인다(공개키라 비밀 아님). 정상 CODEF 키 ≈ 392, mod4=0.
+    return json({ success: false, error: `${msg} [pubkeyLen=${publicKey.length}, mod4=${publicKey.length % 4}]` }, 500)
   }
 })
