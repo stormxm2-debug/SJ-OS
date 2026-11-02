@@ -126,10 +126,55 @@ const SECTION_LABELS: Record<string, string> = {
   resPrescribeList: '처방·조제내역',
   resDrugList: '처방·조제내역',
   resMedicineList: '처방·조제내역',
+  resBasicTreatList: '기본 진료내역',
+  resDetailTreatList: '세부 진료·치료',
+  resPrescribeDrugList: '처방·조제내역',
   resOperationList: '수술내역',
   resInfoList: '진료정보'
 }
 const sectionLabelOf = (k: string): string => SECTION_LABELS[k] ?? k
+
+/** 알려진 섹션의 컬럼 스펙 — 내진료정보열람(심평원) 응답 3배열에 맞춘 전용 표. */
+interface ColSpec {
+  key: string
+  label: string
+  kind?: 'date' | 'won' | 'num' | 'text'
+}
+const SECTION_SPECS: Record<string, ColSpec[]> = {
+  // 기본 진료내역: 병원·진료과·구분·상병·방문(입원)일수·부담금
+  resBasicTreatList: [
+    { key: 'resTreatStartDate', label: '진료일', kind: 'date' },
+    { key: 'resHospitalName', label: '병의원' },
+    { key: 'resDepartment', label: '진료과' },
+    { key: 'resTreatType', label: '구분' },
+    { key: 'resDiseaseName', label: '상병명' },
+    { key: 'resVisitDays', label: '방문/입원일수', kind: 'num' },
+    { key: 'resTotalAmount', label: '총액', kind: 'won' },
+    { key: 'resDeductibleAmt', label: '본인부담', kind: 'won' },
+    { key: 'resPublicCharge', label: '공단부담', kind: 'won' }
+  ],
+  // 세부 진료·치료: 치료종류(수술 등)·항목·투약량/횟수/일수
+  resDetailTreatList: [
+    { key: 'resTreatStartDate', label: '진료일', kind: 'date' },
+    { key: 'resHospitalName', label: '병의원' },
+    { key: 'resTreatType', label: '치료종류' },
+    { key: 'resCodeName', label: '항목' },
+    { key: 'resOneDose', label: '1회량' },
+    { key: 'resDailyDosesNumber', label: '1일횟수' },
+    { key: 'resTotalDosingdays', label: '일수', kind: 'num' }
+  ],
+  // 처방·조제: 약품명·성분·투약량/횟수/일수
+  resPrescribeDrugList: [
+    { key: 'resTreatStartDate', label: '처방일', kind: 'date' },
+    { key: 'resHospitalName', label: '처방기관' },
+    { key: 'resTreatType', label: '구분' },
+    { key: 'resDrugName', label: '약품명' },
+    { key: 'resIngredients', label: '성분' },
+    { key: 'resOneDose', label: '1회량' },
+    { key: 'resDailyDosesNumber', label: '1일횟수' },
+    { key: 'resTotalDosingdays', label: '투약일수', kind: 'num' }
+  ]
+}
 
 /** result → 섹션 목록. 최상위가 배열이면 1섹션, 객체면 배열 속성마다 1섹션씩. */
 const collectSections = (result: unknown): Section[] => {
@@ -630,7 +675,13 @@ function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Elem
                   <span className="text-[11px] font-semibold text-slate-400">{s.rows.length}건</span>
                 </div>
               ) : null}
-              {isTreatmentShape(s.rows) ? <TreatmentReport records={s.rows} /> : <GenericTable records={s.rows} />}
+              {SECTION_SPECS[s.key] ? (
+                <SpecTable cols={SECTION_SPECS[s.key]} records={s.rows} />
+              ) : isTreatmentShape(s.rows) ? (
+                <TreatmentReport records={s.rows} />
+              ) : (
+                <GenericTable records={s.rows} />
+              )}
             </div>
           ))}
         </div>
@@ -814,6 +865,56 @@ function GenericTable({ records }: { records: Row[] }): JSX.Element {
         </table>
       </div>
       <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">※ CODEF 응답 전 항목을 표로 표시합니다. 컬럼명은 상품 스펙 확정 후 더 다듬을 수 있어요.</p>
+    </div>
+  )
+}
+
+/** 스펙(ColSpec[]) 기반 표 — 알려진 섹션을 보기 좋게. 금액(won) 컬럼은 합계 행을 붙인다. */
+function SpecTable({ cols, records }: { cols: ColSpec[]; records: Row[] }): JSX.Element {
+  const wonCols = cols.filter((c) => c.kind === 'won')
+  const totals = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const c of wonCols) m[c.key] = records.reduce((s, r) => s + num(r[c.key]), 0)
+    return m
+  }, [cols, records])
+  const right = (c: ColSpec): boolean => c.kind === 'won' || c.kind === 'num'
+  const fmt = (c: ColSpec, v: unknown): string => {
+    if (c.kind === 'date') return ymd(v)
+    if (c.kind === 'won') return won(v)
+    if (c.kind === 'num') return `${num(v)}`
+    return v === null || v === undefined || v === '' ? '-' : String(v)
+  }
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-800">
+      <table className="w-full whitespace-nowrap text-[12px]">
+        <thead>
+          <tr className="bg-slate-950 text-slate-300">
+            {cols.map((c) => (
+              <th key={c.key} className={`px-3 py-2 font-semibold ${right(c) ? 'text-right' : 'text-left'}`}>{c.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-800 text-slate-200">
+          {records.map((r, i) => (
+            <tr key={i}>
+              {cols.map((c) => (
+                <td key={c.key} className={`px-3 py-2 ${right(c) ? 'text-right' : ''} ${c.key === 'resDrugName' || c.key === 'resDiseaseName' ? 'font-medium' : ''}`}>{fmt(c, r[c.key])}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+        {wonCols.length ? (
+          <tfoot>
+            <tr className="bg-[#fdf7ea] font-bold text-[#8a6a1f]">
+              {cols.map((c, idx) => (
+                <td key={c.key} className={`px-3 py-2 ${right(c) ? 'text-right' : ''}`}>
+                  {idx === 0 ? `합계 ${records.length}건` : c.kind === 'won' ? won(totals[c.key]) : ''}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        ) : null}
+      </table>
     </div>
   )
 }
