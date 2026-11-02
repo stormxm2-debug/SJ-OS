@@ -1,7 +1,7 @@
 /**
  * 메뉴 '등급' — 자주 쓰는(상단 고정) 메뉴 vs 베타 메뉴.
  *
- * CEO 지시(2026-11): 자주 쓰는 7개 메뉴를 메뉴 상단으로 고정하고, 나머지 기능은
+ * CEO 지시(2026-11): 자주 쓰는 메뉴를 메뉴 상단으로 고정하고, 나머지 기능은
  * 아직 다듬는 중이라는 뜻으로 BETA 뱃지를 단다. 모바일 전체 메뉴(MobileMenuPage)와
  * 데스크톱 사이드바(Sidebar)가 같은 기준(메뉴 key)을 공유하도록 여기 한 곳에만 둔다.
  *
@@ -17,7 +17,8 @@ export const TOP_MENU_KEYS = [
   'family-caregiver',
   'bojang114',
   'performance',
-  'notice'
+  'notice',
+  'health-record'
 ] as const
 
 const TOP_SET = new Set<string>(TOP_MENU_KEYS)

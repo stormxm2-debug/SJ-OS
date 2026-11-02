@@ -121,7 +121,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
       { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
-      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }
+      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+      { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] }
     ]
   },
   {
@@ -149,7 +150,6 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
       { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
       { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' }, match: ['knowledge'] },
-      { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
       { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
       { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
       { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
@@ -233,6 +233,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
   { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+  { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   // 이하 베타(renderItem에서 BETA 뱃지).
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
@@ -251,7 +252,6 @@ const STAFF_NAV: NavItem[] = [
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
   { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
   { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' }, match: ['knowledge'] },
-  { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
@@ -279,6 +279,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
   { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+  { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   // 이하 베타(renderItem에서 BETA 뱃지).
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
@@ -293,7 +294,6 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
   { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },
   { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' }, match: ['knowledge'] },
-  { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   { key: 'underwriting', label: '인수 가이드', icon: Stethoscope, view: { name: 'underwriting' }, match: ['underwriting'] },
   { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
   { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },

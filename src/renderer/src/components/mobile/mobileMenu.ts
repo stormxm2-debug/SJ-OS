@@ -77,7 +77,8 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' } },
       { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
-      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } }
+      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } },
+      { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' } }
     ]
   },
   {
@@ -96,7 +97,6 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' } },
       { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' } },
       { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' } },
-      { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' } },
       { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' } },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' } },
       { key: 'coverage-analysis', label: '보장분석 정리', icon: ClipboardCheck, view: { name: 'coverage-analysis' } },
