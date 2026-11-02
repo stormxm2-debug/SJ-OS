@@ -29,5 +29,5 @@ test('RLS 서버 경계: 교차 고객/직원 접근 차단(실 Postgres)', { sk
   if (r.status !== 0) {
     assert.fail(`RLS 테스트 실패(exit ${r.status}):\n${out}`)
   }
-  assert.match(out, /ALL 12 RLS SCENARIOS PASSED/, '12개 RLS 시나리오가 모두 통과해야 함')
+  assert.match(out, /ALL \d+ RLS SCENARIOS PASSED/, '모든 RLS 시나리오가 통과해야 함')
 })

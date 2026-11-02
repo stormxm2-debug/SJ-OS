@@ -83,6 +83,26 @@ test('실분석 → DEMO 전환 시에도 메모 초기화 + DEMO 표시', () =>
   assert.deepEqual(s.review, {})
 })
 
+test('savedRunId 는 고객 변경/동의 철회/새 분석 시 초기화(스테일 run 에 리뷰 금지)', () => {
+  let s = { ...INITIAL_UI_STATE, customerId: 'A', consent: true }
+  s = claimUiReducer(s, { type: 'ANALYZE_DONE', result: fakeResult('A') })
+  s = claimUiReducer(s, { type: 'SAVE_DONE', runId: 'run-A' })
+  assert.equal(s.savedRunId, 'run-A')
+  // 새 분석 → 저장 안 된 상태로
+  s = claimUiReducer(s, { type: 'ANALYZE_DONE', result: fakeResult('A2') })
+  assert.equal(s.savedRunId, null)
+  // 저장 후 고객 변경 → 초기화
+  s = claimUiReducer(s, { type: 'SAVE_DONE', runId: 'run-A2' })
+  s = claimUiReducer(s, { type: 'SELECT_CUSTOMER', customerId: 'B' })
+  assert.equal(s.savedRunId, null)
+  // 저장 후 동의 철회 → 초기화
+  let s2 = { ...INITIAL_UI_STATE, customerId: 'C', consent: true }
+  s2 = claimUiReducer(s2, { type: 'ANALYZE_DONE', result: fakeResult('C') })
+  s2 = claimUiReducer(s2, { type: 'SAVE_DONE', runId: 'run-C' })
+  s2 = claimUiReducer(s2, { type: 'SET_CONSENT', consent: false })
+  assert.equal(s2.savedRunId, null)
+})
+
 test('검토 메모 병합(여러 후보 독립)', () => {
   let s = { ...INITIAL_UI_STATE }
   s = claimUiReducer(s, { type: 'SET_REVIEW', id: 'c1', patch: { status: 'EXCLUDED' } })

@@ -4,6 +4,29 @@
 범위: 기존 SJ-OS에 "보험금 발굴(검토 지원)" **초기 통합 버전** + 리뷰 후속 하드닝(v0.2).
 **하지 않은 것(지침 준수): 운영 DB 변경/조회, main 병합/운영 배포, 유료가입, 새 외부서비스 연결, 인증/권한 우회.**
 
+## 0-1) 2차 리뷰 후속(v0.3) — head 4c3cf49 검토 반영
+2차 리뷰 5개 결함을 모두 수정하고, 순수 테스트 외에 **실제 경쟁 상태·실 Postgres·브라우저 E2E** 로 검증했다.
+
+1. **RLS 를 SELECT/UPDATE/reviews 전체로 확장 + 불변식/철회** — `supabase/migrations/20261102_claim_finder.sql`
+   - 공통 함수 `claim_finder_run_valid`(DEMO 규칙 포함) 를 SELECT·INSERT·UPDATE(using+with check)에 동일 적용.
+     → **동의 철회(status 변경) 후 해당 run 은 읽기·수정·리뷰가 모두 차단**(fail-closed).
+   - reviews SELECT/INSERT 는 `claim_finder_run_accessible(run_id)` 로 부모 run 접근+유효성 확인.
+   - BEFORE UPDATE 트리거로 **불변 필드(staff_id/customer_id/health_record_request_id/is_demo) 변경 금지**(검증 우회 차단).
+   - 실 Postgres 격리 테스트 **21/21**(`test/claim_finder_rls.sh`): 위조·사칭·고객불일치·철회 insert, 불변필드 변경, DEMO 우회, **철회 후 읽기/수정/리뷰/리뷰읽기 차단**, 관리자 조회, 집계 격리. UPDATE 는 ROW_COUNT 로 **조용한 0행 no-op 까지** 실패로 검출.
+2. **고객 전환 경쟁 상태 + 연계 검증** — `ClaimFinderPage.tsx`, `asyncGuard.ts`
+   - 고객 변경 시 records 즉시 비움 + **세대 가드**로 늦은 `listHealthRecords` 응답 폐기. 분석 시 `rec.customerId === 현재 고객` 재검증.
+   - 보장분석은 안정 고객ID가 없어 **자동 연결하지 않고 수동 확인 체크 필수**(동명이인·무명 혼입 방지).
+   - deferred promise 경쟁 테스트 `test/claimAsyncGuard.test.mjs`(3) + 브라우저 A→B 실검증.
+3. **IngestPanel scope/경쟁/크기** — 업로드 상태를 고객/동의 scope 로 초기화, **세대 가드로 늦은 파싱 폐기**, 파싱 전 `file.size` 제한, 실패 메시지 표시.
+4. **업로드→확인→연결→분석→저장/검토 경로** — `claimFinderStore.ts`(DI)
+   - 저장은 **사용자 세션(JWT)** 경로(service_role 우회 없음) → 서버 RLS 가 경계. **미구성 시 비활성 + 명확 안내**(성공 가장 안 함).
+   - 업로드 원본은 **서버 동의 앵커(건강기록 요청)가 없어 저장 불가(검토용)** — 저장은 record/DEMO 만. 검토이력은 저장(run) 후 후보별로 기록.
+   - 테스트 어댑터 검증 `test/claimFinderStore.test.mjs`(7): 미구성 비활성, DEMO/실데이터 불변식, payload(staff_id 서버기본값), 서버오류 노출.
+5. **브라우저 E2E(운영 인증 우회 없음)** — `test/e2e/*`
+   - 실제 페이지를 **실 컴파일 CSS** 와 합성 service adapters 로 렌더(esbuild 번들). Playwright/Chromium.
+   - **실제 수행 결과 8/8 통과**: A→B 경쟁(늦은 A 폐기), 동의 철회 결과 제거, DEMO→고객변경 제거, 업로드→확인→분석(저장불가 안내), 업로드 미확인 오류, 저장(record)→store 호출, 미구성 비활성, **화면 대비 bg-white+text-slate-100 ≥ WCAG AA 4.5:1**(반전 slate 팔레트 확인).
+   - 실행: `node --test test/e2e/claimFinder.e2e.mjs`(기본 `npm test` 글롭 밖 — Playwright 없으면 스킵). 하네스 산출물 `test/e2e/dist/` 은 .gitignore.
+
 ## 0) PR #48 리뷰 후속(v0.2) — 요점별 처리
 리뷰 6개 항목을 모두 반영하고 각 항목에 회귀 테스트를 추가했다. 전부 실제 실행으로 검증.
 
@@ -38,9 +61,10 @@
 ## 2) 검증 결과 (실제 실행)
 - `npm run typecheck:web` → **통과(0)**. `npm run typecheck:node` → **통과(0)**.
 - `npm run build:web` → **성공**(~24s).
-- `npm test`(전체 `node --test test/*.test.*`) → **123/123 통과**, 무회귀.
-  - 신규/갱신: `claimRules.test.mjs`(39, v0.2 규칙), `claimAccess.test.mjs`(9), `claimAdapters.test.mjs`(입원/통원 분리 반영), `claimIngest.test.mjs`(11), `claimUiState.test.mjs`(7), `claimFinderRls.test.mjs`(1 — 실 Postgres RLS 래퍼; initdb 없으면 스킵).
-- 서버 경계 RLS 실검증: `bash test/claim_finder_rls.sh` → **12/12 시나리오 통과**(합성 격리 Postgres, 운영 미접속).
+- `npm test`(전체 `node --test test/*.test.*`) → **134/134 통과**, 무회귀.
+  - 신규/갱신: `claimRules.test.mjs`(39), `claimAccess.test.mjs`(9), `claimAdapters.test.mjs`, `claimIngest.test.mjs`(11), `claimUiState.test.mjs`(8), `claimAsyncGuard.test.mjs`(3), `claimFinderStore.test.mjs`(7), `claimFinderRls.test.mjs`(1 — 실 Postgres RLS 래퍼; initdb 없으면 스킵).
+- 서버 경계 RLS 실검증: `bash test/claim_finder_rls.sh` → **21/21 시나리오 통과**(합성 격리 Postgres, 운영 미접속).
+- 브라우저 E2E: `node --test test/e2e/claimFinder.e2e.mjs` → **8/8 통과**(Playwright/Chromium, 합성 어댑터·실 CSS; 운영 인증 우회 없음).
 
 ## 3) 미완/보류 + 사유
 - **운영 DB 미적용·미조회**: 지침. 저장/검토이력 영구화는 마이그레이션+(저장 시) supabase JWT 경로(RLS 강제)로 연결. 현재는 화면 세션 로컬 보관.

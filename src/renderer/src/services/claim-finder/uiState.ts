@@ -20,6 +20,8 @@ export interface ClaimUiState {
   filter: ClaimStatus | 'ALL'
   notice: string | null
   error: string | null
+  /** 서버에 저장된 run id(저장 후에만). 검토이력 저장은 이 id 가 있어야 가능. */
+  savedRunId: string | null
 }
 
 export const INITIAL_UI_STATE: ClaimUiState = {
@@ -30,12 +32,13 @@ export const INITIAL_UI_STATE: ClaimUiState = {
   review: {},
   filter: 'ALL',
   notice: null,
-  error: null
+  error: null,
+  savedRunId: null
 }
 
 /** 결과·검토 등 "현재 결과에 속한" 상태만 비운다(고객/동의는 유지). */
 function clearedResult(s: ClaimUiState): ClaimUiState {
-  return { ...s, result: null, isDemo: false, review: {}, filter: 'ALL', notice: null }
+  return { ...s, result: null, isDemo: false, review: {}, filter: 'ALL', notice: null, savedRunId: null }
 }
 
 export type ClaimUiAction =
@@ -47,6 +50,7 @@ export type ClaimUiAction =
   | { type: 'SET_REVIEW'; id: string; patch: { status?: ClaimStatus; note?: string } }
   | { type: 'SET_NOTICE'; notice: string | null }
   | { type: 'SET_ERROR'; error: string | null }
+  | { type: 'SAVE_DONE'; runId: string; notice?: string }
 
 export function claimUiReducer(state: ClaimUiState, action: ClaimUiAction): ClaimUiState {
   switch (action.type) {
@@ -64,9 +68,11 @@ export function claimUiReducer(state: ClaimUiState, action: ClaimUiAction): Clai
       return { ...state, consent: true }
     }
     case 'ANALYZE_DONE':
-      return { ...state, result: action.result, isDemo: false, review: {}, filter: 'ALL', notice: action.notice ?? null, error: null }
+      return { ...state, result: action.result, isDemo: false, review: {}, filter: 'ALL', notice: action.notice ?? null, error: null, savedRunId: null }
     case 'DEMO_DONE':
-      return { ...state, result: action.result, isDemo: true, review: {}, filter: 'ALL', notice: action.notice ?? null, error: null }
+      return { ...state, result: action.result, isDemo: true, review: {}, filter: 'ALL', notice: action.notice ?? null, error: null, savedRunId: null }
+    case 'SAVE_DONE':
+      return { ...state, savedRunId: action.runId, notice: action.notice ?? state.notice }
     case 'SET_FILTER':
       return { ...state, filter: action.filter }
     case 'SET_REVIEW':

@@ -10,13 +10,12 @@
 --
 -- 서버 경계(요점):
 --   * 순수 프런트 가드(access.ts)는 사전검증일 뿐 경계가 아니다.
---   * 실제 경계는 이 파일의 RLS 정책 + 쓰기시점 검증 함수(claim_finder_run_link_ok)다.
---     클라이언트가 staff_id 를 자기 것으로 넣어도, 본인 소유·유효 동의된 건강기록 요청과
---     고객이 일치하지 않으면 DB가 insert 를 거부한다(위조 불가).
+--   * 실제 경계는 이 파일의 RLS 정책 + 쓰기시점 검증 함수(claim_finder_run_valid)다.
+--   * 동일한 "소유 + 고객연결 + 유효 동의" 조건을 **SELECT/INSERT/UPDATE 와 reviews 참조 전체**에 적용한다.
+--     → 동의 철회(health_record_requests.status 변경) 후에는 해당 run 을 **읽지도/수정하지도/리뷰하지도** 못한다.
+--   * 불변 필드(staff_id/customer_id/health_record_request_id/is_demo)는 트리거로 변경을 금지한다
+--     (RLS WITH CHECK 는 NEW 행만 보므로 OLD 대비 불변성 보장 불가 → BEFORE UPDATE 트리거로 강제).
 --
--- RLS 패턴은 기존 health_record_requests 와 동일하게:
---   본인(staff_id = auth.uid()) 또는 관리자(is_owner_or_admin()) 만 접근.
---   ※ is_owner_or_admin() 은 라이브 DB에 이미 정의돼 있음(레포 외부).
 -- 민감 결과(result)는 jsonb 로 저장하되 로깅하지 않으며 RLS 로만 접근한다.
 
 create table if not exists public.claim_finder_runs (
@@ -45,14 +44,16 @@ create index if not exists claim_finder_runs_hr_idx on public.claim_finder_runs 
 
 alter table public.claim_finder_runs enable row level security;
 
--- ── 쓰기시점 소유권·동의 검증(위조 불가 핵심) ──────────────────────────────
+-- ── 소유권·동의 검증 함수(위조·철회 우회 불가 핵심) ─────────────────────────
 -- 주어진 건강기록 요청이 (1) 호출자 소유이거나 관리자이고, (2) 동의 시각이 있고,
 -- (3) 상태가 유효(철회/만료/실패/초안 제외)하며, (4) 요청의 고객과 run 의 고객이 일치할 때만 true.
--- SECURITY INVOKER(기본): health_record_requests 의 RLS 도 함께 적용돼 미열람 행이면 false(fail-closed).
+-- SECURITY DEFINER + 명시적 소유 검사: 중첩 RLS 에 의존하지 않고 결정론적으로 판정한다
+-- (auth.uid()/is_owner_or_admin() 는 세션 기준이라 DEFINER 여도 호출자 신원을 그대로 반영).
 create or replace function public.claim_finder_run_link_ok(p_hr_request_id uuid, p_customer_id uuid)
 returns boolean
 language sql
 stable
+security definer
 set search_path = ''
 as $$
   select exists (
@@ -65,35 +66,94 @@ as $$
   );
 $$;
 
+-- run 한 건이 "지금 유효한가"(DEMO 규칙 포함)를 한 곳에서 정의해 모든 정책이 재사용한다.
+--  - DEMO: 실고객/실요청 미연결(합성). 동의와 무관하게 유효.
+--  - 실데이터: 반드시 유효 동의된 본인 요청과 고객 일치.
+create or replace function public.claim_finder_run_valid(p_is_demo boolean, p_customer_id uuid, p_hr_request_id uuid)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select
+    case
+      when p_is_demo then (p_customer_id is null and p_hr_request_id is null)
+      else (p_hr_request_id is not null and public.claim_finder_run_link_ok(p_hr_request_id, p_customer_id))
+    end;
+$$;
+
+-- reviews 참조용: 해당 run 이 호출자에게 접근 가능하고(소유/관리자) 지금 유효한가.
+create or replace function public.claim_finder_run_accessible(p_run_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.claim_finder_runs r
+    where r.id = p_run_id
+      and (public.is_owner_or_admin() or r.staff_id = auth.uid())
+      and public.claim_finder_run_valid(r.is_demo, r.customer_id, r.health_record_request_id)
+  );
+$$;
+
+-- 공통 조건(소유 + 유효). SELECT/UPDATE using 에 동일 적용.
+--  select: 동의 철회된 run 은 보이지 않는다(fail-closed read).
 drop policy if exists claim_finder_runs_select on public.claim_finder_runs;
 create policy claim_finder_runs_select on public.claim_finder_runs
   for select to authenticated
-  using (is_owner_or_admin() or staff_id = auth.uid());
+  using (
+    (is_owner_or_admin() or staff_id = auth.uid())
+    and claim_finder_run_valid(is_demo, customer_id, health_record_request_id)
+  );
 
--- insert: 본인 명의 + (DEMO는 실고객/요청 연결 금지) 또는 (실데이터는 유효 동의된 본인 요청과 고객 일치).
 drop policy if exists claim_finder_runs_insert on public.claim_finder_runs;
 create policy claim_finder_runs_insert on public.claim_finder_runs
   for insert to authenticated
   with check (
     staff_id = auth.uid()
-    and (
-      (is_demo = true and customer_id is null and health_record_request_id is null)
-      or
-      (is_demo = false and health_record_request_id is not null
-         and public.claim_finder_run_link_ok(health_record_request_id, customer_id))
-    )
+    and claim_finder_run_valid(is_demo, customer_id, health_record_request_id)
   );
 
+-- update: 대상(using)도 유효해야 하고, 결과(with check)도 유효해야 한다(철회 후 수정 불가).
 drop policy if exists claim_finder_runs_update on public.claim_finder_runs;
 create policy claim_finder_runs_update on public.claim_finder_runs
   for update to authenticated
-  using (is_owner_or_admin() or staff_id = auth.uid())
-  with check (is_owner_or_admin() or staff_id = auth.uid());
+  using (
+    (is_owner_or_admin() or staff_id = auth.uid())
+    and claim_finder_run_valid(is_demo, customer_id, health_record_request_id)
+  )
+  with check (
+    (is_owner_or_admin() or staff_id = auth.uid())
+    and claim_finder_run_valid(is_demo, customer_id, health_record_request_id)
+  );
 
+-- delete: 정리 목적이므로 소유자/관리자면 허용(동의 유효성 요구하지 않음 — 철회 후에도 삭제는 가능).
 drop policy if exists claim_finder_runs_delete on public.claim_finder_runs;
 create policy claim_finder_runs_delete on public.claim_finder_runs
   for delete to authenticated
   using (is_owner_or_admin() or staff_id = auth.uid());
+
+-- 불변 필드 변경 금지(고객/요청/DEMO/소유자 교체로 검증 우회 차단).
+create or replace function public.claim_finder_runs_guard()
+returns trigger language plpgsql
+set search_path = '' as $$
+begin
+  if new.staff_id is distinct from old.staff_id
+     or new.customer_id is distinct from old.customer_id
+     or new.health_record_request_id is distinct from old.health_record_request_id
+     or new.is_demo is distinct from old.is_demo then
+    raise exception 'claim_finder_runs: 불변 필드(staff_id/customer_id/health_record_request_id/is_demo)는 변경할 수 없습니다';
+  end if;
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists claim_finder_runs_guard_trg on public.claim_finder_runs;
+create trigger claim_finder_runs_guard_trg before update on public.claim_finder_runs
+  for each row execute function public.claim_finder_runs_guard();
 
 -- 사람 검토 이력(판정 수정/메모) — 후보 단위.
 create table if not exists public.claim_finder_reviews (
@@ -110,39 +170,25 @@ create index if not exists claim_finder_reviews_run_idx on public.claim_finder_r
 
 alter table public.claim_finder_reviews enable row level security;
 
+-- select/insert 모두 부모 run 이 호출자에게 접근 가능+유효해야 한다
+-- (철회 후에는 리뷰를 읽지도 추가하지도 못함).
 drop policy if exists claim_finder_reviews_select on public.claim_finder_reviews;
 create policy claim_finder_reviews_select on public.claim_finder_reviews
   for select to authenticated
-  using (is_owner_or_admin() or staff_id = auth.uid());
+  using (
+    (is_owner_or_admin() or staff_id = auth.uid())
+    and claim_finder_run_accessible(run_id)
+  );
 
--- insert: 본인 명의 + run_id 가 호출자가 접근 가능한 run 이어야 함(교차 run 리뷰 금지).
 drop policy if exists claim_finder_reviews_insert on public.claim_finder_reviews;
 create policy claim_finder_reviews_insert on public.claim_finder_reviews
   for insert to authenticated
   with check (
     staff_id = auth.uid()
-    and exists (
-      select 1 from public.claim_finder_runs r
-      where r.id = run_id
-        and (is_owner_or_admin() or r.staff_id = auth.uid())
-    )
+    and claim_finder_run_accessible(run_id)
   );
 
 drop policy if exists claim_finder_reviews_delete on public.claim_finder_reviews;
 create policy claim_finder_reviews_delete on public.claim_finder_reviews
   for delete to authenticated
   using (is_owner_or_admin() or staff_id = auth.uid());
-
--- updated_at 자동 갱신(전용 트리거 함수 — 이름 충돌 방지).
-create or replace function public.claim_finder_runs_touch()
-returns trigger language plpgsql
-set search_path = '' as $$
-begin
-  new.updated_at := now();
-  return new;
-end;
-$$;
-
-drop trigger if exists claim_finder_runs_touch on public.claim_finder_runs;
-create trigger claim_finder_runs_touch before update on public.claim_finder_runs
-  for each row execute function public.claim_finder_runs_touch();

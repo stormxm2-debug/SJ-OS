@@ -2,5 +2,7 @@
 grant select, insert, update, delete on public.claim_finder_runs to authenticated;
 grant select, insert, delete on public.claim_finder_reviews to authenticated;
 grant execute on function public.claim_finder_run_link_ok(uuid, uuid) to authenticated;
+grant execute on function public.claim_finder_run_valid(boolean, uuid, uuid) to authenticated;
+grant execute on function public.claim_finder_run_accessible(uuid) to authenticated;
 grant execute on function public.is_owner_or_admin() to authenticated;
 grant execute on function auth.uid() to authenticated;

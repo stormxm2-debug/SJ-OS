@@ -18,3 +18,6 @@ release/
 
 # Local Netlify folder
 .netlify
+
+# SJ CLAIM FINDER E2E 하네스 빌드 산출물
+test/e2e/dist/
