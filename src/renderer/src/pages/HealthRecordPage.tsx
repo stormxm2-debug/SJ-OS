@@ -871,51 +871,119 @@ function GenericTable({ records }: { records: Row[] }): JSX.Element {
 }
 
 /** 스펙(ColSpec[]) 기반 표 — 알려진 섹션을 보기 좋게. 금액(won) 컬럼은 합계 행을 붙인다. */
-function SpecTable({ cols, records }: { cols: ColSpec[]; records: Row[] }): JSX.Element {
+/** 날짜(YYYYMMDD) 정렬 키. 비거나 형식오류면 0(맨 뒤). */
+const ymdKey = (v: unknown): number => {
+  const d = String(v ?? '').replace(/[^\d]/g, '')
+  return d.length === 8 ? Number(d) : 0
+}
+const monthLabel = (v: unknown): string => {
+  const d = String(v ?? '').replace(/[^\d]/g, '')
+  return d.length >= 6 ? `${d.slice(0, 4)}.${d.slice(4, 6)}` : '날짜미상'
+}
+const dayLabel = (v: unknown): string => {
+  const d = String(v ?? '').replace(/[^\d]/g, '')
+  return d.length === 8 ? `${Number(d.slice(6, 8))}일` : ymd(v)
+}
+
+/**
+ * 섹션(기본 진료내역/세부/처방) 표시 — **날짜별(월 그룹) 카드**로 모바일에서도 보기 편하게.
+ * 데스크톱에서도 동일 카드 레이아웃(그리드)으로 가독성 유지. 가로 스크롤 표 대신 세로 카드.
+ */
+export function SpecTable({ cols, records }: { cols: ColSpec[]; records: Row[] }): JSX.Element {
+  const dateCol = cols.find((c) => c.kind === 'date') ?? cols[0]
+  const hospitalKey = cols.find((c) => c.key === 'resHospitalName')?.key
   const wonCols = cols.filter((c) => c.kind === 'won')
+  // 카드 본문에 '라벨: 값' 으로 보여줄 컬럼(날짜·병의원·금액 제외).
+  const fieldCols = cols.filter((c) => c !== dateCol && c.key !== hospitalKey && c.kind !== 'won')
+
+  const fmtVal = (c: ColSpec, v: unknown): string => {
+    if (c.kind === 'num') return `${num(v)}`
+    return v === null || v === undefined || v === '' ? '' : String(v)
+  }
+
+  // 월(YYYY.MM) 그룹 — 날짜 내림차순.
+  const groups = useMemo(() => {
+    const sorted = [...records].sort((a, b) => ymdKey(b[dateCol.key]) - ymdKey(a[dateCol.key]))
+    const map = new Map<string, Row[]>()
+    for (const r of sorted) {
+      const k = monthLabel(r[dateCol.key])
+      const arr = map.get(k) ?? []
+      arr.push(r)
+      map.set(k, arr)
+    }
+    return Array.from(map.entries()).map(([ym, rows]) => ({
+      ym,
+      rows,
+      self: rows.reduce((s, r) => s + num(r.resDeductibleAmt), 0)
+    }))
+  }, [records, dateCol.key])
+
   const totals = useMemo(() => {
     const m: Record<string, number> = {}
     for (const c of wonCols) m[c.key] = records.reduce((s, r) => s + num(r[c.key]), 0)
     return m
-  }, [cols, records])
-  const right = (c: ColSpec): boolean => c.kind === 'won' || c.kind === 'num'
-  const fmt = (c: ColSpec, v: unknown): string => {
-    if (c.kind === 'date') return ymd(v)
-    if (c.kind === 'won') return won(v)
-    if (c.kind === 'num') return `${num(v)}`
-    return v === null || v === undefined || v === '' ? '-' : String(v)
-  }
+  }, [wonCols, records])
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-800">
-      <table className="w-full whitespace-nowrap text-[12px]">
-        <thead>
-          <tr className="bg-slate-950 text-slate-300">
-            {cols.map((c) => (
-              <th key={c.key} className={`px-3 py-2 font-semibold ${right(c) ? 'text-right' : 'text-left'}`}>{c.label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800 text-slate-200">
-          {records.map((r, i) => (
-            <tr key={i}>
-              {cols.map((c) => (
-                <td key={c.key} className={`px-3 py-2 ${right(c) ? 'text-right' : ''} ${c.key === 'resDrugName' || c.key === 'resDiseaseName' ? 'font-medium' : ''}`}>{fmt(c, r[c.key])}</td>
-              ))}
-            </tr>
+    <div className="space-y-3">
+      {/* 요약(금액 섹션만) */}
+      {wonCols.length ? (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+          <span className="font-bold">합계 {records.length}건</span>
+          {wonCols.map((c) => (
+            <span key={c.key}>{c.label} <b>{won(totals[c.key])}</b></span>
           ))}
-        </tbody>
-        {wonCols.length ? (
-          <tfoot>
-            <tr className="bg-[#fdf7ea] font-bold text-[#8a6a1f]">
-              {cols.map((c, idx) => (
-                <td key={c.key} className={`px-3 py-2 ${right(c) ? 'text-right' : ''}`}>
-                  {idx === 0 ? `합계 ${records.length}건` : c.kind === 'won' ? won(totals[c.key]) : ''}
-                </td>
-              ))}
-            </tr>
-          </tfoot>
-        ) : null}
-      </table>
+        </div>
+      ) : null}
+
+      {groups.map((g) => (
+        <div key={g.ym}>
+          {/* 월 헤더(날짜별 정리) */}
+          <div className="sticky top-0 z-[1] -mx-1 mb-1.5 flex items-center gap-2 bg-white/95 px-1 py-1 backdrop-blur">
+            <span className="rounded-full bg-[#0e1e3a] px-2.5 py-0.5 text-[11px] font-bold text-white">{g.ym}</span>
+            <span className="text-[11px] font-semibold text-slate-400">{g.rows.length}건</span>
+            {wonCols.length && g.self ? <span className="text-[11px] text-slate-400">본인부담 {won(g.self)}</span> : null}
+          </div>
+
+          <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {g.rows.map((r, i) => {
+              const amounts = wonCols.filter((c) => num(r[c.key]) > 0)
+              return (
+                <li key={i} className="rounded-xl border border-slate-800 bg-white p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-500">{dayLabel(r[dateCol.key])}</span>
+                    {r.resTreatType ? <span className="rounded-full border border-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-400">{String(r.resTreatType)}</span> : null}
+                  </div>
+                  {hospitalKey && r[hospitalKey] ? <div className="mt-1 text-[13px] font-bold text-slate-100">{String(r[hospitalKey])}</div> : null}
+
+                  <dl className="mt-1 space-y-0.5">
+                    {fieldCols.map((c) => {
+                      if (c.key === 'resTreatType') return null // 위 칩으로 표시
+                      const v = fmtVal(c, r[c.key])
+                      if (!v) return null
+                      const emphasize = c.key === 'resDiseaseName' || c.key === 'resDrugName'
+                      return (
+                        <div key={c.key} className="flex gap-2 text-[12px]">
+                          <dt className="shrink-0 text-slate-500">{c.label}</dt>
+                          <dd className={`min-w-0 break-words ${emphasize ? 'font-semibold text-slate-200' : 'text-slate-300'}`}>{v}</dd>
+                        </div>
+                      )
+                    })}
+                  </dl>
+
+                  {amounts.length ? (
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-slate-800 pt-1.5 text-[11px]">
+                      {amounts.map((c) => (
+                        <span key={c.key} className="text-slate-400">{c.label} <b className="text-[#8a6a1f]">{won(r[c.key])}</b></span>
+                      ))}
+                    </div>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
     </div>
   )
 }
