@@ -225,6 +225,7 @@ export function createClaimFinderStore(deps: ClaimStoreDeps) {
       const { data, error } = await db
         .from('claim_finder_runs')
         .select('id, customer_id, rules_version, status, is_demo, created_at')
+        .eq('is_demo', false) // 운영 UI 는 DEMO(합성) 실행을 조회에서 제외(행 삭제/변경은 하지 않음)
         .order('created_at', { ascending: false })
         .limit(100)
       if (error) return { ok: false, error: error.message }

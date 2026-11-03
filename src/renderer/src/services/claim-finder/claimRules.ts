@@ -19,7 +19,7 @@
  *   (CONFIRMED_CONDITIONS 는 "조건 확인"이며 보험사 지급확정이 아님)
  */
 
-export const CLAIM_RULES_VERSION = '0.2.0-demo'
+export const CLAIM_RULES_VERSION = '0.2.0'
 
 export type ClaimStatus = 'CONFIRMED_CONDITIONS' | 'POTENTIAL' | 'NEED_DOCUMENTS' | 'EXCLUDED' | 'ALREADY_PAID'
 
