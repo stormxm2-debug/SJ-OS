@@ -6,7 +6,7 @@ import type { View, ViewName } from '@renderer/navigation/types'
 import { useSession } from '@renderer/navigation/SessionContext'
 import BrandLogo from '@renderer/components/brand/BrandLogo'
 import InsurerLinksMenu from '@renderer/components/navigation/InsurerLinksMenu'
-import { ROLE_LABEL, routeCategory, canAccessRoute, type UserRole } from '@renderer/navigation/roleAccess'
+import { routeCategory, canAccessRoute, type UserRole } from '@renderer/navigation/roleAccess'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
 import JarvisClapListener from '@renderer/components/jarvis/JarvisClapListener'
@@ -120,28 +120,29 @@ export default function MobileShell(): JSX.Element {
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-950 text-slate-200">
       {/* Top bar */}
-      <header className="flex shrink-0 items-center justify-between border-b border-slate-800 bg-white px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <BrandLogo markClassName="h-7" wordmarkClassName="text-base" />
-          <span className="truncate text-[10px] text-slate-500">{session.name || '직원'} · {ROLE_LABEL[session.role]}</span>
+      <header className="flex shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-[#e6eaf2] bg-white px-3 py-2.5">
+        <div className="flex min-w-0 flex-1 items-center">
+          <BrandLogo showMark={false} className="min-w-0" wordmarkClassName="truncate text-[14px]" />
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
           <a
             href="https://www.ssfirefs.com/login"
             target="_blank"
             rel="noopener noreferrer"
             title="삼성화재 금융서비스 전산(블루넷) 열기"
-            className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#0b5fd6] to-[#1428A0] px-2 py-1 text-[10px] font-bold text-white active:brightness-110"
+            className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-gradient-to-r from-[#0b5fd6] to-[#1428A0] px-2 py-1.5 text-[10px] font-bold text-white active:brightness-110"
           >
             <span className="flex h-3.5 w-3.5 items-center justify-center rounded bg-white/25 text-[8px] font-black leading-none">B</span>
             블루넷
           </a>
-          <InsurerLinksMenu compact />
+          <div className="shrink-0">
+            <InsurerLinksMenu compact />
+          </div>
           <button
             type="button"
             onClick={() => void snap()}
             disabled={snapBusy}
-            className="flex items-center gap-1 rounded-full border border-[#c6982f] bg-[#fdf7ea] px-2 py-1 text-[10px] font-bold text-[#8a6a1f] active:brightness-95 disabled:opacity-60"
+            className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[#c6982f] bg-[#fdf7ea] px-2 py-1.5 text-[10px] font-bold text-[#8a6a1f] active:brightness-95 disabled:opacity-60"
             aria-label="화면 캡처해서 공유"
           >
             {snapBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Camera className="h-3 w-3" />}
@@ -150,11 +151,11 @@ export default function MobileShell(): JSX.Element {
           <button
             type="button"
             onClick={refresh}
-            className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 active:bg-[#e0e7ff]"
+            className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-[10px] font-bold text-indigo-600 active:bg-[#e0e7ff]"
             aria-label="새로고침"
           >
             <RefreshCw className="h-3 w-3" />
-            {lastSyncAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+            {lastSyncAt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
           </button>
         </div>
       </header>
