@@ -34,19 +34,15 @@ function fakeClient({ error = null } = {}) {
           return { select: () => ({ single: async () => ({ data: error ? null : { id: 'row-1' }, error }) }) }
         },
         select(cols) {
+          const run = async (extra) => {
+            calls.push({ table, op: 'select', cols, ...extra })
+            return { data: error ? null : self.rows, error }
+          }
           return {
             eq(col, val) {
-              return {
-                order() {
-                  return {
-                    async limit() {
-                      calls.push({ table, op: 'select', cols, eq: [col, val] })
-                      return { data: error ? null : self.rows, error }
-                    }
-                  }
-                }
-              }
-            }
+              return { order: () => ({ limit: async () => run({ eq: [col, val] }) }) }
+            },
+            order: () => ({ limit: async () => run({ eq: null }) })
           }
         }
       }
@@ -183,6 +179,46 @@ test('재조회 서버 오류 → ok:false 로 노출', async () => {
   const r = await store.listRuns('cust-A')
   assert.equal(r.ok, false)
   assert.match(r.error, /permission denied/)
+})
+
+test('listVisibleRuns: eq 없이 조회(RLS 스코프), 요약 매핑', async () => {
+  const client = fakeClient()
+  client.rows = [{ id: 'run-1', customer_id: 'cust-A', rules_version: 'v0.2', status: 'completed', is_demo: false, created_at: 't1' },
+                 { id: 'run-2', customer_id: null, rules_version: 'v0.2', status: 'completed', is_demo: true, created_at: 't2' }]
+  const store = createClaimFinderStore({ getClient: async () => client })
+  const r = await store.listVisibleRuns()
+  assert.equal(r.ok, true)
+  assert.equal(r.data.length, 2)
+  assert.equal(r.data[0].id, 'run-1')
+  assert.equal(r.data[1].isDemo, true)
+  const sel = client.calls.find((c) => c.op === 'select' && c.table === 'claim_finder_runs')
+  assert.equal(sel.eq, null, 'eq 필터 없이(RLS 로 스코프) 조회')
+})
+
+test('getRun: id 로 단건 복원(result 포함)', async () => {
+  const client = fakeClient()
+  client.rows = [{ id: 'run-1', customer_id: 'cust-A', customer_name: '홍', health_record_request_id: 'hr-1', coverage_analysis_ref: null, rules_version: 'v0.2', status: 'completed', is_demo: false, result: [{ id: 'c1' }], warnings: [], created_at: 't1' }]
+  const store = createClaimFinderStore({ getClient: async () => client })
+  const r = await store.getRun('run-1')
+  assert.equal(r.ok, true)
+  assert.equal(r.data.id, 'run-1')
+  assert.equal(r.data.healthRecordRequestId, 'hr-1')
+  assert.deepEqual(r.data.result, [{ id: 'c1' }])
+})
+
+test('getRun: RLS 로 안 보이면 data null(성공, 없음)', async () => {
+  const client = fakeClient()
+  client.rows = []
+  const store = createClaimFinderStore({ getClient: async () => client })
+  const r = await store.getRun('run-x')
+  assert.equal(r.ok, true)
+  assert.equal(r.data, null)
+})
+
+test('getRun/listVisibleRuns 미구성 시 비활성', async () => {
+  const store = createClaimFinderStore({ getClient: async () => null })
+  assert.equal((await store.getRun('run-1')).disabled, true)
+  assert.equal((await store.listVisibleRuns()).disabled, true)
 })
 
 test('서버가 id 없이 반환 → 성공 가장 금지(null id 실패)', async () => {

@@ -25,7 +25,8 @@ import { claimUiReducer, INITIAL_UI_STATE } from '@renderer/services/claim-finde
 import { ingestFile, INGEST_LIMITS, type IngestResult } from '@renderer/services/claim-finder/ingest'
 import { extractPdfPagesForIngest } from '@renderer/services/claim-finder/pdfExtractor'
 import { createGenerationGuard } from '@renderer/services/claim-finder/asyncGuard'
-import { claimFinderStore, isClaimFinderPersistenceConfigured } from '@renderer/services/claim-finder/claimFinderStore'
+import { claimFinderStore, isClaimFinderPersistenceConfigured, type SavedRunSummary } from '@renderer/services/claim-finder/claimFinderStore'
+import { validateSavedRun, reviewsToLatestMap } from '@renderer/services/claim-finder/restore'
 
 /**
  * SJ CLAIM FINDER — 보험금 발굴(검토 지원).
@@ -88,9 +89,16 @@ export default function ClaimFinderPage(): JSX.Element {
   const [link, setLink] = useState<AnalyzedLink | null>(null)
   const persistenceConfigured = isClaimFinderPersistenceConfigured()
 
+  // 저장된 분석 이력(요약 목록) + 로딩/불러오기 상태.
+  const [savedRuns, setSavedRuns] = useState<SavedRunSummary[]>([])
+  const [listBusy, setListBusy] = useState(false)
+  const [listError, setListError] = useState<string | null>(null)
+  const [loadBusyId, setLoadBusyId] = useState<string | null>(null)
+
   const recordsGuard = useRef(createGenerationGuard())
   const ingestGuard = useRef(createGenerationGuard())
   const resultGuard = useRef(createGenerationGuard()) // 결과 scope — 늦은 저장/리뷰 완료 폐기용
+  const listGuard = useRef(createGenerationGuard()) // 저장 이력 목록 — 늦은 응답 폐기용
 
   // 업로드 상태 초기화 + 진행 중 파싱 폐기 + busy 해제(멈춤 방지).
   const resetIngest = (): void => {
@@ -123,6 +131,65 @@ export default function ClaimFinderPage(): JSX.Element {
     dispatch({ type: 'SET_CONSENT', consent: v })
   }
 
+  // 저장된 분석 이력 새로고침(RLS 로 본인/관리자·유효 run 만 반환). 늦은 응답은 세대 가드로 폐기.
+  const refreshSavedRuns = (): void => {
+    if (!persistenceConfigured) return
+    setListError(null)
+    setListBusy(true)
+    const gen = listGuard.current.next()
+    void (async () => {
+      const r = await claimFinderStore.listVisibleRuns()
+      if (!listGuard.current.isCurrent(gen)) return // 그 사이 고객 전환/재조회 → 폐기
+      if (r.ok) setSavedRuns(r.data ?? [])
+      else if (!r.disabled) setListError(r.error ?? '목록을 불러오지 못했습니다.')
+      setListBusy(false)
+    })()
+  }
+
+  // 저장된 run 불러오기: 결과·검토 복원(규칙버전/shape 검증, 최신 검토값). 로드 후 중복 저장 방지(savedRunId).
+  const loadRun = (summary: SavedRunSummary): void => {
+    const gen = resultGuard.current.next() // 새 결과 scope — 늦은 완료 폐기
+    resetBusy()
+    setLoadBusyId(summary.id)
+    dispatch({ type: 'SET_ERROR', error: null })
+    void (async () => {
+      const runRes = await claimFinderStore.getRun(summary.id)
+      const revRes = await claimFinderStore.listReviews(summary.id)
+      if (!resultGuard.current.isCurrent(gen)) return // 로드 중 고객 전환/재분석 → 폐기
+      setLoadBusyId((cur) => (cur === summary.id ? null : cur))
+      if (!runRes.ok || !runRes.data) {
+        dispatch({ type: 'SET_ERROR', error: runRes.error ?? '저장된 분석을 찾을 수 없습니다(RLS 로 숨겨졌거나 삭제됨).' })
+        return
+      }
+      const run = runRes.data
+      const v = validateSavedRun(run, CLAIM_RULES_VERSION)
+      if (!v.ok || !v.result) {
+        dispatch({ type: 'SET_ERROR', error: '저장된 결과를 복원할 수 없습니다: ' + v.errors.join(' ') })
+        return
+      }
+      if (v.warnings.length) v.result.warnings = [...v.warnings, ...v.result.warnings]
+      const reviewMap = revRes.ok ? reviewsToLatestMap((revRes.data ?? []) as never[]) : {}
+      // 로드된 run 은 이미 저장됨 → link 설정(savable 표시는 '저장됨' 비활성). 입력 스냅샷도 run 기준.
+      setLink({
+        gen,
+        kind: run.isDemo ? 'demo' : 'record',
+        customerId: run.customerId,
+        customerName: run.customerName,
+        analysisId: run.coverageAnalysisRef ?? '',
+        source: null,
+        healthRecordRequestId: run.healthRecordRequestId
+      })
+      dispatch({
+        type: 'LOADED_RUN',
+        result: v.result,
+        review: reviewMap,
+        isDemo: run.isDemo,
+        runId: run.id,
+        notice: `저장된 분석 불러옴 (run ${run.id.slice(0, 8)}… · 규칙 ${run.rulesVersion} · ${new Date(run.createdAt).toLocaleString('ko-KR')}).${v.warnings.length ? ' ⚠️ 규칙 버전 차이 — 경고 참고.' : ''}`
+      })
+    })()
+  }
+
   useEffect(() => {
     void (async () => {
       const c = await listCustomers()
@@ -130,8 +197,10 @@ export default function ClaimFinderPage(): JSX.Element {
       setAnalyses(listAnalyses())
       const t = await listPolicyTerms()
       if (t.ok) setTerms(t.items)
+      refreshSavedRuns()
     })()
     return subscribeHubCustomer((cu) => setCustomer(cu))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 고객 바뀌면(외부 hub 변경 포함): 결과/검토/동의 초기화 + 즉시 자료 비움 + 늦은 응답 폐기 + 자료 로드.
@@ -156,6 +225,8 @@ export default function ClaimFinderPage(): JSX.Element {
       if (!recordsGuard.current.isCurrent(gen)) return // 그 사이 고객이 또 바뀜 → 폐기
       if (r.ok) setRecords(r.items.filter((x) => x.status === 'completed' && x.result))
     })()
+    refreshSavedRuns() // 저장 이력도 현재 고객 기준으로 갱신
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customer])
 
   const selectCustomer = (id: string): void => {
@@ -299,6 +370,7 @@ export default function ClaimFinderPage(): JSX.Element {
       if (!resultGuard.current.isCurrent(gen)) return
       if (r.ok && r.id) {
         dispatch({ type: 'SAVE_DONE', runId: r.id, notice: `저장 완료(run ${r.id.slice(0, 8)}…). 이제 후보별 검토를 서버에 기록할 수 있습니다.` })
+        refreshSavedRuns() // 새 run 이 이력 목록에 보이도록 갱신
       } else {
         dispatch({ type: 'SET_ERROR', error: (r.disabled ? '' : '저장 실패: ') + (r.error ?? '알 수 없는 오류') })
       }
@@ -332,6 +404,13 @@ export default function ClaimFinderPage(): JSX.Element {
   }, [candidates])
   const shown = filter === 'ALL' ? candidates : candidates.filter((c) => c.status === filter)
   const sum = useMemo(() => sumConfirmedAmounts(candidates), [candidates])
+
+  // 저장 이력 분리: DEMO 는 항상, 실데이터는 현재 고객+동의 scope 로만 표시.
+  const demoSaved = useMemo(() => savedRuns.filter((r) => r.isDemo), [savedRuns])
+  const customerSaved = useMemo(
+    () => (customer && consent ? savedRuns.filter((r) => !r.isDemo && r.customerId === customer.id) : []),
+    [savedRuns, customer, consent]
+  )
 
   return (
     <div className="space-y-4">
@@ -425,6 +504,49 @@ export default function ClaimFinderPage(): JSX.Element {
 
       {notice ? <div className="rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[12px] font-semibold text-emerald-700" data-testid="notice">{notice}</div> : null}
       {error ? <div className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[12px] font-semibold text-rose-700" data-testid="error">{error}</div> : null}
+
+      {/* 저장된 분석 이력 — 불러오기(결과·검토 복원). DEMO 와 현재 고객(동의 시)만 표시. */}
+      {persistenceConfigured ? (
+        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm" data-testid="history">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-100">저장된 분석 이력</h2>
+            <span className="text-[10px] text-slate-500">사용자 세션(JWT)·RLS 로 본인/관리자 것만 표시</span>
+            <button type="button" onClick={refreshSavedRuns} disabled={listBusy} data-testid="history-refresh"
+              className="ml-auto inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-200 disabled:opacity-50">
+              {listBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}새로고침
+            </button>
+          </div>
+          {listError ? <p className="mt-1 text-[11px] text-rose-700">{listError}</p> : null}
+
+          <div className="mt-2">
+            <div className="text-[11px] font-semibold text-slate-400">현재 고객 {customer ? `· ${customer.name}` : ''}</div>
+            {!customer || !consent ? (
+              <p className="mt-1 text-[11px] text-slate-500">고객 선택 + 동의 확인 시 해당 고객의 저장 분석이 표시됩니다.</p>
+            ) : customerSaved.length === 0 ? (
+              <p className="mt-1 text-[11px] text-slate-500">저장된 분석이 없습니다.</p>
+            ) : (
+              <ul className="mt-1 space-y-1" data-testid="history-customer-list">
+                {customerSaved.map((r) => (
+                  <SavedRunRow key={r.id} r={r} busy={loadBusyId === r.id} active={savedRunId === r.id} onLoad={() => loadRun(r)} />
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="mt-3">
+            <div className="text-[11px] font-semibold text-slate-400">DEMO</div>
+            {demoSaved.length === 0 ? (
+              <p className="mt-1 text-[11px] text-slate-500">저장된 DEMO 분석이 없습니다.</p>
+            ) : (
+              <ul className="mt-1 space-y-1" data-testid="history-demo-list">
+                {demoSaved.map((r) => (
+                  <SavedRunRow key={r.id} r={r} busy={loadBusyId === r.id} active={savedRunId === r.id} onLoad={() => loadRun(r)} />
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {/* ④ 결과 */}
       {result ? (
@@ -551,6 +673,22 @@ function IngestControls({
   )
 }
 
+function SavedRunRow({ r, busy, active, onLoad }: { r: SavedRunSummary; busy: boolean; active: boolean; onLoad: () => void }): JSX.Element {
+  return (
+    <li className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-white px-2.5 py-1.5 text-[11px]">
+      <span className="font-mono text-slate-400">{r.id.slice(0, 8)}…</span>
+      {r.isDemo ? <span className="rounded-full bg-[#e6c877] px-1.5 py-0.5 text-[9px] font-extrabold text-[#0e1e3a]">DEMO</span> : null}
+      <span className="text-slate-500">규칙 {r.rulesVersion || '?'}</span>
+      <span className="text-slate-500">{r.createdAt ? new Date(r.createdAt).toLocaleString('ko-KR') : ''}</span>
+      {active ? <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">현재 로드됨</span> : null}
+      <button type="button" onClick={onLoad} disabled={busy || active} data-testid="history-load"
+        className="ml-auto rounded border border-slate-700 bg-white px-2 py-0.5 text-[11px] font-bold text-slate-200 disabled:opacity-50">
+        {busy ? '불러오는 중…' : active ? '불러옴' : '불러오기'}
+      </button>
+    </li>
+  )
+}
+
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }): JSX.Element {
   return (
     <button type="button" onClick={onClick}
@@ -622,11 +760,11 @@ function CandidateCard({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold text-slate-400">사람 검토:</span>
-            <select value={review?.status ?? c.status} onChange={(e) => onReview({ status: e.target.value as ClaimStatus })}
+            <select value={review?.status ?? c.status} onChange={(e) => onReview({ status: e.target.value as ClaimStatus })} data-testid="review-status"
               className="rounded border border-slate-700 bg-white px-1.5 py-1 text-[11px] text-slate-100">
               {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
             </select>
-            <input value={review?.note ?? ''} onChange={(e) => onReview({ note: e.target.value })} placeholder="검토 메모"
+            <input value={review?.note ?? ''} onChange={(e) => onReview({ note: e.target.value })} placeholder="검토 메모" data-testid="review-note"
               className="min-w-0 flex-1 rounded border border-slate-700 bg-white px-2 py-1 text-[11px] text-slate-100" />
             {canSaveReview ? (
               <button type="button" onClick={onSaveReview} disabled={reviewBusy}

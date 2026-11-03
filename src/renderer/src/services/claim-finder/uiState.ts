@@ -52,6 +52,7 @@ export type ClaimUiAction =
   | { type: 'SET_ERROR'; error: string | null }
   | { type: 'SAVE_DONE'; runId: string; notice?: string }
   | { type: 'CLEAR_RESULT'; notice?: string } // 입력이 결과와 달라지면 결과 무효화(고객/동의 유지)
+  | { type: 'LOADED_RUN'; result: AnalyzeResult; review: ReviewMap; isDemo: boolean; runId: string; notice?: string }
 
 export function claimUiReducer(state: ClaimUiState, action: ClaimUiAction): ClaimUiState {
   switch (action.type) {
@@ -76,6 +77,18 @@ export function claimUiReducer(state: ClaimUiState, action: ClaimUiAction): Clai
       return { ...state, savedRunId: action.runId, notice: action.notice ?? state.notice }
     case 'CLEAR_RESULT':
       return state.result == null ? state : { ...clearedResult(state), notice: action.notice ?? null }
+    case 'LOADED_RUN':
+      // 저장된 run 을 불러옴 — 이미 저장됐으므로 savedRunId 설정(중복 저장 방지).
+      return {
+        ...state,
+        result: action.result,
+        review: action.review,
+        isDemo: action.isDemo,
+        savedRunId: action.runId,
+        filter: 'ALL',
+        notice: action.notice ?? null,
+        error: null
+      }
     case 'SET_FILTER':
       return { ...state, filter: action.filter }
     case 'SET_REVIEW':

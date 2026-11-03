@@ -216,6 +216,65 @@ test('동의 철회/DEMO 전환 시 업로드 원문·확인·진행상태 초�
   await page.context().close()
 })
 
+test('저장→이력 목록→불러오기: 결과·검토메모 복원 + 중복 저장 방지', { skip }, async () => {
+  const page = await newPage({ customers, records })
+  // DEMO 분석 → 저장
+  await page.click('[data-testid=demo]')
+  await page.waitForSelector('[data-testid=result]')
+  await page.click('[data-testid=save]')
+  await page.waitForTimeout(100)
+  assert.ok((await page.textContent('[data-testid=save]')).includes('저장됨'), 'DEMO 저장 완료')
+  // 첫 후보 카드 열고 검토 메모 입력 → 검토 저장
+  await page.locator('text=원본 대조·검토 열기').first().click()
+  await page.locator('[data-testid=review-note]').first().fill('복원테스트메모')
+  await page.locator('button', { hasText: '검토 저장' }).first().click()
+  await page.waitForTimeout(100)
+
+  // 화면 재진입 시뮬: DEMO 다시 → 새 결과(미저장, 검토 비움)
+  await page.click('[data-testid=demo]')
+  await page.waitForSelector('[data-testid=result]')
+  await page.locator('text=원본 대조·검토 열기').first().click()
+  assert.equal(await page.locator('[data-testid=review-note]').first().inputValue(), '', '새 분석은 검토 메모가 비어 있어야 함')
+
+  // 저장 이력 새로고침 → DEMO 목록에 항목 존재 → 불러오기
+  await page.click('[data-testid=history-refresh]')
+  await page.waitForTimeout(100)
+  const demoLoadBtns = page.locator('[data-testid=history-demo-list] [data-testid=history-load]')
+  assert.ok((await demoLoadBtns.count()) >= 1, '저장된 DEMO 분석이 이력에 보여야 함')
+  await demoLoadBtns.first().click()
+  await page.waitForTimeout(150)
+
+  // 결과 복원 + 저장 버튼은 '저장됨'(중복 저장 방지)
+  await page.waitForSelector('[data-testid=result]')
+  const saveTxt = await page.textContent('[data-testid=save]')
+  assert.ok(saveTxt.includes('저장됨'), '불러온 run 은 이미 저장됨 → 재저장 불가')
+  const saveDisabled = await page.getAttribute('[data-testid=save]', 'disabled')
+  assert.notEqual(saveDisabled, undefined)
+  // 검토 메모 복원
+  await page.locator('text=원본 대조·검토 열기').first().click()
+  assert.equal(await page.locator('[data-testid=review-note]').first().inputValue(), '복원테스트메모', '불러오기 시 검토 메모가 복원돼야 함')
+
+  const calls = await page.evaluate(() => globalThis.__CALLS.map((c) => c[0]))
+  assert.ok(calls.includes('getRun') && calls.includes('listReviews'), 'getRun/listReviews 재조회 호출됨')
+  await page.context().close()
+})
+
+test('저장 이력: 고객 전환 중 늦은 목록 응답 폐기(세대 가드)', { skip }, async () => {
+  // listVisibleRuns 가 즉시 반환하므로, 여기선 고객 전환 후에도 DEMO 목록이 유지되고
+  // 실데이터 목록은 현재 고객+동의 scope 로만 노출됨을 확인(폐기 로직은 asyncGuard 단위테스트로 커버).
+  const page = await newPage({ customers, records })
+  await page.click('[data-testid=demo]')
+  await page.waitForSelector('[data-testid=result]')
+  await page.click('[data-testid=save]')
+  await page.waitForTimeout(100)
+  await page.selectOption('[data-testid=customer-select]', 'A')
+  await page.waitForTimeout(100)
+  // 고객만 선택(동의 전) → 현재고객 실데이터 목록은 '동의 시 표시' 안내, DEMO 목록은 유지
+  const body = await page.textContent('[data-testid=history]')
+  assert.ok(body.includes('동의 확인 시') || body.includes('동의'), '동의 전에는 현재고객 저장 목록 비표시 안내')
+  await page.context().close()
+})
+
 test('화면 대비: bg-white + text-slate-100 ≥ WCAG AA(4.5:1)', { skip }, async () => {
   const page = await newPage({ customers, records })
   const ratio = await page.evaluate(() => {

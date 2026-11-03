@@ -4,6 +4,16 @@
 범위: 기존 SJ-OS에 "보험금 발굴(검토 지원)" **초기 통합 버전** + 리뷰 후속 하드닝(v0.2).
 **하지 않은 것(지침 준수): 운영 DB 변경/조회, main 병합/운영 배포, 유료가입, 새 외부서비스 연결, 인증/권한 우회.**
 
+## 0++) 저장 이력 목록·불러오기(복원) UI(v0.6) — 2026-11-03
+실 로그인 사용자 최종 검증(DEMO 7건 분석→서버 저장 run `8c80326e…`→검토 저장 성공, 실고객 미사용) 후,
+저장된 분석을 **재조회·복원**하는 UI 를 완성했다(이전엔 저장만 가능, 목록/불러오기 없음).
+
+- **스토어**: `listVisibleRuns()`(eq 없이 RLS 스코프 조회→요약), `getRun(id)`(result 포함 단건), 기존 `listReviews`.
+- **복원(순수·테스트)** `restore.ts`: `validateSavedRun`(result가 후보배열인지·후보 shape·규칙버전 검증; 버전 불일치는 warning, 손상은 error→복원 중단), `reviewsToLatestMap`(후보별 **최신 검토값**).
+- **UI** `ClaimFinderPage`: "저장된 분석 이력" 패널 — **DEMO 는 항상**, **실데이터는 현재 고객+동의 scope 로만** 표시, 새로고침 버튼. 행의 "불러오기" → `getRun`+`listReviews` 재조회 → 결과(AnalyzeResult)·검토메모 복원. **불러온 run 은 savedRunId 설정으로 재저장 불가(중복 저장 방지, 버튼 "저장됨")**. 늦은 응답은 결과 scope/목록 세대 가드로 폐기. 저장 성공·고객 전환·마운트 시 목록 자동 갱신.
+- **검증**: `typecheck`(web+node)·`build:web` ✅ · `npm test` **150/150** ✅ · RLS **23/23** ✅ · E2E **13/13**(저장→목록→불러오기→결과/메모 복원·중복저장 방지 왕복 포함) ✅ · restore `claimRestore.test.mjs` 6 · store `claimFinderStore.test.mjs` 19.
+- **한계**: 실 PostgREST 왕복의 목록/불러오기는 로그인 사용자가 앱에서 확인(합성 어댑터 왕복+DI+격리 RLS 로 로직 검증). 실데이터 정확도 미검증.
+
 ## 0+) 실제 Supabase 저장 연결(v0.5) — 2026-11-03, 사용자 배포 승인 후
 PR #48 이 main 에 squash merge(`b465501`)·Cloudflare 배포(https://sj-invest.pages.dev HTTP200) 된 뒤,
 새 분석 결과·검토이력의 **실제 Supabase 저장을 연결**했다. 작업 브랜치 `claude/claim-finder-supabase-persist`(최신 main 기준).
