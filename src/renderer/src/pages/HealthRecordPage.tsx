@@ -7,6 +7,8 @@ import {
   type TwoWayInfo,
   type HealthRecordRequest
 } from '@renderer/services/commercial/healthRecordService'
+import { listCustomers } from '@renderer/services/commercial/customerService'
+import type { CustomerRecord } from '@shared/commercial/models'
 
 /**
  * 고객 건강기록 조회 — CODEF 간편인증. 상품(건강보험공단/심평원)별로 입력·요청변수가 달라
@@ -238,6 +240,8 @@ export default function HealthRecordPage(): JSX.Element {
   const [productKey, setProductKey] = useState(HEALTH_PRODUCTS[0].key)
   const selected = HEALTH_PRODUCTS.find((p) => p.key === productKey) ?? HEALTH_PRODUCTS[0]
 
+  const [customers, setCustomers] = useState<CustomerRecord[]>([]) // 내 고객만(RLS)
+  const [customerId, setCustomerId] = useState('') // 선택한 고객 id — 조회 결과에 연결
   const [name, setName] = useState('')
   const [idValue, setIdValue] = useState('') // 생년월일(8) 또는 주민번호(13) — 상품에 따라
   const [showRrn, setShowRrn] = useState(false) // 주민번호 화면 표시 여부(기본 가림)
@@ -270,6 +274,33 @@ export default function HealthRecordPage(): JSX.Element {
   useEffect(() => {
     void refresh()
   }, [])
+  // 내 고객 목록 로드(Supabase RLS로 본인/팀 고객만 반환).
+  useEffect(() => {
+    void (async () => {
+      const r = await listCustomers()
+      if (r.ok) setCustomers(r.customers)
+    })()
+  }, [])
+
+  // 선택 상품의 식별값(생년월일 8 / 주민번호 13)을 고객 레코드에서 꺼낸다.
+  const idFromCustomer = (c: CustomerRecord, idField: 'birth' | 'rrn'): string =>
+    digits(idField === 'birth' ? c.birthDate ?? '' : c.rrn ?? '')
+
+  // 고객 선택 → 이름·전화·식별값 자동 입력 + customerId 연결(진행 세션/결과는 초기화).
+  const onSelectCustomer = (id: string): void => {
+    setCustomerId(id)
+    setTwoWay(undefined)
+    setRequestId(undefined)
+    setResult(null)
+    setError(null)
+    setNotice(null)
+    const c = customers.find((x) => x.id === id)
+    if (!c) return
+    setName(c.name ?? '')
+    if (c.phone) setPhone(digits(c.phone))
+    const v = idFromCustomer(c, selected.idField)
+    if (v) setIdValue(v)
+  }
 
   // 상품을 바꾸면 진행 중이던 세션/결과를 비운다(요청변수가 달라지므로).
   const onProductChange = (key: string): void => {
@@ -288,6 +319,12 @@ export default function HealthRecordPage(): JSX.Element {
     setEndDate(monthsAgoStr(win.recentMonths))
     setIncludeSensitive(false)
     setIncludeChild(false)
+    // 고객이 선택돼 있으면 새 상품의 식별값(생년월일/주민번호)을 다시 자동 입력.
+    const c = customers.find((x) => x.id === customerId)
+    if (c) {
+      const v = idFromCustomer(c, p.idField)
+      if (v) setIdValue(v)
+    }
   }
 
   // CODEF 요청 변수 — 선택 상품 스펙(간편인증 loginType "5")대로.
@@ -342,6 +379,7 @@ export default function HealthRecordPage(): JSX.Element {
     setBusy('고객 휴대폰으로 간편인증을 요청하는 중…')
     try {
       const r = await startHealthRecord({
+        customerId: customerId || null,
         customerName: name.trim(),
         product: selected.url,
         param: buildParam(),
@@ -458,6 +496,21 @@ export default function HealthRecordPage(): JSX.Element {
                 ))}
               </select>
               <p className="mt-0.5 text-[10px] leading-relaxed text-slate-500">{selected.note}</p>
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-slate-400">고객 선택 (내 고객)</label>
+              <select value={customerId} onChange={(e) => onSelectCustomer(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] font-semibold text-slate-100 outline-none focus:border-[#c6982f]">
+                <option value="">— 고객 선택 (선택 시 성함·전화·주민번호 자동 입력) —</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}{c.phone ? ` (${c.phone})` : ''}</option>
+                ))}
+              </select>
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                {customers.length === 0
+                  ? '등록된 내 고객이 없습니다. 고객관리에서 등록하면 여기 자동으로 뜹니다.'
+                  : '고객을 선택하면 조회 결과가 그 고객에 연결됩니다(보험금 발굴 등에서 자동 표시).'}
+              </p>
             </div>
             <div>
               <label className="text-[11px] font-semibold text-slate-400">고객 성함</label>
