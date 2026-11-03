@@ -920,7 +920,7 @@ function TreatmentReport({ records }: { records: Row[] }): JSX.Element {
                   <td className="px-3 py-2 font-medium">{String(r.resHospitalName ?? '') || '-'}</td>
                   <td className="px-3 py-2">{ymd(r.resTreatStartDate)}</td>
                   <td className="px-3 py-2">
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">{String(r.resTreatType ?? '') || '-'}</span>
+                    <span className="rounded-full bg-[#eef2f7] px-2 py-0.5 text-[11px] font-semibold text-[#334155] ring-1 ring-[#e2e8f0]">{String(r.resTreatType ?? '') || '-'}</span>
                   </td>
                   <td className="px-3 py-2 text-right">{num(r.resPrescribeCnt)}회</td>
                   <td className="px-3 py-2 text-right font-semibold text-[#8a6a1f]">{num(r.resPrescribeDays)}일분</td>
@@ -1120,7 +1120,7 @@ export function SpecTable({ cols, records, groupBy = 'year' }: { cols: ColSpec[]
               return (
                 <li key={i} className={`rounded-xl border bg-white p-3 shadow-sm ${inpatient || surgeryRow ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-800'}`}>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-500">{dayLabel(r[dateCol.key])}</span>
+                    <span className="rounded-md bg-[#eef2f7] px-2 py-0.5 text-[11px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">{dayLabel(r[dateCol.key])}</span>
                     <span className="flex items-center gap-1">
                       {surgeryRow ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200">수술</span> : null}
                       {type ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${inpatient ? 'bg-rose-600 text-white' : 'border border-slate-700 text-slate-400'}`}>{type}</span> : null}
