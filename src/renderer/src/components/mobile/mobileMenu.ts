@@ -126,6 +126,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
   {
     title: '관리자 메뉴',
     items: [
+      { key: 'staff-manage', label: '직원관리(간편)', icon: UserCog, view: { name: 'staff-manage' }, adminOnly: true },
       { key: 'shared-schedule', label: '공유 일정 (전 직원)', icon: Share2, view: { name: 'shared-schedule' }, adminOnly: true },
       { key: 'staff-overview', label: '직원 현황', icon: UsersRound, view: { name: 'staff-overview' }, adminOnly: true },
       { key: 'family-birthdays', label: '직원 생일 복지', icon: Cake, view: { name: 'family-birthdays' }, adminOnly: true },

@@ -77,6 +77,7 @@ export const TEAM_ROUTES: ViewName[] = []
  */
 export const BACKOFFICE_DENY_ROUTES: ViewName[] = [
   'dashboard',
+  'staff-manage',
   'staff-team',
   'app-builder',
   'devprompt',
