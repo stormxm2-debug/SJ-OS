@@ -181,7 +181,7 @@ test('재조회 서버 오류 → ok:false 로 노출', async () => {
   assert.match(r.error, /permission denied/)
 })
 
-test('listVisibleRuns: eq 없이 조회(RLS 스코프), 요약 매핑', async () => {
+test('listVisibleRuns: is_demo=false 필터(RLS 스코프), 요약 매핑', async () => {
   const client = fakeClient()
   client.rows = [{ id: 'run-1', customer_id: 'cust-A', rules_version: 'v0.2', status: 'completed', is_demo: false, created_at: 't1' },
                  { id: 'run-2', customer_id: null, rules_version: 'v0.2', status: 'completed', is_demo: true, created_at: 't2' }]
@@ -192,7 +192,7 @@ test('listVisibleRuns: eq 없이 조회(RLS 스코프), 요약 매핑', async ()
   assert.equal(r.data[0].id, 'run-1')
   assert.equal(r.data[1].isDemo, true)
   const sel = client.calls.find((c) => c.op === 'select' && c.table === 'claim_finder_runs')
-  assert.equal(sel.eq, null, 'eq 필터 없이(RLS 로 스코프) 조회')
+  assert.deepEqual(sel.eq, ['is_demo', false], 'DEMO(합성) 실행은 서버 조회에서 제외')
 })
 
 test('getRun: id 로 단건 복원(result 포함)', async () => {

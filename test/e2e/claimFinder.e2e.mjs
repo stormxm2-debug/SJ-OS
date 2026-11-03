@@ -43,12 +43,26 @@ async function newPage(fix) {
   return page
 }
 
-const recResult = { resDetailTreatList: [{ resTreatStartDate: '20250601', resHospitalName: 'C', resTreatType: '입원', resAdmissionDays: '5' }] }
+// 진단명 포함 → 진단비 담보와 매칭되어 후보 1건 이상 생성(후보 카드/검토 테스트용).
+const recResult = { resDetailTreatList: [{ resTreatStartDate: '20250601', resHospitalName: 'C', resTreatType: '외래', resDiseaseName: '대장암' }] }
 const customers = [{ id: 'A', name: '가고객' }, { id: 'B', name: '나고객' }]
 const records = [
   { id: 'rA', customerId: 'A', product: 'A진료', status: 'completed', result: recResult, createdAt: '2026-10-01' },
   { id: 'rB', customerId: 'B', product: 'B진료', status: 'completed', result: recResult, createdAt: '2026-10-02' }
 ]
+// 현재 고객 상관없이 보이도록 customerName 공란. 암진단비(현재금액>0) → 진단비 담보 1건.
+const analyses = [{ id: 'ca1', customerName: '', updatedAt: '2026-10-01', policies: [{ insurer: '가상화재' }], coverages: [{ label: '암진단비', current: 20000000 }] }]
+
+// 실데이터 경로로 결과 생성(DEMO 제거됨): 고객 선택 → 동의 → 진료기록 → 보장분석+확인 → 분석.
+async function analyzeRecord(page, cust = 'A', rec = 'rA') {
+  await page.selectOption('[data-testid=customer-select]', cust)
+  await page.check('[data-testid=consent]')
+  await page.selectOption('[data-testid=record-select]', rec)
+  await page.selectOption('[data-testid=analysis-select]', 'ca1')
+  await page.check('[data-testid=analysis-confirm]')
+  await page.click('[data-testid=analyze]')
+  await page.waitForSelector('[data-testid=result]')
+}
 
 test('고객 A→B 전환: 늦은 A 진료기록 응답이 B 화면에 반영되지 않음', { skip }, async () => {
   const page = await newPage({ customers, records, recordDelay: { A: 400, B: 0 } })
@@ -62,24 +76,30 @@ test('고객 A→B 전환: 늦은 A 진료기록 응답이 B 화면에 반영되
   await page.context().close()
 })
 
+test('DEMO 미노출: 운영 화면에 DEMO 버튼/탭 없음', { skip }, async () => {
+  const page = await newPage({ customers, records, analyses })
+  assert.equal(await page.$('[data-testid=demo]'), null, 'DEMO 데이터로 보기 버튼이 없어야 함')
+  const bodyText = await page.textContent('body')
+  assert.ok(!bodyText.includes('DEMO 데이터로 보기'), 'DEMO 진입 문구 없음')
+  assert.equal(await page.$('[data-testid=history-demo-list]'), null, 'DEMO 이력 탭/목록 없음')
+  assert.ok(!bodyText.includes('0.2.0-demo'), '표시용 0.2.0-demo 문자열 없음')
+  await page.context().close()
+})
+
 test('동의 철회 시 결과 제거', { skip }, async () => {
-  const page = await newPage({ customers, records })
-  await page.selectOption('[data-testid=customer-select]', 'A')
-  await page.check('[data-testid=consent]')
-  await page.click('[data-testid=demo]')
-  await page.waitForSelector('[data-testid=result]')
+  const page = await newPage({ customers, records, analyses })
+  await analyzeRecord(page)
   await page.uncheck('[data-testid=consent]')
   assert.equal(await page.$('[data-testid=result]'), null, '동의 철회 후 결과 패널이 사라져야 함')
   await page.context().close()
 })
 
-test('DEMO 결과 후 고객 변경 시 결과 제거', { skip }, async () => {
-  const page = await newPage({ customers, records })
-  await page.click('[data-testid=demo]')
-  await page.waitForSelector('[data-testid=result]')
-  await page.selectOption('[data-testid=customer-select]', 'A')
+test('분석 결과 후 고객 변경 시 결과 제거', { skip }, async () => {
+  const page = await newPage({ customers, records, analyses })
+  await analyzeRecord(page, 'A')
+  await page.selectOption('[data-testid=customer-select]', 'B')
   await page.waitForTimeout(100)
-  assert.equal(await page.$('[data-testid=result]'), null, '고객 변경 후 DEMO 결과가 사라져야 함')
+  assert.equal(await page.$('[data-testid=result]'), null, '고객 변경 후 결과가 사라져야 함')
   await page.context().close()
 })
 
@@ -178,14 +198,13 @@ test('스테일 저장 폐기: A 저장 대기 중 B 분석 → A 저장 완료�
   await page.context().close()
 })
 
-test('새 scope 저장→검토 저장 실제 동작(DEMO): addReview 호출', { skip }, async () => {
-  const page = await newPage({ customers, records })
-  await page.click('[data-testid=demo]')
-  await page.waitForSelector('[data-testid=result]')
+test('새 scope 저장→검토 저장 실제 동작: addReview 호출', { skip }, async () => {
+  const page = await newPage({ customers, records, analyses })
+  await analyzeRecord(page)
   await page.click('[data-testid=save]')
   await page.waitForTimeout(100)
   const saveText = await page.textContent('[data-testid=save]')
-  assert.ok(saveText.includes('저장됨'), 'DEMO 저장 완료')
+  assert.ok(saveText.includes('저장됨'), '저장 완료')
   // 후보 카드 열고 검토 저장
   await page.locator('text=원본 대조·검토 열기').first().click()
   await page.locator('button', { hasText: '검토 저장' }).first().click()
@@ -195,8 +214,8 @@ test('새 scope 저장→검토 저장 실제 동작(DEMO): addReview 호출', {
   await page.context().close()
 })
 
-test('동의 철회/DEMO 전환 시 업로드 원문·확인·진행상태 초기화', { skip }, async () => {
-  const page = await newPage({ customers, records })
+test('동의 철회/고객 변경 시 업로드 원문·확인·진행상태 초기화', { skip }, async () => {
+  const page = await newPage({ customers, records, analyses })
   await page.selectOption('[data-testid=customer-select]', 'A')
   await page.check('[data-testid=consent]')
   await page.click('text=업로드 원본(검토용)')
@@ -206,52 +225,47 @@ test('동의 철회/DEMO 전환 시 업로드 원문·확인·진행상태 초�
   await page.uncheck('[data-testid=consent]')
   await page.waitForTimeout(50)
   assert.equal(await page.$('[data-testid=ingest-result]'), null, '동의 철회 시 업로드 원문이 남으면 안 됨')
-  // 다시 업로드 후 DEMO 전환 → 업로드 결과 사라짐
+  // 다시 업로드 후 고객 변경 → 업로드 결과 사라짐
   await page.check('[data-testid=consent]')
   await page.setInputFiles('[data-testid=ingest-file]', { name: 'hira.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(recResult)) })
   await page.waitForSelector('[data-testid=ingest-result]')
-  await page.click('[data-testid=demo]')
-  await page.waitForSelector('[data-testid=result]')
-  assert.equal(await page.$('[data-testid=ingest-result]'), null, 'DEMO 전환 시 업로드 원문이 남으면 안 됨')
+  await page.selectOption('[data-testid=customer-select]', 'B')
+  await page.waitForTimeout(100)
+  assert.equal(await page.$('[data-testid=ingest-result]'), null, '고객 변경 시 업로드 원문이 남으면 안 됨')
   await page.context().close()
 })
 
-test('저장→이력 목록→불러오기: 결과·검토메모 복원 + 중복 저장 방지', { skip }, async () => {
-  const page = await newPage({ customers, records })
-  // DEMO 분석 → 저장
-  await page.click('[data-testid=demo]')
-  await page.waitForSelector('[data-testid=result]')
+test('저장→이력 목록→불러오기: 결과·검토메모 복원 + 중복 저장 방지(실데이터)', { skip }, async () => {
+  const page = await newPage({ customers, records, analyses })
+  await analyzeRecord(page, 'A')
   await page.click('[data-testid=save]')
   await page.waitForTimeout(100)
-  assert.ok((await page.textContent('[data-testid=save]')).includes('저장됨'), 'DEMO 저장 완료')
-  // 첫 후보 카드 열고 검토 메모 입력 → 검토 저장
+  assert.ok((await page.textContent('[data-testid=save]')).includes('저장됨'), '저장 완료')
+  // 첫 후보 카드 열고(한 번만) 검토 메모 입력 → 검토 저장. 이후 같은 key 로 카드는 열린 상태 유지.
   await page.locator('text=원본 대조·검토 열기').first().click()
   await page.locator('[data-testid=review-note]').first().fill('복원테스트메모')
   await page.locator('button', { hasText: '검토 저장' }).first().click()
   await page.waitForTimeout(100)
 
-  // 화면 재진입 시뮬: DEMO 다시 → 새 결과(미저장, 검토 비움)
-  await page.click('[data-testid=demo]')
+  // 화면 재진입 시뮬: 재분석 → 새 결과(미저장, 검토 비움). 카드는 열린 상태 유지되므로 바로 값 확인.
+  await page.click('[data-testid=analyze]')
   await page.waitForSelector('[data-testid=result]')
-  await page.locator('text=원본 대조·검토 열기').first().click()
+  await page.waitForTimeout(100)
   assert.equal(await page.locator('[data-testid=review-note]').first().inputValue(), '', '새 분석은 검토 메모가 비어 있어야 함')
 
-  // 저장 이력 새로고침 → DEMO 목록에 항목 존재 → 불러오기
+  // 저장 이력 새로고침 → 현재 고객 목록에 항목 존재 → 불러오기
   await page.click('[data-testid=history-refresh]')
   await page.waitForTimeout(100)
-  const demoLoadBtns = page.locator('[data-testid=history-demo-list] [data-testid=history-load]')
-  assert.ok((await demoLoadBtns.count()) >= 1, '저장된 DEMO 분석이 이력에 보여야 함')
-  await demoLoadBtns.first().click()
+  const loadBtns = page.locator('[data-testid=history-customer-list] [data-testid=history-load]')
+  assert.ok((await loadBtns.count()) >= 1, '저장된 실데이터 분석이 현재 고객 이력에 보여야 함')
+  await loadBtns.first().click()
   await page.waitForTimeout(150)
 
   // 결과 복원 + 저장 버튼은 '저장됨'(중복 저장 방지)
   await page.waitForSelector('[data-testid=result]')
-  const saveTxt = await page.textContent('[data-testid=save]')
-  assert.ok(saveTxt.includes('저장됨'), '불러온 run 은 이미 저장됨 → 재저장 불가')
-  const saveDisabled = await page.getAttribute('[data-testid=save]', 'disabled')
-  assert.notEqual(saveDisabled, undefined)
-  // 검토 메모 복원
-  await page.locator('text=원본 대조·검토 열기').first().click()
+  assert.ok((await page.textContent('[data-testid=save]')).includes('저장됨'), '불러온 run 은 이미 저장됨 → 재저장 불가')
+  // 검토 메모 복원(카드 열린 상태 유지 → 바로 확인)
+  await page.waitForTimeout(100)
   assert.equal(await page.locator('[data-testid=review-note]').first().inputValue(), '복원테스트메모', '불러오기 시 검토 메모가 복원돼야 함')
 
   const calls = await page.evaluate(() => globalThis.__CALLS.map((c) => c[0]))
@@ -259,19 +273,19 @@ test('저장→이력 목록→불러오기: 결과·검토메모 복원 + 중�
   await page.context().close()
 })
 
-test('저장 이력: 고객 전환 중 늦은 목록 응답 폐기(세대 가드)', { skip }, async () => {
-  // listVisibleRuns 가 즉시 반환하므로, 여기선 고객 전환 후에도 DEMO 목록이 유지되고
-  // 실데이터 목록은 현재 고객+동의 scope 로만 노출됨을 확인(폐기 로직은 asyncGuard 단위테스트로 커버).
-  const page = await newPage({ customers, records })
-  await page.click('[data-testid=demo]')
-  await page.waitForSelector('[data-testid=result]')
-  await page.click('[data-testid=save]')
-  await page.waitForTimeout(100)
+test('저장 이력: 동의 전 현재고객 목록 비표시 + DEMO 저장분석은 목록에서 제외', { skip }, async () => {
+  const page = await newPage({ customers, records, analyses })
+  // 과거 DEMO 행이 서버에 있어도 운영 목록엔 안 보여야 함 → 메모리에 demo run 심기.
+  await page.evaluate(() => { globalThis.__RUNS = [{ id: 'run-demo-x', customerId: null, customerName: null, healthRecordRequestId: null, coverageAnalysisRef: null, rulesVersion: '0.2.0-demo', status: 'completed', isDemo: true, result: [], warnings: [], createdAt: new Date().toISOString() }] })
   await page.selectOption('[data-testid=customer-select]', 'A')
   await page.waitForTimeout(100)
-  // 고객만 선택(동의 전) → 현재고객 실데이터 목록은 '동의 시 표시' 안내, DEMO 목록은 유지
   const body = await page.textContent('[data-testid=history]')
-  assert.ok(body.includes('동의 확인 시') || body.includes('동의'), '동의 전에는 현재고객 저장 목록 비표시 안내')
+  assert.ok(body.includes('동의'), '동의 전에는 현재고객 저장 목록 비표시 안내')
+  await page.click('[data-testid=history-refresh]')
+  await page.waitForTimeout(100)
+  assert.equal(await page.$('[data-testid=history-demo-list]'), null, 'DEMO 이력 목록 UI 자체가 없음')
+  const full = await page.textContent('[data-testid=history]')
+  assert.ok(!full.includes('run-demo'), 'DEMO 저장분석은 운영 이력에 노출되지 않음')
   await page.context().close()
 })
 

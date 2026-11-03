@@ -88,7 +88,8 @@ export const claimFinderStore = {
   async listVisibleRuns() {
     g().__CALLS!.push(['listVisibleRuns', null])
     if (!configured()) return { ok: false, disabled: true, error: 'disabled' }
-    const summaries = g().__RUNS!.map((r) => ({ id: r.id, customerId: r.customerId, rulesVersion: r.rulesVersion, status: r.status, isDemo: r.isDemo, createdAt: r.createdAt }))
+    // 운영 서버 조회와 동일하게 DEMO(is_demo=true)는 제외한다.
+    const summaries = g().__RUNS!.filter((r) => !r.isDemo).map((r) => ({ id: r.id, customerId: r.customerId, rulesVersion: r.rulesVersion, status: r.status, isDemo: r.isDemo, createdAt: r.createdAt }))
     return { ok: true, data: summaries }
   },
   async getRun(runId: string) {
