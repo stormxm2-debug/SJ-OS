@@ -286,7 +286,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
       {/* ─── Premium hero — deep navy + gold (Direction A). Explicit hex so it is
           reliably dark with white text regardless of the slate token remap. ─── */}
       <div
-        className="relative overflow-hidden rounded-3xl p-6 text-white shadow-xl ring-1 ring-black/5"
+        className="relative overflow-hidden rounded-3xl p-5 text-white shadow-xl ring-1 ring-black/5"
         style={{
           background:
             'radial-gradient(680px 240px at 88% -30%, rgba(198,152,47,0.20), rgba(198,152,47,0) 60%), linear-gradient(135deg, #0e1e3a 0%, #16294b 60%, #1d2f57 100%)'
@@ -296,35 +296,34 @@ export default function SupabaseAttendanceManager(): JSX.Element {
         <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-[#c6982f] to-transparent opacity-80" />
         <div className="pointer-events-none absolute -bottom-24 -left-10 h-56 w-56 rounded-full bg-sky-400/10 blur-3xl" />
 
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] font-medium text-white/70">
-              <Clock className="h-3.5 w-3.5" /> 출퇴근 관리
+        <div className="relative">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2 text-[11px] font-medium text-white/70">
+              <Clock className="h-3.5 w-3.5 shrink-0" /> 출퇴근 관리
               <ModeBadge mode={mode} />
             </div>
-            <div className="mt-3 flex items-end gap-2">
-              <span className="text-5xl font-bold tabular-nums tracking-tight text-white sm:text-6xl">
-                {hh}:{mm}
-              </span>
-              <span className="mb-1.5 text-lg font-semibold tabular-nums text-white/60">{ss}</span>
-            </div>
-            <div className="mt-1 flex items-center gap-1.5 text-sm text-white/75">
-              <CalendarDays className="h-3.5 w-3.5" />
-              {now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
-            </div>
-            <div className="mt-2 text-sm text-white/65">
-              {session.name || '직원'}님, {greeting}.
-            </div>
+            <WorkStatePill state={workState} />
           </div>
 
-          <div className="flex flex-col items-end gap-2">
-            <WorkStatePill state={workState} />
-            <div className="rounded-2xl bg-white/10 px-4 py-2.5 text-right ring-1 ring-white/15 backdrop-blur">
-              <div className="flex items-center justify-end gap-1 text-[10px] uppercase tracking-wide text-white/55">
-                <Timer className="h-3 w-3" /> {worked.ended ? '오늘 근무' : '근무 (진행)'}
-              </div>
-              <div className="text-xl font-bold tabular-nums text-white">{worked.label}</div>
-            </div>
+          <div className="mt-4 flex flex-wrap items-end gap-x-2 gap-y-2">
+            <span className="text-5xl font-bold tabular-nums tracking-tight text-white sm:text-6xl">
+              {hh}:{mm}
+            </span>
+            <span className="mb-1.5 text-lg font-semibold tabular-nums text-white/55">{ss}</span>
+            {worked.started ? (
+              <span className="mb-1 ml-auto inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-white ring-1 ring-white/15 backdrop-blur">
+                <Timer className="h-3.5 w-3.5 text-[#e6c877]" /> {worked.ended ? '오늘 근무' : '근무'}
+                <span className="tabular-nums">{worked.label}</span>
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-2 flex items-center gap-1.5 text-sm text-white/75">
+            <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+            {now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+          </div>
+          <div className="mt-1 text-sm text-white/65">
+            {session.name || '직원'}님, {greeting}.
           </div>
         </div>
 
@@ -365,7 +364,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
       </div>
 
       {/* ─── Body (bright surfaces + dark text) ───────────────────────────── */}
-      <div className="rounded-3xl border border-slate-800 bg-white p-5 shadow-sm">
+      <div className="rounded-3xl border border-[#e6eaf2] bg-white p-5 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <p className="text-[11px] text-slate-500">
             {roleHint} <span className="text-slate-400">(실제 접근 권한은 Supabase RLS가 적용됩니다.)</span>
@@ -373,7 +372,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           <button
             type="button"
             onClick={() => void load()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-950"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#475569] transition hover:bg-[#f8fafc]"
           >
             <RefreshCw className="h-3 w-3" /> 새로고침
           </button>
@@ -412,12 +411,12 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           </div>
         ) : null}
         <div className="mb-4">
-          <div className="mb-1 text-[11px] font-semibold text-slate-300">오늘의 다짐</div>
+          <div className="mb-1 text-[11px] font-bold text-[#334155]">오늘의 다짐</div>
           <input
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
             placeholder="미리 적어도 되고, 비워두면 출근 직후 다짐 입력 화면이 뜹니다 (저장 전까지 잠금)."
-            className="w-full rounded-xl border border-slate-800 bg-white px-3 py-2.5 text-[13px] text-slate-100 placeholder:text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            className="w-full rounded-xl border border-[#e2e8f0] bg-white px-3 py-2.5 text-[13px] text-[#0f172a] placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
         {confirm === 'checkin-dup' ? (
@@ -688,30 +687,29 @@ function ConfirmBar({ text, onYes, onNo }: { text: string; onYes: () => void; on
     </div>
   )
 }
-function Field({ label, value, tone }: { label: string; value: string; tone?: 'emerald' | 'amber' | 'slate' }): JSX.Element {
-  const t = tone === 'emerald' ? 'text-emerald-600' : tone === 'amber' ? 'text-amber-600' : 'text-slate-100'
+// 반전 slate 팔레트에 영향받지 않도록 톤별 색을 명시(고정 hex). 은은한 배경 틴트 + 또렷한 값.
+const TILE_TONES = {
+  emerald: { bg: '#ecfdf5', bd: '#a7f3d0', lbl: '#059669', val: '#047857' },
+  indigo: { bg: '#eef2ff', bd: '#c7d2fe', lbl: '#6366f1', val: '#4338ca' },
+  amber: { bg: '#fffbeb', bd: '#fcd34d', lbl: '#d97706', val: '#b45309' },
+  rose: { bg: '#fff1f2', bd: '#fecdd3', lbl: '#e11d48', val: '#be123c' },
+  slate: { bg: '#f8fafc', bd: '#e2e8f0', lbl: '#64748b', val: '#0f172a' }
+} as const
+function Field({ label, value, tone = 'slate' }: { label: string; value: string; tone?: keyof typeof TILE_TONES }): JSX.Element {
+  const c = TILE_TONES[tone]
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5">
-      <div className="text-[10px] text-slate-500">{label}</div>
-      <div className={['mt-0.5 text-[13px] font-bold', t].join(' ')}>{value}</div>
+    <div className="rounded-2xl border px-3.5 py-3" style={{ background: c.bg, borderColor: c.bd }}>
+      <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: c.lbl }}>{label}</div>
+      <div className="mt-1 text-[15px] font-extrabold leading-tight" style={{ color: c.val }}>{value}</div>
     </div>
   )
 }
-function Stat({ label, value, tone }: { label: string; value: number; tone?: 'emerald' | 'indigo' | 'amber' | 'rose' }): JSX.Element {
-  const t =
-    tone === 'emerald'
-      ? 'text-emerald-600'
-      : tone === 'indigo'
-        ? 'text-indigo-600'
-        : tone === 'amber'
-          ? 'text-amber-600'
-          : tone === 'rose'
-            ? 'text-rose-600'
-            : 'text-slate-100'
+function Stat({ label, value, tone = 'slate' }: { label: string; value: number; tone?: keyof typeof TILE_TONES }): JSX.Element {
+  const c = TILE_TONES[tone]
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950 p-2 text-center">
-      <div className={['text-lg font-bold', t].join(' ')}>{value}</div>
-      <div className="text-[10px] text-slate-500">{label}</div>
+    <div className="rounded-2xl border p-2.5 text-center" style={{ background: c.bg, borderColor: c.bd }}>
+      <div className="text-2xl font-extrabold tabular-nums leading-none" style={{ color: c.val }}>{value}</div>
+      <div className="mt-1 text-[10px] font-semibold" style={{ color: c.lbl }}>{label}</div>
     </div>
   )
 }
