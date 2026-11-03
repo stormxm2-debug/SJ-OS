@@ -152,6 +152,48 @@ export function classifySurgery(name: string): { part: string; group: PartGroup 
   for (const rule of PART_RULES) if (rule.re.test(n)) return { part: rule.part, group: rule.group }
   return { part: '', group: 'other' }
 }
+
+/**
+ * 단순 처치(수술 아님) 여부 — 물리치료·주사·드레싱·검사 등. 표시에서 '수술'과 구분한다.
+ * SURGERY_RE 로 수술로 잡힌 건 수술 우선(여기서 제외하지 않음).
+ */
+const TRIVIAL_PROC_RE =
+  /(물리치료|도수치료|재활|운동치료|주사|주입|수액|수혈|드레싱|소독|처치료|단순처치|채혈|검사|촬영|초음파|방사선단순|상담|교육|투약|조제|관찰|경과)/
+export function isTrivialProcedure(name: string, type = ''): boolean {
+  const n = s(name)
+  if (looksSurgery(n, type)) return false
+  return TRIVIAL_PROC_RE.test(n)
+}
+
+/** 부위별 후유장해 '가능성'(일반 참고) + 보험 상담 확인 포인트. 의학적·보험적 확정 아님. */
+export interface PartSequelae {
+  risks: string[] // 일반적으로 거론되는 후유장해 유형(추정)
+  insurancePoint: string // 보험 상담 시 확인 포인트(약관 후유장해분류표 기준)
+}
+export const SEQUELAE_BY_PART: Record<PartGroup, PartSequelae> = {
+  spine: { risks: ['신경 증상(다리 저림·방사통·근력 저하)', '척추 운동범위 제한·강직', '유합술 후 인접 분절 퇴행'], insurancePoint: '약관 후유장해분류표의 "척추(등뼈·허리뼈) 장해"(운동장해·기형장해) 지급률 확인' },
+  knee: { risks: ['무릎 관절 운동범위 제한', '관절 불안정·연골 손상 후유증', '재발·재수술 가능'], insurancePoint: '하지 3대 관절(무릎) "관절 기능장해" 지급률 확인' },
+  shoulder: { risks: ['어깨 운동범위 제한', '근력 약화·재파열'], insurancePoint: '상지 3대 관절(어깨) 기능장해 지급률 확인' },
+  hip: { risks: ['보행 장해·파행', '인공관절 치환 시 기능장해', '다리 길이 차이'], insurancePoint: '하지 관절(고관절)·인공관절 관련 기능장해 지급률 확인' },
+  foot: { risks: ['족부 변형·보행 통증', '발가락 강직·결손 시 기능 저하'], insurancePoint: '발가락·발목 기능/결손 장해 지급률 확인' },
+  hand: { risks: ['손가락 강직·결손', '파악력(쥐는 힘) 저하'], insurancePoint: '손가락 결손·기능장해(세분 지급률) 확인' },
+  abdomen: { risks: ['장유착·장폐색 가능', '장기 절제 시 소화·대사 기능 변화', '수술 흉터'], insurancePoint: '복부 장기(비장·신장 등) 결손/기능장해·흉터(추상) 확인' },
+  heart: { risks: ['심기능 저하·부정맥', '재협착·재시술 가능'], insurancePoint: '심장(흉복부 장기) 기능장해 지급률 확인' },
+  chest: { risks: ['폐기능 저하·호흡 곤란', '흉막 유착'], insurancePoint: '호흡기(폐) 기능장해 지급률 확인' },
+  brain: { risks: ['인지·언어·운동 신경학적 후유증', '간질 발작 가능', '마비'], insurancePoint: '신경계(뇌) 장해(정신·신경 분류)는 지급률이 높을 수 있어 특히 확인' },
+  eye: { risks: ['시력 저하·시야 결손', '복시·안구 운동 장해'], insurancePoint: '눈(시력·시야·조절·운동) 장해 지급률 확인' },
+  ent: { risks: ['청력 저하', '후각·발성 변화', '갑상선 수술 시 호르몬·목소리 변화'], insurancePoint: '귀(청력)·코·씹고 말하는 장해, 갑상선 기능 확인' },
+  dental: { risks: ['저작(씹기) 기능 저하', '치아 결손'], insurancePoint: '씹거나 말하는 장해·치아 보철 관련 담보 확인' },
+  skin: { risks: ['흉터(추상)·구축', '감각 저하'], insurancePoint: '외모 추상장해(흉터) 지급률 확인' },
+  uro: { risks: ['배뇨 기능 변화·요실금', '생식·성 기능 변화'], insurancePoint: '비뇨·생식기 장해 지급률 확인' },
+  ob: { risks: ['생식 기능 변화', '골반 장기 유착'], insurancePoint: '생식기 장해·관련 담보 확인' },
+  breast: { risks: ['림프부종(겨드랑이 절제 범위에 따라)', '감각 저하·흉터'], insurancePoint: '외모 추상(흉터)·유방 관련 담보 확인' },
+  other: { risks: ['수술 부위 통증·반흔', '해당 부위 기능 저하 가능'], insurancePoint: '해당 부위 약관 후유장해분류표 확인' }
+}
+export function sequelaeFor(group: PartGroup): PartSequelae {
+  return SEQUELAE_BY_PART[group] ?? SEQUELAE_BY_PART.other
+}
+
 export interface MedItem {
   name: string
   ingredient: string
