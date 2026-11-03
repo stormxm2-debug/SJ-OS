@@ -18,7 +18,7 @@ async function load(src) {
 }
 
 const m = await load('src/renderer/src/services/health-record/summarize.ts')
-const { collectHrSections, summarizeByDisease, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary } = m
+const { collectHrSections, summarizeByDisease, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary, buildHighlights, diseaseFlags, FREQUENT_VISIT_THRESHOLD } = m
 
 const result = {
   resBasicTreatList: [
@@ -65,9 +65,37 @@ test('상병별 추정 묶음: 방문수·수술·투약·기간', () => {
   assert.ok(back.medications.some((x) => x.name === '트라마돌'))
   assert.equal(back.selfPayTotal, 294000 + 96000)
 
+  assert.equal(back.inpatientVisits, 2, '요추 염좌는 입원 2회')
+  assert.equal(back.outpatientVisits, 0)
+
   const gastritis = d.find((x) => x.disease === '위염')
   assert.equal(gastritis.visitCount, 2) // 서로 다른 병원 2회
+  assert.equal(gastritis.outpatientVisits, 2, '위염은 통원 2회')
+  assert.equal(gastritis.inpatientVisits, 0)
   assert.ok(gastritis.medications.some((x) => x.name === '란스톤캡슐' && x.days === 14))
+})
+
+test('하이라이트: 입원/수술/통원 7회↑/고액', () => {
+  // 위염을 통원 7회로 늘려 '잦은 통원' 하이라이트 검증.
+  const many = { resBasicTreatList: [] }
+  for (let i = 0; i < 7; i++) many.resBasicTreatList.push({ resTreatStartDate: `2025010${(i % 9) + 1}`, resHospitalName: `의원${i}`, resTreatType: '외래', resDiseaseName: '위염', resDeductibleAmt: '5000' })
+  const merged = {
+    resBasicTreatList: [...result.resBasicTreatList, ...many.resBasicTreatList],
+    resDetailTreatList: result.resDetailTreatList,
+    resPrescribeDrugList: result.resPrescribeDrugList
+  }
+  const h = buildHighlights(collectHrSections(merged))
+  assert.ok(h.inpatientVisits >= 2, '입원 방문 집계')
+  assert.ok(h.surgeryCount >= 1, '수술 집계')
+  assert.ok(h.frequentOutpatient.some((d) => d.disease === '위염'), '통원 7회 이상 상병에 위염')
+  assert.ok(h.bigSelfPay.some((d) => d.disease === '요추 염좌'), '고액 본인부담에 요추 염좌(39만)')
+  assert.equal(h.hasAny, true)
+
+  const back = summarizeByDisease(collectHrSections(merged)).find((x) => x.disease === '요추 염좌')
+  const flags = diseaseFlags(back)
+  assert.ok(flags.some((f) => f.startsWith('입원')))
+  assert.ok(flags.some((f) => f.startsWith('수술')))
+  assert.equal(FREQUENT_VISIT_THRESHOLD, 7)
 })
 
 test('정렬: 방문 많은 순', () => {
