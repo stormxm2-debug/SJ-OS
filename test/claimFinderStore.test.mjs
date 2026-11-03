@@ -25,11 +25,29 @@ function fakeClient({ error = null } = {}) {
   const calls = []
   return {
     calls,
+    rows: [],
     from(table) {
+      const self = this
       return {
         insert(row) {
           calls.push({ table, row })
           return { select: () => ({ single: async () => ({ data: error ? null : { id: 'row-1' }, error }) }) }
+        },
+        select(cols) {
+          return {
+            eq(col, val) {
+              return {
+                order() {
+                  return {
+                    async limit() {
+                      calls.push({ table, op: 'select', cols, eq: [col, val] })
+                      return { data: error ? null : self.rows, error }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -129,6 +147,42 @@ test('getClient 예외 → ok:false 로 처리(비활성 아님, throw 안 함)'
   const rv = await store.addReview({ runId: 'run-1', candidateId: 'c1' })
   assert.equal(rv.ok, false)
   assert.match(rv.error, /init boom/)
+})
+
+test('재조회 listRuns: customer 로 필터, data 반환', async () => {
+  const client = fakeClient()
+  client.rows = [{ id: 'run-1', customer_id: 'cust-A' }]
+  const store = createClaimFinderStore({ getClient: async () => client })
+  const r = await store.listRuns('cust-A')
+  assert.equal(r.ok, true)
+  assert.deepEqual(r.data, [{ id: 'run-1', customer_id: 'cust-A' }])
+  const sel = client.calls.find((c) => c.op === 'select' && c.table === 'claim_finder_runs')
+  assert.deepEqual(sel.eq, ['customer_id', 'cust-A'])
+})
+
+test('재조회 listReviews: run 으로 필터', async () => {
+  const client = fakeClient()
+  client.rows = [{ id: 'rev-1', run_id: 'run-1' }]
+  const store = createClaimFinderStore({ getClient: async () => client })
+  const r = await store.listReviews('run-1')
+  assert.equal(r.ok, true)
+  assert.equal(r.data.length, 1)
+})
+
+test('재조회도 미구성 시 비활성 + 인자 검증', async () => {
+  const store0 = createClaimFinderStore({ getClient: async () => null })
+  assert.equal((await store0.listRuns('cust-A')).disabled, true)
+  const store = createClaimFinderStore({ getClient: async () => fakeClient() })
+  assert.equal((await store.listRuns('')).ok, false)
+  assert.equal((await store.listReviews('')).ok, false)
+})
+
+test('재조회 서버 오류 → ok:false 로 노출', async () => {
+  const client = fakeClient({ error: { message: 'permission denied' } })
+  const store = createClaimFinderStore({ getClient: async () => client })
+  const r = await store.listRuns('cust-A')
+  assert.equal(r.ok, false)
+  assert.match(r.error, /permission denied/)
 })
 
 test('서버가 id 없이 반환 → 성공 가장 금지(null id 실패)', async () => {

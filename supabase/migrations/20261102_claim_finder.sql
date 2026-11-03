@@ -1,12 +1,13 @@
 -- SJ CLAIM FINDER — 분석 실행/결과 + 사람 검토 이력 테이블
 --
--- ⚠️ 이 마이그레이션은 **아직 운영 DB에 적용하지 않았다(파일만 준비).**
---    (작업 지침: 운영 DB 변경 금지.) 적용은 리뷰 후 담당자가 수행.
---    ⚠️ 운영 스키마(특히 public.customers)는 이 세션에서 **확인하지 않았다**.
---       아래 설계는 레포에 존재하는 health_record_requests(동의·소유 앵커)에만 의존하며,
---       customers 소유권은 그 요청 행을 통해 간접 검증한다(요청의 customer_id 일치 강제).
---       운영 적용 전, health_record_requests 의 status enum·consent_at 컬럼이 아래 가정과
---       일치하는지 반드시 재확인할 것(미확인 시 fail-closed: 연결 거부).
+-- 적용: 2026-11-03, 사용자 배포 승인 후 Supabase `kmjnluubjgyxkppxxjel` 에 적용(additive 전용).
+--   운영 스키마를 메타데이터로 확인함(실고객 데이터 미조회):
+--     - health_record_requests.status enum = draft/awaiting_auth/consented/fetching/completed/failed/expired ✔
+--     - health_record_requests.consent_at(timestamptz)·staff_id(default auth.uid())·customer_id ✔
+--     - is_owner_or_admin() = current_user_role() in ('owner','admin') ✔ / auth.users ✔
+--     - customers.owner_staff_id 존재(여기선 직접 참조하지 않고 health_record_requests 로 간접 검증).
+--   additive: 기존 테이블/정책/함수/데이터를 변경·삭제하지 않음. 롤백은 docs/claim-finder/DB_SNAPSHOT.md §3.
+--   ⚠️ 실제 고객/의료 데이터로의 정확도는 미검증(합성 fixture 로만 검증). DB 데이터 백업은 미수행(소유자 대시보드 확인 필요).
 --
 -- 서버 경계(요점):
 --   * 순수 프런트 가드(access.ts)는 사전검증일 뿐 경계가 아니다.
