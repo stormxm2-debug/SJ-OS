@@ -10,6 +10,8 @@ import {
 import {
   collectHrSections,
   summarizeByDisease,
+  buildHighlights,
+  diseaseFlags,
   groupKeyOf,
   type GroupBy,
   type DiseaseSummary
@@ -652,6 +654,7 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
   const raw = useMemo(() => JSON.stringify(result, null, 2), [result])
   const totalRows = sections.reduce((n, s) => n + s.rows.length, 0)
   const diseases = useMemo(() => summarizeByDisease(collectHrSections(result)), [result])
+  const highlights = useMemo(() => buildHighlights(collectHrSections(result)), [result])
   const userNm = useMemo(() => {
     for (const s of sections) {
       const n = userNameOf(s.rows)
@@ -691,6 +694,23 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
           </button>
         ) : null}
       </div>
+
+      {/* 주목 신호 하이라이트(입원·수술·통원 7회↑·고액) */}
+      {sections.length && !showRaw && highlights.hasAny ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+          <span className="text-[11px] font-bold text-rose-700">주목</span>
+          {highlights.inpatientVisits > 0 ? <BigChip tone="rose">입원 {highlights.inpatientVisits}건</BigChip> : null}
+          {highlights.surgeryCount > 0 ? <BigChip tone="rose">수술 {highlights.surgeryCount}건</BigChip> : null}
+          {highlights.frequentOutpatient.map((d) => (
+            <BigChip key={d.disease} tone="amber">통원 {d.outpatientVisits}회 · {d.disease}</BigChip>
+          ))}
+          {highlights.bigSelfPay.map((d) => (
+            <BigChip key={`sp-${d.disease}`} tone="slate">고액 {won(d.selfPayTotal)} · {d.disease}</BigChip>
+          ))}
+          <span className="w-full text-[10px] text-rose-700/70">보험 상담 시 확인 권장 신호(추정). 입원·수술·잦은 통원·고액 진료는 담보 해당 여부를 약관으로 확인하세요.</span>
+        </div>
+      ) : null}
 
       {/* 보기 전환 + 그룹(연/월) + AI */}
       {sections.length && !showRaw ? (
@@ -758,6 +778,15 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
   )
 }
 
+function BigChip({ tone, children }: { tone: 'rose' | 'amber' | 'slate'; children: React.ReactNode }): JSX.Element {
+  const cls = tone === 'rose'
+    ? 'border-rose-300 bg-white text-rose-700'
+    : tone === 'amber'
+      ? 'border-amber-300 bg-amber-100 text-amber-800'
+      : 'border-slate-300 bg-white text-slate-600'
+  return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${cls}`}>{children}</span>
+}
+
 function HrChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }): JSX.Element {
   return (
     <button type="button" onClick={onClick}
@@ -775,12 +804,17 @@ function DiseaseSummaryView({ diseases }: { diseases: DiseaseSummary[] }): JSX.E
     <div className="space-y-2">
       <p className="text-[11px] text-slate-500">같은 병명(표기 기준)으로 묶은 <b>추정</b> 요약 — 수술·투약은 (진료일·기관) 일치로 연결했습니다. 표기가 다르면 같은 질환도 분리될 수 있어요(의학적 확정 아님).</p>
       <ul className="grid gap-2 lg:grid-cols-2">
-        {diseases.map((d) => (
-          <li key={d.disease} className="rounded-xl border border-slate-800 bg-white p-3 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2">
+        {diseases.map((d) => {
+          const flags = diseaseFlags(d)
+          const emphasize = flags.length > 0
+          return (
+          <li key={d.disease} className={`rounded-xl border bg-white p-3 shadow-sm ${emphasize ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-800'}`}>
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[13px] font-bold text-slate-100">{d.disease}</span>
               <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-white">{d.visitCount}회 방문</span>
-              {d.surgeries.some((x) => x.isSurgery) ? <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">수술 {d.surgeries.filter((x) => x.isSurgery).length}</span> : null}
+              {d.inpatientVisits > 0 ? <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-extrabold text-white">입원 {d.inpatientVisits}</span> : null}
+              {d.surgeries.some((x) => x.isSurgery) ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200">수술 {d.surgeries.filter((x) => x.isSurgery).length}</span> : null}
+              {d.outpatientVisits >= 7 ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-800">통원 {d.outpatientVisits}회</span> : null}
             </div>
             <div className="mt-1 text-[11px] text-slate-500">
               {period(d.firstDate, d.lastDate)}
@@ -820,7 +854,8 @@ function DiseaseSummaryView({ diseases }: { diseases: DiseaseSummary[] }): JSX.E
               </div>
             ) : null}
           </li>
-        ))}
+          )
+        })}
       </ul>
     </div>
   )
@@ -1079,11 +1114,17 @@ export function SpecTable({ cols, records, groupBy = 'year' }: { cols: ColSpec[]
           <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {g.rows.map((r, i) => {
               const amounts = wonCols.filter((c) => num(r[c.key]) > 0)
+              const type = String(r.resTreatType ?? '')
+              const inpatient = /입원/.test(type)
+              const surgeryRow = /(수술|절제|적출|성형|이식|봉합|절개)/.test(type) || /(수술|절제|적출|성형|이식|봉합|절개)/.test(String(r.resCodeName ?? r.resOperationName ?? ''))
               return (
-                <li key={i} className="rounded-xl border border-slate-800 bg-white p-3 shadow-sm">
+                <li key={i} className={`rounded-xl border bg-white p-3 shadow-sm ${inpatient || surgeryRow ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-800'}`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-500">{dayLabel(r[dateCol.key])}</span>
-                    {r.resTreatType ? <span className="rounded-full border border-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-400">{String(r.resTreatType)}</span> : null}
+                    <span className="flex items-center gap-1">
+                      {surgeryRow ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200">수술</span> : null}
+                      {type ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${inpatient ? 'bg-rose-600 text-white' : 'border border-slate-700 text-slate-400'}`}>{type}</span> : null}
+                    </span>
                   </div>
                   {hospitalKey && r[hospitalKey] ? <div className="mt-1 text-[13px] font-bold text-slate-100">{String(r[hospitalKey])}</div> : null}
 

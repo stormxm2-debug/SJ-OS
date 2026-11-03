@@ -119,6 +119,8 @@ export interface MedItem {
 export interface DiseaseSummary {
   disease: string // 정규화 표시명
   visitCount: number // 방문(진료일·기관 조합) 수
+  inpatientVisits: number // 입원 방문 수
+  outpatientVisits: number // 통원(외래/요양) 방문 수
   recordCount: number // 기본 진료 레코드 수
   firstDate: string // YYYYMMDD
   lastDate: string
@@ -128,6 +130,9 @@ export interface DiseaseSummary {
   medications: MedItem[] // 날짜·기관 매칭(추정)
   selfPayTotal: number // 본인부담 합(해당 병명 기본 레코드)
 }
+
+/** 입원 여부(진료형태 문자열 기준). */
+const isInpatientType = (treatType: string): boolean => /입원/.test(treatType)
 
 const visitKey = (date: string, hospital: string): string => `${date}|${hospital}`
 
@@ -166,6 +171,8 @@ export function summarizeByDisease(sections: HrSections): DiseaseSummary[] {
   interface Acc {
     disease: string
     visits: Set<string>
+    inpatient: Set<string>
+    outpatient: Set<string>
     recordCount: number
     hospitals: Set<string>
     departments: Set<string>
@@ -181,9 +188,14 @@ export function summarizeByDisease(sections: HrSections): DiseaseSummary[] {
     const date = ymd8(field(r, DATE_KEYS))
     const hospital = field(r, HOSP_KEYS)
     const dept = field(r, ['resDepartment', 'resDept'])
-    const g = groups.get(disease) ?? { disease, visits: new Set(), recordCount: 0, hospitals: new Set(), departments: new Set(), first: '', last: '', selfPay: 0 }
+    const g = groups.get(disease) ?? { disease, visits: new Set(), inpatient: new Set(), outpatient: new Set(), recordCount: 0, hospitals: new Set(), departments: new Set(), first: '', last: '', selfPay: 0 }
     g.recordCount += 1
-    if (date || hospital) g.visits.add(visitKey(date, hospital))
+    const vk = visitKey(date, hospital)
+    if (date || hospital) {
+      g.visits.add(vk)
+      if (isInpatientType(field(r, TYPE_KEYS))) g.inpatient.add(vk)
+      else g.outpatient.add(vk)
+    }
     if (hospital) g.hospitals.add(hospital)
     if (dept) g.departments.add(dept)
     if (date) {
@@ -215,9 +227,13 @@ export function summarizeByDisease(sections: HrSections): DiseaseSummary[] {
       for (const it of surgeryByVisit.get(vk) ?? []) surgeries.push(it)
       for (const it of medByVisit.get(vk) ?? []) meds.push(it)
     }
+    // 입원이면서 외래로도 잡힌 방문은 입원 우선(중복 제거).
+    const outpatientOnly = new Set(Array.from(g.outpatient).filter((k) => !g.inpatient.has(k)))
     result.push({
       disease: g.disease,
       visitCount: g.visits.size,
+      inpatientVisits: g.inpatient.size,
+      outpatientVisits: outpatientOnly.size,
       recordCount: g.recordCount,
       firstDate: g.first,
       lastDate: g.last,
@@ -231,6 +247,39 @@ export function summarizeByDisease(sections: HrSections): DiseaseSummary[] {
   // 방문 많은 순 → 최근 순
   result.sort((a, b) => b.visitCount - a.visitCount || Number(b.lastDate || 0) - Number(a.lastDate || 0))
   return result
+}
+
+// ── 하이라이트(보험 상담 주목 신호) ─────────────────────────────────────────
+/** 통원(외래) '잦은 방문' 임계 — 상병별 외래 방문 수. */
+export const FREQUENT_VISIT_THRESHOLD = 7
+/** 고액 본인부담 임계(상병 합계). */
+export const BIG_SELFPAY_THRESHOLD = 300000
+
+export interface HrHighlights {
+  inpatientVisits: number // 전체 입원 방문 수
+  surgeryCount: number // 수술 항목 수(추정)
+  frequentOutpatient: DiseaseSummary[] // 통원 N회 이상 상병
+  bigSelfPay: DiseaseSummary[] // 고액 본인부담 상병
+  hasAny: boolean
+}
+
+export function buildHighlights(sections: HrSections): HrHighlights {
+  const diseases = summarizeByDisease(sections)
+  const inpatientVisits = diseases.reduce((s, d) => s + d.inpatientVisits, 0)
+  const surgeryCount = diseases.reduce((s, d) => s + d.surgeries.filter((x) => x.isSurgery).length, 0)
+  const frequentOutpatient = diseases.filter((d) => d.outpatientVisits >= FREQUENT_VISIT_THRESHOLD)
+  const bigSelfPay = diseases.filter((d) => d.selfPayTotal >= BIG_SELFPAY_THRESHOLD).sort((a, b) => b.selfPayTotal - a.selfPayTotal).slice(0, 3)
+  return { inpatientVisits, surgeryCount, frequentOutpatient, bigSelfPay, hasAny: inpatientVisits > 0 || surgeryCount > 0 || frequentOutpatient.length > 0 || bigSelfPay.length > 0 }
+}
+
+/** 상병 카드 강조 사유 배지(없으면 빈 배열). */
+export function diseaseFlags(d: DiseaseSummary): string[] {
+  const f: string[] = []
+  if (d.inpatientVisits > 0) f.push(`입원 ${d.inpatientVisits}`)
+  if (d.surgeries.some((x) => x.isSurgery)) f.push(`수술 ${d.surgeries.filter((x) => x.isSurgery).length}`)
+  if (d.outpatientVisits >= FREQUENT_VISIT_THRESHOLD) f.push(`통원 ${d.outpatientVisits}회`)
+  if (d.selfPayTotal >= BIG_SELFPAY_THRESHOLD) f.push('고액')
+  return f
 }
 
 // ── AI 전송용 비식별 요약 ─────────────────────────────────────────────────────
