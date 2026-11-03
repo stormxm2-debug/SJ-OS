@@ -103,11 +103,54 @@ export function groupByDate<T>(rows: T[], dateOf: (r: T) => string, by: GroupBy)
 }
 
 // ── 상병별 추정 묶음 ──────────────────────────────────────────────────────────
+export type PartGroup =
+  | 'spine' | 'knee' | 'shoulder' | 'hip' | 'foot' | 'hand'
+  | 'abdomen' | 'heart' | 'chest' | 'brain' | 'eye' | 'ent' | 'dental'
+  | 'skin' | 'uro' | 'ob' | 'breast' | 'other'
+
 export interface SurgeryItem {
   name: string
   date: string // YYYYMMDD
   hospital: string
   isSurgery: boolean
+  bodyPart: string // 추정 부위(표시명) — 예: '척추(요추)'
+  partGroup: PartGroup // 아이콘/분류용
+}
+
+/** 수술/처치명에서 **부위**를 추정(이름 기반, 확정 아님). 더 구체적인 규칙이 먼저. */
+const PART_RULES: { re: RegExp; part: string; group: PartGroup }[] = [
+  { re: /(경추|목디스크)/, part: '척추(경추)', group: 'spine' },
+  { re: /(흉추)/, part: '척추(흉추)', group: 'spine' },
+  { re: /(요추|추간판|디스크|척추|척추관)/, part: '척추(요추)', group: 'spine' },
+  { re: /(슬관절|무릎|반월상|십자인대|슬개)/, part: '무릎(슬관절)', group: 'knee' },
+  { re: /(견관절|어깨|회전근개|극상근)/, part: '어깨(견관절)', group: 'shoulder' },
+  { re: /(고관절|둔부|대퇴골두)/, part: '고관절', group: 'hip' },
+  { re: /(족부|발목|족지|중족골|아킬레스|족저)/, part: '발·발목', group: 'foot' },
+  { re: /(수부|손목|수지|손가락|수근)/, part: '손·손목', group: 'hand' },
+  { re: /(담낭|쓸개)/, part: '담낭', group: 'abdomen' },
+  { re: /(충수|맹장)/, part: '충수(맹장)', group: 'abdomen' },
+  { re: /(위절제|위아전|위전절|위암|^위 |위내시경)/, part: '위', group: 'abdomen' },
+  { re: /(대장|결장|직장|에스상)/, part: '대장', group: 'abdomen' },
+  { re: /(간절제|간엽|간암|간이식)/, part: '간', group: 'abdomen' },
+  { re: /(신장|콩팥|신우)/, part: '신장', group: 'abdomen' },
+  { re: /(탈장|서혜부|제대)/, part: '탈장', group: 'abdomen' },
+  { re: /(치핵|치질|항문)/, part: '항문', group: 'abdomen' },
+  { re: /(관상동맥|심장|심혈관|판막|스텐트|관동맥)/, part: '심장', group: 'heart' },
+  { re: /(폐|흉부|기흉|늑막)/, part: '폐·흉부', group: 'chest' },
+  { re: /(유방|유선)/, part: '유방', group: 'breast' },
+  { re: /(뇌|두개|지주막|경막)/, part: '뇌', group: 'brain' },
+  { re: /(백내장|수정체|망막|녹내장|각막|안검|눈)/, part: '눈', group: 'eye' },
+  { re: /(부비동|비중격|코|편도|인두|후두|갑상선|고막|중이|이개)/, part: '이비인후·갑상선', group: 'ent' },
+  { re: /(치아|치과|임플란트|발치|치근|잇몸)/, part: '치아', group: 'dental' },
+  { re: /(전립선|방광|요관|요도|정관|음경|고환)/, part: '비뇨', group: 'uro' },
+  { re: /(자궁|난소|제왕|질|난관)/, part: '자궁·난소', group: 'ob' },
+  { re: /(피부|병변|낭종|지방종|사마귀|모반|열상|봉합)/, part: '피부·연부조직', group: 'skin' }
+]
+
+export function classifySurgery(name: string): { part: string; group: PartGroup } {
+  const n = s(name)
+  for (const rule of PART_RULES) if (rule.re.test(n)) return { part: rule.part, group: rule.group }
+  return { part: '', group: 'other' }
 }
 export interface MedItem {
   name: string
@@ -152,7 +195,9 @@ export function summarizeByDisease(sections: HrSections): DiseaseSummary[] {
     if (!name && !type) continue
     const key = visitKey(date, hospital)
     const list = surgeryByVisit.get(key) ?? []
-    list.push({ name: name || type, date, hospital, isSurgery: looksSurgery(name, type) })
+    const label = name || type
+    const cls = classifySurgery(label)
+    list.push({ name: label, date, hospital, isSurgery: looksSurgery(name, type), bodyPart: cls.part, partGroup: cls.group })
     surgeryByVisit.set(key, list)
   }
   const medByVisit = new Map<string, MedItem[]>()
@@ -309,7 +354,7 @@ export function buildHrAiSummary(sections: HrSections, opts?: { maxDiseases?: nu
       name: d.disease,
       visits: d.visitCount,
       departments: d.departments.slice(0, 5),
-      surgeries: d.surgeries.filter((x) => x.isSurgery).map((x) => x.name).slice(0, maxI),
+      surgeries: d.surgeries.filter((x) => x.isSurgery).map((x) => (x.bodyPart ? `${x.bodyPart} · ${x.name}` : x.name)).slice(0, maxI),
       medications: Array.from(new Set(d.medications.map((m) => m.name))).slice(0, maxI)
     })),
     note: '병명 문자열·(진료일·기관) 매칭 기반 추정 요약. 이름·주민번호 등 식별자는 제외됨. 의학적 확정 아님.'
