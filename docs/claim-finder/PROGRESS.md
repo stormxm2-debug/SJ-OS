@@ -4,6 +4,31 @@
 범위: 기존 SJ-OS에 "보험금 발굴(검토 지원)" **초기 통합 버전** + 리뷰 후속 하드닝(v0.2).
 **하지 않은 것(지침 준수): 운영 DB 변경/조회, main 병합/운영 배포, 유료가입, 새 외부서비스 연결, 인증/권한 우회.**
 
+## 0+) 실제 Supabase 저장 연결(v0.5) — 2026-11-03, 사용자 배포 승인 후
+PR #48 이 main 에 squash merge(`b465501`)·Cloudflare 배포(https://sj-invest.pages.dev HTTP200) 된 뒤,
+새 분석 결과·검토이력의 **실제 Supabase 저장을 연결**했다. 작업 브랜치 `claude/claim-finder-supabase-persist`(최신 main 기준).
+
+### 적용 여부 — 명확히
+- **운영 스키마 메타데이터 확인(실고객 데이터 미조회)**: `health_record_requests`(status enum·consent_at·staff_id·customer_id), `is_owner_or_admin()=current_user_role() in ('owner','admin')`, `auth.users`, `customers.owner_staff_id` → 마이그레이션 가정과 **정확히 일치**. 적용 전 `claim_finder_*` 테이블 **없음**(additive 안전) 확인.
+- **적용함 ✅**: Supabase `kmjnluubjgyxkppxxjel` 에 `apply_migration` 으로 2건 적용(사용자가 권한 창 직접 승인).
+  1. `claim_finder_runs_reviews` — 테이블 2 + 함수 4 + 정책 7 + 불변 트리거(additive, 기존 객체 불변경).
+  2. `claim_finder_harden_grants` — 검증 함수 EXECUTE 를 PUBLIC/anon 에서 회수, authenticated 에만 부여(advisor 0028 해소).
+  적용 후 메타데이터로 테이블(RLS on)·함수·정책 7·트리거 존재 재확인 ✅. security advisor 재확인 → claim_finder 함수의 anon 노출 경고 **사라짐**(남은 경고 staff_invite_codes/phone_login_gate/leaked-password 는 기존 이슈로 이번 작업과 무관).
+- **백업 분리**: `docs/claim-finder/DB_SNAPSHOT.md`. **DB 데이터 백업은 미수행**(MCP 불가 — 소유자가 Supabase 대시보드 Database→Backups 에서 PITR/보존 확인 필요). 스키마/정책 스냅샷 + 롤백 스크립트만 기록. "DB 백업 완료" 로 주장하지 않음.
+
+### 프런트 저장/검토/재조회
+- `claimFinderStore.ts`(DI): `saveRun`/`addReview` 는 **사용자 세션 JWT → PostgREST → RLS**(service_role 우회 없음). `listRuns`/`listReviews` 재조회 추가. 미구성/미로그인 시 비활성+안내, `getClient` 예외·id 없음은 실패(성공 가장 금지).
+- "테이블 미적용" 문구를 "미구성/미로그인" 으로 갱신(테이블은 적용됨). `access.ts` 주석도 '적용됨' 으로 갱신.
+
+### 검증(실제 실행)
+- `typecheck`(web+node)·`build:web` ✅ · `npm test` **140/140** ✅ · `node --test test/e2e/claimFinder.e2e.mjs` **11/11** ✅
+- 합성 격리 RLS(동일 DDL): `bash test/claim_finder_rls.sh` **23/23** ✅ (PUBLIC 회수+authenticated 부여 후에도 정책 동작 확인 포함).
+- 저장 서비스 DI(사용자 JWT 경로 로직) + 재조회: `claimFinderStore.test.mjs` **13/13** ✅.
+
+### 미검증/한계(정확히)
+- **실 사용자 세션(JWT) end-to-end 는 이 세션에서 미수행**(테스트 계정 없음·인증 우회 금지). JWT→RLS 경로는 합성 격리 RLS(동일 DDL) + DI 테스트로 검증했고, 실 PostgREST 왕복은 로그인 사용자가 앱에서 확인 필요.
+- **실 고객/의료 데이터 정확도는 미검증**(합성 fixture 로만). DB 데이터 백업 미수행.
+
 ## 0-0) 3차 리뷰 후속(v0.4) — head 116d2b0 검토 반영
 남은 "실제 상태 오염"과 DB 삭제 정책 결함을 수정. 순수 테스트 + 실 Postgres + 브라우저로 검증.
 
