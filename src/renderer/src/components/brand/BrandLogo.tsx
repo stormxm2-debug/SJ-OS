@@ -11,12 +11,14 @@ const GOLD_TEXT = 'linear-gradient(180deg,#f0da91 0%,#d9b23f 42%,#b3861f 78%,#9a
 
 export default function BrandLogo({
   markClassName = 'h-9',
+  showMark = true,
   showWordmark = true,
   showTagline = false,
   wordmarkClassName = 'text-xl',
   className = ''
 }: {
   markClassName?: string
+  showMark?: boolean
   showWordmark?: boolean
   showTagline?: boolean
   wordmarkClassName?: string
@@ -24,12 +26,14 @@ export default function BrandLogo({
 }): JSX.Element {
   return (
     <div className={['flex items-center gap-2.5', className].join(' ')}>
-      <img
-        src={SJ_MARK}
-        alt="SJ INVEST"
-        draggable={false}
-        className={[markClassName, 'w-auto shrink-0 select-none object-contain'].join(' ')}
-      />
+      {showMark ? (
+        <img
+          src={SJ_MARK}
+          alt="SJ INVEST"
+          draggable={false}
+          className={[markClassName, 'w-auto shrink-0 select-none object-contain'].join(' ')}
+        />
+      ) : null}
       {showWordmark ? (
         <div className="leading-none">
           <div

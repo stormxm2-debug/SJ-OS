@@ -6,8 +6,6 @@ import {
   RefreshCw,
   Loader2,
   AlertTriangle,
-  Database,
-  HardDrive,
   Camera,
   MapPin,
   CalendarDays,
@@ -118,12 +116,6 @@ export default function SupabaseAttendanceManager(): JSX.Element {
     return () => window.clearInterval(id)
   }, [])
 
-  const roleHint =
-    session.role === 'fc'
-      ? '내 출퇴근 기록만 표시됩니다.'
-      : session.role === 'team-leader'
-        ? '팀 출퇴근 현황이 표시됩니다.'
-        : '전체 출퇴근 현황이 표시됩니다.'
   const admin = isAdminRole(session.role) || session.role === 'team-leader'
 
   const load = async (): Promise<void> => {
@@ -300,7 +292,6 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2 text-[11px] font-medium text-white/70">
               <Clock className="h-3.5 w-3.5 shrink-0" /> 출퇴근 관리
-              <ModeBadge mode={mode} />
             </div>
             <WorkStatePill state={workState} />
           </div>
@@ -352,23 +343,11 @@ export default function SupabaseAttendanceManager(): JSX.Element {
             </span>
           </button>
         </div>
-
-        <div className="relative mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/60">
-          <span className="inline-flex items-center gap-1">
-            <MapPin className="h-3 w-3" /> 사진에 SJ INVEST 마크 · 시간 · GPS 주소가 자동으로 새겨집니다.
-          </span>
-          <span className="inline-flex items-center gap-1 text-[#e6c877]">
-            출근 기준 9시 — 초과 5만 · 11시 초과 10만 · 12시 초과 20만 (평일)
-          </span>
-        </div>
       </div>
 
       {/* ─── Body (bright surfaces + dark text) ───────────────────────────── */}
       <div className="rounded-3xl border border-[#e6eaf2] bg-white p-5 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[11px] text-slate-500">
-            {roleHint} <span className="text-slate-400">(실제 접근 권한은 Supabase RLS가 적용됩니다.)</span>
-          </p>
+        <div className="mb-3 flex items-center justify-end">
           <button
             type="button"
             onClick={() => void load()}
@@ -721,15 +700,6 @@ function StatusChip({ label, status }: { label: string; status: string }): JSX.E
         ? 'bg-rose-50 text-rose-700'
         : 'bg-amber-50 text-amber-700'
   return <span className={['shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold', tone].join(' ')}>{label}</span>
-}
-function ModeBadge({ mode }: { mode: AttendanceDataMode }): JSX.Element {
-  const supa = mode === 'supabase'
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/90 ring-1 ring-white/20">
-      {supa ? <Database className="h-3 w-3" /> : <HardDrive className="h-3 w-3" />}
-      {supa ? 'Supabase 공용 DB' : '로컬 데이터'}
-    </span>
-  )
 }
 function Notice({ text }: { text: string }): JSX.Element {
   return <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium text-amber-800">{text}</div>

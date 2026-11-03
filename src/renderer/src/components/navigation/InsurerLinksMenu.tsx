@@ -535,7 +535,7 @@ export default function InsurerLinksMenu({ compact = false }: { compact?: boolea
         aria-expanded={open}
         className={
           compact
-            ? 'flex items-center gap-1 rounded-full border border-slate-800 bg-white px-2 py-1 text-[10px] font-bold text-slate-300 active:bg-slate-900'
+            ? 'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-[#e2e8f0] bg-white px-2 py-1.5 text-[10px] font-bold text-[#475569] active:bg-slate-900'
             : 'inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-white px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-900'
         }
       >
