@@ -7,6 +7,14 @@ import {
   type TwoWayInfo,
   type HealthRecordRequest
 } from '@renderer/services/commercial/healthRecordService'
+import {
+  collectHrSections,
+  summarizeByDisease,
+  groupKeyOf,
+  type GroupBy,
+  type DiseaseSummary
+} from '@renderer/services/health-record/summarize'
+import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
 
 /**
  * 고객 건강기록 조회 — CODEF 간편인증. 상품(건강보험공단/심평원)별로 입력·요청변수가 달라
@@ -636,11 +644,14 @@ export default function HealthRecordPage(): JSX.Element {
 
 /** 결과 렌더러 — 응답 안의 모든 목록을 섹션별 표로. 각 섹션은 데이터 모양으로
  *  진료(카테고리 보고서)/약품·기타(상세 표)를 자동 구분한다. */
-function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Element {
+export function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Element {
   const [showRaw, setShowRaw] = useState(false)
+  const [view, setView] = useState<'sections' | 'disease'>('sections')
+  const [groupBy, setGroupBy] = useState<GroupBy>('year')
   const sections = useMemo(() => collectSections(result), [result])
   const raw = useMemo(() => JSON.stringify(result, null, 2), [result])
   const totalRows = sections.reduce((n, s) => n + s.rows.length, 0)
+  const diseases = useMemo(() => summarizeByDisease(collectHrSections(result)), [result])
   const userNm = useMemo(() => {
     for (const s of sections) {
       const n = userNameOf(s.rows)
@@ -648,6 +659,23 @@ function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Elem
     }
     return String(result?.resUserNm ?? '')
   }, [sections, result])
+
+  // AI 요약/질문
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null)
+  const [aiErr, setAiErr] = useState<string | null>(null)
+  const [aiQ, setAiQ] = useState('')
+  const runAi = async (): Promise<void> => {
+    setAiBusy(true)
+    setAiErr(null)
+    try {
+      const r = await askHealthRecordAi(result, aiQ)
+      if (r.ok) setAiAnswer(r.answer ?? '')
+      else { setAiAnswer(null); setAiErr(r.error ?? 'AI 요청 실패') }
+    } finally {
+      setAiBusy(false)
+    }
+  }
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
@@ -664,10 +692,49 @@ function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Elem
         ) : null}
       </div>
 
+      {/* 보기 전환 + 그룹(연/월) + AI */}
+      {sections.length && !showRaw ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <HrChip active={view === 'sections'} onClick={() => setView('sections')}>진료순</HrChip>
+          <HrChip active={view === 'disease'} onClick={() => setView('disease')}>상병별 요약{diseases.length ? ` ${diseases.length}` : ''}</HrChip>
+          {view === 'sections' ? (
+            <>
+              <span className="mx-1 text-slate-300">|</span>
+              <HrChip active={groupBy === 'year'} onClick={() => setGroupBy('year')}>연도별</HrChip>
+              <HrChip active={groupBy === 'month'} onClick={() => setGroupBy('month')}>월별</HrChip>
+            </>
+          ) : null}
+          <button type="button" onClick={() => void runAi()} disabled={aiBusy}
+            className="ml-auto inline-flex items-center gap-1 rounded-lg bg-[#0e1e3a] px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-50">
+            {aiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 text-[#e6c877]" />}
+            AI 요약
+          </button>
+        </div>
+      ) : null}
+
+      {/* AI 패널 */}
+      {sections.length && !showRaw && (aiAnswer || aiErr || aiBusy) ? (
+        <div className="mt-2 rounded-xl border border-slate-800 bg-slate-950 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <input value={aiQ} onChange={(e) => setAiQ(e.target.value)} placeholder="AI에게 질문(선택) — 예: 최근 2년 입원·수술 정리해줘"
+              className="min-w-0 flex-1 rounded border border-slate-700 bg-white px-2 py-1 text-[12px] text-slate-100" />
+            <button type="button" onClick={() => void runAi()} disabled={aiBusy}
+              className="rounded border border-slate-700 bg-white px-2 py-1 text-[11px] font-bold text-slate-200 disabled:opacity-50">{aiBusy ? '분석 중…' : '질문'}</button>
+          </div>
+          {aiErr ? <p className="mt-2 text-[12px] text-rose-400">{aiErr}</p> : null}
+          {aiAnswer ? <div className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-100">{aiAnswer}</div> : null}
+          <p className="mt-2 text-[10px] text-slate-500">※ 이름·주민번호 등 식별자는 보내지 않고 비식별 요약만 AI에 전달합니다. 병명·수술·투약 연결은 (진료일·기관) 매칭 기반 추정이며 의학적 확정이 아닙니다.</p>
+        </div>
+      ) : null}
+
       {sections.length === 0 || showRaw ? (
         <pre className="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-100">{raw}</pre>
+      ) : view === 'disease' ? (
+        <div className="mt-3">
+          <DiseaseSummaryView diseases={diseases} />
+        </div>
       ) : (
-        <div className="space-y-5">
+        <div className="mt-3 space-y-5">
           {sections.map((s) => (
             <div key={s.key}>
               {sections.length > 1 ? (
@@ -677,7 +744,7 @@ function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Elem
                 </div>
               ) : null}
               {SECTION_SPECS[s.key] ? (
-                <SpecTable cols={SECTION_SPECS[s.key]} records={s.rows} />
+                <SpecTable cols={SECTION_SPECS[s.key]} records={s.rows} groupBy={groupBy} />
               ) : isTreatmentShape(s.rows) ? (
                 <TreatmentReport records={s.rows} />
               ) : (
@@ -687,6 +754,74 @@ function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Elem
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function HrChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }): JSX.Element {
+  return (
+    <button type="button" onClick={onClick}
+      className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${active ? 'border-[#c6982f] bg-[#fdf7ea] text-[#8a6a1f]' : 'border-slate-700 bg-white text-slate-400'}`}>
+      {children}
+    </button>
+  )
+}
+
+/** 상병(병명)별 추정 묶음 — 방문수·기간·병원·수술·투약을 카드로. */
+function DiseaseSummaryView({ diseases }: { diseases: DiseaseSummary[] }): JSX.Element {
+  if (!diseases.length) return <p className="text-[12px] text-slate-500">상병명이 있는 진료내역이 없어 상병별 요약을 만들 수 없습니다.</p>
+  const period = (a: string, b: string): string => (a && b ? `${ymd(a)} ~ ${ymd(b)}` : a ? ymd(a) : '')
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-slate-500">같은 병명(표기 기준)으로 묶은 <b>추정</b> 요약 — 수술·투약은 (진료일·기관) 일치로 연결했습니다. 표기가 다르면 같은 질환도 분리될 수 있어요(의학적 확정 아님).</p>
+      <ul className="grid gap-2 lg:grid-cols-2">
+        {diseases.map((d) => (
+          <li key={d.disease} className="rounded-xl border border-slate-800 bg-white p-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[13px] font-bold text-slate-100">{d.disease}</span>
+              <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-white">{d.visitCount}회 방문</span>
+              {d.surgeries.some((x) => x.isSurgery) ? <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">수술 {d.surgeries.filter((x) => x.isSurgery).length}</span> : null}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              {period(d.firstDate, d.lastDate)}
+              {d.departments.length ? ` · ${d.departments.join('/')}` : ''}
+              {d.selfPayTotal ? ` · 본인부담 ${won(d.selfPayTotal)}` : ''}
+            </div>
+            {d.hospitals.length ? <div className="mt-0.5 text-[11px] text-slate-400">병원: {d.hospitals.join(', ')}</div> : null}
+
+            {d.surgeries.length ? (
+              <div className="mt-1.5">
+                <div className="text-[10px] font-semibold text-slate-500">수술·처치(추정)</div>
+                <ul className="mt-0.5 space-y-0.5">
+                  {d.surgeries.map((x, i) => (
+                    <li key={i} className="text-[12px] text-slate-200">
+                      {x.isSurgery ? <span className="mr-1 rounded bg-rose-50 px-1 text-[10px] font-bold text-rose-700">수술</span> : null}
+                      <span className={x.isSurgery ? 'font-semibold' : ''}>{x.name}</span>
+                      <span className="ml-1 text-[11px] text-slate-500">{ymd(x.date)}{x.hospital ? ` · ${x.hospital}` : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {d.medications.length ? (
+              <div className="mt-1.5">
+                <div className="text-[10px] font-semibold text-slate-500">투약(추정)</div>
+                <ul className="mt-0.5 space-y-0.5">
+                  {d.medications.map((x, i) => (
+                    <li key={i} className="text-[12px] text-slate-300">
+                      <span className="font-medium text-slate-200">{x.name}</span>
+                      {x.ingredient ? <span className="ml-1 text-[11px] text-slate-500">{x.ingredient}</span> : ''}
+                      {x.days ? <span className="ml-1 text-[11px] text-slate-500">· {x.days}일분</span> : ''}
+                      <span className="ml-1 text-[11px] text-slate-500">· {ymd(x.date)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -876,10 +1011,6 @@ const ymdKey = (v: unknown): number => {
   const d = String(v ?? '').replace(/[^\d]/g, '')
   return d.length === 8 ? Number(d) : 0
 }
-const monthLabel = (v: unknown): string => {
-  const d = String(v ?? '').replace(/[^\d]/g, '')
-  return d.length >= 6 ? `${d.slice(0, 4)}.${d.slice(4, 6)}` : '날짜미상'
-}
 const dayLabel = (v: unknown): string => {
   const d = String(v ?? '').replace(/[^\d]/g, '')
   return d.length === 8 ? `${Number(d.slice(6, 8))}일` : ymd(v)
@@ -889,7 +1020,7 @@ const dayLabel = (v: unknown): string => {
  * 섹션(기본 진료내역/세부/처방) 표시 — **날짜별(월 그룹) 카드**로 모바일에서도 보기 편하게.
  * 데스크톱에서도 동일 카드 레이아웃(그리드)으로 가독성 유지. 가로 스크롤 표 대신 세로 카드.
  */
-export function SpecTable({ cols, records }: { cols: ColSpec[]; records: Row[] }): JSX.Element {
+export function SpecTable({ cols, records, groupBy = 'year' }: { cols: ColSpec[]; records: Row[]; groupBy?: GroupBy }): JSX.Element {
   const dateCol = cols.find((c) => c.kind === 'date') ?? cols[0]
   const hospitalKey = cols.find((c) => c.key === 'resHospitalName')?.key
   const wonCols = cols.filter((c) => c.kind === 'won')
@@ -901,12 +1032,12 @@ export function SpecTable({ cols, records }: { cols: ColSpec[]; records: Row[] }
     return v === null || v === undefined || v === '' ? '' : String(v)
   }
 
-  // 월(YYYY.MM) 그룹 — 날짜 내림차순.
+  // 연(YYYY) 또는 월(YYYY.MM) 그룹 — 날짜 내림차순.
   const groups = useMemo(() => {
     const sorted = [...records].sort((a, b) => ymdKey(b[dateCol.key]) - ymdKey(a[dateCol.key]))
     const map = new Map<string, Row[]>()
     for (const r of sorted) {
-      const k = monthLabel(r[dateCol.key])
+      const k = groupKeyOf(String(r[dateCol.key] ?? '').replace(/[^\d]/g, ''), groupBy)
       const arr = map.get(k) ?? []
       arr.push(r)
       map.set(k, arr)
@@ -916,7 +1047,7 @@ export function SpecTable({ cols, records }: { cols: ColSpec[]; records: Row[] }
       rows,
       self: rows.reduce((s, r) => s + num(r.resDeductibleAmt), 0)
     }))
-  }, [records, dateCol.key])
+  }, [records, dateCol.key, groupBy])
 
   const totals = useMemo(() => {
     const m: Record<string, number> = {}
