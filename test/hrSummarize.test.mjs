@@ -18,7 +18,7 @@ async function load(src) {
 }
 
 const m = await load('src/renderer/src/services/health-record/summarize.ts')
-const { collectHrSections, summarizeByDisease, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary, buildHighlights, diseaseFlags, FREQUENT_VISIT_THRESHOLD } = m
+const { collectHrSections, summarizeByDisease, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary, buildHighlights, diseaseFlags, FREQUENT_VISIT_THRESHOLD, classifySurgery } = m
 
 const result = {
   resBasicTreatList: [
@@ -98,6 +98,19 @@ test('하이라이트: 입원/수술/통원 7회↑/고액', () => {
   assert.equal(FREQUENT_VISIT_THRESHOLD, 7)
 })
 
+test('수술 부위 추정(classifySurgery) + SurgeryItem 부위 필드', () => {
+  assert.equal(classifySurgery('요추 후방고정술').group, 'spine')
+  assert.equal(classifySurgery('요추 후방고정술').part, '척추(요추)')
+  assert.equal(classifySurgery('슬관절 반월상연골 절제술').group, 'knee')
+  assert.equal(classifySurgery('담낭 절제술').group, 'abdomen')
+  assert.equal(classifySurgery('백내장 수정체 수술').group, 'eye')
+  assert.equal(classifySurgery('알수없는처치').group, 'other')
+  const d = summarizeByDisease(collectHrSections(result)).find((x) => x.disease === '요추 염좌')
+  const surg = d.surgeries.find((x) => x.name === '요추 후방고정술')
+  assert.equal(surg.bodyPart, '척추(요추)')
+  assert.equal(surg.partGroup, 'spine')
+})
+
 test('정렬: 방문 많은 순', () => {
   const d = summarizeByDisease(collectHrSections(result))
   assert.ok(d[0].visitCount >= d[d.length - 1].visitCount)
@@ -118,7 +131,7 @@ test('AI 비식별 요약: 이름/주민번호 없음 + 구조화', () => {
   const text = JSON.stringify(ai)
   assert.ok(!text.includes('resUserNm') && !/\d{6}-\d{7}/.test(text), '직접 식별자 없음')
   assert.equal(ai.totalVisits, 4)
-  assert.ok(ai.diseases.some((x) => x.name === '요추 염좌' && x.surgeries.includes('요추 후방고정술')))
+  assert.ok(ai.diseases.some((x) => x.name === '요추 염좌' && x.surgeries.some((sgry) => sgry.includes('요추 후방고정술') && sgry.includes('척추'))))
   assert.ok(ai.periodFrom <= ai.periodTo)
   assert.match(ai.note, /추정/)
 })

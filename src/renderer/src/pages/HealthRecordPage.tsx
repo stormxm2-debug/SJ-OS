@@ -14,7 +14,8 @@ import {
   diseaseFlags,
   groupKeyOf,
   type GroupBy,
-  type DiseaseSummary
+  type DiseaseSummary,
+  type PartGroup
 } from '@renderer/services/health-record/summarize'
 import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
 
@@ -787,6 +788,36 @@ function BigChip({ tone, children }: { tone: 'rose' | 'amber' | 'slate'; childre
   return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${cls}`}>{children}</span>
 }
 
+/** 수술 부위 일러스트 — 인체 실루엣 + 해당 부위 강조점(실제 수술 사진 아님, 부위 안내용). */
+const PART_POS: Record<PartGroup, { x: number; y: number } | null> = {
+  brain: { x: 24, y: 9 }, eye: { x: 24, y: 12 }, ent: { x: 24, y: 15 }, dental: { x: 24, y: 16 },
+  shoulder: { x: 37, y: 24 }, chest: { x: 24, y: 28 }, heart: { x: 21, y: 29 }, breast: { x: 28, y: 30 },
+  spine: { x: 24, y: 36 }, abdomen: { x: 24, y: 40 }, uro: { x: 24, y: 49 }, ob: { x: 24, y: 49 },
+  hip: { x: 24, y: 53 }, hand: { x: 9, y: 45 }, knee: { x: 19, y: 67 }, foot: { x: 19, y: 83 },
+  skin: { x: 30, y: 34 }, other: null
+}
+function SurgeryIcon({ group, className }: { group: PartGroup; className?: string }): JSX.Element {
+  const pos = PART_POS[group] ?? null
+  return (
+    <svg viewBox="0 0 48 96" className={className} aria-hidden="true">
+      <g fill="#cbd5e1">
+        <circle cx="24" cy="11" r="8" />
+        <rect x="14" y="21" width="20" height="30" rx="9" />
+        <rect x="5" y="23" width="7" height="23" rx="3.5" />
+        <rect x="36" y="23" width="7" height="23" rx="3.5" />
+        <rect x="16" y="50" width="7" height="35" rx="3.5" />
+        <rect x="25" y="50" width="7" height="35" rx="3.5" />
+      </g>
+      {pos ? (
+        <>
+          <circle cx={pos.x} cy={pos.y} r="8" fill="#f43f5e" opacity="0.18" />
+          <circle cx={pos.x} cy={pos.y} r="4.5" fill="#f43f5e" />
+        </>
+      ) : null}
+    </svg>
+  )
+}
+
 function HrChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }): JSX.Element {
   return (
     <button type="button" onClick={onClick}
@@ -825,13 +856,19 @@ function DiseaseSummaryView({ diseases }: { diseases: DiseaseSummary[] }): JSX.E
 
             {d.surgeries.length ? (
               <div className="mt-1.5">
-                <div className="text-[10px] font-semibold text-slate-500">수술·처치(추정)</div>
-                <ul className="mt-0.5 space-y-0.5">
+                <div className="text-[10px] font-semibold text-slate-500">수술·처치(추정) — 부위는 명칭 기반 추정</div>
+                <ul className="mt-1 space-y-1.5">
                   {d.surgeries.map((x, i) => (
-                    <li key={i} className="text-[12px] text-slate-200">
-                      {x.isSurgery ? <span className="mr-1 rounded bg-rose-50 px-1 text-[10px] font-bold text-rose-700">수술</span> : null}
-                      <span className={x.isSurgery ? 'font-semibold' : ''}>{x.name}</span>
-                      <span className="ml-1 text-[11px] text-slate-500">{ymd(x.date)}{x.hospital ? ` · ${x.hospital}` : ''}</span>
+                    <li key={i} className={`flex items-start gap-2 rounded-lg border p-1.5 ${x.isSurgery ? 'border-rose-200 bg-rose-50/40' : 'border-[#e2e8f0] bg-white'}`}>
+                      <SurgeryIcon group={x.partGroup} className="mt-0.5 h-9 w-5 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1">
+                          {x.isSurgery ? <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">수술</span> : <span className="rounded bg-[#eef2f7] px-1.5 py-0.5 text-[10px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">처치</span>}
+                          {x.bodyPart ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">부위: {x.bodyPart}</span> : null}
+                          <span className="text-[12px] font-semibold text-slate-100">{x.name}</span>
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-slate-500">{ymd(x.date)}{x.hospital ? ` · ${x.hospital}` : ''}</div>
+                      </div>
                     </li>
                   ))}
                 </ul>
