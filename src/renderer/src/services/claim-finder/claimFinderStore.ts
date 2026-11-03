@@ -28,8 +28,36 @@ export interface ClaimStoreClient {
           limit(n: number): Promise<{ data: unknown[] | null; error: { message: string } | null }>
         }
       }
+      order(col: string, opts: { ascending: boolean }): {
+        limit(n: number): Promise<{ data: unknown[] | null; error: { message: string } | null }>
+      }
     }
   }
+}
+
+/** 저장된 run 한 건(불러오기용). 민감 result 포함 — RLS 로 본인/관리자·유효 run 만 반환. */
+export interface SavedRun {
+  id: string
+  customerId: string | null
+  customerName: string | null
+  healthRecordRequestId: string | null
+  coverageAnalysisRef: string | null
+  rulesVersion: string
+  status: string
+  isDemo: boolean
+  result: unknown
+  warnings: unknown
+  createdAt: string
+}
+
+/** 목록용 요약(민감 내용 제외). */
+export interface SavedRunSummary {
+  id: string
+  customerId: string | null
+  rulesVersion: string
+  status: string
+  isDemo: boolean
+  createdAt: string
 }
 
 export interface ClaimStoreDeps {
@@ -183,7 +211,78 @@ export function createClaimFinderStore(deps: ClaimStoreDeps) {
     }
   }
 
-  return { saveRun, addReview, listRuns, listReviews }
+  // 현재 사용자가 볼 수 있는 run 요약 목록(RLS 가 본인/관리자·유효 run 으로 제한).
+  // 필터는 UI 가 담당(현재 고객 + DEMO 분리). 여기서는 민감 내용(result)을 가져오지 않는다.
+  async function listVisibleRuns(): Promise<StoreResult<SavedRunSummary[]>> {
+    let db: ClaimStoreClient | null
+    try {
+      db = await deps.getClient()
+    } catch (e) {
+      return { ok: false, error: '조회 클라이언트 초기화 실패: ' + (e instanceof Error ? e.message : String(e)) }
+    }
+    if (!db) return { ok: false, disabled: true, error: DISABLED_MSG }
+    try {
+      const { data, error } = await db
+        .from('claim_finder_runs')
+        .select('id, customer_id, rules_version, status, is_demo, created_at')
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (error) return { ok: false, error: error.message }
+      const rows = (data ?? []) as Array<Record<string, unknown>>
+      const summaries: SavedRunSummary[] = rows.map((r) => ({
+        id: String(r.id),
+        customerId: (r.customer_id as string | null) ?? null,
+        rulesVersion: String(r.rules_version ?? ''),
+        status: String(r.status ?? ''),
+        isDemo: Boolean(r.is_demo),
+        createdAt: String(r.created_at ?? '')
+      }))
+      return { ok: true, data: summaries }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  // 저장된 run 한 건 불러오기(불러오기 UI 용). result/warnings 포함.
+  async function getRun(runId: string): Promise<StoreResult<SavedRun | null>> {
+    if (!runId) return { ok: false, error: 'runId 가 필요합니다.' }
+    let db: ClaimStoreClient | null
+    try {
+      db = await deps.getClient()
+    } catch (e) {
+      return { ok: false, error: '조회 클라이언트 초기화 실패: ' + (e instanceof Error ? e.message : String(e)) }
+    }
+    if (!db) return { ok: false, disabled: true, error: DISABLED_MSG }
+    try {
+      const { data, error } = await db
+        .from('claim_finder_runs')
+        .select('id, customer_id, customer_name, health_record_request_id, coverage_analysis_ref, rules_version, status, is_demo, result, warnings, created_at')
+        .eq('id', runId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (error) return { ok: false, error: error.message }
+      const row = ((data ?? [])[0] as Record<string, unknown> | undefined) ?? null
+      if (!row) return { ok: true, data: null } // RLS 로 안 보이거나 없음
+      const run: SavedRun = {
+        id: String(row.id),
+        customerId: (row.customer_id as string | null) ?? null,
+        customerName: (row.customer_name as string | null) ?? null,
+        healthRecordRequestId: (row.health_record_request_id as string | null) ?? null,
+        coverageAnalysisRef: (row.coverage_analysis_ref as string | null) ?? null,
+        rulesVersion: String(row.rules_version ?? ''),
+        status: String(row.status ?? ''),
+        isDemo: Boolean(row.is_demo),
+        result: row.result ?? null,
+        warnings: row.warnings ?? null,
+        createdAt: String(row.created_at ?? '')
+      }
+      return { ok: true, data: run }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+  }
+
+  return { saveRun, addReview, listRuns, listReviews, listVisibleRuns, getRun }
 }
 
 /** 실제 구성(사용자 세션 기반). 미구성이면 getClient 가 null → 저장 비활성. */
