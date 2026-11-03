@@ -48,7 +48,7 @@ import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
 import PasswordChangeGate from '@renderer/components/security/PasswordChangeGate'
 import ErrorBoundary from '@renderer/components/system/ErrorBoundary'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
-import StaffLoginAdminPage from '@renderer/pages/StaffLoginAdminPage'
+import StaffManagePage from '@renderer/pages/StaffManagePage'
 import Dashboard from '@renderer/components/dashboard/Dashboard'
 import CommandCenterPage from '@renderer/pages/CommandCenterPage'
 import AnnouncementAdminPage from '@renderer/pages/AnnouncementAdminPage'
@@ -230,6 +230,7 @@ const MOBILE_ADMIN_ROUTES: ViewName[] = [
   'family-birthdays',
   'registration-admin',
   'shared-schedule',
+  'staff-manage',
   'staff-login',
   // 폰 대표 모드 (2026-07-20 대표 지정 4종): 관제·경영 비서·공지 관리·승인
   'dashboard',
@@ -333,8 +334,9 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <AnnouncementAdminPage />
     case 'approvals':
       return <ApprovalCenterPage />
+    case 'staff-manage':
     case 'staff-login':
-      return <StaffLoginAdminPage />
+      return <StaffManagePage />
     default:
       return <MobileHome />
   }

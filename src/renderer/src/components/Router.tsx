@@ -46,7 +46,6 @@ import PmPlannerPage from '@renderer/pages/PmPlannerPage'
 import ProductBacklogPage from '@renderer/pages/ProductBacklogPage'
 import ProjectManagerPage from '@renderer/pages/ProjectManagerPage'
 import ApprovalCenterPage from '@renderer/pages/ApprovalCenterPage'
-import StaffLoginAdminPage from '@renderer/pages/StaffLoginAdminPage'
 import StaffManagePage from '@renderer/pages/StaffManagePage'
 import StaffTeamManagementPage from '@renderer/pages/StaffTeamManagementPage'
 import AnnouncementAdminPage from '@renderer/pages/AnnouncementAdminPage'
@@ -186,7 +185,6 @@ export default function Router(): JSX.Element {
     case 'approvals':
       return <ApprovalCenterPage />
     case 'staff-login':
-      return <StaffLoginAdminPage />
     case 'staff-manage':
       return <StaffManagePage />
     case 'staff-team':

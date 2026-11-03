@@ -16,10 +16,17 @@ import { useSession } from '@renderer/navigation/SessionContext'
 import { ROLE_LABEL } from '@renderer/navigation/roleAccess'
 import type { StaffRole } from '@shared/commercial/models'
 import type { StaffManagementRecord } from '@shared/commercial/teamOps'
+import type { PasswordResetRequest } from '@shared/commercial/phoneLogin'
+import { maskKoreanPhoneDisplay } from '@shared/phone'
 import { PhoneSegments } from '@renderer/components/ui/SegmentedInputs'
 import { shareMeetingText } from '@renderer/services/share/meetingShare'
 import { listStaff, updateStaffStatus, type OpsDataMode } from '@renderer/services/commercial/staffOperationsService'
-import { createStaffLoginAccount, issueStaffInviteCode } from '@renderer/services/commercial/staffLoginAccountService'
+import {
+  createStaffLoginAccount,
+  issueStaffInviteCode,
+  listPasswordResetRequests,
+  approvePasswordResetRequest
+} from '@renderer/services/commercial/staffLoginAccountService'
 
 /**
  * 직원관리(간편) — owner/admin 전용(Router·roleAccess 가드).
@@ -53,13 +60,18 @@ export default function StaffManagePage(): JSX.Element {
   const [q, setQ] = useState('')
   const [roleFilter, setRoleFilter] = useState<'all' | 'fc' | 'team-leader'>('all')
 
+  // 비밀번호 재설정 승인
+  const [resets, setResets] = useState<PasswordResetRequest[]>([])
+  const [resetCode, setResetCode] = useState<{ phone: string; code: string } | null>(null)
+
   const roleOptions: StaffRole[] = session.role === 'owner' ? ['fc', 'team-leader', 'back-office', 'admin'] : ['fc', 'team-leader', 'back-office']
 
   const load = async (): Promise<void> => {
     setLoading(true)
-    const res = await listStaff()
+    const [res, rr] = await Promise.all([listStaff(), listPasswordResetRequests()])
     setMode(res.mode)
     setStaff(res.staff)
+    setResets(rr.ok ? rr.requests : [])
     setError(res.ok ? undefined : res.error)
     setLoading(false)
   }
@@ -98,6 +110,17 @@ export default function StaffManagePage(): JSX.Element {
     setNotice(`${s.name}님을 ${next === 'active' ? '활동' : '비활동'}으로 변경했습니다. (전산 전체 반영)`)
     void load()
   }
+
+  const approveReset = async (r: PasswordResetRequest): Promise<void> => {
+    setBusyId(r.id)
+    setError(undefined)
+    const res = await approvePasswordResetRequest(r.id, session.id)
+    setBusyId(null)
+    if (!res.ok) { setError(res.error ?? '승인에 실패했습니다.'); return }
+    if (res.approvalCode) setResetCode({ phone: maskKoreanPhoneDisplay(r.normalizedPhone), code: res.approvalCode })
+    void load()
+  }
+  const pendingResets = resets.filter((r) => r.status === 'pending')
 
   const filtered = useMemo(() => {
     const kw = q.trim()
@@ -194,6 +217,40 @@ export default function StaffManagePage(): JSX.Element {
 
         {invite ? <InviteBox name={invite.name} code={invite.code} onClose={() => setInvite(null)} /> : null}
       </section>
+
+      {/* 1.5) 비밀번호 재설정 요청 승인 (대기 있거나 방금 발급한 코드 있을 때) */}
+      {pendingResets.length || resetCode ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-amber-700" />
+            <h2 className="text-[13px] font-bold text-amber-800">비밀번호 재설정 요청 <span className="text-amber-600">({pendingResets.length})</span></h2>
+          </div>
+          {resetCode ? <ResetCodeBox phone={resetCode.phone} code={resetCode.code} onClose={() => setResetCode(null)} /> : null}
+          {pendingResets.length ? (
+          <ul className="mt-2 space-y-1.5">
+            {pendingResets.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2">
+                <div className="min-w-0">
+                  <div className="text-[12px] font-bold text-slate-100">{maskKoreanPhoneDisplay(r.normalizedPhone)}</div>
+                  <div className="text-[10px] text-slate-500">{r.requestedAt ? new Date(r.requestedAt).toLocaleString('ko-KR') : ''}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void approveReset(r)}
+                  disabled={busyId === r.id}
+                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
+                >
+                  {busyId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} 승인
+                </button>
+              </li>
+            ))}
+          </ul>
+          ) : null}
+          <p className="mt-2 text-[10px] leading-relaxed text-amber-800/70">
+            승인하면 6자리 확인코드가 발급됩니다. 직원 본인에게 전화·대면으로 직접 전달하세요. (24시간 유효, 5회 오류 시 재승인)
+          </p>
+        </section>
+      ) : null}
 
       {/* 2) 직원 목록 + 활동/비활동 */}
       <section className="rounded-2xl border border-[#e6eaf2] bg-white p-4 shadow-sm">
@@ -333,6 +390,36 @@ function InviteBox({ name, code, onClose }: { name: string; code: string; onClos
       </div>
       <p className="mt-2 text-[10px] leading-relaxed text-indigo-700/70">
         직원이 <b>본인 번호 + 이 코드</b>로 비밀번호를 직접 설정하면 바로 로그인됩니다. 코드는 1회용입니다.
+      </p>
+    </div>
+  )
+}
+
+function ResetCodeBox({ phone, code, onClose }: { phone: string; code: string; onClose: () => void }): JSX.Element {
+  const [copied, setCopied] = useState(false)
+  const copy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard 불가 시 무시 */
+    }
+  }
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-bold text-emerald-800">재설정 확인코드 · {phone}</div>
+        <button type="button" onClick={onClose} className="shrink-0 whitespace-nowrap text-[11px] font-semibold text-slate-400 hover:text-slate-600">닫기</button>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="rounded-lg bg-white px-3 py-1.5 text-[22px] font-extrabold tracking-[0.2em] text-emerald-700 ring-1 ring-emerald-200">{code}</span>
+        <button type="button" onClick={() => void copy()} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-emerald-700">
+          {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />} {copied ? '복사됨' : '복사'}
+        </button>
+      </div>
+      <p className="mt-2 text-[10px] leading-relaxed text-emerald-800/70">
+        직원 본인에게 <b>전화·대면으로 직접</b> 알려주세요. 로그인 화면에서 이 코드와 새 비밀번호를 입력하면 재설정됩니다. 다시 볼 수 없습니다.
       </p>
     </div>
   )
