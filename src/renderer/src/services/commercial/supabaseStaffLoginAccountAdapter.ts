@@ -148,7 +148,20 @@ export const supabaseStaffLoginAccountAdapter = {
       .select(ACCT_COLS)
       .single()
     if (error) return err('error', '상태 변경에 실패했습니다.')
-    return { ok: true, data: mapAccount(data) }
+    const acct = mapAccount(data)
+    // 이미 가입(claim)한 계정은 profiles.status 가 전산 전체(출퇴근 명단·로그인·현황)의
+    // 기준이므로 함께 맞춘다. active 만 'active', 그 외(inactive/blocked)는 'inactive'.
+    // RLS(profiles_admin_manage: is_owner_or_admin)로 owner/admin만 이 갱신이 허용된다.
+    if (acct.profileId) {
+      const { error: pErr } = await client
+        .from('profiles')
+        .update({ status: status === 'active' ? 'active' : 'inactive' })
+        .eq('id', acct.profileId)
+      if (pErr) {
+        return err('error', '로그인계정 상태는 바꿨지만, 전산 반영(프로필 상태)에 실패했습니다. (관리자 권한/RLS 확인 필요)')
+      }
+    }
+    return { ok: true, data: acct }
   },
 
   async listResetRequests(): Promise<AdapterResult<PasswordResetRequest[]>> {

@@ -55,6 +55,7 @@ export type View =
   | { name: 'projects' }
   | { name: 'approvals' }
   | { name: 'staff-login' }
+  | { name: 'staff-manage' }
   | { name: 'staff-team' }
   | { name: 'announcements' }
   | { name: 'registration-admin' }
