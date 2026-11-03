@@ -18,7 +18,7 @@ async function load(src) {
 }
 
 const m = await load('src/renderer/src/services/health-record/summarize.ts')
-const { collectHrSections, summarizeByDisease, summarizeEpisodes, EPISODE_GAP_DAYS, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary, buildHighlights, diseaseFlags, FREQUENT_VISIT_THRESHOLD, classifySurgery, isTrivialProcedure, sequelaeFor } = m
+const { collectHrSections, summarizeByDisease, summarizeEpisodes, EPISODE_GAP_DAYS, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary, buildHighlights, diseaseFlags, FREQUENT_VISIT_THRESHOLD, classifySurgery, isTrivialProcedure, sequelaeFor, looksSurgery, groupSurgeryOccasions, sequelaeForSurgery } = m
 
 const result = {
   resBasicTreatList: [
@@ -153,6 +153,47 @@ test('단순 처치 판별 + 부위별 후유장해 참고표', () => {
   assert.ok(Array.isArray(spine.risks) && spine.risks.length > 0)
   assert.match(spine.insurancePoint, /척추/)
   assert.ok(sequelaeFor('other').risks.length > 0)
+})
+
+test('수술 판별 강화: 석고고정·도수정복은 수술 아님', () => {
+  assert.equal(looksSurgery('석고 고정', '처치'), false)
+  assert.equal(looksSurgery('도수 정복', '처치'), false)
+  assert.equal(looksSurgery('드레싱', '처치'), false)
+  assert.equal(looksSurgery('마취', '수술'), false, '마취는 수술 수가여도 수술 아님')
+  assert.equal(looksSurgery('족관절 골절 관혈적 정복술 및 내고정술', '수술'), true)
+  assert.equal(looksSurgery('복강경 담낭 절제술', '수술'), true)
+})
+
+test('수술 occasion 묶음: 같은 날·기관 여러 줄 → 1회(발목 수술 과다집계 방지)', () => {
+  const res = {
+    resBasicTreatList: [{ resTreatStartDate: '20250310', resHospitalName: '튼튼정형외과', resTreatType: '입원', resDiseaseName: '발목 골절' }],
+    resDetailTreatList: [
+      { resTreatStartDate: '20250310', resHospitalName: '튼튼정형외과', resTreatType: '수술', resCodeName: '족관절 골절 관혈적 정복술 및 내고정술' },
+      { resTreatStartDate: '20250310', resHospitalName: '튼튼정형외과', resTreatType: '수술', resCodeName: '금속판 고정' },
+      { resTreatStartDate: '20250310', resHospitalName: '튼튼정형외과', resTreatType: '처치', resCodeName: '석고 고정' },
+      { resTreatStartDate: '20250310', resHospitalName: '튼튼정형외과', resTreatType: '처치', resCodeName: '마취' },
+      { resTreatStartDate: '20250310', resHospitalName: '튼튼정형외과', resTreatType: '처치', resCodeName: '드레싱' }
+    ]
+  }
+  const d = summarizeByDisease(collectHrSections(res)).find((x) => x.disease === '발목 골절')
+  const occ = groupSurgeryOccasions(d.surgeries)
+  assert.equal(occ.length, 1, '같은 날 수술은 1회로 묶임')
+  assert.ok(!d.surgeries.some((x) => x.isSurgery && /석고|마취|드레싱/.test(x.name)), '단순 처치는 수술 아님')
+  assert.equal(occ[0].partGroup, 'foot')
+  assert.ok(/정복술|고정술/.test(occ[0].primaryName))
+  // 하이라이트 수술 건수도 1(occasion 기준)
+  assert.equal(buildHighlights(collectHrSections(res)).surgeryCount, 1)
+})
+
+test('수술명별 세부 후유장해 + 부위 폴백', () => {
+  const a = sequelaeForSurgery('요추 후방고정술', 'spine')
+  assert.match(a.label, /척추/)
+  assert.ok(a.seq.risks.length > 0 && /척추/.test(a.seq.insurancePoint))
+  const b = sequelaeForSurgery('복강경 담낭 절제술', 'abdomen')
+  assert.match(b.label, /담낭/)
+  const c = sequelaeForSurgery('기타 특수 수술', 'knee') // 특정 규칙 없음 → 부위 폴백
+  assert.equal(c.label, undefined)
+  assert.ok(c.seq.risks.length > 0)
 })
 
 test('정렬: 방문 많은 순', () => {

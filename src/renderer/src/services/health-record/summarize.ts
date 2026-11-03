@@ -72,10 +72,15 @@ export function normalizeDisease(name: string): string {
     .trim()
 }
 
-/** 수술로 보이는 처치명인지(이름 기반 추정 — 표시용 플래그, 의학적 확정 아님). */
-const SURGERY_RE = /(수술|절제|적출|성형|이식|봉합|절개|내시경.?적.?절제|관혈|정복|고정)/
+/** 수술이 아닌 단순 처치/부수 항목(수술보다 먼저 걸러낸다 — 석고고정·도수정복 등 오탐 방지). */
+const NON_SURGERY_RE =
+  /(석고|깁스|부목|붕대|견인|도수|물리치료|재활|운동치료|드레싱|소독|주사|주입|수액|수혈|채혈|검사|촬영|초음파|방사선단순|상담|교육|처치|관찰|경과|마취|재료|밴드|발사|실밥|봉합사\s*제거|스케일링|세척|팩|찜질)/
+/** 수술로 보이는 처치명인지(이름 기반 추정 — 표시용 플래그, 의학적 확정 아님). 단순 처치는 먼저 제외. */
+const SURGERY_RE = /(수술|절제|적출|성형|이식|봉합|절개|내시경.?적.?절제|관혈|정복|고정|재건|치환|문합|우회|색전|유합|제거술|교정술|확장술)/
 export function looksSurgery(name: string, type: string): boolean {
-  return SURGERY_RE.test(name) || /수술/.test(type)
+  const n = s(name)
+  if (NON_SURGERY_RE.test(n)) return false
+  return SURGERY_RE.test(n) || /수술/.test(type)
 }
 
 // ── 그룹(연/월) ──────────────────────────────────────────────────────────────
@@ -125,7 +130,7 @@ const PART_RULES: { re: RegExp; part: string; group: PartGroup }[] = [
   { re: /(슬관절|무릎|반월상|십자인대|슬개)/, part: '무릎(슬관절)', group: 'knee' },
   { re: /(견관절|어깨|회전근개|극상근)/, part: '어깨(견관절)', group: 'shoulder' },
   { re: /(고관절|둔부|대퇴골두)/, part: '고관절', group: 'hip' },
-  { re: /(족부|발목|족지|중족골|아킬레스|족저)/, part: '발·발목', group: 'foot' },
+  { re: /(족부|발목|족관절|족지|발가락|중족골|아킬레스|족저|거골|복사뼈|비골하단|경골하단)/, part: '발·발목', group: 'foot' },
   { re: /(수부|손목|수지|손가락|수근)/, part: '손·손목', group: 'hand' },
   { re: /(담낭|쓸개)/, part: '담낭', group: 'abdomen' },
   { re: /(충수|맹장)/, part: '충수(맹장)', group: 'abdomen' },
@@ -192,6 +197,76 @@ export const SEQUELAE_BY_PART: Record<PartGroup, PartSequelae> = {
 }
 export function sequelaeFor(group: PartGroup): PartSequelae {
   return SEQUELAE_BY_PART[group] ?? SEQUELAE_BY_PART.other
+}
+
+/** 특정 수술명(패턴)별 세부 후유장해(일반 참고). 더 구체적인 규칙이 먼저. 매칭 없으면 부위(group) 기준. */
+const SURGERY_SEQUELAE_RULES: { re: RegExp; label: string; seq: PartSequelae }[] = [
+  { re: /(요추|경추|흉추|척추|추간판).*(고정|유합|나사|기기|핀)|척추고정|척추유합/, label: '척추 고정·유합술', seq: { risks: ['신경근 증상 잔존(저림·방사통·근력 저하)', '인접 분절 퇴행·재수술 가능', '척추 운동범위 제한'], insurancePoint: '후유장해분류표 "척추의 운동장해·기형장해" 지급률 확인(지급률 높을 수 있음)' } },
+  { re: /(추간판|디스크).*(절제|제거|감압|성형)|수핵|레이저.*디스크|내시경.*디스크/, label: '디스크 절제·감압술', seq: { risks: ['재발성 디스크·잔존 통증', '신경 증상(저림·근력 저하)'], insurancePoint: '척추 장해 여부 + 수술 담보(수술비) 확인' } },
+  { re: /(반월상|반월판|연골판)/, label: '무릎 반월상연골 수술', seq: { risks: ['무릎 운동범위 제한', '퇴행성 관절염 가속', '재파열·재수술'], insurancePoint: '하지(무릎) 관절 기능장해 지급률 확인' } },
+  { re: /십자인대/, label: '십자인대 재건술', seq: { risks: ['무릎 불안정성', '운동범위 제한', '재건 실패·재수술'], insurancePoint: '하지(무릎) 관절 기능장해 지급률 확인' } },
+  { re: /(인공관절|관절성형|치환)/, label: '인공관절 치환술', seq: { risks: ['치환부 기능 제한', '감염·마모·재치환', '다리 길이 차이'], insurancePoint: '해당 관절 기능장해 + 인공관절 치환 관련 지급률 확인' } },
+  { re: /(회전근개|극상근|어깨.*봉합)/, label: '회전근개 봉합술', seq: { risks: ['어깨 근력 약화·재파열', '운동범위 제한'], insurancePoint: '상지(어깨) 관절 기능장해 지급률 확인' } },
+  { re: /아킬레스/, label: '아킬레스건 봉합·재건', seq: { risks: ['발목 저굴력(발끝 힘) 약화', '재파열', '보행 변화'], insurancePoint: '발목 관절 기능장해 지급률 확인' } },
+  { re: /(족관절|발목|거골|외과|내과골|비골).*(골절|인대|고정|정복|재건)|발목.*수술|족관절/, label: '발목(족관절) 수술', seq: { risks: ['발목 운동범위 제한', '외상성 관절염', '금속 제거 등 추가 수술'], insurancePoint: '발목 관절 기능장해 + 골절 후유증·수술 담보 확인' } },
+  { re: /(담낭|쓸개)/, label: '담낭 절제술', seq: { risks: ['소화 불량·지방변', '담관 손상(드묾)', '수술 흉터'], insurancePoint: '복부 장기 결손/흉터(추상) 담보 확인' } },
+  { re: /(충수|맹장)/, label: '충수 절제술', seq: { risks: ['장유착·장폐색(드묾)', '수술 흉터'], insurancePoint: '복부 수술 흉터·담보 확인' } },
+  { re: /(탈장|서혜부|제대)/, label: '탈장 수술', seq: { risks: ['재발', '만성 통증·이물감'], insurancePoint: '복부 수술·흉터 담보 확인' } },
+  { re: /(백내장|수정체)/, label: '백내장 수술', seq: { risks: ['잔여 굴절 이상', '후발 백내장', '안구건조·눈부심'], insurancePoint: '눈(교정시력 기준) 시력 장해 확인' } },
+  { re: /갑상선/, label: '갑상선 수술', seq: { risks: ['갑상선호르몬 저하(평생 복용 가능)', '목소리 변화(성대신경)', '부갑상선 기능 저하'], insurancePoint: '내분비·발성 장해 + 갑상선 관련 담보 확인' } },
+  { re: /(유방|유선)/, label: '유방 수술', seq: { risks: ['림프부종(겨드랑이 절제 범위에 따라)', '감각 저하', '흉터·외형 변화'], insurancePoint: '외모 추상(흉터)·유방 관련 담보 확인' } },
+  { re: /(관상동맥|관동맥|스텐트|스탠트|우회)/, label: '관상동맥 중재·우회', seq: { risks: ['재협착·재시술', '심기능 저하', '항혈전제 복용(출혈 위험)'], insurancePoint: '심장 기능장해 + 중대한 수술 담보 확인' } },
+  { re: /(뇌|두개|지주막|경막|동맥류)/, label: '뇌 수술', seq: { risks: ['신경학적 후유증(마비·인지·언어)', '간질 발작', '재출혈'], insurancePoint: '신경계(뇌) 장해 — 지급률이 높을 수 있어 특히 확인' } },
+  { re: /(자궁|난소|제왕|난관)/, label: '자궁·난소 수술', seq: { risks: ['생식 기능 변화', '골반 장기 유착', '호르몬 변화'], insurancePoint: '생식기 장해·관련 담보 확인' } },
+  { re: /(전립선|방광|요관|요도)/, label: '비뇨기 수술', seq: { risks: ['배뇨 기능 변화·요실금', '성 기능 변화'], insurancePoint: '비뇨·생식기 장해 지급률 확인' } }
+]
+
+/** 수술명이 특정 세부 규칙에 매칭되는지(대표 수술명 선정용). */
+export function matchesSpecificSurgery(name: string): boolean {
+  const n = s(name)
+  return SURGERY_SEQUELAE_RULES.some((r) => r.re.test(n))
+}
+/** 수술명(+부위) → 후유장해. 특정 수술명 매칭 우선, 없으면 부위 기준. label 은 매칭된 수술 유형명. */
+export function sequelaeForSurgery(name: string, group: PartGroup): { label?: string; seq: PartSequelae } {
+  const n = s(name)
+  for (const r of SURGERY_SEQUELAE_RULES) if (r.re.test(n)) return { label: r.label, seq: r.seq }
+  return { seq: sequelaeFor(group) }
+}
+
+/** 수술 '시행 1회' 단위(같은 진료일·기관의 수술 라인아이템을 하나로 묶음). */
+export interface SurgeryOccasion {
+  date: string
+  hospital: string
+  partGroup: PartGroup // 대표 부위
+  bodyPart: string
+  names: string[] // 그 날 수술명(중복 제거)
+  primaryName: string // 대표 수술명(후유장해·헤더용)
+}
+/**
+ * 수술 항목들을 '시행 1회' 단위로 묶는다 — 한 번의 수술이 세부내역에 여러 줄로
+ * 들어와도 (진료일·기관)이 같으면 1회로 집계. 수술로 보이는 항목(isSurgery)만 대상.
+ */
+export function groupSurgeryOccasions(items: SurgeryItem[]): SurgeryOccasion[] {
+  const byVisit = new Map<string, SurgeryItem[]>()
+  for (const it of items) {
+    if (!it.isSurgery) continue
+    const k = visitKey(it.date, it.hospital)
+    const list = byVisit.get(k) ?? []
+    list.push(it)
+    byVisit.set(k, list)
+  }
+  const out: SurgeryOccasion[] = []
+  for (const list of byVisit.values()) {
+    const names = Array.from(new Set(list.map((x) => x.name).filter(Boolean)))
+    const repItem = list.find((x) => x.partGroup !== 'other') ?? list[0]
+    const primaryName =
+      names.find((nm) => matchesSpecificSurgery(nm)) ??
+      names.slice().sort((a, b) => b.length - a.length)[0] ??
+      list[0].name
+    out.push({ date: list[0].date, hospital: list[0].hospital, partGroup: repItem.partGroup, bodyPart: repItem.bodyPart, names, primaryName })
+  }
+  out.sort((a, b) => Number(b.date || 0) - Number(a.date || 0))
+  return out
 }
 
 export interface MedItem {
@@ -529,7 +604,12 @@ export interface HrHighlights {
 export function buildHighlights(sections: HrSections): HrHighlights {
   const diseases = summarizeByDisease(sections)
   const inpatientVisits = diseases.reduce((s, d) => s + d.inpatientVisits, 0)
-  const surgeryCount = diseases.reduce((s, d) => s + d.surgeries.filter((x) => x.isSurgery).length, 0)
+  // 수술 '건수'는 항목 수가 아니라 **수술 시행 1회(진료일·기관)** 단위로 센다(한 수술이 여러 줄로 쪼개진 과다집계 방지).
+  const surgeryVisits = new Set<string>()
+  for (const r of sections.detail) {
+    if (looksSurgery(field(r, PROC_KEYS), field(r, TYPE_KEYS))) surgeryVisits.add(visitKey(ymd8(field(r, DATE_KEYS)), field(r, HOSP_KEYS)))
+  }
+  const surgeryCount = surgeryVisits.size
   const frequentOutpatient = diseases.filter((d) => d.outpatientVisits >= FREQUENT_VISIT_THRESHOLD)
   const bigSelfPay = diseases.filter((d) => d.selfPayTotal >= BIG_SELFPAY_THRESHOLD).sort((a, b) => b.selfPayTotal - a.selfPayTotal).slice(0, 3)
   return { inpatientVisits, surgeryCount, frequentOutpatient, bigSelfPay, hasAny: inpatientVisits > 0 || surgeryCount > 0 || frequentOutpatient.length > 0 || bigSelfPay.length > 0 }
@@ -539,7 +619,8 @@ export function buildHighlights(sections: HrSections): HrHighlights {
 export function diseaseFlags(d: DiseaseSummary): string[] {
   const f: string[] = []
   if (d.inpatientVisits > 0) f.push(`입원 ${d.inpatientVisits}`)
-  if (d.surgeries.some((x) => x.isSurgery)) f.push(`수술 ${d.surgeries.filter((x) => x.isSurgery).length}`)
+  const surgN = groupSurgeryOccasions(d.surgeries).length
+  if (surgN > 0) f.push(`수술 ${surgN}`)
   if (d.outpatientVisits >= FREQUENT_VISIT_THRESHOLD) f.push(`통원 ${d.outpatientVisits}회`)
   if (d.selfPayTotal >= BIG_SELFPAY_THRESHOLD) f.push('고액')
   return f
