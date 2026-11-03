@@ -18,7 +18,7 @@ async function load(src) {
 }
 
 const m = await load('src/renderer/src/services/health-record/summarize.ts')
-const { collectHrSections, summarizeByDisease, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary, buildHighlights, diseaseFlags, FREQUENT_VISIT_THRESHOLD, classifySurgery } = m
+const { collectHrSections, summarizeByDisease, summarizeEpisodes, EPISODE_GAP_DAYS, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary, buildHighlights, diseaseFlags, FREQUENT_VISIT_THRESHOLD, classifySurgery } = m
 
 const result = {
   resBasicTreatList: [
@@ -109,6 +109,34 @@ test('수술 부위 추정(classifySurgery) + SurgeryItem 부위 필드', () => 
   const surg = d.surgeries.find((x) => x.name === '요추 후방고정술')
   assert.equal(surg.bodyPart, '척추(요추)')
   assert.equal(surg.partGroup, 'spine')
+})
+
+test('에피소드 묶음: 같은 병명+근접 날짜는 하나로, 멀면 분리', () => {
+  assert.equal(EPISODE_GAP_DAYS, 30)
+  const eps = summarizeEpisodes(collectHrSections(result))
+  // 요추 염좌: 20260616·20260701(15일) → 1 에피소드(입원 2회, 후방고정술 포함)
+  const back = eps.filter((e) => e.disease === '요추 염좌')
+  assert.equal(back.length, 1, '근접(15일) 방문은 한 에피소드')
+  assert.equal(back[0].visitCount, 2)
+  assert.equal(back[0].inpatient, true)
+  assert.equal(back[0].firstDate, '20260616')
+  assert.equal(back[0].lastDate, '20260701')
+  assert.ok(back[0].surgeries.some((x) => x.name === '요추 후방고정술' && x.isSurgery))
+  assert.ok(back[0].visits.length === 2 && back[0].visits[0].date <= back[0].visits[1].date, '방문은 날짜 오름차순')
+  // 위염: 20250923·20240101(1년 이상) → 2 에피소드로 분리
+  const gastritis = eps.filter((e) => e.disease === '위염')
+  assert.equal(gastritis.length, 2, '멀리 떨어진 방문은 별도 에피소드')
+  // 최근 에피소드가 먼저(내림차순)
+  assert.ok(Number(eps[0].lastDate) >= Number(eps[eps.length - 1].lastDate))
+
+  // 임계 30일 경계: 31일 간격이면 분리
+  const gapTest = summarizeEpisodes(collectHrSections({
+    resBasicTreatList: [
+      { resTreatStartDate: '20250101', resHospitalName: 'A', resTreatType: '외래', resDiseaseName: '감기' },
+      { resTreatStartDate: '20250201', resHospitalName: 'A', resTreatType: '외래', resDiseaseName: '감기' }
+    ]
+  }))
+  assert.equal(gapTest.filter((e) => e.disease === '감기').length, 2, '31일 간격은 분리')
 })
 
 test('정렬: 방문 많은 순', () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ShieldCheck, Send, RefreshCw, Loader2, Smartphone, AlertTriangle, Eye, EyeOff } from 'lucide-react'
+import { ShieldCheck, Send, RefreshCw, Loader2, Smartphone, AlertTriangle, Eye, EyeOff, ChevronDown } from 'lucide-react'
 import {
   startHealthRecord,
   confirmHealthRecord,
@@ -10,11 +10,15 @@ import {
 import {
   collectHrSections,
   summarizeByDisease,
+  summarizeEpisodes,
   buildHighlights,
   diseaseFlags,
   groupKeyOf,
+  EPISODE_GAP_DAYS,
+  BIG_SELFPAY_THRESHOLD,
   type GroupBy,
   type DiseaseSummary,
+  type DiseaseEpisode,
   type PartGroup
 } from '@renderer/services/health-record/summarize'
 import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
@@ -649,12 +653,13 @@ export default function HealthRecordPage(): JSX.Element {
  *  진료(카테고리 보고서)/약품·기타(상세 표)를 자동 구분한다. */
 export function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Element {
   const [showRaw, setShowRaw] = useState(false)
-  const [view, setView] = useState<'sections' | 'disease'>('sections')
+  const [view, setView] = useState<'episode' | 'sections' | 'disease'>('episode')
   const [groupBy, setGroupBy] = useState<GroupBy>('year')
   const sections = useMemo(() => collectSections(result), [result])
   const raw = useMemo(() => JSON.stringify(result, null, 2), [result])
   const totalRows = sections.reduce((n, s) => n + s.rows.length, 0)
   const diseases = useMemo(() => summarizeByDisease(collectHrSections(result)), [result])
+  const episodes = useMemo(() => summarizeEpisodes(collectHrSections(result)), [result])
   const highlights = useMemo(() => buildHighlights(collectHrSections(result)), [result])
   const userNm = useMemo(() => {
     for (const s of sections) {
@@ -716,8 +721,9 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
       {/* 보기 전환 + 그룹(연/월) + AI */}
       {sections.length && !showRaw ? (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <HrChip active={view === 'sections'} onClick={() => setView('sections')}>진료순</HrChip>
+          <HrChip active={view === 'episode'} onClick={() => setView('episode')}>묶음 보기{episodes.length ? ` ${episodes.length}` : ''}</HrChip>
           <HrChip active={view === 'disease'} onClick={() => setView('disease')}>상병별 요약{diseases.length ? ` ${diseases.length}` : ''}</HrChip>
+          <HrChip active={view === 'sections'} onClick={() => setView('sections')}>진료순(전체)</HrChip>
           {view === 'sections' ? (
             <>
               <span className="mx-1 text-slate-300">|</span>
@@ -750,6 +756,10 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
 
       {sections.length === 0 || showRaw ? (
         <pre className="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-100">{raw}</pre>
+      ) : view === 'episode' ? (
+        <div className="mt-3">
+          <EpisodeView episodes={episodes} />
+        </div>
       ) : view === 'disease' ? (
         <div className="mt-3">
           <DiseaseSummaryView diseases={diseases} />
@@ -891,6 +901,123 @@ function DiseaseSummaryView({ diseases }: { diseases: DiseaseSummary[] }): JSX.E
               </div>
             ) : null}
           </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * 에피소드 묶음 — 같은 병명 + 비슷한 시기(약 EPISODE_GAP_DAYS일 이내)를 한 카드로.
+ * 카드를 누르면 방문·수술·투약 상세가 펼쳐진다(기본 접힘 — 한눈에 보기 쉽게).
+ */
+function EpisodeView({ episodes }: { episodes: DiseaseEpisode[] }): JSX.Element {
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
+  if (!episodes.length) return <p className="text-[12px] text-slate-500">상병명이 있는 진료내역이 없어 묶음을 만들 수 없습니다.</p>
+  const idOf = (e: DiseaseEpisode, i: number): string => `${e.disease}|${e.firstDate}|${e.lastDate}|${i}`
+  const toggle = (id: string): void =>
+    setOpen((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  const period = (a: string, b: string): string => (a && b ? (a === b ? ymd(a) : `${ymd(a)} ~ ${ymd(b)}`) : a ? ymd(a) : b ? ymd(b) : '날짜미상')
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-slate-500">
+        같은 병명을 <b>비슷한 시기(약 {EPISODE_GAP_DAYS}일 이내)</b>로 묶었습니다. 카드를 <b>누르면</b> 방문·수술·투약 상세가 펼쳐져요. (추정 — 수술·투약은 진료일·기관 매칭, 의학적 확정 아님)
+      </p>
+      <ul className="space-y-2">
+        {episodes.map((e, i) => {
+          const id = idOf(e, i)
+          const isOpen = open.has(id)
+          const surgCount = e.surgeries.filter((x) => x.isSurgery).length
+          const emphasize = e.inpatient || surgCount > 0 || e.selfPayTotal >= BIG_SELFPAY_THRESHOLD
+          return (
+            <li key={id} className={`overflow-hidden rounded-xl border bg-white shadow-sm ${emphasize ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-800'}`}>
+              <button type="button" onClick={() => toggle(id)} aria-expanded={isOpen} className="flex w-full items-start gap-2 p-3 text-left hover:bg-[#f8fafc]">
+                <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[13px] font-bold text-slate-100">{e.disease}</span>
+                    <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-white">방문 {e.visitCount}회</span>
+                    {e.inpatient ? <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-extrabold text-white">입원</span> : null}
+                    {surgCount ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200">수술 {surgCount}</span> : null}
+                    {e.selfPayTotal >= BIG_SELFPAY_THRESHOLD ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-800">고액</span> : null}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-slate-500">
+                    {period(e.firstDate, e.lastDate)}
+                    {e.departments.length ? ` · ${e.departments.join('/')}` : ''}
+                    {e.selfPayTotal ? ` · 본인부담 ${won(e.selfPayTotal)}` : ''}
+                  </div>
+                </div>
+                <span className="mt-0.5 shrink-0 text-[10px] font-semibold text-slate-400">{isOpen ? '접기' : '상세'}</span>
+              </button>
+
+              {isOpen ? (
+                <div className="border-t border-slate-100 px-3 pb-3 pt-2.5">
+                  {e.hospitals.length ? <div className="text-[11px] text-slate-400">병원: {e.hospitals.join(', ')}</div> : null}
+
+                  <div className="mt-1.5">
+                    <div className="text-[10px] font-semibold text-slate-500">방문 내역 ({e.visitCount}회)</div>
+                    <ul className="mt-1 space-y-1">
+                      {e.visits.map((v, vi) => (
+                        <li key={vi} className="flex flex-wrap items-center gap-1.5 text-[12px]">
+                          <span className="rounded-md bg-[#eef2f7] px-2 py-0.5 text-[11px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">{ymd(v.date) || '날짜미상'}</span>
+                          {v.inpatient ? (
+                            <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">입원</span>
+                          ) : v.type ? (
+                            <span className="rounded bg-[#eef2f7] px-1.5 py-0.5 text-[10px] font-semibold text-[#334155] ring-1 ring-[#e2e8f0]">{v.type}</span>
+                          ) : null}
+                          <span className="text-slate-200">{v.hospital || '-'}</span>
+                          {v.selfPay ? <span className="text-[11px] text-slate-500">· {won(v.selfPay)}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {e.surgeries.length ? (
+                    <div className="mt-2">
+                      <div className="text-[10px] font-semibold text-slate-500">수술·처치(추정) — 부위는 명칭 기반 추정</div>
+                      <ul className="mt-1 space-y-1.5">
+                        {e.surgeries.map((x, xi) => (
+                          <li key={xi} className={`flex items-start gap-2 rounded-lg border p-1.5 ${x.isSurgery ? 'border-rose-200 bg-rose-50/40' : 'border-[#e2e8f0] bg-white'}`}>
+                            <SurgeryIcon group={x.partGroup} className="mt-0.5 h-9 w-5 shrink-0" />
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-1">
+                                {x.isSurgery ? <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">수술</span> : <span className="rounded bg-[#eef2f7] px-1.5 py-0.5 text-[10px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">처치</span>}
+                                {x.bodyPart ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">부위: {x.bodyPart}</span> : null}
+                                <span className="text-[12px] font-semibold text-slate-100">{x.name}</span>
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-slate-500">{ymd(x.date)}{x.hospital ? ` · ${x.hospital}` : ''}</div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {e.medications.length ? (
+                    <div className="mt-2">
+                      <div className="text-[10px] font-semibold text-slate-500">투약(추정)</div>
+                      <ul className="mt-0.5 space-y-0.5">
+                        {e.medications.map((x, mi) => (
+                          <li key={mi} className="text-[12px] text-slate-300">
+                            <span className="font-medium text-slate-200">{x.name}</span>
+                            {x.ingredient ? <span className="ml-1 text-[11px] text-slate-500">{x.ingredient}</span> : ''}
+                            {x.days ? <span className="ml-1 text-[11px] text-slate-500">· {x.days}일분</span> : ''}
+                            <span className="ml-1 text-[11px] text-slate-500">· {ymd(x.date)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </li>
           )
         })}
       </ul>

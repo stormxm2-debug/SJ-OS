@@ -294,6 +294,182 @@ export function summarizeByDisease(sections: HrSections): DiseaseSummary[] {
   return result
 }
 
+// ── 에피소드 묶음(같은 병명 + 비슷한 시기) ───────────────────────────────────
+/** YYYYMMDD → UTC ms(정렬/간격용). 형식오류면 NaN. */
+const toUtc = (ymd: string): number => {
+  if (ymd.length !== 8) return NaN
+  return Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(4, 6)) - 1, Number(ymd.slice(6, 8)))
+}
+/** 두 날짜(YYYYMMDD) 사이 일수(절대값). 하나라도 형식오류면 Infinity(=끊김). */
+const dayGap = (a: string, b: string): number => {
+  const da = toUtc(a)
+  const db = toUtc(b)
+  if (Number.isNaN(da) || Number.isNaN(db)) return Infinity
+  return Math.abs(db - da) / 86400000
+}
+
+/** 공통 dedupe(키 기준 첫 항목 유지). */
+function dedupeBy<T>(items: T[], keyOf: (t: T) => string): T[] {
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (const it of items) {
+    const k = keyOf(it)
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(it)
+  }
+  return out
+}
+
+export interface EpisodeVisit {
+  date: string // YYYYMMDD
+  hospital: string
+  dept: string
+  type: string
+  inpatient: boolean
+  selfPay: number
+}
+export interface DiseaseEpisode {
+  disease: string // 정규화 표시명
+  firstDate: string // YYYYMMDD
+  lastDate: string
+  visitCount: number // (진료일·기관) 방문 수
+  recordCount: number
+  inpatient: boolean // 에피소드 내 입원 포함
+  hospitals: string[]
+  departments: string[]
+  visits: EpisodeVisit[] // 날짜 오름차순
+  surgeries: SurgeryItem[] // (진료일·기관) 매칭(추정)
+  medications: MedItem[] // (진료일·기관) 매칭(추정)
+  selfPayTotal: number
+}
+
+/** 같은 병명 안에서 '같은 에피소드'로 볼 최대 날짜 간격(일). */
+export const EPISODE_GAP_DAYS = 30
+
+interface VisitAcc {
+  date: string
+  hospital: string
+  dept: string
+  type: string
+  selfPay: number
+  recordCount: number
+}
+
+function buildEpisode(
+  disease: string,
+  visits: VisitAcc[],
+  surgeryByVisit: Map<string, SurgeryItem[]>,
+  medByVisit: Map<string, MedItem[]>
+): DiseaseEpisode {
+  const dates = visits.map((v) => v.date).filter(Boolean).sort()
+  const surgeries: SurgeryItem[] = []
+  const meds: MedItem[] = []
+  for (const v of visits) {
+    const vk = visitKey(v.date, v.hospital)
+    for (const it of surgeryByVisit.get(vk) ?? []) surgeries.push(it)
+    for (const it of medByVisit.get(vk) ?? []) meds.push(it)
+  }
+  return {
+    disease,
+    firstDate: dates[0] ?? '',
+    lastDate: dates[dates.length - 1] ?? '',
+    visitCount: visits.length,
+    recordCount: visits.reduce((s, v) => s + v.recordCount, 0),
+    inpatient: visits.some((v) => isInpatientType(v.type)),
+    hospitals: Array.from(new Set(visits.map((v) => v.hospital).filter(Boolean))),
+    departments: Array.from(new Set(visits.map((v) => v.dept).filter(Boolean))),
+    visits: visits
+      .map((v) => ({ date: v.date, hospital: v.hospital, dept: v.dept, type: v.type, inpatient: isInpatientType(v.type), selfPay: v.selfPay }))
+      .sort((a, b) => Number(a.date || 0) - Number(b.date || 0)),
+    surgeries: dedupeBy(surgeries, (x) => `${x.date}|${x.hospital}|${x.name}`),
+    medications: dedupeBy(meds, (x) => `${x.date}|${x.hospital}|${x.name}`),
+    selfPayTotal: visits.reduce((s, v) => s + v.selfPay, 0)
+  }
+}
+
+/**
+ * **같은 병명 + 비슷한 시기**로 진료를 '에피소드'로 묶는다.
+ * 같은 병명 안에서 (진료일·기관) 방문을 날짜순으로 정렬하고, 연속 방문 간격이
+ * gapDays 를 넘으면 새 에피소드로 분리한다(한 번의 치료 묶음 단위).
+ * 수술/투약은 (진료일·기관) 일치로 연결(추정, 의학적 확정 아님).
+ */
+export function summarizeEpisodes(sections: HrSections, gapDays = EPISODE_GAP_DAYS): DiseaseEpisode[] {
+  // (날짜|기관) → 세부/처방 인덱스 (summarizeByDisease 와 동일 방식)
+  const surgeryByVisit = new Map<string, SurgeryItem[]>()
+  for (const r of sections.detail) {
+    const date = ymd8(field(r, DATE_KEYS))
+    const hospital = field(r, HOSP_KEYS)
+    if (!date && !hospital) continue
+    const name = field(r, PROC_KEYS)
+    const type = field(r, TYPE_KEYS)
+    if (!name && !type) continue
+    const label = name || type
+    const cls = classifySurgery(label)
+    const key = visitKey(date, hospital)
+    const list = surgeryByVisit.get(key) ?? []
+    list.push({ name: label, date, hospital, isSurgery: looksSurgery(name, type), bodyPart: cls.part, partGroup: cls.group })
+    surgeryByVisit.set(key, list)
+  }
+  const medByVisit = new Map<string, MedItem[]>()
+  for (const r of sections.prescribe) {
+    const date = ymd8(field(r, DATE_KEYS))
+    const hospital = field(r, HOSP_KEYS)
+    const name = field(r, DRUG_KEYS)
+    if (!name) continue
+    const key = visitKey(date, hospital)
+    const list = medByVisit.get(key) ?? []
+    list.push({ name, ingredient: field(r, INGREDIENT_KEYS), date, hospital, days: num(r[DOSE_DAYS_KEYS.find((k) => r[k] != null) ?? '']) })
+    medByVisit.set(key, list)
+  }
+
+  // 병명 → (날짜|기관) 방문 누적
+  const byDisease = new Map<string, Map<string, VisitAcc>>()
+  for (const r of sections.basic) {
+    const diseaseRaw = field(r, DISEASE_KEYS)
+    if (!diseaseRaw) continue
+    const disease = normalizeDisease(diseaseRaw)
+    const date = ymd8(field(r, DATE_KEYS))
+    const hospital = field(r, HOSP_KEYS)
+    if (!date && !hospital) continue
+    const dept = field(r, ['resDepartment', 'resDept'])
+    const type = field(r, TYPE_KEYS)
+    const selfPay = num(r.resDeductibleAmt ?? r.resSelfPay)
+    const vk = visitKey(date, hospital)
+    const vmap = byDisease.get(disease) ?? new Map<string, VisitAcc>()
+    const v = vmap.get(vk) ?? { date, hospital, dept, type, selfPay: 0, recordCount: 0 }
+    v.selfPay += selfPay
+    v.recordCount += 1
+    if (!v.dept && dept) v.dept = dept
+    if (isInpatientType(type)) v.type = type // 입원 표기 우선
+    else if (!v.type && type) v.type = type
+    vmap.set(vk, v)
+    byDisease.set(disease, vmap)
+  }
+
+  const episodes: DiseaseEpisode[] = []
+  for (const [disease, vmap] of byDisease) {
+    const all = Array.from(vmap.values())
+    const dated = all.filter((v) => v.date).sort((a, b) => Number(a.date) - Number(b.date))
+    const undated = all.filter((v) => !v.date)
+    let current: VisitAcc[] = []
+    let prev = ''
+    for (const v of dated) {
+      if (current.length && dayGap(prev, v.date) > gapDays) {
+        episodes.push(buildEpisode(disease, current, surgeryByVisit, medByVisit))
+        current = []
+      }
+      current.push(v)
+      prev = v.date
+    }
+    if (current.length) episodes.push(buildEpisode(disease, current, surgeryByVisit, medByVisit))
+    if (undated.length) episodes.push(buildEpisode(disease, undated, surgeryByVisit, medByVisit))
+  }
+  // 최근 에피소드 먼저 → 방문 많은 순
+  episodes.sort((a, b) => Number(b.lastDate || 0) - Number(a.lastDate || 0) || b.visitCount - a.visitCount)
+  return episodes
+}
+
 // ── 하이라이트(보험 상담 주목 신호) ─────────────────────────────────────────
 /** 통원(외래) '잦은 방문' 임계 — 상병별 외래 방문 수. */
 export const FREQUENT_VISIT_THRESHOLD = 7
