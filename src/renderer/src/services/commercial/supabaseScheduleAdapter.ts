@@ -87,7 +87,7 @@ function buildInsert(input: ScheduleInput, staffId: string): Record<string, unkn
 export const supabaseScheduleAdapter = {
   async listScheduleEvents(): Promise<AdapterResult<ScheduleWithCustomer[]>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await client.from('schedule_events').select(SELECT_COLS).order('starts_at', { ascending: true })
     if (error) return err('error', '일정 목록을 불러오지 못했습니다.')
@@ -96,7 +96,7 @@ export const supabaseScheduleAdapter = {
 
   async getScheduleEvent(id: string): Promise<AdapterResult<ScheduleWithCustomer | null>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const { data, error } = await client.from('schedule_events').select(SELECT_COLS).eq('id', id).maybeSingle()
     if (error) return err('error', '일정을 불러오지 못했습니다.')
     return { ok: true, data: data ? mapRow(data) : null }
@@ -104,7 +104,7 @@ export const supabaseScheduleAdapter = {
 
   async createScheduleEvent(input: ScheduleInput): Promise<AdapterResult<ScheduleWithCustomer>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await client.from('schedule_events').insert(buildInsert(input, userId)).select(SELECT_COLS).single()
@@ -114,7 +114,7 @@ export const supabaseScheduleAdapter = {
 
   async updateScheduleEvent(id: string, input: Partial<ScheduleInput>): Promise<AdapterResult<ScheduleWithCustomer>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     // Allowed fields only — never staff_id from the renderer.
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (input.customerId !== undefined) patch.customer_id = input.customerId?.trim() || null
@@ -137,7 +137,7 @@ export const supabaseScheduleAdapter = {
    */
   async finishMeeting(id: string, memo: string, aiBrief?: ScheduleAiBrief): Promise<AdapterResult<ScheduleWithCustomer>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     const patch: Record<string, unknown> = {
       memo: memo.trim() || null,

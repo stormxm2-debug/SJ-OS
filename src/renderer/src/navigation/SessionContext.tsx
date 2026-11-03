@@ -212,7 +212,7 @@ export function SessionProvider({ children }: { children: ReactNode }): JSX.Elem
         }
         if (r.kind === 'needs-password-setup') return { kind: 'needs-setup', normalizedPhone: r.normalizedPhone }
         // attempt: real phone/password auth requires Supabase.
-        if (!supabaseConfigured) return { kind: 'error', message: 'Supabase 로그인 설정이 필요합니다. 관리자에게 문의하세요.' }
+        if (!supabaseConfigured) return { kind: 'error', message: '서버 로그인 설정이 필요합니다. 관리자에게 문의하세요.' }
         setAuthState('loading')
         const res = await signInWithPhonePassword(r.normalizedPhone, password)
         if (!res.ok) {

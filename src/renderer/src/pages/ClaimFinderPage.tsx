@@ -539,7 +539,7 @@ export default function ClaimFinderPage(): JSX.Element {
           </div>
 
           {!persistenceConfigured ? (
-            <p className="mt-1 text-[10px] text-amber-700">저장 비활성: Supabase 미구성 또는 로그인 세션 없음. 현재는 화면에만 보관됩니다.</p>
+            <p className="mt-1 text-[10px] text-amber-700">저장 비활성: 서버 미구성 또는 로그인 세션 없음. 현재는 화면에만 보관됩니다.</p>
           ) : null}
           {link?.kind === 'upload' ? (
             <p className="mt-1 text-[10px] text-slate-500">업로드 원본 분석은 서버 동의 앵커가 없어 저장할 수 없습니다(검토용). 저장하려면 "저장된 진료기록" 을 연결해 분석하세요.</p>

@@ -91,7 +91,7 @@ function group(rows: FlatRow[]): ContactsData {
 /** 팀 공유 목록을 불러온다. */
 export async function remoteList(): Promise<ContactsData> {
   const client = await getClient()
-  if (!client) throw new Error('Supabase 설정이 없습니다.')
+  if (!client) throw new Error('서버 설정이 없습니다.')
   const { data, error } = await client
     .from('company_contacts')
     .select('category, insurer, manager_name, title, phone, sort_order')
@@ -103,7 +103,7 @@ export async function remoteList(): Promise<ContactsData> {
 /** 팀 공유 목록 전체를 원자적으로 교체한다(owner·admin 만 성공). */
 export async function remoteReplaceAll(data: ContactsData): Promise<void> {
   const client = await getClient()
-  if (!client) throw new Error('Supabase 설정이 없습니다.')
+  if (!client) throw new Error('서버 설정이 없습니다.')
   const rows = flatten(data)
   const { error } = await client.rpc('replace_company_contacts', { p_rows: rows })
   if (error) {

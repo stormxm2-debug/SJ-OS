@@ -41,7 +41,7 @@ function isWebBuild(): boolean {
   }
 }
 
-/** 실제 사용할 Supabase URL. 웹 빌드는 항상 SJ 프로젝트(배포 설정 실수 방지). */
+/** 실제 사용할 서버 URL. 웹 빌드는 항상 SJ 프로젝트(배포 설정 실수 방지). */
 function resolvedSupabaseUrl(): string | undefined {
   if (isWebBuild()) return FALLBACK_SUPABASE_URL
   return env().VITE_SUPABASE_URL?.trim() || undefined
@@ -141,7 +141,7 @@ export interface ConnectionTestResult {
 export async function testSupabaseConnection(): Promise<ConnectionTestResult> {
   const status = getSupabaseConfigStatus()
   if (!status.isConfigured) {
-    return { status: 'not-configured', message: 'Supabase URL/anon key가 설정되지 않았습니다. 현재 local-mock 모드입니다.' }
+    return { status: 'not-configured', message: '서버 URL/anon key가 설정되지 않았습니다. 현재 local-mock 모드입니다.' }
   }
   const client = (await initSupabaseClient()) as { auth?: { getSession: () => Promise<{ error?: unknown }> } } | null
   if (!client?.auth) {
@@ -153,8 +153,8 @@ export async function testSupabaseConnection(): Promise<ConnectionTestResult> {
   try {
     const { error } = await client.auth.getSession()
     if (error) return { status: 'failed', message: '세션 확인에 실패했습니다. URL/anon key 설정을 확인하세요.' }
-    return { status: 'ready', message: 'Supabase 연결이 확인되었습니다. (로그인 후 프로필이 필요합니다)' }
+    return { status: 'ready', message: '서버 연결이 확인되었습니다. (로그인 후 프로필이 필요합니다)' }
   } catch {
-    return { status: 'failed', message: 'Supabase 연결 확인 중 오류가 발생했습니다.' }
+    return { status: 'failed', message: '서버 연결 확인 중 오류가 발생했습니다.' }
   }
 }

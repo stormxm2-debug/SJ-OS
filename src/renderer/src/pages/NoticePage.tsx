@@ -252,5 +252,5 @@ function PriorityBadge({ p }: { p: AnnouncementView['priority'] }): JSX.Element 
 }
 function ModeBadge({ mode }: { mode: AnnDataMode }): JSX.Element {
   const supa = mode === 'supabase'
-  return <span className={['ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', supa ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-blue-200 bg-blue-50 text-blue-600'].join(' ')}>{supa ? <Database className="h-3 w-3" /> : <HardDrive className="h-3 w-3" />}{supa ? 'Supabase' : '로컬'}</span>
+  return <span className={['ml-auto inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', supa ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-blue-200 bg-blue-50 text-blue-600'].join(' ')}>{supa ? <Database className="h-3 w-3" /> : <HardDrive className="h-3 w-3" />}{supa ? '서버' : '로컬'}</span>
 }

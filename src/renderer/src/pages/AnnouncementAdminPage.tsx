@@ -80,7 +80,7 @@ export default function AnnouncementAdminPage(): JSX.Element {
       <div className="flex flex-wrap items-center gap-2">
         <Megaphone className="h-6 w-6 text-indigo-500" />
         <h1 className="text-xl font-bold text-slate-100">공지사항 관리</h1>
-        <span className={['inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', mode === 'supabase' ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-blue-200 bg-blue-50 text-blue-600'].join(' ')}>{mode === 'supabase' ? 'Supabase 공용 DB' : '로컬 MVP 데이터'}</span>
+        <span className={['inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', mode === 'supabase' ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-blue-200 bg-blue-50 text-blue-600'].join(' ')}>{mode === 'supabase' ? '공용 서버 DB' : '로컬 MVP 데이터'}</span>
         <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600">관리자 전용</span>
       </div>
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600">{error}</div> : null}

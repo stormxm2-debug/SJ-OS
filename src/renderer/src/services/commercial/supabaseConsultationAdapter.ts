@@ -86,7 +86,7 @@ function buildInsert(input: ConsultationInput, staffId: string): Record<string, 
 export const supabaseConsultationAdapter = {
   async listConsultations(): Promise<AdapterResult<ConsultationWithCustomer[]>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await client
       .from('consultations')
@@ -99,7 +99,7 @@ export const supabaseConsultationAdapter = {
 
   async listConsultationsByCustomer(customerId: string): Promise<AdapterResult<ConsultationWithCustomer[]>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const { data, error } = await client
       .from('consultations')
       .select(SELECT_COLS)
@@ -111,7 +111,7 @@ export const supabaseConsultationAdapter = {
 
   async getConsultation(id: string): Promise<AdapterResult<ConsultationWithCustomer | null>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const { data, error } = await client.from('consultations').select(SELECT_COLS).eq('id', id).maybeSingle()
     if (error) return err('error', '상담기록을 불러오지 못했습니다.')
     return { ok: true, data: data ? mapRow(data) : null }
@@ -119,7 +119,7 @@ export const supabaseConsultationAdapter = {
 
   async createConsultation(input: ConsultationInput): Promise<AdapterResult<ConsultationWithCustomer>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await client.from('consultations').insert(buildInsert(input, userId)).select(SELECT_COLS).single()
@@ -129,7 +129,7 @@ export const supabaseConsultationAdapter = {
 
   async updateConsultation(id: string, input: Partial<ConsultationInput>): Promise<AdapterResult<ConsultationWithCustomer>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     // Allowed fields only — never customer_id/staff_id from the renderer.
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (input.consultationType !== undefined) patch.consultation_type = input.consultationType

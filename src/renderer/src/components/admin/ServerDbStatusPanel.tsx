@@ -11,7 +11,7 @@ import { useSession } from '@renderer/navigation/SessionContext'
 import { ROLE_LABEL } from '@renderer/navigation/roleAccess'
 
 /**
- * Supabase 연결 상태 + 상용화 준비 체크리스트 (owner/admin only). Reports local Supabase
+ * 서버 연결 상태 + 상용화 준비 체크리스트 (owner/admin only). Reports local Supabase
  * config status (URL/anon key presence only — never secrets, never service_role) and
  * points at the SQL/RLS drafts. It never contacts a server unless configured, and
  * the connection test is read-only + secret-free. Inline cards only; no backdrop.
@@ -36,13 +36,13 @@ export default function ServerDbStatusPanel(): JSX.Element {
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Database className="h-5 w-5 text-emerald-500" />
-            <h2 className="text-base font-bold text-slate-100">Supabase 연결 상태</h2>
+            <h2 className="text-base font-bold text-slate-100">서버 연결 상태</h2>
           </div>
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600">상용 준비 · 로컬 MVP</span>
         </div>
         <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
           <Field label="현재 모드" value={status.mode} />
-          <Field label="Supabase URL" value={status.supabaseUrlConfigured} />
+          <Field label="서버 URL" value={status.supabaseUrlConfigured} />
           <Field label="anon key" value={status.anonKeyConfigured} />
           <Field label="service role" value="사용 금지" danger />
           <Field label="연결 상태" value={status.connectionStatus} />
@@ -51,7 +51,7 @@ export default function ServerDbStatusPanel(): JSX.Element {
         {/* Auth status */}
         <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
           <Field label="Auth 방식" value={authMode} />
-          <Field label="Supabase 설정" value={supabaseConfigured ? 'configured' : 'not configured'} />
+          <Field label="서버 설정" value={supabaseConfigured ? 'configured' : 'not configured'} />
           <Field label="현재 세션" value={authState === 'logged-in' ? 'active' : 'inactive'} />
           <Field label="프로필 로드" value={authState === 'logged-in' ? 'yes' : authState === 'profile-missing' ? 'missing' : 'no'} />
           <Field label="현재 권한" value={authState === 'logged-in' ? ROLE_LABEL[session.role] : '-'} />
@@ -59,7 +59,7 @@ export default function ServerDbStatusPanel(): JSX.Element {
         </div>
         <div className="mt-2 text-[10px] text-slate-400">마지막 확인: {status.lastCheckedAt}</div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Btn icon={<RefreshCw className="h-3 w-3" />} label="Supabase 설정 확인" onClick={() => setStatus(getServerDbStatus())} />
+          <Btn icon={<RefreshCw className="h-3 w-3" />} label="서버 설정 확인" onClick={() => setStatus(getServerDbStatus())} />
           <Btn icon={<PlugZap className="h-3 w-3" />} label="연결 테스트" onClick={() => void runTest()} />
           <Btn icon={<FileCode2 className="h-3 w-3" />} label="SQL 스키마 안내 보기" onClick={() => setShowSchema((s) => !s)} />
           <Btn icon={<ShieldCheck className="h-3 w-3" />} label="RLS 정책 안내 보기" onClick={() => setShowRls((s) => !s)} />
@@ -72,7 +72,7 @@ export default function ServerDbStatusPanel(): JSX.Element {
         ) : null}
         {showSchema ? (
           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600">
-            DB 스키마는 <span className="font-mono">docs/supabase/SJ_OS_SUPABASE_SCHEMA.sql</span> 에 있습니다. Supabase SQL Editor에서 실행하세요. (profiles / teams / attendance_records / customers / consultations / schedule_events / performance_records / notices)
+            DB 스키마는 <span className="font-mono">docs/supabase/SJ_OS_SUPABASE_SCHEMA.sql</span> 에 있습니다. SQL Editor에서 실행하세요. (profiles / teams / attendance_records / customers / consultations / schedule_events / performance_records / notices)
           </div>
         ) : null}
         {showRls ? (
@@ -99,7 +99,7 @@ export default function ServerDbStatusPanel(): JSX.Element {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-[10px] text-slate-400">상용 MVP 로컬 데이터 · 실제 Supabase 연결은 대표님이 프로젝트 생성 후 진행합니다.</p>
+        <p className="mt-3 text-[10px] text-slate-400">상용 MVP 로컬 데이터 · 실제 서버 연결은 대표님이 프로젝트 생성 후 진행합니다.</p>
       </div>
     </div>
   )

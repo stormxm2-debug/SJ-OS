@@ -164,7 +164,7 @@ function mapEntry(row: Record<string, any>): ContractEntry {
 /** 해당 월의 건별 실적(권한 범위 내). */
 export async function listEntriesMonth(month: string): Promise<AdapterResult<ContractEntry[]>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
   try {
     const { data, error } = await client
@@ -183,7 +183,7 @@ export async function listEntriesMonth(month: string): Promise<AdapterResult<Con
 /** 계약 한 건 추가 (본인). */
 export async function addEntry(input: ContractEntryInput): Promise<AdapterResult<void>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   const uid = await currentUserId(client)
   if (!uid) return err('no-session', '로그인 세션이 없습니다.')
   const month = monthOfDate(input.entryDate)
@@ -210,7 +210,7 @@ export async function addEntry(input: ContractEntryInput): Promise<AdapterResult
 /** 계약 건 수정 (본인 것만 — RLS 강제). */
 export async function updateEntry(id: string, input: ContractEntryInput): Promise<AdapterResult<void>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
   const month = monthOfDate(input.entryDate)
   if (!isValidMonth(month)) return err('error', '날짜 형식이 올바르지 않습니다.')
@@ -239,7 +239,7 @@ export async function updateEntry(id: string, input: ContractEntryInput): Promis
 /** 계약 건 삭제 (본인 것만 — RLS 강제). */
 export async function deleteEntry(id: string): Promise<AdapterResult<void>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
   try {
     const { error } = await client.from('performance_entries').delete().eq('id', id)
@@ -274,7 +274,7 @@ function mapRecord(row: Record<string, any>): PerformanceEntry {
 /** 해당 월의 엑셀(관리자 업로드) 실적 행. */
 export async function listExcelMonth(month: string): Promise<AdapterResult<PerformanceEntry[]>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
   try {
     const { data, error } = await client
@@ -292,7 +292,7 @@ export async function listExcelMonth(month: string): Promise<AdapterResult<Perfo
 /** 관리자: 직원 디렉토리(엑셀 매칭용 — 계정 생성된 직원만). RLS: owner/admin 전용. */
 export async function loadStaffDirectory(): Promise<AdapterResult<StaffDirectoryEntry[]>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
   try {
     const { data, error } = await client
@@ -322,7 +322,7 @@ export interface ExcelApplyRow {
 /** 관리자: 엑셀 행 일괄 반영 (upsert, source='excel' — 그 달 그 직원의 우선 실적). */
 export async function adminApplyExcelRows(rows: ExcelApplyRow[]): Promise<AdapterResult<{ applied: number }>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
   if (rows.length === 0) return { ok: true, data: { applied: 0 } }
   try {
@@ -352,7 +352,7 @@ export async function adminApplyExcelRows(rows: ExcelApplyRow[]): Promise<Adapte
 /** 관리자: 특정 월의 엑셀 실적 전체 삭제 (건별 입력으로 되돌리기). */
 export async function adminDeleteExcelMonth(month: string): Promise<AdapterResult<void>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
   try {
     const { error } = await client.from('performance_records').delete().eq('month', month).eq('source', 'excel')

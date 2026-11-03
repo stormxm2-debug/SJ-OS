@@ -84,7 +84,7 @@ export async function createStaffAccountWithPassword(input: {
   if (!isSupabase()) return { ok: false, mode: 'local-mock', error: '서버 연결 후 사용할 수 있습니다.' }
   const base = getFunctionsBaseUrl()
   const anon = getSupabaseAnonKey()
-  if (!base || !anon) return { ok: false, mode: 'not-configured', error: 'Supabase 설정이 없습니다.' }
+  if (!base || !anon) return { ok: false, mode: 'not-configured', error: '서버 설정이 없습니다.' }
   try {
     await initSupabaseClient()
     const client = getSupabaseClient() as {
@@ -114,7 +114,7 @@ export async function issueStaffInviteCode(phone: string): Promise<{ ok: boolean
   if (!isSupabase()) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
   const base = getFunctionsBaseUrl()
   const anon = getSupabaseAnonKey()
-  if (!base || !anon) return { ok: false, error: 'Supabase 설정이 없습니다.' }
+  if (!base || !anon) return { ok: false, error: '서버 설정이 없습니다.' }
   try {
     await initSupabaseClient()
     const client = getSupabaseClient() as {

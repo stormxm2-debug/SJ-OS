@@ -64,6 +64,20 @@ async function listActiveStaff(): Promise<StaffLite[]> {
   }
 }
 
+/** 비활동(inactive) 직원 id 집합 — 출퇴근 명단·기록에서 숨기기 위함. */
+async function listInactiveStaffIds(): Promise<Set<string>> {
+  try {
+    await initSupabaseClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = getSupabaseClient() as any
+    if (!client) return new Set()
+    const { data } = await client.from('profiles').select('id, status').neq('status', 'active')
+    return new Set(((data as { id: string }[]) ?? []).map((p) => p.id).filter(Boolean))
+  } catch {
+    return new Set()
+  }
+}
+
 /** Tables whose changes should live-refresh this screen (stable ref for the hook). */
 const RT_TABLES = ['attendance_records', 'profiles']
 
@@ -120,9 +134,10 @@ export default function SupabaseAttendanceManager(): JSX.Element {
 
   const load = async (): Promise<void> => {
     setLoading(true)
-    const [allRes, myRes, staff] = await Promise.all([listAttendanceRecords(), listMyTodayAttendance(), listActiveStaff()])
+    const [allRes, myRes, staff, inactiveIds] = await Promise.all([listAttendanceRecords(), listMyTodayAttendance(), listActiveStaff(), listInactiveStaffIds()])
     setMode(allRes.mode)
-    setRecords(allRes.records)
+    // 비활동 직원의 출퇴근 기록은 명단·현황·기록에서 제외(본인 기록은 유지).
+    setRecords(allRes.records.filter((r) => !inactiveIds.has(r.staffId)))
     setMyToday(myRes.records)
     setStaffList(staff)
     setError(allRes.ok ? undefined : allRes.error)
@@ -357,8 +372,8 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           </button>
         </div>
 
-        {mode === 'not-configured' ? <Notice text="Supabase가 아직 연결되지 않아 로컬 데이터로 표시됩니다." /> : null}
-        {mode === 'no-session' ? <Notice text="Supabase 로그인 후 출퇴근 DB를 사용할 수 있습니다." /> : null}
+        {mode === 'not-configured' ? <Notice text="서버가 아직 연결되지 않아 로컬 데이터로 표시됩니다." /> : null}
+        {mode === 'no-session' ? <Notice text="서버 로그인 후 출퇴근 DB를 사용할 수 있습니다." /> : null}
         {error ? (
           <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700">
             <AlertTriangle className="mr-1 inline h-3 w-3" />
