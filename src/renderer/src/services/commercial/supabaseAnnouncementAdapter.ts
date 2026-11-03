@@ -60,7 +60,7 @@ export const supabaseAnnouncementAdapter = {
   /** Published + targeted (RLS-enforced) with the current profile's read flags. */
   async listVisible(): Promise<AnnResult<AnnouncementView[]>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const userId = await currentUserId(c)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await c.from('announcements').select(COLS).eq('status', 'published').order('published_at', { ascending: false })
@@ -78,7 +78,7 @@ export const supabaseAnnouncementAdapter = {
   /** All statuses (owner/admin; RLS-enforced). */
   async listAdmin(): Promise<AnnResult<AnnouncementRecord[]>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const { data, error } = await c.from('announcements').select(COLS).order('updated_at', { ascending: false })
     if (error) return err('error', '공지사항 목록을 불러오지 못했습니다.')
     return { ok: true, data: (data ?? []).map(mapRow) }
@@ -86,7 +86,7 @@ export const supabaseAnnouncementAdapter = {
 
   async create(input: Partial<AnnouncementRecord>): Promise<AnnResult<AnnouncementRecord>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const userId = await currentUserId(c)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     const publish = input.status === 'published'
@@ -109,7 +109,7 @@ export const supabaseAnnouncementAdapter = {
 
   async update(id: string, input: Partial<AnnouncementRecord>): Promise<AnnResult<AnnouncementRecord>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const upd: Record<string, unknown> = { updated_at: nowIso() }
     if (input.title !== undefined) upd.title = input.title.trim()
     if (input.body !== undefined) upd.body = input.body.trim()
@@ -127,7 +127,7 @@ export const supabaseAnnouncementAdapter = {
 
   async setStatus(id: string, status: AnnouncementStatus): Promise<AnnResult<AnnouncementRecord>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const upd: Record<string, unknown> = { status, updated_at: nowIso() }
     if (status === 'published') upd.published_at = nowIso()
     const { data, error } = await c.from('announcements').update(upd).eq('id', id).select(COLS).single()
@@ -137,7 +137,7 @@ export const supabaseAnnouncementAdapter = {
 
   async remove(id: string): Promise<AnnResult<null>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const { error } = await c.from('announcements').delete().eq('id', id)
     if (error) return err('error', '공지 삭제에 실패했습니다.')
     return { ok: true, data: null }
@@ -146,7 +146,7 @@ export const supabaseAnnouncementAdapter = {
   /** Insert a read record for the CURRENT profile only (upsert on unique). */
   async markRead(id: string): Promise<AnnResult<null>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const userId = await currentUserId(c)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     const { error } = await c.from('announcement_reads').upsert({ announcement_id: id, profile_id: userId, read_at: nowIso() }, { onConflict: 'announcement_id,profile_id' })

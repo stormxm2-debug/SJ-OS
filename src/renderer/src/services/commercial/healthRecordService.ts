@@ -23,6 +23,8 @@ export interface HealthRecordRequest {
   product: string
   status: HealthStatus
   createdAt: string
+  staffId?: string | null // 요청한 직원(FC) id
+  staffName?: string | null // 요청한 직원(FC) 이름 — 표시용
   result?: Record<string, unknown> | null
   error?: string | null
 }
@@ -136,6 +138,7 @@ interface Row {
   product: string
   status: HealthStatus
   created_at: string
+  staff_id: string | null
   result: Record<string, unknown> | null
   error: string | null
 }
@@ -147,9 +150,27 @@ const mapRow = (r: Row): HealthRecordRequest => ({
   product: r.product,
   status: r.status,
   createdAt: r.created_at,
+  staffId: r.staff_id,
   result: r.result,
   error: r.error
 })
+
+/** staff_id 집합 → {id: 이름} (owner/admin 은 전 직원, FC 는 본인만 RLS 허용). */
+async function resolveStaffNames(ids: string[]): Promise<Record<string, string>> {
+  const uniq = Array.from(new Set(ids.filter(Boolean)))
+  if (!uniq.length) return {}
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = getSupabaseClient() as any
+    if (!client) return {}
+    const { data } = await client.from('profiles').select('id, name').in('id', uniq)
+    const map: Record<string, string> = {}
+    for (const p of (data as { id: string; name: string | null }[]) ?? []) if (p.id) map[p.id] = p.name ?? ''
+    return map
+  } catch {
+    return {}
+  }
+}
 
 /** 최근 건강기록 요청 목록(최신순). customerId 를 주면 그 고객 것만. */
 export async function listHealthRecords(customerId?: string): Promise<{ ok: boolean; items: HealthRecordRequest[]; error?: string }> {
@@ -157,13 +178,16 @@ export async function listHealthRecords(customerId?: string): Promise<{ ok: bool
     await initSupabaseClient()
     const db = getSupabaseClient() as Db
     if (!db) return { ok: false, items: [] }
-    const cols = 'id, customer_id, customer_name, product, status, created_at, result, error'
+    const cols = 'id, customer_id, customer_name, product, status, created_at, staff_id, result, error'
     const q = db.from('health_record_requests').select(cols)
     const { data, error } = customerId
       ? await q.eq('customer_id', customerId).order('created_at', { ascending: false }).limit(50)
       : await q.order('created_at', { ascending: false }).limit(50)
     if (error) return { ok: false, items: [], error: error.message }
-    return { ok: true, items: ((data as Row[]) ?? []).map(mapRow) }
+    const items = ((data as Row[]) ?? []).map(mapRow)
+    const names = await resolveStaffNames(items.map((i) => i.staffId ?? '').filter(Boolean) as string[])
+    for (const it of items) if (it.staffId) it.staffName = names[it.staffId] ?? it.staffName
+    return { ok: true, items }
   } catch {
     return { ok: false, items: [] }
   }

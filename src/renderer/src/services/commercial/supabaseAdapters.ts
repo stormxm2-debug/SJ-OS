@@ -29,7 +29,7 @@ export interface AdapterResult<T> {
   message?: string
 }
 
-const NOT_CONFIGURED = 'Supabase가 구성되지 않았습니다. 현재 local-mock 모드입니다.'
+const NOT_CONFIGURED = '서버가 구성되지 않았습니다. 현재 local-mock 모드입니다.'
 
 function notConfigured<T>(): AdapterResult<T> {
   return { ok: false, reason: 'not-configured', message: NOT_CONFIGURED }

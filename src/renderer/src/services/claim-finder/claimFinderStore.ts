@@ -94,7 +94,7 @@ export interface StoreResult<T = void> {
 }
 
 const DISABLED_MSG =
-  '저장이 비활성 상태입니다(Supabase 미구성 또는 로그인 세션 없음). 로그인 후 사용하세요. 현재는 화면에만 보관됩니다.'
+  '저장이 비활성 상태입니다(서버 미구성 또는 로그인 세션 없음). 로그인 후 사용하세요. 현재는 화면에만 보관됩니다.'
 
 export function createClaimFinderStore(deps: ClaimStoreDeps) {
   async function saveRun(input: SaveRunInput): Promise<StoreResult> {

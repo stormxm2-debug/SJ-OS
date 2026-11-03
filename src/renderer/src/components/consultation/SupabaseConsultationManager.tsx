@@ -277,8 +277,8 @@ export default function SupabaseConsultationManager(): JSX.Element {
         </span>
       </div>
 
-      {mode === 'not-configured' ? <Notice text="Supabase가 아직 연결되지 않아 로컬 MVP 데이터로 표시됩니다." /> : null}
-      {mode === 'no-session' ? <Notice text="Supabase 로그인 후 상담기록 DB를 사용할 수 있습니다." /> : null}
+      {mode === 'not-configured' ? <Notice text="서버가 아직 연결되지 않아 로컬 MVP 데이터로 표시됩니다." /> : null}
+      {mode === 'no-session' ? <Notice text="서버 로그인 후 상담기록 DB를 사용할 수 있습니다." /> : null}
       {error ? (
         <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-600">
           <AlertTriangle className="mr-1 inline h-3 w-3" />
@@ -933,7 +933,7 @@ function ModeBadge({ mode }: { mode: ConsultationDataMode }): JSX.Element {
   return (
     <span className={['inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', supa ? 'border-emerald-200 bg-emerald-50 text-emerald-600' : 'border-blue-200 bg-blue-50 text-blue-600'].join(' ')}>
       {supa ? <Database className="h-3 w-3" /> : <HardDrive className="h-3 w-3" />}
-      {supa ? 'Supabase 공용 DB' : '로컬 MVP 데이터'}
+      {supa ? '공용 서버 DB' : '로컬 MVP 데이터'}
     </span>
   )
 }

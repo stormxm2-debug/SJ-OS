@@ -89,7 +89,7 @@ function mapRow(row: Record<string, unknown>, ownerNames?: Map<string, string>):
 export const supabaseCustomerAdapter = {
   async listCustomers(): Promise<AdapterResult<CustomerRecord[]>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await client.from('customers').select(SELECT_COLS).order('updated_at', { ascending: false })
     if (error) return err('error', '고객 목록을 불러오지 못했습니다.')
@@ -100,7 +100,7 @@ export const supabaseCustomerAdapter = {
 
   async getCustomer(id: string): Promise<AdapterResult<CustomerRecord | null>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const { data, error } = await client.from('customers').select(SELECT_COLS).eq('id', id).maybeSingle()
     if (error) return err('error', '고객 정보를 불러오지 못했습니다.')
     if (!data) return { ok: true, data: null }
@@ -110,7 +110,7 @@ export const supabaseCustomerAdapter = {
 
   async createCustomer(input: CustomerInput): Promise<AdapterResult<CustomerRecord>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     // team_id from the current profile (best-effort).
@@ -147,7 +147,7 @@ export const supabaseCustomerAdapter = {
 
   async updateCustomer(id: string, input: Partial<CustomerInput>): Promise<AdapterResult<CustomerRecord>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     // Allowed fields only — never owner_staff_id / team_id from the renderer.
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (input.name !== undefined) patch.name = input.name.trim()

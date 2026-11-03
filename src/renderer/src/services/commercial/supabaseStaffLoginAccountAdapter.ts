@@ -75,7 +75,7 @@ export interface CreateAccountInput {
 export const supabaseStaffLoginAccountAdapter = {
   async listAccounts(): Promise<AdapterResult<StaffLoginAccount[]>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await client.from('staff_login_accounts').select(ACCT_COLS).order('created_at', { ascending: false })
     if (error) return err('error', '직원 목록을 불러오지 못했습니다.')
@@ -84,7 +84,7 @@ export const supabaseStaffLoginAccountAdapter = {
 
   async createAccount(input: CreateAccountInput): Promise<AdapterResult<StaffLoginAccount>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     const norm = normalizeKoreanPhoneNumber(input.phone)
@@ -110,7 +110,7 @@ export const supabaseStaffLoginAccountAdapter = {
 
   async updateRole(id: string, role: StaffRole, teamId?: string): Promise<AdapterResult<StaffLoginAccount>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     const patch: Record<string, unknown> = { role, updated_at: new Date().toISOString() }
     if (teamId !== undefined) patch.team_id = teamId ?? null
@@ -140,7 +140,7 @@ export const supabaseStaffLoginAccountAdapter = {
 
   async updateStatus(id: string, status: StaffLoginStatus): Promise<AdapterResult<StaffLoginAccount>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const { data, error } = await client
       .from('staff_login_accounts')
       .update({ status, updated_at: new Date().toISOString() })
@@ -166,7 +166,7 @@ export const supabaseStaffLoginAccountAdapter = {
 
   async listResetRequests(): Promise<AdapterResult<PasswordResetRequest[]>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const { data, error } = await client.from('password_reset_requests').select(RESET_COLS).order('requested_at', { ascending: false })
     if (error) return err('error', '재설정 요청을 불러오지 못했습니다.')
     return { ok: true, data: (data ?? []).map(mapReset) }
@@ -174,7 +174,7 @@ export const supabaseStaffLoginAccountAdapter = {
 
   async approveReset(id: string): Promise<AdapterResult<PasswordResetRequest & { approvalCode: string }>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const userId = await currentUserId(client)
     // 전화번호만 아는 제3자가 승인된 재설정을 가로채지 못하도록, 승인할 때 6자리 확인 코드를
     // 발급한다. 관리자가 직원 본인에게 직접 전달하고, 서버(claim-phone-account)는 코드가

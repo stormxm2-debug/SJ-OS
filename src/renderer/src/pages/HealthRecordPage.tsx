@@ -630,7 +630,10 @@ export default function HealthRecordPage(): JSX.Element {
               const daysLeft = Math.max(0, RETAIN_DAYS - age)
               return (
                 <div key={h.id} className="flex items-center gap-2 py-2 text-[12px]">
-                  <span className="min-w-0 flex-1 truncate font-semibold text-slate-200">{h.customerName || '고객 미지정'}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="font-semibold text-slate-200">{h.customerName || '고객 미지정'}</span>
+                    {h.staffName ? <span className="ml-1 rounded-full bg-[#eef2f7] px-1.5 py-0.5 text-[10px] font-bold text-[#334155]">FC {h.staffName}</span> : null}
+                  </span>
                   <span className="shrink-0 text-slate-500">{new Date(h.createdAt).toLocaleString('ko-KR')}</span>
                   {canViewRow ? <span className="shrink-0 text-[10px] font-semibold text-slate-400">{daysLeft}일 남음</span> : null}
                   <StatusBadge status={h.status} />

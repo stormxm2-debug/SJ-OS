@@ -134,7 +134,7 @@ function mapRule(r: Record<string, any>): ExceptionRule {
 /** 전체 기준 행 로드 (보험사·질환 순). */
 export async function listExceptions(): Promise<AdapterResult<ExceptionRule[]>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
   try {
     const { data, error } = await client
@@ -175,7 +175,7 @@ function validateInput(input: ExceptionRuleInput): string | null {
 /** 관리자: 기준 행 추가 (RLS: owner/admin). */
 export async function addException(input: ExceptionRuleInput): Promise<AdapterResult<void>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   const uid = await currentUserId(client)
   if (!uid) return err('no-session', '로그인 세션이 없습니다.')
   const invalid = validateInput(input)
@@ -192,7 +192,7 @@ export async function addException(input: ExceptionRuleInput): Promise<AdapterRe
 /** 관리자: 기준 행 수정 — 저장 시 verified=true (검수 완료). */
 export async function updateException(id: string, input: ExceptionRuleInput): Promise<AdapterResult<void>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   const uid = await currentUserId(client)
   if (!uid) return err('no-session', '로그인 세션이 없습니다.')
   const invalid = validateInput(input)
@@ -209,7 +209,7 @@ export async function updateException(id: string, input: ExceptionRuleInput): Pr
 /** 관리자: 기준 행 삭제. */
 export async function deleteException(id: string): Promise<AdapterResult<void>> {
   const client = await getClient()
-  if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+  if (!client) return err('not-configured', '서버 설정이 없습니다.')
   if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
   try {
     const { error } = await client.from('underwriting_exceptions').delete().eq('id', id)

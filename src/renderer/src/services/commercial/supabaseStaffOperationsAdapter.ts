@@ -43,7 +43,7 @@ function mapTeam(row: Record<string, unknown>): TeamRecord {
 export const supabaseStaffOperationsAdapter = {
   async listTeams(): Promise<OpResult<TeamRecord[]>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const { data, error } = await c.from('teams').select('id, name, leader_id, status, created_at, updated_at').order('created_at', { ascending: false })
     if (error) return err('error', '팀 목록을 불러오지 못했습니다.')
     return { ok: true, data: (data ?? []).map(mapTeam) }
@@ -51,7 +51,7 @@ export const supabaseStaffOperationsAdapter = {
 
   async createTeam(name: string): Promise<OpResult<TeamRecord>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const { data, error } = await c.from('teams').insert({ name: name.trim() }).select('id, name, leader_id, status, created_at, updated_at').single()
     if (error) return err('error', '팀 생성에 실패했습니다.')
     return { ok: true, data: mapTeam(data) }
@@ -59,7 +59,7 @@ export const supabaseStaffOperationsAdapter = {
 
   async updateTeam(id: string, patch: { name?: string; status?: TeamRecord['status']; leaderId?: string | null }): Promise<OpResult<TeamRecord>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const upd: Record<string, unknown> = { updated_at: nowIso() }
     if (patch.name !== undefined) upd.name = patch.name.trim()
     if (patch.status !== undefined) upd.status = patch.status
@@ -72,7 +72,7 @@ export const supabaseStaffOperationsAdapter = {
   /** Update role on staff_login_accounts (+ profiles if linked). */
   async updateStaffRole(loginAccountId: string, role: StaffRole, profileId?: string): Promise<OpResult<null>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const { error } = await c.from('staff_login_accounts').update({ role, updated_at: nowIso() }).eq('id', loginAccountId)
     if (error) return err('error', '역할 변경에 실패했습니다.')
     if (profileId) await c.from('profiles').update({ role, updated_at: nowIso() }).eq('id', profileId)
@@ -81,7 +81,7 @@ export const supabaseStaffOperationsAdapter = {
 
   async updateStaffTeam(loginAccountId: string, teamId: string | null, profileId?: string): Promise<OpResult<null>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const { error } = await c.from('staff_login_accounts').update({ team_id: teamId, updated_at: nowIso() }).eq('id', loginAccountId)
     if (error) return err('error', '팀 배정에 실패했습니다.')
     if (profileId) await c.from('profiles').update({ team_id: teamId, updated_at: nowIso() }).eq('id', profileId)
@@ -90,7 +90,7 @@ export const supabaseStaffOperationsAdapter = {
 
   async updateStaffStatus(loginAccountId: string, status: StaffLoginStatus, profileId?: string): Promise<OpResult<null>> {
     const c = await getClient()
-    if (!c) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!c) return err('not-configured', '서버 설정이 없습니다.')
     const { error } = await c.from('staff_login_accounts').update({ status, updated_at: nowIso() }).eq('id', loginAccountId)
     if (error) return err('error', '상태 변경에 실패했습니다.')
     if (profileId) {

@@ -61,7 +61,7 @@ export function isSupabaseAuthConfigured(): boolean {
 /** Sign in with email/password. Never logs the password. */
 export async function signInWithEmailPassword(email: string, password: string): Promise<SignInResult> {
   const c = await client()
-  if (!c) return { ok: false, message: 'Supabase 설정이 없습니다.' }
+  if (!c) return { ok: false, message: '서버 설정이 없습니다.' }
   if (!email.trim() || !password) return { ok: false, message: '이메일/비밀번호를 확인해주세요.' }
   try {
     const { error } = await c.auth.signInWithPassword({ email: email.trim(), password })
@@ -75,7 +75,7 @@ export async function signInWithEmailPassword(email: string, password: string): 
 /** Sign in with phone + password (admin-managed phone login). Never logs values. */
 export async function signInWithPhonePassword(normalizedPhone: string, password: string): Promise<SignInResult> {
   const c = await client()
-  if (!c) return { ok: false, message: 'Supabase 설정이 없습니다.' }
+  if (!c) return { ok: false, message: '서버 설정이 없습니다.' }
   if (!normalizedPhone || !password) return { ok: false, message: '휴대폰 번호 또는 비밀번호를 확인해주세요.' }
   try {
     const { error } = await c.auth.signInWithPassword({ phone: normalizedPhone, password })
@@ -146,7 +146,7 @@ export async function resolveSessionAndProfile(): Promise<AuthResolution> {
   if (!profile) {
     return {
       state: 'profile-missing',
-      message: '로그인은 성공했지만 직원 프로필이 없습니다. Supabase profiles 테이블에 직원 프로필을 생성해야 합니다.'
+      message: '로그인은 성공했지만 직원 프로필이 없습니다. 서버 프로필 테이블에 직원 프로필을 생성해야 합니다.'
     }
   }
   if (profile.status !== 'active') {

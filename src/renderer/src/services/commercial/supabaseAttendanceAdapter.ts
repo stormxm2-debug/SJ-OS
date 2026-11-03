@@ -187,7 +187,7 @@ export const supabaseAttendanceAdapter = {
   /** GPS 주소 백그라운드 채움 (본인 기록만 — RLS 강제). 촬영/기록을 지연시키지 않기 위해 저장 후 호출된다. */
   async updateAddress(recordId: string, address: string): Promise<AdapterResult<void>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     try {
       const { error } = await client
@@ -204,7 +204,7 @@ export const supabaseAttendanceAdapter = {
   /** 오늘의 다짐 저장 (본인 기록만 — RLS 강제). 출근 후 잠금 해제용. */
   async updateResolution(recordId: string, memo: string): Promise<AdapterResult<void>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     try {
       const { error } = await client
@@ -220,7 +220,7 @@ export const supabaseAttendanceAdapter = {
 
   async listAttendanceRecords(): Promise<AdapterResult<AttendanceWithStaff[]>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
     const { data, error } = await client.from('attendance_records').select(SELECT_COLS).order('timestamp', { ascending: false })
     if (error) return err('error', '출퇴근 기록을 불러오지 못했습니다.')
@@ -230,7 +230,7 @@ export const supabaseAttendanceAdapter = {
 
   async listTodayAttendanceRecords(): Promise<AdapterResult<AttendanceWithStaff[]>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const { start, end } = todayRange()
     const { data, error } = await client
       .from('attendance_records')
@@ -245,7 +245,7 @@ export const supabaseAttendanceAdapter = {
 
   async listMyTodayAttendance(): Promise<AdapterResult<AttendanceWithStaff[]>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
     const { start, end } = todayRange()
@@ -263,7 +263,7 @@ export const supabaseAttendanceAdapter = {
 
   async createCheckIn(input: AttendanceInput): Promise<AdapterResult<AttendanceWithStaff>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     await ensureFreshSession(client)
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
@@ -276,7 +276,7 @@ export const supabaseAttendanceAdapter = {
 
   async createCheckOut(input: AttendanceInput): Promise<AdapterResult<AttendanceWithStaff>> {
     const client = await getClient()
-    if (!client) return err('not-configured', 'Supabase 설정이 없습니다.')
+    if (!client) return err('not-configured', '서버 설정이 없습니다.')
     await ensureFreshSession(client)
     const userId = await currentUserId(client)
     if (!userId) return err('no-session', '로그인 세션이 없습니다.')
