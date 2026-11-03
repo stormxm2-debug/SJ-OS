@@ -42,6 +42,7 @@ import SalesActivityWorkspacePage from '@renderer/pages/SalesActivityWorkspacePa
 import KnowledgeBriefingPage from '@renderer/pages/KnowledgeBriefingPage'
 import FamilyCaregiverPage from '@renderer/pages/FamilyCaregiverPage'
 import HealthRecordPage from '@renderer/pages/HealthRecordPage'
+import ClaimFinderPage from '@renderer/pages/ClaimFinderPage'
 import FcOsPage from '@renderer/pages/FcOsPage'
 import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
 import PasswordChangeGate from '@renderer/components/security/PasswordChangeGate'
@@ -262,6 +263,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <FamilyCaregiverPage />
     case 'health-record':
       return <HealthRecordPage />
+    case 'claim-finder':
+      return <ClaimFinderPage />
     case 'content-studio':
       return <ContentStudioPage />
     case 'consultation':
