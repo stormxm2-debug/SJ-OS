@@ -18,7 +18,7 @@ async function load(src) {
 }
 
 const m = await load('src/renderer/src/services/health-record/summarize.ts')
-const { collectHrSections, summarizeByDisease, summarizeEpisodes, EPISODE_GAP_DAYS, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary, buildHighlights, diseaseFlags, FREQUENT_VISIT_THRESHOLD, classifySurgery } = m
+const { collectHrSections, summarizeByDisease, summarizeEpisodes, EPISODE_GAP_DAYS, groupByDate, groupKeyOf, normalizeDisease, buildHrAiSummary, buildHighlights, diseaseFlags, FREQUENT_VISIT_THRESHOLD, classifySurgery, isTrivialProcedure, sequelaeFor } = m
 
 const result = {
   resBasicTreatList: [
@@ -137,6 +137,22 @@ test('에피소드 묶음: 같은 병명+근접 날짜는 하나로, 멀면 분�
     ]
   }))
   assert.equal(gapTest.filter((e) => e.disease === '감기').length, 2, '31일 간격은 분리')
+})
+
+test('단순 처치 판별 + 부위별 후유장해 참고표', () => {
+  // 단순 처치(수술 아님)
+  assert.equal(isTrivialProcedure('물리치료'), true)
+  assert.equal(isTrivialProcedure('도수치료'), true)
+  assert.equal(isTrivialProcedure('근육내 주사'), true)
+  assert.equal(isTrivialProcedure('혈액 검사'), true)
+  // 수술은 단순 처치가 아님(수술 우선)
+  assert.equal(isTrivialProcedure('요추 후방고정술'), false)
+  assert.equal(isTrivialProcedure('담낭 절제술'), false)
+  // 후유장해 참고표: 부위별로 위험·보험 포인트 존재, other 폴백
+  const spine = sequelaeFor('spine')
+  assert.ok(Array.isArray(spine.risks) && spine.risks.length > 0)
+  assert.match(spine.insurancePoint, /척추/)
+  assert.ok(sequelaeFor('other').risks.length > 0)
 })
 
 test('정렬: 방문 많은 순', () => {

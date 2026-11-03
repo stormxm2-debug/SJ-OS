@@ -14,11 +14,13 @@ import {
   buildHighlights,
   diseaseFlags,
   groupKeyOf,
+  sequelaeFor,
   EPISODE_GAP_DAYS,
   BIG_SELFPAY_THRESHOLD,
   type GroupBy,
   type DiseaseSummary,
   type DiseaseEpisode,
+  type SurgeryItem,
   type PartGroup
 } from '@renderer/services/health-record/summarize'
 import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
@@ -828,6 +830,64 @@ function SurgeryIcon({ group, className }: { group: PartGroup; className?: strin
   )
 }
 
+/**
+ * 수술 1건 — 일러스트/행을 누르면 상세(큰 그림 + 부위 + 후유장해 가능성 + 보험 확인 포인트)가 펼쳐진다.
+ * 단순 처치는 호출부에서 제외(isSurgery 만 전달). 후유장해는 부위 기반 **일반 참고**(확정 아님).
+ */
+function SurgeryRow({ item }: { item: SurgeryItem }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const seq = sequelaeFor(item.partGroup)
+  return (
+    <li className="overflow-hidden rounded-lg border border-rose-200 bg-rose-50/40">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-start gap-2 p-1.5 text-left hover:bg-[#fff1f2]">
+        <SurgeryIcon group={item.partGroup} className="mt-0.5 h-9 w-5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">수술</span>
+            {item.bodyPart ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">부위: {item.bodyPart}</span> : null}
+            <span className="text-[12px] font-semibold text-slate-100">{item.name}</span>
+          </div>
+          <div className="mt-0.5 text-[11px] text-slate-500">{ymd(item.date)}{item.hospital ? ` · ${item.hospital}` : ''}</div>
+        </div>
+        <span className="mt-0.5 shrink-0 text-[10px] font-semibold text-rose-600">{open ? '닫기' : '자세히'}</span>
+      </button>
+
+      {open ? (
+        <div className="border-t border-rose-100 bg-white p-2.5">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 rounded-lg border border-slate-100 bg-[#f8fafc] p-1.5">
+              <SurgeryIcon group={item.partGroup} className="h-20 w-11" />
+            </div>
+            <div className="min-w-0 flex-1 text-[12px]">
+              <div className="text-slate-100"><b>수술명</b> · {item.name}</div>
+              <div className="mt-0.5 text-slate-300"><b>추정 부위</b> · {item.bodyPart || '부위 추정 어려움(명칭 기반)'}</div>
+              <div className="mt-0.5 text-[11px] text-slate-500">{ymd(item.date)}{item.hospital ? ` · ${item.hospital}` : ''}</div>
+            </div>
+          </div>
+
+          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+            <div className="flex items-center gap-1 text-[11px] font-extrabold text-amber-800">
+              <AlertTriangle className="h-3.5 w-3.5" /> 후유장해 가능성(일반 참고)
+            </div>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-amber-900">
+              {seq.risks.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+            <div className="mt-1.5 rounded-md bg-white/70 px-2 py-1 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+              💡 보험 확인: {seq.insurancePoint}
+            </div>
+          </div>
+
+          <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+            ※ 위 후유장해는 해당 부위 수술에서 <b>일반적으로 거론되는 유형</b>일 뿐, 실제 발생 여부·정도는 개인·수술 범위에 따라 다릅니다. 보험상 후유장해는 <b>의료진 진단과 약관의 후유장해분류표(지급률)</b>로 확정되며, 부위도 수술 <b>명칭 기반 추정</b>입니다. 의학적·보험적 확정이 아닙니다.
+          </p>
+        </div>
+      ) : null}
+    </li>
+  )
+}
+
 function HrChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }): JSX.Element {
   return (
     <button type="button" onClick={onClick}
@@ -864,22 +924,12 @@ function DiseaseSummaryView({ diseases }: { diseases: DiseaseSummary[] }): JSX.E
             </div>
             {d.hospitals.length ? <div className="mt-0.5 text-[11px] text-slate-400">병원: {d.hospitals.join(', ')}</div> : null}
 
-            {d.surgeries.length ? (
+            {d.surgeries.some((x) => x.isSurgery) ? (
               <div className="mt-1.5">
-                <div className="text-[10px] font-semibold text-slate-500">수술·처치(추정) — 부위는 명칭 기반 추정</div>
+                <div className="text-[10px] font-semibold text-slate-500">수술(추정) — 누르면 부위·후유장해 안내. 단순 처치 제외.</div>
                 <ul className="mt-1 space-y-1.5">
-                  {d.surgeries.map((x, i) => (
-                    <li key={i} className={`flex items-start gap-2 rounded-lg border p-1.5 ${x.isSurgery ? 'border-rose-200 bg-rose-50/40' : 'border-[#e2e8f0] bg-white'}`}>
-                      <SurgeryIcon group={x.partGroup} className="mt-0.5 h-9 w-5 shrink-0" />
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-1">
-                          {x.isSurgery ? <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">수술</span> : <span className="rounded bg-[#eef2f7] px-1.5 py-0.5 text-[10px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">처치</span>}
-                          {x.bodyPart ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">부위: {x.bodyPart}</span> : null}
-                          <span className="text-[12px] font-semibold text-slate-100">{x.name}</span>
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-slate-500">{ymd(x.date)}{x.hospital ? ` · ${x.hospital}` : ''}</div>
-                      </div>
-                    </li>
+                  {d.surgeries.filter((x) => x.isSurgery).map((x, i) => (
+                    <SurgeryRow key={i} item={x} />
                   ))}
                 </ul>
               </div>
@@ -979,22 +1029,12 @@ function EpisodeView({ episodes }: { episodes: DiseaseEpisode[] }): JSX.Element 
                     </ul>
                   </div>
 
-                  {e.surgeries.length ? (
+                  {e.surgeries.some((x) => x.isSurgery) ? (
                     <div className="mt-2">
-                      <div className="text-[10px] font-semibold text-slate-500">수술·처치(추정) — 부위는 명칭 기반 추정</div>
+                      <div className="text-[10px] font-semibold text-slate-500">수술(추정) — 누르면 부위·후유장해 안내. 단순 처치 제외.</div>
                       <ul className="mt-1 space-y-1.5">
-                        {e.surgeries.map((x, xi) => (
-                          <li key={xi} className={`flex items-start gap-2 rounded-lg border p-1.5 ${x.isSurgery ? 'border-rose-200 bg-rose-50/40' : 'border-[#e2e8f0] bg-white'}`}>
-                            <SurgeryIcon group={x.partGroup} className="mt-0.5 h-9 w-5 shrink-0" />
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-1">
-                                {x.isSurgery ? <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">수술</span> : <span className="rounded bg-[#eef2f7] px-1.5 py-0.5 text-[10px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">처치</span>}
-                                {x.bodyPart ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">부위: {x.bodyPart}</span> : null}
-                                <span className="text-[12px] font-semibold text-slate-100">{x.name}</span>
-                              </div>
-                              <div className="mt-0.5 text-[11px] text-slate-500">{ymd(x.date)}{x.hospital ? ` · ${x.hospital}` : ''}</div>
-                            </div>
-                          </li>
+                        {e.surgeries.filter((x) => x.isSurgery).map((x, xi) => (
+                          <SurgeryRow key={xi} item={x} />
                         ))}
                       </ul>
                     </div>
