@@ -178,17 +178,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ ok: false, status: 'awaiting_auth', pending: true, error: out.message || '아직 승인 전입니다.' })
     }
     if (mode === 'start') {
-      // 주민번호 오타·입력 오류 등 — 링크를 잠그지 않고 다시 입력할 수 있게 둔다(만료 전까지).
+      // 링크를 잠그지 않고 다시 입력할 수 있게 둔다(만료 전까지). 오류 성격별로 안내를 구분:
+      //  - 주민번호/생년월일 오류 → 고객이 다시 입력
+      //  - 조회기간 등 설정 오류 → 고객이 고칠 수 없음(담당 설계사 문의)
       await patch({ status: 'awaiting_customer', two_way: null, error: `${out.code} ${out.message}`.trim(), request_meta: bumpedMeta })
-      const looksIdentity = /주민|등록번호|생년월일|identity|불일치|일치하지|확인|CF-0013|CF-00014|CF-04/.test(`${out.code} ${out.message}`)
-      return json({
-        ok: false,
-        status: 'retry',
-        code: out.code,
-        error: looksIdentity
-          ? '입력하신 정보가 올바르지 않습니다. 주민등록번호(또는 생년월일)를 다시 확인해 입력해 주세요.'
-          : (out.message || '조회에 실패했습니다. 잠시 후 다시 시도해 주세요.')
-      })
+      const msg = `${out.message}`
+      const isIdentity = out.code === 'CF-13000' || /주민등록번호|생년월일|본인확인|identity/.test(msg)
+      const isPeriod = out.code === 'CF-13001' || /조회일|조회기간|기간/.test(msg)
+      const userMsg = isIdentity
+        ? '입력하신 주민등록번호(또는 생년월일)가 올바르지 않습니다. 다시 확인해 입력해 주세요.'
+        : isPeriod
+          ? '조회 기간 설정에 문제가 있어 진행할 수 없습니다. 담당 설계사에게 문의해 주세요.'
+          : (msg || '조회에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+      return json({ ok: false, status: 'retry', code: out.code, error: userMsg })
     }
     // confirm 단계의 종료 실패(세션 만료 등)
     await patch({ status: 'failed', error: `${out.code} ${out.message}`.trim() })
