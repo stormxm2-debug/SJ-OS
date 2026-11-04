@@ -7,7 +7,7 @@ import { getFunctionsBaseUrl, getSupabaseAnonKey, getSupabaseClient, initSupabas
  * CODEF 키·상품 URL 은 서버 시크릿에만 있다. 민감 의료정보는 저장 시 RLS(health_record_requests)로만.
  */
 
-export type HealthStatus = 'draft' | 'awaiting_auth' | 'consented' | 'fetching' | 'completed' | 'failed' | 'expired'
+export type HealthStatus = 'draft' | 'awaiting_customer' | 'awaiting_auth' | 'consented' | 'fetching' | 'completed' | 'failed' | 'expired'
 
 export interface TwoWayInfo {
   jobIndex: number
@@ -121,6 +121,93 @@ export function confirmHealthRecord(args: {
 }): Promise<StartResult> {
   return call({ mode: 'confirm', ...args })
 }
+
+// ── 고객 '링크 입력' 플로우 ──────────────────────────────────────────────────
+export interface InviteLinkInput {
+  customerId?: string | null
+  customerName: string
+  phone: string
+  product: string
+  /** 주민번호(identity) 제외 CODEF 파라미터 템플릿. */
+  paramTemplate: Record<string, unknown>
+  encryptFields?: string[]
+  idField: 'birth' | 'rrn'
+  idLen: number
+  appOrigin: string
+}
+export interface InviteLinkResult {
+  ok: boolean
+  requestId?: string
+  url?: string
+  smsSent?: boolean
+  error?: string
+  disabled?: boolean
+}
+/** 직원: 고객에게 보낼 일회용 링크 발급(+문자 설정 시 발송). 주민번호는 보내지 않는다. */
+export async function inviteCustomerLink(input: InviteLinkInput): Promise<InviteLinkResult> {
+  const base = getFunctionsBaseUrl()
+  const anon = getSupabaseAnonKey()
+  if (!base || !anon) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  try {
+    const token = (await bearer()) ?? anon
+    const res = await fetch(`${base}/health-record-invite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${token}` },
+      body: JSON.stringify(input)
+    })
+    if (res.status === 404) return { ok: false, disabled: true, error: '링크 발급 서버(엣지함수)가 아직 배포되지 않았습니다.' }
+    const data = (await res.json().catch(() => null)) as Record<string, unknown> | null
+    if (!data) return { ok: false, error: `요청 실패 (HTTP ${res.status})` }
+    return { ok: Boolean(data.ok), requestId: data.requestId as string | undefined, url: data.url as string | undefined, smsSent: Boolean(data.smsSent), error: data.error as string | undefined }
+  } catch {
+    return { ok: false, error: '서버에 연결할 수 없습니다.' }
+  }
+}
+
+export interface PublicHrResult {
+  ok: boolean
+  status?: HealthStatus
+  customerName?: string
+  idField?: 'birth' | 'rrn'
+  idLen?: number
+  message?: string
+  error?: string
+  code?: string
+  pending?: boolean
+}
+/** 공개(anon) 호출 — 고객 링크 페이지 전용(health-record-public). 세션 없이 anon 키로. */
+async function publicCall(payload: Record<string, unknown>): Promise<PublicHrResult> {
+  const base = getFunctionsBaseUrl()
+  const anon = getSupabaseAnonKey()
+  if (!base || !anon) return { ok: false, error: '연결 설정이 없습니다.' }
+  try {
+    const res = await fetch(`${base}/health-record-public`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },
+      body: JSON.stringify(payload)
+    })
+    const data = (await res.json().catch(() => null)) as Record<string, unknown> | null
+    if (!data) return { ok: false, error: `요청 실패 (HTTP ${res.status})` }
+    return {
+      ok: Boolean(data.ok),
+      status: data.status as HealthStatus | undefined,
+      customerName: data.customerName as string | undefined,
+      idField: data.idField as 'birth' | 'rrn' | undefined,
+      idLen: data.idLen as number | undefined,
+      message: data.message as string | undefined,
+      error: data.error as string | undefined,
+      code: data.code as string | undefined,
+      pending: Boolean(data.pending)
+    }
+  } catch {
+    return { ok: false, error: '서버에 연결할 수 없습니다.' }
+  }
+}
+export const publicHrInfo = (r: string, t: string): Promise<PublicHrResult> => publicCall({ mode: 'info', r, t })
+export const publicHrStart = (a: { r: string; t: string; rrn: string; loginTypeLevel: string; telecom?: string }): Promise<PublicHrResult> =>
+  publicCall({ mode: 'start', ...a })
+export const publicHrConfirm = (a: { r: string; t: string; rrn: string; loginTypeLevel: string; telecom?: string }): Promise<PublicHrResult> =>
+  publicCall({ mode: 'confirm', ...a })
 
 type Db = {
   from: (t: string) => {
