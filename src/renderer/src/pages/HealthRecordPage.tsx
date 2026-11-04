@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ShieldCheck, Send, RefreshCw, Loader2, Smartphone, AlertTriangle, Eye, EyeOff, ChevronDown } from 'lucide-react'
+import { ShieldCheck, Send, RefreshCw, Loader2, Smartphone, AlertTriangle, Eye, EyeOff, ChevronDown, Link2, Copy, Check, Share2 } from 'lucide-react'
 import {
   startHealthRecord,
   confirmHealthRecord,
   listHealthRecords,
+  inviteCustomerLink,
   type TwoWayInfo,
   type HealthRecordRequest
 } from '@renderer/services/commercial/healthRecordService'
+import { shareMeetingText } from '@renderer/services/share/meetingShare'
 import {
   collectHrSections,
   summarizeByDisease,
@@ -277,6 +279,12 @@ export default function HealthRecordPage(): JSX.Element {
   const [result, setResult] = useState<Record<string, unknown> | null>(null)
   const [history, setHistory] = useState<HealthRecordRequest[]>([])
 
+  // 주민번호 입력 주체: 직원 직접 / 고객에게 링크
+  const [inputMode, setInputMode] = useState<'staff' | 'customer'>('staff')
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [invite, setInvite] = useState<{ url: string; smsSent: boolean } | null>(null)
+  const [copied, setCopied] = useState(false)
+
   const needTelecom = provider === '5'
   const needDate = selected.dateMode === 'range'
   const idLen = selected.idField === 'birth' ? 8 : 13
@@ -425,6 +433,70 @@ export default function HealthRecordPage(): JSX.Element {
     }
   }
 
+  // 고객 링크(주민번호 고객 직접 입력) 발급 — 주민번호는 보내지 않고 템플릿만.
+  const canInvite = Boolean(name.trim()) && digits(phone).length >= 10 && validPeriod
+  const onInvite = async (): Promise<void> => {
+    setError(null)
+    setNotice(null)
+    setConfigNote(null)
+    setInvite(null)
+    if (!canInvite) {
+      setError('고객 성함·휴대폰 번호를 확인해주세요.')
+      return
+    }
+    setInviteBusy(true)
+    try {
+      const template = buildParam() as Record<string, unknown>
+      delete template.identity
+      const r = await inviteCustomerLink({
+        customerName: name.trim(),
+        phone,
+        product: selected.url,
+        paramTemplate: template,
+        encryptFields: selected.encrypt,
+        idField: selected.idField,
+        idLen,
+        appOrigin: window.location.origin
+      })
+      if (r.disabled) {
+        setConfigNote(r.error ?? '링크 발급 서버(엣지함수)가 아직 배포되지 않았습니다.')
+        return
+      }
+      if (!r.ok || !r.url) {
+        setError(r.error ?? '링크 생성에 실패했습니다.')
+        return
+      }
+      setInvite({ url: r.url, smsSent: Boolean(r.smsSent) })
+      setNotice(r.smsSent ? '고객에게 문자로 링크를 보냈습니다. 고객이 입력하면 아래 「최근 요청」에 결과가 표시됩니다.' : '링크를 생성했습니다. 아래에서 복사하거나 카톡으로 보내세요.')
+      void refresh()
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+  const copyInvite = async (): Promise<void> => {
+    if (!invite) return
+    try {
+      await navigator.clipboard.writeText(invite.url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard 불가 시 무시 */
+    }
+  }
+  const shareInvite = (): void => {
+    if (!invite) return
+    void shareMeetingText(`[SJ INVEST] ${name.trim() || '고객'}님, 건강보험 조회를 위해 아래 링크에서 본인확인(주민번호+간편인증)을 진행해 주세요.\n${invite.url}\n(30분 이내 1회용)`)
+  }
+
+  // 고객 입력/인증 대기 건이 있으면 결과가 자동 반영되게 가볍게 폴링.
+  useEffect(() => {
+    const anyPending = history.some((h) => h.status === 'awaiting_customer' || h.status === 'awaiting_auth')
+    if (!anyPending) return
+    const id = window.setInterval(() => void refresh(), 10000)
+    return () => window.clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history])
+
   // 저장된(과거) 결과 다시 보기 — 완료 건이고 보관기간(30일) 안이면 그 결과를 결과 영역에 띄운다.
   const viewSaved = (h: HealthRecordRequest): void => {
     if (!h.result) return
@@ -465,7 +537,17 @@ export default function HealthRecordPage(): JSX.Element {
       <div className="grid gap-4 lg:grid-cols-2">
         {/* 입력 + 요청 */}
         <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-100">① 조회 상품 · 고객 정보 · 간편인증 요청</h2>
+          <h2 className="text-sm font-bold text-slate-100">① 조회 상품 · 고객 정보</h2>
+          {/* 주민번호 입력 주체 토글 */}
+          <div className="mt-2 inline-flex rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-0.5 text-[12px] font-bold">
+            <button type="button" onClick={() => { setInputMode('staff'); setInvite(null) }}
+              className={`rounded-lg px-3 py-1.5 ${inputMode === 'staff' ? 'bg-[#0e1e3a] text-white' : 'text-[#475569]'}`}>직원 직접 입력</button>
+            <button type="button" onClick={() => { setInputMode('customer'); setError(null) }}
+              className={`rounded-lg px-3 py-1.5 ${inputMode === 'customer' ? 'bg-[#0e1e3a] text-white' : 'text-[#475569]'}`}>고객에게 링크</button>
+          </div>
+          <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+            {inputMode === 'staff' ? '직원이 고객 주민번호를 직접 입력해 조회합니다.' : '고객이 링크에서 본인 주민번호를 직접 입력·인증합니다(직원은 주민번호를 입력하지 않음).'}
+          </p>
           <div className="mt-3 space-y-2.5">
             <div>
               <label className="text-[11px] font-semibold text-slate-400">조회 상품</label>
@@ -483,34 +565,36 @@ export default function HealthRecordPage(): JSX.Element {
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
             </div>
             <div className="flex gap-2">
+              {inputMode === 'staff' ? (
+                <div className="flex-1">
+                  {selected.idField === 'birth' ? (
+                    <>
+                      <label className="text-[11px] font-semibold text-slate-400">생년월일 (YYYYMMDD · 8자리)</label>
+                      <input value={idValue} onChange={(e) => setIdValue(e.target.value)} inputMode="numeric" maxLength={8} placeholder="19900101"
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
+                    </>
+                  ) : (
+                    <>
+                      <label className="text-[11px] font-semibold text-slate-400">주민등록번호 (13자리)</label>
+                      <div className="relative mt-1">
+                        <input value={idValue} onChange={(e) => setIdValue(e.target.value)} type={showRrn ? 'text' : 'password'} inputMode="numeric" maxLength={14} placeholder="앞 6자리 + 뒤 7자리" autoComplete="off"
+                          className="w-full rounded-lg border border-slate-700 bg-white px-3 py-2 pr-9 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
+                        <button type="button" onClick={() => setShowRrn((v) => !v)} aria-label={showRrn ? '주민번호 숨기기' : '주민번호 보기'} tabIndex={-1}
+                          className="absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400 hover:text-slate-200">
+                          {showRrn ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : null}
               <div className="flex-1">
-                {selected.idField === 'birth' ? (
-                  <>
-                    <label className="text-[11px] font-semibold text-slate-400">생년월일 (YYYYMMDD · 8자리)</label>
-                    <input value={idValue} onChange={(e) => setIdValue(e.target.value)} inputMode="numeric" maxLength={8} placeholder="19900101"
-                      className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
-                  </>
-                ) : (
-                  <>
-                    <label className="text-[11px] font-semibold text-slate-400">주민등록번호 (13자리)</label>
-                    <div className="relative mt-1">
-                      <input value={idValue} onChange={(e) => setIdValue(e.target.value)} type={showRrn ? 'text' : 'password'} inputMode="numeric" maxLength={14} placeholder="앞 6자리 + 뒤 7자리" autoComplete="off"
-                        className="w-full rounded-lg border border-slate-700 bg-white px-3 py-2 pr-9 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
-                      <button type="button" onClick={() => setShowRrn((v) => !v)} aria-label={showRrn ? '주민번호 숨기기' : '주민번호 보기'} tabIndex={-1}
-                        className="absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400 hover:text-slate-200">
-                        {showRrn ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="flex-1">
-                <label className="text-[11px] font-semibold text-slate-400">휴대폰 번호</label>
+                <label className="text-[11px] font-semibold text-slate-400">휴대폰 번호{inputMode === 'customer' ? ' (고객 — 링크 발송·인증)' : ''}</label>
                 <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="01012345678"
                   className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
               </div>
             </div>
-            {selected.idField === 'rrn' ? (
+            {inputMode === 'staff' && selected.idField === 'rrn' ? (
               <p className="-mt-1 text-[10px] text-slate-500">※ 주민번호는 보안 연결(HTTPS)로 전송되며 화면·앱에 저장되지 않습니다.</p>
             ) : null}
             <div className="flex gap-2">
@@ -567,40 +651,79 @@ export default function HealthRecordPage(): JSX.Element {
             ) : null}
           </div>
 
-          <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart}
-            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0e1e3a] px-4 py-2.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:opacity-50">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            간편인증 요청
-          </button>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-            순서: <b className="text-slate-300">간편인증 요청 → 고객 휴대폰 인증앱(카카오/네이버/통신사PASS 등)에서 승인 → 결과 조회</b>. 각 단계는 한 번씩만 — 결과 조회가 안 되면 「간편인증 요청」부터 다시 하세요.
-            {needDate ? <> 조회 가능 기간은 <b className="text-slate-300">{ymd(minStart)} ~ {ymd(maxEnd)}</b>{period.recentMonths >= 2 ? '(최근 2개월은 공단 반영 전)' : ''}이라 기본값을 그 창으로 설정했습니다.</> : <> 이 상품은 <b className="text-slate-300">최근 1년치</b>를 자동 조회합니다.</>}
-          </p>
+          {inputMode === 'staff' ? (
+            <>
+              <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart}
+                className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0e1e3a] px-4 py-2.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:opacity-50">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                간편인증 요청
+              </button>
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                순서: <b className="text-slate-300">간편인증 요청 → 고객 휴대폰 인증앱(카카오/네이버/통신사PASS 등)에서 승인 → 결과 조회</b>. 각 단계는 한 번씩만 — 결과 조회가 안 되면 「간편인증 요청」부터 다시 하세요.
+                {needDate ? <> 조회 가능 기간은 <b className="text-slate-300">{ymd(minStart)} ~ {ymd(maxEnd)}</b>{period.recentMonths >= 2 ? '(최근 2개월은 공단 반영 전)' : ''}이라 기본값을 그 창으로 설정했습니다.</> : <> 이 상품은 <b className="text-slate-300">최근 1년치</b>를 자동 조회합니다.</>}
+              </p>
+            </>
+          ) : (
+            <>
+              <button type="button" onClick={() => void onInvite()} disabled={inviteBusy || !canInvite}
+                className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 px-4 py-2.5 text-[13px] font-bold text-white transition hover:brightness-110 disabled:opacity-50">
+                {inviteBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                고객에게 링크 생성·전송
+              </button>
+              {invite ? (
+                <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                  <div className="text-[11px] font-bold text-indigo-700">{invite.smsSent ? '문자로 링크를 보냈습니다' : '링크가 생성되었습니다 (문자 미설정 — 복사/공유)'}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <input readOnly value={invite.url} className="min-w-0 flex-1 rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-indigo-700" />
+                    <button type="button" onClick={() => void copyInvite()} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-indigo-600">
+                      {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />} {copied ? '복사됨' : '복사'}
+                    </button>
+                    <button type="button" onClick={shareInvite} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-[#FEE500] px-2.5 py-1.5 text-[11px] font-bold text-[#3c1e1e]">
+                      <Share2 className="h-3.5 w-3.5" /> 카톡
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[10px] leading-relaxed text-indigo-700/70">고객이 링크에서 본인확인을 마치면 아래 「최근 요청」에 결과가 자동 표시됩니다(링크 30분 1회용).</p>
+                </div>
+              ) : null}
+              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+                직원은 주민번호를 입력하지 않습니다. 상품·간편인증 수단{needDate ? '·조회기간' : ''}을 고르고 고객 휴대폰 번호만 입력한 뒤 링크를 보내세요.
+              </p>
+            </>
+          )}
         </div>
 
         {/* 승인 대기 + 결과 조회 */}
         <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-bold text-slate-100">② 고객 승인 → 결과 조회</h2>
-          {twoWay ? (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#c6982f] bg-[#fdf7ea] px-3 py-2.5 text-[12px] text-[#8a6a1f]">
+          {inputMode === 'customer' ? (
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-[12px] text-indigo-700">
               <Smartphone className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>고객님 휴대폰에서 <b>간편인증을 승인</b>한 뒤 아래 「결과 조회」를 눌러주세요.</span>
+              <span>고객이 <b>링크에서 본인확인</b>을 진행합니다. 완료되면 아래 「최근 요청」에 결과가 <b>자동 표시</b>됩니다(직원 조작 불필요).</span>
             </div>
           ) : (
-            <p className="mt-3 text-[12px] text-slate-500">먼저 왼쪽에서 간편인증을 요청하세요.</p>
+            <>
+              {twoWay ? (
+                <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#c6982f] bg-[#fdf7ea] px-3 py-2.5 text-[12px] text-[#8a6a1f]">
+                  <Smartphone className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>고객님 휴대폰에서 <b>간편인증을 승인</b>한 뒤 아래 「결과 조회」를 눌러주세요.</span>
+                </div>
+              ) : (
+                <p className="mt-3 text-[12px] text-slate-500">먼저 왼쪽에서 간편인증을 요청하세요.</p>
+              )}
+
+              <button type="button" onClick={() => void onConfirm()} disabled={Boolean(busy) || !twoWay}
+                className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-200 transition hover:bg-slate-950 disabled:opacity-50">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                결과 조회
+              </button>
+
+              {result ? (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12px] font-semibold text-emerald-700">
+                  조회가 완료됐습니다. 아래 <b>「조회 결과」</b>에서 상세 내역을 확인하세요.
+                </div>
+              ) : null}
+            </>
           )}
-
-          <button type="button" onClick={() => void onConfirm()} disabled={Boolean(busy) || !twoWay}
-            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-200 transition hover:bg-slate-950 disabled:opacity-50">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            결과 조회
-          </button>
-
-          {result ? (
-            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12px] font-semibold text-emerald-700">
-              조회가 완료됐습니다. 아래 <b>「조회 결과」</b>에서 상세 내역을 확인하세요.
-            </div>
-          ) : null}
         </div>
       </div>
 
@@ -1380,7 +1503,8 @@ export function SpecTable({ cols, records, groupBy = 'year' }: { cols: ColSpec[]
 function StatusBadge({ status }: { status: HealthRecordRequest['status'] }): JSX.Element {
   const map: Record<string, { label: string; cls: string }> = {
     draft: { label: '작성', cls: 'bg-slate-900 text-slate-400' },
-    awaiting_auth: { label: '승인 대기', cls: 'bg-amber-50 text-amber-700' },
+    awaiting_customer: { label: '고객 입력 대기', cls: 'bg-indigo-50 text-indigo-700' },
+    awaiting_auth: { label: '고객 인증 중', cls: 'bg-amber-50 text-amber-700' },
     consented: { label: '동의', cls: 'bg-sky-50 text-sky-700' },
     fetching: { label: '조회 중', cls: 'bg-sky-50 text-sky-700' },
     completed: { label: '완료', cls: 'bg-emerald-50 text-emerald-700' },
