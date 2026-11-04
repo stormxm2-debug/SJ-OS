@@ -64,7 +64,9 @@ export default function HealthInputPage(): JSX.Element {
       setCustomerName(info.customerName ?? '')
       setIdField(info.idField ?? 'rrn')
       setIdLen(info.idLen ?? 13)
-      setPhase(info.status === 'completed' ? 'done' : info.status === 'awaiting_auth' ? 'awaiting' : 'form')
+      // 완료만 완료화면. 그 외(대기·인증중·실패)는 입력폼으로 — 새로고침 시 주민번호가 메모리에
+      // 없어 인증을 이어받을 수 없으므로, 폼에서 다시 입력해 재시도할 수 있게 한다.
+      setPhase(info.status === 'completed' ? 'done' : 'form')
     })()
     return () => {
       if (pollRef.current) window.clearTimeout(pollRef.current)
