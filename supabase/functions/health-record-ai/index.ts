@@ -8,6 +8,7 @@
 // ⚠️ 이름·주민번호 등 직접 식별자는 클라이언트가 제외한 요약만 전송한다(프런트 buildHrAiSummary).
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { safeUnderwritingContext, UNDERWRITING_INSTRUCTIONS } from './underwritingContext.ts'
 
 const CORS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -27,7 +28,8 @@ const SYSTEM = [
   '- 병명·수술·투약 연결은 (진료일·기관) 매칭에 기반한 **추정**임을 전제로 말한다(확정 아님).',
   '- 금액·지급 여부를 단정하지 않는다. "약관·증빙 확인 필요"로 안내한다.',
   '- 한국어로, 간결한 문단/불릿으로. 과장 없이.',
-  '출력은 사람이 읽기 좋은 평문(마크다운 불릿 허용). JSON 으로 감싸지 말 것.'
+  '출력은 사람이 읽기 좋은 평문(마크다운 불릿 허용). JSON 으로 감싸지 말 것.',
+  UNDERWRITING_INSTRUCTIONS
 ].join('\n')
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -47,7 +49,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) return json({ success: false, code: 'ANTHROPIC_API_KEY_MISSING', error: 'ANTHROPIC_API_KEY 시크릿이 설정되지 않았습니다.' }, 503)
 
-  let body: { summary?: unknown; question?: unknown }
+  let body: { summary?: unknown; question?: unknown; underwriting?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -57,9 +59,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const summaryText = JSON.stringify(body.summary).slice(0, 12000)
   const question = String(body.question ?? '').trim().slice(0, 500)
+  const underwritingText = JSON.stringify(safeUnderwritingContext(body.underwriting))
   const userMsg = question
     ? `아래는 고객 건강기록 비식별 요약(JSON)입니다.\n\n${summaryText}\n\n질문: ${question}\n\n요약을 바탕으로 답해 주세요.`
-    : `아래는 고객 건강기록 비식별 요약(JSON)입니다.\n\n${summaryText}\n\n이 고객의 진료 이력을 상담 관점에서 보기 쉽게 정리하고(주요 상병·방문 추이·수술/투약·확인 포인트), 보험 상담 시 확인할 점을 불릿으로 정리해 주세요.`
+    : `아래는 고객 건강기록 비식별 요약(JSON)입니다.\n\n${summaryText}\n\n가입 심사에 영향을 줄 수 있는 기록과 확인할 사항만 간결하게 정리하세요. 자료가 부족하면 추가 확인 필요로 표시하세요.`
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 55000)
@@ -71,7 +74,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         model: Deno.env.get('HEALTH_RECORD_AI_MODEL') || 'claude-sonnet-5',
         max_tokens: 1800,
         system: SYSTEM,
-        messages: [{ role: 'user', content: userMsg }]
+        messages: [{ role: 'user', content: `${userMsg}\n\n선택 보험사 및 등록된 참고 인수·예외 기준(JSON):\n${underwritingText}` }]
       }),
       signal: controller.signal
     })
