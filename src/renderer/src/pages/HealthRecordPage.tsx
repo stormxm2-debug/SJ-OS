@@ -29,6 +29,7 @@ import {
 } from '@renderer/services/health-record/summarize'
 import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
 import HealthRecordWorkspace from '@renderer/components/health-record/HealthRecordWorkspace'
+import SonsonEstimator from '@renderer/components/health-record/SonsonEstimator'
 import { admissionSummary, buildCareRecords, calendarMonthsAgo, filterCareResult, healthErrorHelp, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
 
 /**
@@ -857,6 +858,9 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
       </div>
 
       {!showRaw ? <HealthRecordWorkspace result={filteredResult} requestId={requestId} period={carePeriod} onPeriodChange={setCarePeriod} onContextChange={setUnderwritingContext} /> : null}
+
+      {/* 실손 예상(시나리오) — 수동 입력 기반, 세대 규칙 적용. 금액을 임의로 지어내지 않는다. */}
+      {!showRaw ? <SonsonEstimator /> : null}
 
       {/* 주목 신호 하이라이트(입원·수술·통원 7회↑·고액) */}
       {sections.length && !showRaw && highlights.hasAny ? (
