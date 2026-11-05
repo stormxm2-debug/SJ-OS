@@ -180,7 +180,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (mode === 'start') {
       // 링크를 잠그지 않고 다시 입력할 수 있게 둔다(만료 전까지). 오류 성격별로 안내를 구분:
       //  - 주민번호/생년월일 오류 → 고객이 다시 입력
-      //  - 조회기간 등 설정 오류 → 고객이 고칠 수 없음(담당 설계사 문의)
+      //  - CF-13001(조회일/기간) → 기간 설정은 정상(당일 기준 5년)이므로, 실제로는 기관
+      //    야간·점검 시간대 조회 불가일 때가 많다 → 낮(업무시간) 재시도를 안내(링크는 유지).
       await patch({ status: 'awaiting_customer', two_way: null, error: `${out.code} ${out.message}`.trim(), request_meta: bumpedMeta })
       const msg = `${out.message}`
       const isIdentity = out.code === 'CF-13000' || /주민등록번호|생년월일|본인확인|identity/.test(msg)
@@ -188,7 +189,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const userMsg = isIdentity
         ? '입력하신 주민등록번호(또는 생년월일)가 올바르지 않습니다. 다시 확인해 입력해 주세요.'
         : isPeriod
-          ? '조회 기간 설정에 문제가 있어 진행할 수 없습니다. 담당 설계사에게 문의해 주세요.'
+          ? '지금은 조회가 어렵습니다. 심평원 등 기관 점검·야간 시간대일 수 있으니 낮(업무시간)에 다시 시도해 주세요. 계속되면 담당 설계사에게 문의해 주세요.'
           : (msg || '조회에 실패했습니다. 잠시 후 다시 시도해 주세요.')
       return json({ ok: false, status: 'retry', code: out.code, error: userMsg })
     }
