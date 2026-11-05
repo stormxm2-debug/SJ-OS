@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ShieldCheck, Send, RefreshCw, Loader2, Smartphone, AlertTriangle, Eye, EyeOff, ChevronDown, Link2, Copy, Check, Share2 } from 'lucide-react'
 import {
   startHealthRecord,
@@ -20,6 +20,7 @@ import {
   groupSurgeryOccasions,
   EPISODE_GAP_DAYS,
   BIG_SELFPAY_THRESHOLD,
+  normalizeDisease,
   type GroupBy,
   type DiseaseSummary,
   type DiseaseEpisode,
@@ -27,6 +28,8 @@ import {
   type PartGroup
 } from '@renderer/services/health-record/summarize'
 import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
+import HealthRecordWorkspace from '@renderer/components/health-record/HealthRecordWorkspace'
+import { admissionSummary, buildCareRecords, calendarMonthsAgo, filterCareResult, healthErrorHelp, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
 
 /**
  * 고객 건강기록 조회 — CODEF 간편인증. 상품(건강보험공단/심평원)별로 입력·요청변수가 달라
@@ -124,9 +127,7 @@ const TELECOMS: { v: string; label: string }[] = [
 
 const digits = (s: string): string => s.replace(/[^\d]/g, '')
 const monthsAgoStr = (n: number): string => {
-  const d = new Date()
-  d.setMonth(d.getMonth() - n)
-  return d.toISOString().slice(0, 10).replace(/-/g, '')
+  return calendarMonthsAgo(n)
 }
 
 type Row = Record<string, unknown>
@@ -270,6 +271,14 @@ export default function HealthRecordPage(): JSX.Element {
   const [includeChild, setIncludeChild] = useState(false) // childYN: 자녀 포함
 
   const [busy, setBusy] = useState<string | null>(null)
+  const [busySeconds, setBusySeconds] = useState(0)
+  useEffect(() => {
+    setBusySeconds(0)
+    if (!busy) return
+    const start = Date.now()
+    const timer = window.setInterval(() => setBusySeconds(Math.floor((Date.now()-start)/1000)), 1000)
+    return () => window.clearInterval(timer)
+  }, [busy])
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [configNote, setConfigNote] = useState<string | null>(null)
@@ -280,7 +289,7 @@ export default function HealthRecordPage(): JSX.Element {
   const [history, setHistory] = useState<HealthRecordRequest[]>([])
 
   // 주민번호 입력 주체: 직원 직접 / 고객에게 링크
-  const [inputMode, setInputMode] = useState<'staff' | 'customer'>('staff')
+  const [inputMode, setInputMode] = useState<'staff' | 'customer'>('customer')
   const [inviteBusy, setInviteBusy] = useState(false)
   const [invite, setInvite] = useState<{ url: string; smsSent: boolean } | null>(null)
   const [copied, setCopied] = useState(false)
@@ -344,8 +353,8 @@ export default function HealthRecordPage(): JSX.Element {
   const maxEnd = monthsAgoStr(period.recentMonths)
   const validPeriod =
     !needDate ||
-    (digits(startDate).length === 8 &&
-      digits(endDate).length === 8 &&
+    (validCareDate(digits(startDate)) &&
+      validCareDate(digits(endDate)) &&
       digits(startDate) < digits(endDate) &&
       digits(startDate) >= minStart &&
       digits(endDate) <= maxEnd)
@@ -383,6 +392,7 @@ export default function HealthRecordPage(): JSX.Element {
       }
       setRequestId(r.requestId)
       setTwoWay(r.twoWay)
+      if (r.status === 'completed' && r.result) setResult(r.result)
       setNotice(r.message ?? '고객님 휴대폰에서 간편인증을 승인해 주세요. 승인 후 아래 「결과 조회」를 누르세요.')
       void refresh()
     } catch {
@@ -423,6 +433,7 @@ export default function HealthRecordPage(): JSX.Element {
         return
       }
       setResult(r.result ?? {})
+      setRequestId(r.requestId ?? requestId)
       setTwoWay(undefined) // 2-way 세션은 1회용 — 성공 후 재조회 방지(새 조회는 다시 요청).
       setNotice('건강기록을 받아왔습니다.')
       void refresh()
@@ -490,7 +501,7 @@ export default function HealthRecordPage(): JSX.Element {
 
   // 고객 입력/인증 대기 건이 있으면 결과가 자동 반영되게 가볍게 폴링.
   useEffect(() => {
-    const anyPending = history.some((h) => h.status === 'awaiting_customer' || h.status === 'awaiting_auth')
+    const anyPending = history.some((h) => h.status === 'awaiting_customer' || h.status === 'awaiting_auth' || h.status === 'fetching' || h.status === 'consented')
     if (!anyPending) return
     const id = window.setInterval(() => void refresh(), 10000)
     return () => window.clearInterval(id)
@@ -503,6 +514,7 @@ export default function HealthRecordPage(): JSX.Element {
     setError(null)
     setConfigNote(null)
     setTwoWay(undefined)
+    setRequestId(h.id)
     setResult(h.result)
     setNotice(`저장된 결과를 불러왔습니다 — ${h.customerName || '고객'} · ${new Date(h.createdAt).toLocaleDateString('ko-KR')}`)
     setTimeout(() => document.getElementById('hr-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
@@ -729,12 +741,13 @@ export default function HealthRecordPage(): JSX.Element {
 
       {result ? (
         <div id="hr-result">
-          <ResultReport result={result} />
+          <ResultReport key={requestId ?? 'unsaved'} result={result} requestId={requestId} />
         </div>
       ) : null}
 
       {notice ? <div className="rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[12px] font-semibold text-emerald-700">{notice}</div> : null}
-      {error ? <div className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[12px] font-semibold text-rose-700">{error}</div> : null}
+      {busy ? <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-800"><Loader2 className="h-4 w-4 shrink-0 animate-spin"/><div><b>{busy}</b> · {busySeconds}초 경과<p className="mt-1 text-[11px]">기관 응답 대기 중입니다. 진행률을 임의로 표시하지 않습니다. 시간이 초과되면 아래 최근 요청을 먼저 확인하세요.</p></div></div> : null}
+      {error ? <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[12px] text-rose-700"><b>{healthErrorHelp(error).title}</b><p className="mt-1">{error}</p><p className="mt-1 text-[11px]">{healthErrorHelp(error).action}</p></div> : null}
 
       {/* 최근 요청 — 완료 건은 30일간 저장되어 다시 열람 가능 */}
       <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
@@ -760,6 +773,7 @@ export default function HealthRecordPage(): JSX.Element {
                   <span className="shrink-0 text-slate-500">{new Date(h.createdAt).toLocaleString('ko-KR')}</span>
                   {canViewRow ? <span className="shrink-0 text-[10px] font-semibold text-slate-400">{daysLeft}일 남음</span> : null}
                   <StatusBadge status={h.status} />
+                  {h.status === 'failed' && h.error ? <span title={healthErrorHelp(h.error).action} className="max-w-44 truncate text-[10px] text-rose-600">{healthErrorHelp(h.error).title}</span> : null}
                   {canViewRow ? (
                     <button type="button" onClick={() => viewSaved(h)}
                       className="shrink-0 rounded-lg border border-slate-700 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-200 transition hover:bg-slate-950">
@@ -780,16 +794,20 @@ export default function HealthRecordPage(): JSX.Element {
 
 /** 결과 렌더러 — 응답 안의 모든 목록을 섹션별 표로. 각 섹션은 데이터 모양으로
  *  진료(카테고리 보고서)/약품·기타(상세 표)를 자동 구분한다. */
-export function ResultReport({ result }: { result: Record<string, unknown> }): JSX.Element {
+export function ResultReport({ result, requestId }: { result: Record<string, unknown>; requestId?: string }): JSX.Element {
   const [showRaw, setShowRaw] = useState(false)
+  const [carePeriod, setCarePeriod] = useState<CarePeriod>('all')
+  const filteredResult = useMemo(() => filterCareResult(result, carePeriod), [result, carePeriod])
+  const [underwritingContext, setUnderwritingContext] = useState<HrUnderwritingContext>({ insurers: [], guides: [], exceptions: [] })
   const [view, setView] = useState<'episode' | 'sections' | 'disease'>('episode')
   const [groupBy, setGroupBy] = useState<GroupBy>('year')
-  const sections = useMemo(() => collectSections(result), [result])
+  const sections = useMemo(() => collectSections(filteredResult), [filteredResult])
   const raw = useMemo(() => JSON.stringify(result, null, 2), [result])
   const totalRows = sections.reduce((n, s) => n + s.rows.length, 0)
-  const diseases = useMemo(() => summarizeByDisease(collectHrSections(result)), [result])
-  const episodes = useMemo(() => summarizeEpisodes(collectHrSections(result)), [result])
-  const highlights = useMemo(() => buildHighlights(collectHrSections(result)), [result])
+  const diseases = useMemo(() => summarizeByDisease(collectHrSections(filteredResult)), [filteredResult])
+  const episodes = useMemo(() => summarizeEpisodes(collectHrSections(filteredResult)), [filteredResult])
+  const highlights = useMemo(() => buildHighlights(collectHrSections(filteredResult)), [filteredResult])
+  const careRecords = useMemo(() => buildCareRecords(filteredResult), [filteredResult])
   const userNm = useMemo(() => {
     for (const s of sections) {
       const n = userNameOf(s.rows)
@@ -803,15 +821,23 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
   const [aiAnswer, setAiAnswer] = useState<string | null>(null)
   const [aiErr, setAiErr] = useState<string | null>(null)
   const [aiQ, setAiQ] = useState('')
+  const aiGeneration = useRef(0)
+  useEffect(() => {
+    ++aiGeneration.current
+    setAiAnswer(null); setAiErr(null); setAiBusy(false)
+    return () => { ++aiGeneration.current }
+  }, [result, carePeriod, underwritingContext])
   const runAi = async (): Promise<void> => {
+    const generation = ++aiGeneration.current
     setAiBusy(true)
     setAiErr(null)
     try {
-      const r = await askHealthRecordAi(result, aiQ)
+      const r = await askHealthRecordAi(filteredResult, aiQ, underwritingContext)
+      if (aiGeneration.current !== generation) return
       if (r.ok) setAiAnswer(r.answer ?? '')
       else { setAiAnswer(null); setAiErr(r.error ?? 'AI 요청 실패') }
     } finally {
-      setAiBusy(false)
+      if (aiGeneration.current === generation) setAiBusy(false)
     }
   }
 
@@ -823,12 +849,14 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
           {userNm ? <span className="text-slate-400"> · {userNm}</span> : null}
           {totalRows ? <span className="text-slate-400"> · 총 {totalRows}건</span> : null}
         </h2>
-        {sections.length ? (
+        {Object.keys(result).length ? (
           <button type="button" onClick={() => setShowRaw((v) => !v)} className="text-[11px] font-semibold text-slate-400 hover:text-slate-200">
             {showRaw ? '표로 보기' : '원본(JSON) 보기'}
           </button>
         ) : null}
       </div>
+
+      {!showRaw ? <HealthRecordWorkspace result={filteredResult} requestId={requestId} period={carePeriod} onPeriodChange={setCarePeriod} onContextChange={setUnderwritingContext} /> : null}
 
       {/* 주목 신호 하이라이트(입원·수술·통원 7회↑·고액) */}
       {sections.length && !showRaw && highlights.hasAny ? (
@@ -841,7 +869,7 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
             <BigChip key={d.disease} tone="amber">통원 {d.outpatientVisits}회 · {d.disease}</BigChip>
           ))}
           {highlights.bigSelfPay.map((d) => (
-            <BigChip key={`sp-${d.disease}`} tone="slate">고액 {won(d.selfPayTotal)} · {d.disease}</BigChip>
+            <BigChip key={`sp-${d.disease}`} tone="amber">고액 {won(d.selfPayTotal)} · {d.disease}</BigChip>
           ))}
           <span className="w-full text-[10px] text-rose-700/70">보험 상담 시 확인 권장 신호(추정). 입원·수술·잦은 통원·고액 진료는 담보 해당 여부를 약관으로 확인하세요.</span>
         </div>
@@ -863,7 +891,7 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
           <button type="button" onClick={() => void runAi()} disabled={aiBusy}
             className="ml-auto inline-flex items-center gap-1 rounded-lg bg-[#0e1e3a] px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-50">
             {aiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 text-[#e6c877]" />}
-            AI 요약
+            AI 통합 인수 요약
           </button>
         </div>
       ) : null}
@@ -883,11 +911,13 @@ export function ResultReport({ result }: { result: Record<string, unknown> }): J
         </div>
       ) : null}
 
-      {sections.length === 0 || showRaw ? (
+      {showRaw ? (
         <pre className="mt-2 max-h-80 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-100">{raw}</pre>
+      ) : sections.length === 0 ? (
+        <p className="mt-3 text-[12px] text-slate-500">선택한 기간에 표시할 기록이 없습니다. ‘조회 전체’ 또는 원본 보기를 확인하세요.</p>
       ) : view === 'episode' ? (
         <div className="mt-3">
-          <EpisodeView episodes={episodes} />
+          <EpisodeView episodes={episodes} records={careRecords} />
         </div>
       ) : view === 'disease' ? (
         <div className="mt-3">
@@ -1097,7 +1127,7 @@ function DiseaseSummaryView({ diseases }: { diseases: DiseaseSummary[] }): JSX.E
  * 에피소드 묶음 — 같은 병명 + 비슷한 시기(약 EPISODE_GAP_DAYS일 이내)를 한 카드로.
  * 카드를 누르면 방문·수술·투약 상세가 펼쳐진다(기본 접힘 — 한눈에 보기 쉽게).
  */
-function EpisodeView({ episodes }: { episodes: DiseaseEpisode[] }): JSX.Element {
+function EpisodeView({ episodes, records }: { episodes: DiseaseEpisode[]; records: CareRecord[] }): JSX.Element {
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   if (!episodes.length) return <p className="text-[12px] text-slate-500">상병명이 있는 진료내역이 없어 묶음을 만들 수 없습니다.</p>
   const idOf = (e: DiseaseEpisode, i: number): string => `${e.disease}|${e.firstDate}|${e.lastDate}|${i}`
@@ -1122,6 +1152,7 @@ function EpisodeView({ episodes }: { episodes: DiseaseEpisode[] }): JSX.Element 
           const occasions = groupSurgeryOccasions(e.surgeries)
           const surgCount = occasions.length
           const emphasize = e.inpatient || surgCount > 0 || e.selfPayTotal >= BIG_SELFPAY_THRESHOLD
+          const admission = admissionSummary(records.filter(r=>normalizeDisease(r.disease)===e.disease && e.visits.some(v=>v.date===r.date && v.hospital===r.hospital)))
           return (
             <li key={id} className={`overflow-hidden rounded-xl border bg-white shadow-sm ${emphasize ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-800'}`}>
               <button type="button" onClick={() => toggle(id)} aria-expanded={isOpen} className="flex w-full items-start gap-2 p-3 text-left hover:bg-[#f8fafc]">
@@ -1130,7 +1161,7 @@ function EpisodeView({ episodes }: { episodes: DiseaseEpisode[] }): JSX.Element 
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[13px] font-bold text-slate-100">{e.disease}</span>
                     <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-white">방문 {e.visitCount}회</span>
-                    {e.inpatient ? <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-extrabold text-white">입원</span> : null}
+                    {e.inpatient ? <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-extrabold text-white">입원 {admission.knownDays?`${admission.knownDays}일`:'일수 확인 필요'}{admission.knownDays && admission.unknown?' + 미확인':''}</span> : null}
                     {surgCount ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200">수술 {surgCount}회</span> : null}
                     {e.selfPayTotal >= BIG_SELFPAY_THRESHOLD ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-800">고액</span> : null}
                   </div>

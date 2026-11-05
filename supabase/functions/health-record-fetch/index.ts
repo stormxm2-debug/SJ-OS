@@ -147,7 +147,7 @@ Deno.serve(async (req: Request) => {
     const res = await codef.requestProduct(productUrl, EasyCodefConstant.SERVICE_TYPE_DEMO, param)
     const out = classify(res)
     // 진단 로그(민감 의료정보는 제외 — 응답 타입과 코드/메시지만).
-    console.log('[health-record] codef', { resType: typeof res, kind: out.kind, code: out.code, message: out.message, mode: body.mode })
+    console.log('[health-record] codef', { resType: typeof res, kind: out.kind, code: out.code, mode: body.mode })
 
     // 4) 상태/결과 저장 (health_record_requests, RLS: 본인/owner·admin)
     const persist = async (patch: Record<string, unknown>): Promise<string | null> => {

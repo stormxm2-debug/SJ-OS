@@ -100,7 +100,7 @@ async function call(payload: Record<string, unknown>, timeoutMs = 150000): Promi
     }
   } catch (e) {
     const aborted = e instanceof DOMException && e.name === 'AbortError'
-    return { ok: false, error: aborted ? '시간이 초과되었습니다. 다시 시도해 주세요.' : '서버에 연결할 수 없습니다.' }
+    return { ok: false, code: aborted ? 'HEALTH_TIMEOUT' : 'HEALTH_NETWORK', error: aborted ? '조회 응답 시간이 초과되었습니다. 서버에서 완료되었을 수 있으므로 최근 요청을 새로고침해 확인하세요.' : '서버에 연결할 수 없습니다. 최근 요청에서 진행 상태를 확인하세요.' }
   } finally {
     window.clearTimeout(timer)
   }

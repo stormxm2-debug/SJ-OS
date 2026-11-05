@@ -11,6 +11,7 @@ import {
   initSupabaseClient
 } from '@renderer/services/commercial/supabaseClient'
 import { buildHrAiSummary, collectHrSections } from './summarize'
+import type { HrUnderwritingContext } from './careWorkspace'
 
 async function bearer(): Promise<string | undefined> {
   try {
@@ -33,7 +34,7 @@ export interface HrAiResult {
 }
 
 /** 건강기록 result(원본) + 선택 질문 → AI 답변. 전송 전 비식별 요약으로 변환. */
-export async function askHealthRecordAi(result: unknown, question?: string): Promise<HrAiResult> {
+export async function askHealthRecordAi(result: unknown, question?: string, context?: HrUnderwritingContext): Promise<HrAiResult> {
   const base = getFunctionsBaseUrl()
   const anon = getSupabaseAnonKey()
   if (!base || !anon) return { ok: false, disabled: true, error: 'AI 기능은 로그인·서버 연결 후 사용할 수 있습니다.' }
@@ -50,7 +51,11 @@ export async function askHealthRecordAi(result: unknown, question?: string): Pro
     const res = await fetch(`${base}/health-record-ai`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ summary, question: question?.trim() || undefined }),
+      body: JSON.stringify({ summary, question: question?.trim() || undefined, underwriting: context ? {
+        insurers: context.insurers,
+        guides: context.guides.filter(g=>g.verified),
+        exceptions: context.exceptions.filter(e=>e.verified).map(e=>({ insurer:e.insurer, disease:e.disease, productClass:e.productClass, minElapsed:e.minElapsed, treatmentPeriod:e.treatmentPeriod, surgery:e.surgery, note:e.note, updatedAt:e.updatedAt, verified:true }))
+      } : undefined }),
       signal: controller.signal
     })
     const data = (await res.json().catch(() => null)) as { success?: boolean; error?: string; code?: string; result?: { answer?: unknown } } | null
