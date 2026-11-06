@@ -29,9 +29,9 @@ function isSupabase(): boolean {
   return getBackendConfig().mode === 'supabase'
 }
 
-export async function listCustomers(): Promise<CustomerListResult> {
+export async function listCustomers(opts?: { mineOnly?: boolean }): Promise<CustomerListResult> {
   if (isSupabase()) {
-    const res = await supabaseCustomerAdapter.listCustomers()
+    const res = await supabaseCustomerAdapter.listCustomers(opts)
     if (res.ok) return { ok: true, mode: 'supabase', customers: res.data }
     return { ok: false, mode: res.reason === 'no-session' ? 'no-session' : res.reason === 'not-configured' ? 'not-configured' : 'supabase', customers: [], error: res.message }
   }

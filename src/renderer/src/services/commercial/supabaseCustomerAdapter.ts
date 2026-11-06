@@ -87,11 +87,16 @@ function mapRow(row: Record<string, unknown>, ownerNames?: Map<string, string>):
 }
 
 export const supabaseCustomerAdapter = {
-  async listCustomers(): Promise<AdapterResult<CustomerRecord[]>> {
+  async listCustomers(opts?: { mineOnly?: boolean }): Promise<AdapterResult<CustomerRecord[]>> {
     const client = await getClient()
     if (!client) return err('not-configured', '서버 설정이 없습니다.')
-    if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
-    const { data, error } = await client.from('customers').select(SELECT_COLS).order('updated_at', { ascending: false })
+    const uid = await currentUserId(client)
+    if (!uid) return err('no-session', '로그인 세션이 없습니다.')
+    // mineOnly: 본인(owner_staff_id = 내 uid) 고객만. (RLS는 그대로, 표시 범위만 좁힘)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query: any = client.from('customers').select(SELECT_COLS)
+    if (opts?.mineOnly) query = query.eq('owner_staff_id', uid)
+    const { data, error } = await query.order('updated_at', { ascending: false })
     if (error) return err('error', '고객 목록을 불러오지 못했습니다.')
     const rows = (data ?? []) as Array<Record<string, unknown>>
     const ownerNames = await ownerNamesFor(client, rows)
