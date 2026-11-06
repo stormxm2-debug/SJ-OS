@@ -98,7 +98,17 @@ export function makeRunnerDeps(config: RemoteRunnerConfig, workspace: string, st
     async runTaskOnBranch({ title, body, branch }): Promise<RunTaskResult> {
       const dirty = await git(['status', '--short'], workspace)
       if (dirty.code !== 0) return { ok: false, changedFiles: [], checks: {}, reason: 'git status 실패' }
-      if (dirty.out.trim().length > 0) return { ok: false, changedFiles: [], checks: {}, reason: '작업 폴더에 미커밋 변경이 있어 실행하지 않았습니다.' }
+      if (dirty.out.trim().length > 0) {
+        // 더럽다면: 이전 원격작업(claude/remote-*)의 잔여물이면 자동 정리하고 진행,
+        // 그 외(사용자가 main 등에서 작업 중)면 훼손하지 않도록 거부.
+        const cur = (await git(['branch', '--show-current'], workspace)).out.trim()
+        if (cur.startsWith('claude/remote-')) {
+          await git(['checkout', '-f', 'main'], workspace)
+          await git(['clean', '-fd'], workspace)
+        } else {
+          return { ok: false, changedFiles: [], checks: {}, reason: '작업 폴더에 미커밋 변경이 있어 실행하지 않았습니다.' }
+        }
+      }
       await git(['fetch', 'origin', 'main'], workspace)
       const co = await git(['checkout', '-B', branch, 'origin/main'], workspace)
       if (co.code !== 0) return { ok: false, changedFiles: [], checks: {}, reason: `브랜치 생성 실패: ${branch}` }
@@ -109,10 +119,15 @@ export function makeRunnerDeps(config: RemoteRunnerConfig, workspace: string, st
       const changed = await git(['status', '--short'], workspace)
       const changedFiles = changed.out.split(/\r?\n/).map((l) => l.slice(3).trim()).filter(Boolean)
       if (done?.status !== 'succeeded') return { ok: false, changedFiles, checks, reason: done?.errorSummary ?? '러너 작업이 성공하지 못했습니다.' }
-      if (changedFiles.length) {
-        await git(['add', '--', ...changedFiles], workspace)
-        await git(['commit', '-m', `[remote-task] ${title}`], workspace)
-      }
+      if (!changedFiles.length) return { ok: false, changedFiles, checks, reason: '변경된 파일이 없습니다(작업이 파일을 만들지 못함).' }
+      const add = await git(['add', '--', ...changedFiles], workspace)
+      if (add.code !== 0) return { ok: false, changedFiles, checks, reason: 'git add 실패' }
+      // 커밋: PC 전역 git 설정에 의존하지 않도록 작성자 정보를 직접 주입(무조건 커밋되게).
+      const commit = await git(
+        ['-c', 'user.name=SJ Remote Runner', '-c', 'user.email=remote-runner@users.noreply.github.com', 'commit', '-m', `[remote-task] ${title}`],
+        workspace
+      )
+      if (commit.code !== 0) return { ok: false, changedFiles, checks, reason: `커밋 실패: ${(commit.err || commit.out).slice(-200)}` }
       return { ok: true, changedFiles, checks }
     },
     async pushBranch(branch): Promise<{ ok: boolean; error?: string }> {
