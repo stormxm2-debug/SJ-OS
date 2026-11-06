@@ -259,17 +259,27 @@ async function resolveStaffNames(ids: string[]): Promise<Record<string, string>>
   }
 }
 
-/** 최근 건강기록 요청 목록(최신순). customerId 를 주면 그 고객 것만. */
-export async function listHealthRecords(customerId?: string): Promise<{ ok: boolean; items: HealthRecordRequest[]; error?: string }> {
+/**
+ * 최근 건강기록 요청 목록(최신순).
+ * - FC별 분리: 로그인한 본인(staff_id = 내 uid)이 조회한 것만 반환한다(다른 FC 것과 안 겹침).
+ * - customerId 를 주면 그 고객 것만, nameQuery 를 주면 고객명 부분검색(대소문자 무시).
+ */
+export async function listHealthRecords(customerId?: string, nameQuery?: string): Promise<{ ok: boolean; items: HealthRecordRequest[]; error?: string }> {
   try {
     await initSupabaseClient()
     const db = getSupabaseClient() as Db
     if (!db) return { ok: false, items: [] }
+    // 현재 로그인 사용자 — 본인 조회분만 보이도록 staff_id 로 한정.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const uid = (await (getSupabaseClient() as any)?.auth?.getUser?.())?.data?.user?.id as string | undefined
     const cols = 'id, customer_id, customer_name, product, status, created_at, staff_id, result, error'
-    const q = db.from('health_record_requests').select(cols)
-    const { data, error } = customerId
-      ? await q.eq('customer_id', customerId).order('created_at', { ascending: false }).limit(50)
-      : await q.order('created_at', { ascending: false }).limit(50)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q: any = db.from('health_record_requests').select(cols)
+    if (uid) q = q.eq('staff_id', uid)
+    if (customerId) q = q.eq('customer_id', customerId)
+    const nq = (nameQuery ?? '').replace(/[%_]/g, ' ').trim()
+    if (nq) q = q.ilike('customer_name', `%${nq}%`)
+    const { data, error } = await q.order('created_at', { ascending: false }).limit(50)
     if (error) return { ok: false, items: [], error: error.message }
     const items = ((data as Row[]) ?? []).map(mapRow)
     const names = await resolveStaffNames(items.map((i) => i.staffId ?? '').filter(Boolean) as string[])
