@@ -10,7 +10,7 @@
 
 import { DANGEROUS_COMMAND_PATTERNS } from './claudeCode'
 
-export type ClaudeAutoBuildSource = 'jarvis' | 'developer-prompt-center' | 'universal-app-builder'
+export type ClaudeAutoBuildSource = 'jarvis' | 'developer-prompt-center' | 'universal-app-builder' | 'remote-task'
 
 export type ClaudeAutoBuildStatus =
   | 'draft'
