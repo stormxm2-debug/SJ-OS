@@ -116,11 +116,58 @@ export interface ProcessedEntry {
 }
 export type ProcessedState = Record<string, ProcessedEntry>
 
-/** 이미 '선점/실행/완료'된 작업인가(중복 실행 방지). 실패/거부는 재시도 가능으로 둔다. */
-export function isAlreadyHandled(state: ProcessedState, taskId: string): boolean {
+/**
+ * 선점/실행 상태가 '중단된 채 묶였다'고 보기까지의 시간(ms).
+ * 러너 1건 실행은 최대 ~20분(waitForJob) 이므로 그보다 넉넉히 길게 둔다.
+ * 이 시간이 지난 claimed/running 은 (앱이 실행 도중 종료된 잔여물로 보고) 재시도 가능으로 전환.
+ */
+export const STALE_CLAIM_MS = 30 * 60 * 1000
+
+/**
+ * 이미 '선점/실행/완료'된 작업인가(중복 실행 방지).
+ * - succeeded: 영구히 완료(재실행 안 함).
+ * - claimed/running: 최근이면 진행 중으로 보고 중복 방지(true). 단, updatedAt 이
+ *   staleMs 보다 오래됐으면 '앱이 실행 도중 종료돼 묶인 잔여물'로 보고 재시도 허용(false).
+ *   updatedAt 을 해석할 수 없으면(구버전/비정상) 보수적으로 중복으로 간주(true).
+ * - failed/rejected: 재시도 가능(false).
+ */
+export function isAlreadyHandled(
+  state: ProcessedState,
+  taskId: string,
+  nowMs: number = Date.now(),
+  staleMs: number = STALE_CLAIM_MS
+): boolean {
   const e = state[taskId]
   if (!e) return false
-  return e.status === 'claimed' || e.status === 'running' || e.status === 'succeeded'
+  if (e.status === 'succeeded') return true
+  if (e.status === 'claimed' || e.status === 'running') {
+    const t = Date.parse(e.updatedAt)
+    if (!Number.isFinite(t)) return true // 나이 불명 → 보수적으로 중복 간주
+    return nowMs - t < staleMs // 최근=진행 중(중복), 오래됨=묶인 잔여물(재시도)
+  }
+  return false // failed/rejected
+}
+
+/**
+ * 재시작 시 정리용: '중단된 채 묶인' claimed/running 항목을 failed(재시도 대상)로 전환한다.
+ * 러너가 '새로' 시작되는 시점엔 실제 진행 중인 작업이 없으므로, 남아 있는 선점/실행 상태는
+ * 이전 프로세스가 실행 도중 종료된 잔여물이다. 이를 즉시 재시도 가능하게 만든다(영구 skip 방지).
+ * 순수 함수 — 바뀐 상태와 바뀐 taskId 목록을 반환한다.
+ */
+export function markInterruptedAsFailed(
+  state: ProcessedState,
+  reason = '앱 재시작으로 중단됨(재시도 대상)',
+  nowIso: string = new Date().toISOString()
+): { state: ProcessedState; changed: string[] } {
+  const out: ProcessedState = { ...state }
+  const changed: string[] = []
+  for (const [id, e] of Object.entries(state)) {
+    if (e.status === 'claimed' || e.status === 'running') {
+      out[id] = { ...e, status: 'failed', updatedAt: nowIso, reason }
+      changed.push(id)
+    }
+  }
+  return { state: out, changed }
 }
 
 export function withProcessed(state: ProcessedState, entry: ProcessedEntry): ProcessedState {

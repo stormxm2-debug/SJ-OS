@@ -13,7 +13,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { spawnTool, createAutoBuildJob, runAutoBuildJob, getAutoBuildJob } from './claudeAutoBuild'
-import { classifyGhError, type ProcessedState } from '../shared/remoteTask'
+import { classifyGhError, markInterruptedAsFailed, type ProcessedState } from '../shared/remoteTask'
 import { pollOnce, DEFAULT_REMOTE_CONFIG, type RemoteDeps, type RemoteRunnerConfig, type RemoteRunnerStatus, type ListResult, type RunTaskResult } from '../shared/remoteTaskPoll'
 
 export { DEFAULT_REMOTE_CONFIG } from '../shared/remoteTaskPoll'
@@ -159,6 +159,16 @@ export function startRemoteTaskRunner(config: RemoteRunnerConfig, workspace: str
     return { enabled: config.enabled, active: false, runnerId: config.runnerId, issueNumber: config.issueNumber, lastActions: ['not-started: enabled/runnerId 필요'] }
   }
   const store = createStateStore(dataDir)
+  // 재시작 정리: 러너가 '새로' 시작되는 시점엔 진행 중 작업이 없으므로, 남아 있는
+  // claimed/running 은 이전 프로세스가 실행 도중 종료된 잔여물이다. 즉시 failed(재시도 대상)로
+  // 전환해 영구 skip 을 막는다. 단, 직전 틱이 아직 await 중이면(수동 재시작 경합) 건너뛴다.
+  if (!ticking) {
+    const { state: swept, changed } = markInterruptedAsFailed(store.load())
+    if (changed.length) {
+      store.save(swept)
+      lastActions = [`reclaim-interrupted:${changed.join(',')}`]
+    }
+  }
   const deps = makeRunnerDeps(config, workspace, (s) => store.save(s))
   const tick = async (): Promise<void> => {
     if (ticking) return

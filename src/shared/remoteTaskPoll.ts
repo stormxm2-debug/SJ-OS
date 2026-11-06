@@ -107,7 +107,8 @@ export async function pollOnce(config: RemoteRunnerConfig, state: ProcessedState
       continue
     }
     const task = d!
-    if (isAlreadyHandled(cur, task.taskId)) {
+    const nowMs = Date.parse(deps.now())
+    if (isAlreadyHandled(cur, task.taskId, Number.isFinite(nowMs) ? nowMs : Date.now())) {
       actions.push(`skip-dup:${task.taskId}`)
       continue
     }
