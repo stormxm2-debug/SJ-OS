@@ -203,7 +203,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'app-builder', label: '범용 앱 빌더', icon: Boxes, view: { name: 'app-builder' }, match: ['app-builder'] },
       { key: 'workers', label: 'AI 워커', icon: Users, view: { name: 'workers' }, match: ['workers', 'worker'] },
       { key: 'backlog', label: '제품 백로그', icon: ClipboardList, view: { name: 'backlog' }, match: ['backlog'] },
-      { key: 'projects', label: '프로젝트', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] }
+      { key: 'projects', label: '프로젝트', icon: FolderKanban, view: { name: 'projects' }, match: ['projects'] },
+      { key: 'remote-runner', label: '원격 작업 수신', icon: Server, view: { name: 'remote-runner' }, match: ['remote-runner'] }
     ]
   },
   {

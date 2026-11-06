@@ -14,10 +14,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { spawnTool, createAutoBuildJob, runAutoBuildJob, getAutoBuildJob } from './claudeAutoBuild'
 import { classifyGhError, type ProcessedState } from '../shared/remoteTask'
-import { pollOnce, DEFAULT_REMOTE_CONFIG, type RemoteDeps, type RemoteRunnerConfig, type ListResult, type RunTaskResult } from '../shared/remoteTaskPoll'
+import { pollOnce, DEFAULT_REMOTE_CONFIG, type RemoteDeps, type RemoteRunnerConfig, type RemoteRunnerStatus, type ListResult, type RunTaskResult } from '../shared/remoteTaskPoll'
 
 export { DEFAULT_REMOTE_CONFIG } from '../shared/remoteTaskPoll'
-export type { RemoteRunnerConfig } from '../shared/remoteTaskPoll'
+export type { RemoteRunnerConfig, RemoteRunnerStatus } from '../shared/remoteTaskPoll'
 
 // --- 상태 영속화(중복·재시작) ----------------------------------------------
 export function createStateStore(dir: string): { load(): ProcessedState; save(state: ProcessedState): void; path: string } {
@@ -137,14 +137,6 @@ export function makeRunnerDeps(config: RemoteRunnerConfig, workspace: string, st
 let timer: ReturnType<typeof setInterval> | null = null
 let lastActions: string[] = []
 let ticking = false
-
-export interface RemoteRunnerStatus {
-  enabled: boolean
-  active: boolean
-  runnerId: string
-  issueNumber: number
-  lastActions: string[]
-}
 
 export function startRemoteTaskRunner(config: RemoteRunnerConfig, workspace: string, dataDir: string): RemoteRunnerStatus {
   stopRemoteTaskRunner()

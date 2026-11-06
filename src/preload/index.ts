@@ -28,6 +28,7 @@ import type {
   SafeCheckKind,
   SafeCheckResult
 } from '@shared/claudeAutoBuild'
+import type { RemoteRunnerConfig, RemoteRunnerStatus } from '@shared/remoteTaskPoll'
 import type {
   ParallelBuildJob,
   ParallelJobUpdate,
@@ -359,6 +360,15 @@ const api = {
         ipcRenderer.removeListener('company:startup:state', handler)
       }
     }
+  },
+  // 원격 작업 수신 러너(이슈 #76) — 설정/상태/시작/정지. 자격정보는 다루지 않음(PC gh/git 재사용).
+  remoteTask: {
+    getConfig: (): Promise<RemoteRunnerConfig> => ipcRenderer.invoke('remote-task:get-config'),
+    setConfig: (patch: Partial<RemoteRunnerConfig>): Promise<RemoteRunnerConfig> =>
+      ipcRenderer.invoke('remote-task:set-config', patch),
+    status: (): Promise<RemoteRunnerStatus> => ipcRenderer.invoke('remote-task:status'),
+    start: (): Promise<RemoteRunnerStatus> => ipcRenderer.invoke('remote-task:start'),
+    stop: (): Promise<RemoteRunnerStatus> => ipcRenderer.invoke('remote-task:stop')
   }
 }
 

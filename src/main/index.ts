@@ -34,7 +34,7 @@ import {
 import { registerJarvisTicketIpc } from './jarvisTicketStore'
 import { registerJarvisReviewerIpc } from './jarvisReviewer'
 import { registerJarvisDirectorIpc } from './jarvisDirector'
-import { registerRemoteTaskIpc } from './remoteTaskRunner'
+import { registerRemoteTaskIpc, startRemoteTaskRunner, loadRemoteConfig } from './remoteTaskRunner'
 import {
   commitWorktreeJob,
   getParallelJob,
@@ -364,6 +364,13 @@ app.whenReady().then(() => {
   registerJarvisDirectorIpc()
   // 원격 작업 수신(이슈 #76) — 기존 러너 재사용. 기본 비활성(설정에서 runnerId/enabled 지정 시만).
   registerRemoteTaskIpc()
+  // 설정에서 켜져 있고 runnerId 가 있으면 앱 시작 시 자동 시작.
+  try {
+    const rc = loadRemoteConfig()
+    if (rc.enabled && rc.runnerId) startRemoteTaskRunner(rc, app.getAppPath(), app.getPath('userData'))
+  } catch {
+    /* 자동 시작 실패는 무시 — 설정 화면에서 수동 시작 가능 */
+  }
   // Runner environment diagnostics (fixed checks only; no renderer commands).
   ipcMain.handle('sj-claude-build:check-env', () => checkRunnerEnvironment())
   ipcMain.handle('sj-claude-build:smoke-test', () => smokeTestRunner())

@@ -63,6 +63,14 @@ export interface PollOutcome {
   actions: string[]
 }
 
+export interface RemoteRunnerStatus {
+  enabled: boolean
+  active: boolean
+  runnerId: string
+  issueNumber: number
+  lastActions: string[]
+}
+
 /**
  * 한 번의 폴링 주기: 댓글을 읽어 유효한 신규 작업을 1건 처리한다.
  * - 네트워크/인증 실패는 성공으로 처리하지 않는다(상태 변경 없이 사유만 기록).

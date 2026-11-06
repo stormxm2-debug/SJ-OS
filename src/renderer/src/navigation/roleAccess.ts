@@ -91,7 +91,8 @@ export const BACKOFFICE_DENY_ROUTES: ViewName[] = [
   'backlog',
   'workers',
   'worker',
-  'projects'
+  'projects',
+  'remote-runner'
 ]
 
 export type RouteCategory = 'staff' | 'team' | 'admin'
