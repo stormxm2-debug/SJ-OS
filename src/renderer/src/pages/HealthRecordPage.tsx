@@ -257,8 +257,10 @@ const summarize = (recs: Row[]): { cats: CatRow[]; total: CatRow } => {
 }
 
 export default function HealthRecordPage(): JSX.Element {
-  const [productKey, setProductKey] = useState(HEALTH_PRODUCTS[0].key)
+  // 기본 상품: 내진료정보열람(심평원·최근 5년) — 열자마자 5년 조회기간이 잡히도록.
+  const [productKey, setProductKey] = useState('my-medical-information')
   const selected = HEALTH_PRODUCTS.find((p) => p.key === productKey) ?? HEALTH_PRODUCTS[0]
+  const defaultWindow = (HEALTH_PRODUCTS.find((p) => p.key === 'my-medical-information') ?? HEALTH_PRODUCTS[0]).periodWindow ?? { backMonths: 14, recentMonths: 2 }
 
   const [name, setName] = useState('')
   const [idValue, setIdValue] = useState('') // 생년월일(8) 또는 주민번호(13) — 상품에 따라
@@ -266,8 +268,8 @@ export default function HealthRecordPage(): JSX.Element {
   const [phone, setPhone] = useState('')
   const [provider, setProvider] = useState('1') // loginTypeLevel (기본: 카카오톡)
   const [telecom, setTelecom] = useState('0') // telecom (통신사인증서일 때만)
-  const [startDate, setStartDate] = useState(monthsAgoStr(14))
-  const [endDate, setEndDate] = useState(monthsAgoStr(2))
+  const [startDate, setStartDate] = useState(monthsAgoStr(defaultWindow.backMonths))
+  const [endDate, setEndDate] = useState(monthsAgoStr(defaultWindow.recentMonths))
   const [includeSensitive, setIncludeSensitive] = useState(false) // type: 민감상병 포함
   const [includeChild, setIncludeChild] = useState(false) // childYN: 자녀 포함
 
