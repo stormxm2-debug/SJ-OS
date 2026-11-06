@@ -294,6 +294,8 @@ export default function HealthRecordPage(): JSX.Element {
   const [twoWay, setTwoWay] = useState<TwoWayInfo | undefined>(undefined)
   const [result, setResult] = useState<Record<string, unknown> | null>(null)
   const [history, setHistory] = useState<HealthRecordRequest[]>([])
+  const [historyQuery, setHistoryQuery] = useState('') // 최근 요청 고객명 검색
+  const historyQueryRef = useRef('')
 
   // 주민번호 입력 주체: 직원 직접 / 고객에게 링크
   const [inputMode, setInputMode] = useState<'staff' | 'customer'>('customer')
@@ -306,8 +308,14 @@ export default function HealthRecordPage(): JSX.Element {
   const idLen = selected.idField === 'birth' ? 8 : 13
 
   const refresh = async (): Promise<void> => {
-    const r = await listHealthRecords()
+    // 본인(FC)이 조회한 것만 + (있으면) 고객명 검색으로 조회.
+    const r = await listHealthRecords(undefined, historyQueryRef.current)
     if (r.ok) setHistory(r.items)
+  }
+  const onHistorySearch = (v: string): void => {
+    setHistoryQuery(v)
+    historyQueryRef.current = v
+    void refresh()
   }
   useEffect(() => {
     void refresh()
@@ -812,9 +820,19 @@ export default function HealthRecordPage(): JSX.Element {
           <h2 className="text-sm font-bold text-slate-100">최근 요청</h2>
           <button type="button" onClick={() => void refresh()} className="text-[11px] font-semibold text-slate-400 hover:text-slate-200">새로고침</button>
         </div>
-        <p className="mt-0.5 text-[11px] text-slate-500">완료된 조회 결과는 <b className="text-slate-300">{RETAIN_DAYS}일간 보관</b>되어 다시 열람할 수 있고, 이후 자동 만료됩니다.</p>
+        <p className="mt-0.5 text-[11px] text-slate-500">본인(FC)이 조회한 건만 표시됩니다. 완료 결과는 <b className="text-slate-300">{RETAIN_DAYS}일간 보관</b>되어 다시 열람할 수 있고, 이후 자동 만료됩니다.</p>
+        <div className="relative mt-2">
+          <input
+            value={historyQuery}
+            onChange={(e) => onHistorySearch(e.target.value)}
+            placeholder="고객 이름으로 검색"
+            className="w-full rounded-lg border border-slate-700 bg-white py-2 pl-8 pr-8 text-[13px] text-[#0f172a] placeholder:text-[#94a3b8] outline-none focus:border-[#c6982f]"
+          />
+          <svg className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#94a3b8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
+          {historyQuery ? <button type="button" onClick={() => onHistorySearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-[#94a3b8]">✕</button> : null}
+        </div>
         {history.length === 0 ? (
-          <p className="mt-2 text-[12px] text-slate-500">아직 요청이 없습니다.</p>
+          <p className="mt-2 text-[12px] text-slate-500">{historyQuery.trim() ? `'${historyQuery.trim()}' 검색 결과가 없습니다.` : '아직 요청이 없습니다.'}</p>
         ) : (
           <div className="mt-2 divide-y divide-slate-800">
             {history.map((h) => {
