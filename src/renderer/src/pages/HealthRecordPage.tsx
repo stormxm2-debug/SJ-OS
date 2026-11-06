@@ -320,10 +320,10 @@ export default function HealthRecordPage(): JSX.Element {
   useEffect(() => {
     void refresh()
   }, [])
-  // 내 고객 목록 로드(Supabase RLS로 본인/팀 고객만 반환).
+  // 내 고객만 로드(owner_staff_id = 내 uid). 다른 FC 고객은 선택 목록에 뜨지 않는다.
   useEffect(() => {
     void (async () => {
-      const r = await listCustomers()
+      const r = await listCustomers({ mineOnly: true })
       if (r.ok) setCustomers(r.customers)
     })()
   }, [])
