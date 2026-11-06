@@ -62,32 +62,17 @@ test('validateDirective: 빈 본문 거부', () => {
   assert.equal(v.ok, false)
 })
 
-test('isAlreadyHandled: claimed/running/succeeded 는 중복, failed/rejected 는 재시도 허용', () => {
-  let s = {}
-  s = rt.withProcessed(s, { taskId: 't', status: 'claimed', updatedAt: 'x' })
-  assert.equal(rt.isAlreadyHandled(s, 't'), true)
-  s = rt.withProcessed(s, { taskId: 't', status: 'failed', updatedAt: 'x' })
-  assert.equal(rt.isAlreadyHandled(s, 't'), false)
+test('isAlreadyHandled: 상태가 남은 task id 는 자동 재실행 안 함(완료·실패·거부·진행중 모두)', () => {
+  // 복구 우선 정책: 같은 id 는 자동 재실행하지 않는다(무한 재시도 방지). 재개는 새 id/명시적 초기화.
+  for (const status of ['succeeded', 'failed', 'rejected', 'claimed', 'running']) {
+    const s = rt.withProcessed({}, { taskId: 't', status, updatedAt: '2026-11-06T00:00:00Z' })
+    assert.equal(rt.isAlreadyHandled(s, 't'), true, `${status} 는 skip 되어야 함`)
+  }
+  // 상태가 전혀 없으면 실행 대상(false)
+  assert.equal(rt.isAlreadyHandled({}, 'new-id'), false)
 })
 
-test('isAlreadyHandled: 오래된 claimed/running 은 재시도 허용(중단 잔여물), 최근은 중복', () => {
-  const now = Date.parse('2026-11-06T00:00:00Z')
-  const recent = new Date(now - 60 * 1000).toISOString() // 1분 전
-  const stale = new Date(now - 31 * 60 * 1000).toISOString() // 31분 전
-  // 최근 running → 진행 중으로 보고 중복(true)
-  let s = rt.withProcessed({}, { taskId: 'r', status: 'running', updatedAt: recent })
-  assert.equal(rt.isAlreadyHandled(s, 'r', now), true)
-  // 오래된 running/claimed → 묶인 잔여물 → 재시도 허용(false)
-  s = rt.withProcessed({}, { taskId: 'r', status: 'running', updatedAt: stale })
-  assert.equal(rt.isAlreadyHandled(s, 'r', now), false)
-  s = rt.withProcessed({}, { taskId: 'c', status: 'claimed', updatedAt: stale })
-  assert.equal(rt.isAlreadyHandled(s, 'c', now), false)
-  // succeeded 는 오래돼도 영구 완료(true)
-  s = rt.withProcessed({}, { taskId: 'd', status: 'succeeded', updatedAt: stale })
-  assert.equal(rt.isAlreadyHandled(s, 'd', now), true)
-})
-
-test('markInterruptedAsFailed: claimed/running 만 failed(재시도)로, 나머지는 유지', () => {
+test('markInterruptedAsFailed: 중단(claimed/running)만 failed 로 정리, 완료/실패는 유지', () => {
   let s = {}
   s = rt.withProcessed(s, { taskId: 'a', status: 'running', updatedAt: 'x' })
   s = rt.withProcessed(s, { taskId: 'b', status: 'claimed', updatedAt: 'x' })
@@ -101,13 +86,20 @@ test('markInterruptedAsFailed: claimed/running 만 failed(재시도)로, 나머�
   assert.equal(state['d'].status, 'failed')
 })
 
-test('pollOnce: 중단으로 묶인(오래된 running) 작업은 다음 주기에 재실행', async () => {
-  const { deps, calls } = fakeDeps() // deps.now() = 2026-11-06T00:00:00Z
-  const stale = new Date(Date.parse('2026-11-06T00:00:00Z') - 31 * 60 * 1000).toISOString()
-  const state = rt.withProcessed({}, { taskId: 'test-001', status: 'running', updatedAt: stale })
+test('pollOnce: 이전에 실패한 작업은 자동 재실행하지 않음(skip-dup)', async () => {
+  const { deps, calls } = fakeDeps()
+  const state = rt.withProcessed({}, { taskId: 'test-001', status: 'failed', updatedAt: 'x', reason: '시간 초과' })
   const out = await poll.pollOnce(cfg, state, deps)
-  assert.equal(calls.run, 1) // 묶여 있지 않고 재실행됨
-  assert.equal(out.state['test-001'].status, 'succeeded')
+  assert.equal(calls.run, 0) // 재실행 안 함
+  assert.ok(out.actions.includes('skip-dup:test-001'))
+})
+
+test('pollOnce: 중단(running)으로 남은 작업도 자동 재실행하지 않음(skip-dup)', async () => {
+  const { deps, calls } = fakeDeps()
+  const state = rt.withProcessed({}, { taskId: 'test-001', status: 'running', updatedAt: 'x' })
+  const out = await poll.pollOnce(cfg, state, deps)
+  assert.equal(calls.run, 0)
+  assert.ok(out.actions.includes('skip-dup:test-001'))
 })
 
 test('classifyGhError: 오프라인/로그인만료/기타 구분', () => {
