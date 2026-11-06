@@ -62,5 +62,6 @@ export type View =
   | { name: 'staff-overview' }
   | { name: 'staff-table' }
   | { name: 'family-birthdays' }
+  | { name: 'remote-runner' }
 
 export type ViewName = View['name']
