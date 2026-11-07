@@ -1,4 +1,24 @@
-# 건강기록 UI 데스크톱 반영 — v1.0.52
+# 건강기록 UI 데스크톱 반영 — v1.0.55
+
+기준: `origin/main` 8a05811 (v1.0.54, PR #90 병합 이후). 공개 최신 릴리스 v1.0.54 확인 → 1.0.55 patch.
+
+## 변경
+
+- 청구 관리 화면 단순화(UI 계획 2단계): PC 간결 목록 / 모바일 카드, 행별 상세 보기, 선택 시에만 작업 툴바,
+  인쇄 범위 안내, 불러오기 실패 재시도. 저장·인쇄·키 생성·인증·DB·AI 코드와 의존성은 변경 없음.
+
+## 검증
+
+- `npm run typecheck`, `npm run build` 통과 (로컬 Windows).
+- 합성 자료 + 가짜 requestId로 실제 `HealthRecordWorkspace`를 렌더(`healthClaimStore`·`printCareRecords`·기준 조회 모듈 mock,
+  외부 네트워크 차단)한 임시 Vite + Edge headless/CDP 하네스에서 25개 시나리오 통과
+  (375px 가로 넘침, 키보드 선택/펼침, 탭 왕복 유지, 필터 변경 선택 초기화, 전체 선택/해제·indeterminate,
+  load 실패 재시도, save 실패/지연/성공, 인쇄 visible 범위, requestId 변경 누수). 합성 화면: `docs/ui/health-claims-*-synthetic.png`.
+- 미검증: 실제 Electron 앱·실제 Supabase 저장·실제 인쇄 창·실기기 모바일·스크린리더. 하네스는 저장소에 추가하지 않음.
+
+---
+
+## (이전) 건강기록 UI 데스크톱 반영 — v1.0.52
 
 기준: `main` 1da8c69 (UI 누적 PR #85, 실행기 복구 PR #82 병합 이후).
 이 문서는 이미 `main`에 병합된 변경을 데스크톱 배포 버전(1.0.51 → 1.0.52)으로
