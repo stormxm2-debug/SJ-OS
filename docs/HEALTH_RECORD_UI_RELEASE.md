@@ -17,7 +17,7 @@
   재조회 중 이전 완료 미표시, 세부 조건 펼침(상품명·기준일 미제공·자료 수정일·검수 여부), 키보드 Enter 펼침·aria-expanded, DOM id 한글 없음,
   AI 분석 중/완료/실패·다시 시도, 보험사 변경 시 답변 초기화, 기간·고객 변경 전 지연 응답 무시, 탭 왕복 시 AI 답변·질문·기준·청구 선택 보존,
   375px·1280px 가로 넘침 없음, 가입 검토 영역 텍스트 대비 최저 4.76:1, 터치 대상 44px 이상.
-  합성 화면: `docs/ui/health-review-mobile-375-synthetic.png`, `health-review-pc-1280-synthetic.png`, `health-review-partial-failure-pc-1280-synthetic.png`.
+  위 32/32는 PR #93 보완 전 하네스 보고입니다. 최종 모바일 화면 검증을 뜻하지 않으며, 보관하는 미리보기와 최종 검증 제한은 아래에 기록합니다.
 - 미검증: 실제 Electron 앱·실제 Supabase 기준 조회·실제 AI 호출·실기기 모바일·스크린리더, 실손 입력 유지(이번 하네스에서 미확인, 마운트 구조 변경 없음).
 
 ## 보완 (PR93 리뷰 반영, 같은 v1.0.56)
@@ -31,12 +31,13 @@
 ### 보완 검증 (이전 32/32 하네스 보고와 별개)
 
 - `npm run typecheck`, `npm run build` 통과. `node --test test/hrGuideLoadState.test.mjs` 9/9(기존 5 + aiGuideNote 4).
-- 임시 esbuild + Edge headless/CDP 하네스(저장소 미추가, 실행 후 삭제): 실제 `ResultReport`를 합성 결과·빌드 CSS로 렌더, 기준 조회/AI/청구 저장 모듈 mock, 외부 네트워크 차단. 17/17 통과:
+- Claude의 임시 esbuild + Edge headless/CDP 하네스 실행 보고(저장소 미추가, 실행 후 삭제): 실제 `ResultReport`를 합성 결과·빌드 CSS로 렌더, 기준 조회/AI/청구 저장 모듈 mock, 외부 네트워크 차단. 17/17 통과로 보고했으나, 독립 검토에서 아래 모바일 캡처 제한을 확인했습니다.
   picker 초기 computed display none·높이 0, 키보드 Enter 펼침(display flex·높이>0·aria-expanded)/재접힘, 검수 전 인수1+검수 예외1 → AI 반영 1건(인수 0·예외 1),
   카드 검수됨 1·검수 전 1 유지, 삼성화재 펼침 후 해제 시 현대해상 미펼침·재선택 후 현대해상 펼침 유지, 예외 조회 실패 후 선택된 확장 보험사 옵션 유지·해제 가능,
-  부분 실패 안내(성공 소스 검수분만)·전부 검수 전 0건 안내, 375/1280 가로 넘침 없음, AI 호출 0.
-- 합성 화면 3장을 보완 후 화면으로 교체(PC 1280 / 375 / 인수 조회 부분 실패 PC 1280).
-- 미검증: 실제 Electron 앱·실제 Supabase·실제 AI 호출·실기기·스크린리더.
+  부분 실패 안내(성공 소스 검수분만)·전부 검수 전 0건 안내·AI 호출 0 등을 보고했습니다. PC 1280px 미리보기는 확인했지만 최종 375px 가독성·가로 넘침은 재검증하지 못했습니다.
+- 보완 후 합성 PC 1280px·인수 조회 부분 실패 PC 1280px 이미지 2장을 보관합니다: `docs/ui/health-review-pc-1280-synthetic.png`, `docs/ui/health-review-partial-failure-pc-1280-synthetic.png`.
+- 독립 검토에서 새 375px PNG가 PC 레이아웃을 축소한 캡처임을 확인해 제외했습니다. 실제 앱 HTML의 viewport 설정은 정상이며 제품 회귀로 확인된 것은 아니지만, 이 캡처를 모바일 가독성 검증 증거로 사용하지 않습니다.
+- 미검증: 보완 후 375px 모바일 화면, 실제 Electron 앱·실제 Supabase·실제 AI 호출·실기기·스크린리더.
 
 # 건강기록 UI 데스크톱 반영 — v1.0.55
 
