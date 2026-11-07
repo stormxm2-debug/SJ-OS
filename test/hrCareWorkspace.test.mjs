@@ -5,12 +5,13 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { webcrypto } from 'node:crypto'
+import { pathToFileURL } from 'node:url'
 
 async function load(src) {
   const output = await build({ entryPoints:[src], bundle:true, format:'esm', platform:'node', write:false, tsconfig:'tsconfig.web.json', logLevel:'silent' })
   const dir=await mkdtemp(join(tmpdir(),'sj-health-workspace-')), file=join(dir,'module.mjs')
   await writeFile(file,output.outputFiles[0].text)
-  return import(file)
+  return import(pathToFileURL(file).href)
 }
 if (!globalThis.crypto) Object.defineProperty(globalThis,'crypto',{value:webcrypto})
 const care = await load('src/renderer/src/services/health-record/careWorkspace.ts')
@@ -119,4 +120,32 @@ test('응답 지연·본인확인·이용 시간 오류에 각각 다른 다음 
   assert.match(care.healthErrorHelp('응답 시간이 초과되었습니다.').action,/최근 요청/)
   assert.match(care.healthErrorHelp('주민등록번호 오류').action,/상품별/)
   assert.match(care.healthErrorHelp('서비스 이용 시간 제한').action,/공식/)
+})
+test('최근 3개월 요약: 달력 경계 포함, 미래·무효·누락 날짜는 미확인으로 분리',()=>{
+  const today=new Date(2026,10,5)
+  const result={resBasicTreatList:['20260805','20260804','20261105','20261106','20260230',''].map((d,i)=>({...base,resTreatStartDate:d,resDiseaseName:`진단${i}`}))}
+  const s=care.recentCareSummary(result,today)
+  assert.equal(s.start,'20260805');assert.equal(s.end,'20261105')
+  assert.deepEqual(s.records.map(r=>r.date),['20261105','20260805'])
+  assert.equal(s.undated,2)
+  assert.equal(s.total,6)
+  // Actual fetched range only; not proof of a full 5-year inquiry.
+  assert.equal(s.oldest,'20260804');assert.equal(s.latest,'20261106')
+  // Shared-period filtering of the same input is unaffected.
+  assert.equal(result.resBasicTreatList.length,6)
+})
+test('최근 3개월 요약: 약물 단독·기관 미상 기록을 숨기거나 다른 병원에 연결하지 않고 일수 미제공은 0일 그대로',()=>{
+  const today=new Date(2026,10,5)
+  const s=care.recentCareSummary({resBasicTreatList:[base],resPrescribeDrugList:[{resTreatStartDate:'20261101',resDrugName:'단독약'},{resTreatStartDate:'20261102',resHospitalName:'별도약국',resDrugName:'감기약',resTotalDosingdays:'3'}]},today)
+  const alone=s.records.find(r=>r.medications[0]?.name==='단독약')
+  assert.ok(alone);assert.equal(alone.hospital,'');assert.equal(alone.medications[0].days,0)
+  assert.ok(!s.records.find(r=>r.hospital==='가상병원').medications.length)
+  assert.equal(s.records.find(r=>r.hospital==='별도약국').medications[0].days,3)
+})
+test('최근 3개월 요약: 빈 응답과 기간 밖 기록을 구분',()=>{
+  const today=new Date(2026,10,5)
+  const empty=care.recentCareSummary({},today)
+  assert.equal(empty.total,0);assert.equal(empty.records.length,0);assert.equal(empty.latest,'')
+  const old=care.recentCareSummary({resBasicTreatList:[{...base,resTreatStartDate:'20250101'}]},today)
+  assert.equal(old.total,1);assert.equal(old.records.length,0);assert.equal(old.latest,'20250101')
 })

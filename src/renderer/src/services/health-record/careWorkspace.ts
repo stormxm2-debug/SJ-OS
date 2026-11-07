@@ -146,3 +146,28 @@ export function healthErrorHelp(message: string, code = ''): { title: string; ac
   if (/만료|완료된 요청|CF-00025/.test(`${code} ${message}`)) return { title: '인증 세션 종료', action: '먼저 최근 요청의 완료 여부를 확인하고, 필요하면 새 인증을 요청하세요.' }
   return { title: '조회 단계 확인 필요', action: '아래 최근 요청에서 진행 상태를 확인하세요. 개인정보 원문을 포함하지 않은 오류 코드로 담당자에게 문의하세요.' }
 }
+export interface RecentCareSummary {
+  /** Fixed calendar window (inclusive), independent of the shared period selector. */
+  start: string
+  end: string
+  /** Records with a valid date inside the window, newest first. */
+  records: CareRecord[]
+  /** Records whose date is missing or invalid — never counted as recent. */
+  undated: number
+  /** All records in the fetched result (any date). */
+  total: number
+  /** Oldest/latest valid dates actually present — not the requested inquiry range. */
+  oldest: string
+  latest: string
+}
+/** Recent 3 calendar months for disclosure review (reference only, not a disclosure decision). */
+export function recentCareSummary(result: Record<string, unknown>, today = new Date()): RecentCareSummary {
+  const all = buildCareRecords(result)
+  const dated = all.map(r => r.date).filter(validCareDate).sort()
+  return {
+    start: periodStart('3m', today), end: localYmd(today),
+    records: buildCareRecords(filterCareResult(result, '3m', today)),
+    undated: all.filter(r => !validCareDate(r.date)).length,
+    total: all.length, oldest: dated[0] ?? '', latest: dated[dated.length - 1] ?? ''
+  }
+}
