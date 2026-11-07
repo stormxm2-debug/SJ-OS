@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Printer, RefreshCw } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { ChevronDown, Loader2, Printer, RefreshCw } from 'lucide-react'
 import {
   admissionSummary, buildCareRecords, CARE_PERIODS, claimRecordKey, CLAIM_LABELS, localYmd, matchCareGuides,
   type CarePeriod, type CareRecord, type ClaimState, type HrUnderwritingContext
@@ -9,8 +9,8 @@ import { printCareRecords } from '@renderer/services/health-record/printCareReco
 import { listUnderwriting, UNDERWRITING_INSURERS, UNDERWRITING_STATUS_LABEL, type UnderwritingDisease, type UnderwritingStatus } from '@renderer/services/underwriting/underwritingService'
 import { ClaimRow, CLAIM_GRID } from './ClaimRecordList'
 import { listExceptions, type ExceptionRule } from '@renderer/services/underwriting/exceptionDiseaseService'
+import { guideLoadStatus, type GuideLoadStatus } from '@renderer/services/health-record/guideLoadState'
 
-const button = 'min-h-9 rounded-lg border border-slate-700 bg-white px-3 py-1.5 text-[12px] font-bold text-slate-200 disabled:opacity-40'
 const controlBase = 'min-h-11 rounded-lg border px-3 text-[13px] font-bold disabled:opacity-40'
 const control = `${controlBase} border-slate-700 bg-white text-slate-200`
 const dateLabel = (s: string): string => s.length === 8 ? `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6)}` : '날짜 미확인'
@@ -21,9 +21,11 @@ interface Props {
   /** 결과 탭별 표시 영역. 한 번만 마운트되고 표시만 바뀌므로 청구 상태·검색·선택·기준 조회 상태가 탭 전환에 유지된다. */
   mode: 'summary' | 'claims' | 'review'
   onContextChange: (context: HrUnderwritingContext) => void
+  /** 기준 조회 상태(표시용 메타데이터). AI 패널이 기준 미확인·부분 실패를 안내하는 데만 쓴다. */
+  onGuideStatusChange?: (status: GuideLoadStatus) => void
 }
 
-export default function HealthRecordWorkspace({ result, requestId, period, mode, onContextChange }: Props): JSX.Element {
+export default function HealthRecordWorkspace({ result, requestId, period, mode, onContextChange, onGuideStatusChange }: Props): JSX.Element {
   const rows = useMemo(() => buildCareRecords(result), [result])
   const [states, setStates] = useState<ClaimChecks>({})
   const [keys, setKeys] = useState<Record<string, string>>({})
@@ -78,16 +80,22 @@ export default function HealthRecordWorkspace({ result, requestId, period, mode,
   const [exceptions, setExceptions] = useState<ExceptionRule[]>([])
   const [guideBusy, setGuideBusy] = useState(false)
   const [guideError, setGuideError] = useState('')
-  const [guideLoaded, setGuideLoaded] = useState(false)
+  // 두 소스의 응답 ok 값을 각각 기록한다(null = 미조회). 실패 종류를 추측하지 않고 표시하기 위한 UI 메타데이터.
+  const [guideMeta, setGuideMeta] = useState<{ underwritingOk: boolean | null; exceptionOk: boolean | null }>({ underwritingOk: null, exceptionOk: null })
+  const guideStatus = guideLoadStatus({ busy: guideBusy, ...guideMeta })
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [openCards, setOpenCards] = useState<Set<number>>(new Set())
+  const reviewId = useId()
   const context = useMemo(() => matchCareGuides(rows, guides, exceptions, insurers), [rows, guides, exceptions, insurers])
   useEffect(() => { onContextChange(context) }, [context, onContextChange])
+  useEffect(() => { onGuideStatusChange?.(guideStatus) }, [guideStatus, onGuideStatusChange])
   const loadGuides = async (): Promise<void> => {
     setGuideBusy(true); setGuideError('')
     try {
       const [g, e] = await Promise.all([listUnderwriting(), listExceptions()])
-      setGuides(g.ok ? g.items : []); setExceptions(e.ok ? e.data : []); setGuideLoaded(g.ok && e.ok)
+      setGuides(g.ok ? g.items : []); setExceptions(e.ok ? e.data : []); setGuideMeta({ underwritingOk: g.ok, exceptionOk: e.ok })
       if (!g.ok || !e.ok) setGuideError([!g.ok ? g.error : '', !e.ok ? e.message : ''].filter(Boolean).join(' / '))
-    } catch { setGuideError('인수 기준을 불러오지 못했습니다.'); setGuideLoaded(false); setGuides([]); setExceptions([]) }
+    } catch { setGuideError('인수 기준을 불러오지 못했습니다.'); setGuideMeta({ underwritingOk: false, exceptionOk: false }); setGuides([]); setExceptions([]) }
     finally { setGuideBusy(false) }
   }
   const exportList = (): void => {
@@ -121,17 +129,89 @@ export default function HealthRecordWorkspace({ result, requestId, period, mode,
     )
   }
 
-  if (mode === 'review') return (
-    <section className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-white p-3" aria-label="보험사 기준 조회">
-      <h3 className="text-[13px] font-bold text-slate-100">1. 보험사 기준 조회</h3>
-      <p className="text-[12px] leading-relaxed text-slate-500">보험사를 선택하고 등록된 인수 가이드·유병자 예외질환 기준을 불러오세요. 병명·별칭이 정확히 일치한 참고 기준만 연결합니다. 미매칭·미검수는 가입 가능을 뜻하지 않습니다.</p>
-        <div className="flex flex-wrap gap-x-3 gap-y-2">{[...new Set([...UNDERWRITING_INSURERS,...exceptions.map(e=>e.insurer)])].map(i=><label key={i} className="inline-flex min-h-8 items-center gap-1.5 text-[12px] text-slate-300"><input type="checkbox" className="h-4 w-4" checked={insurers.includes(i)} onChange={e=>setInsurers(prev=>e.target.checked?[...prev,i]:prev.filter(s=>s!==i))}/>{i}</label>)}</div>
-        <button type="button" disabled={guideBusy} onClick={()=>void loadGuides()} className={button}>{guideBusy?'기준 조회 중…':'등록된 인수·예외 기준 불러오기'}</button>
-        {guideError?<p role="alert" className="text-[12px] text-rose-600">{guideError}</p>:null}
-        {guideLoaded?<p className="text-[12px] text-slate-500">일치한 인수 기준 {context.guides.length}건 · 예외 기준 {context.exceptions.length}건. 상품·기준일·치료 경과 조건을 확인해야 합니다.</p>:null}
-        <ul className="space-y-1">{context.guides.map((g,i)=><li key={i} className="rounded-lg bg-slate-950 p-2 text-[12px] text-slate-300"><b>{g.insurer} · {g.disease}</b> — 등록 기준: {UNDERWRITING_STATUS_LABEL[g.status as UnderwritingStatus]??'추가 확인'} · {g.verified?'검수됨':'검수 전'}<p className="mt-1 text-slate-500">{g.note||'세부 조건 미입력'} · 상품명·기준일 미제공 / 최종 심사 아님</p></li>)}{context.exceptions.map(e=><li key={e.id} className="rounded-lg bg-slate-950 p-2 text-[12px] text-slate-300"><b>{e.insurer} · {e.disease}</b> — 상품구분 {e.productClass||'미제공'} · {e.verified?'검수됨':'검수 전'}<p className="mt-1 text-slate-500">경과 {e.minElapsed||'확인 필요'} / 치료 {e.treatmentPeriod||'확인 필요'} / 수술 {e.surgery||'확인 필요'} · 갱신 {e.updatedAt?new Date(e.updatedAt).toLocaleDateString('ko-KR'):'미제공'}</p>{e.note?<p>{e.note}</p>:null}</li>)}</ul>
-    </section>
-  )
+  if (mode === 'review') {
+    const insurerOptions = [...new Set([...UNDERWRITING_INSURERS, ...exceptions.map(e => e.insurer)])]
+    const pickerId = `${reviewId}-insurers`
+    const guideLoading = guideStatus === 'loading'
+    const sourceText = (ok: boolean | null, count: number): string => guideLoading ? '조회 중' : ok === null ? '미조회' : ok ? `${count}건` : '조회 실패'
+    const toggleCard = (index: number): void => setOpenCards(prev => { const next = new Set(prev); if (next.has(index)) next.delete(index); else next.add(index); return next })
+    const statusLine: Record<GuideLoadStatus, string> = {
+      idle: '아직 기준을 확인하지 않았습니다. 버튼을 눌러 등록된 기준을 불러오세요.',
+      loading: '등록 기준을 조회하는 중입니다…',
+      ok: `조회 완료 · 일치한 인수 기준 ${context.guides.length}건 · 예외 기준 ${context.exceptions.length}건${context.guides.length + context.exceptions.length === 0 ? ' — 일치 0건은 가입 가능을 뜻하지 않습니다.' : ''}`,
+      partial: `일부 조회 실패 (${guideMeta.underwritingOk ? '' : '인수 가이드'}${guideMeta.exceptionOk ? '' : '예외질환'}). 성공한 자료만 참고로 표시합니다. 다시 시도하세요.`,
+      failed: '기준을 불러오지 못했습니다. 다시 시도하세요.'
+    }
+    return (
+      <section className="mt-3 space-y-3 rounded-xl border border-slate-800 bg-white p-3" aria-label="가입 검토 기준">
+        {/* 1. 보험사 선택 — 요약을 먼저 보여주고 목록은 펼쳐서 바꾼다. */}
+        <div className="space-y-2">
+          <h3 className="text-[14px] font-bold text-slate-100">1. 보험사 선택</h3>
+          {insurers.length
+            ? <p className="break-words text-[13px] text-slate-200"><span className="font-bold text-[#0e1e3a]">{insurers.length}곳</span> · {insurers.join(', ')}</p>
+            : <p role="status" className="text-[13px] font-semibold text-amber-800">선택한 보험사가 없습니다. ‘보험사 선택 변경’을 눌러 확인할 보험사를 고르세요.</p>}
+          <button type="button" aria-expanded={pickerOpen} aria-controls={pickerId} onClick={() => setPickerOpen(o => !o)} className={`${control} inline-flex items-center gap-1`}>
+            <ChevronDown className={`h-4 w-4 transition-transform ${pickerOpen ? 'rotate-180' : ''}`} aria-hidden="true" />보험사 선택 변경
+          </button>
+          <div id={pickerId} hidden={!pickerOpen} className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border border-slate-800 bg-slate-950 p-2">
+            {insurerOptions.map(i => <label key={i} className="inline-flex min-h-11 min-w-0 items-center gap-2 break-words text-[13px] text-slate-200"><input type="checkbox" className="h-5 w-5 shrink-0" checked={insurers.includes(i)} onChange={e => setInsurers(prev => e.target.checked ? [...prev, i] : prev.filter(s => s !== i))} />{i}</label>)}
+          </div>
+        </div>
+
+        {/* 2. 등록 기준 확인 — 버튼을 눌러야만 조회한다. 상태는 두 소스의 응답 ok 값으로 표시한다. */}
+        <div className="space-y-2 border-t border-slate-800 pt-3">
+          <h3 className="text-[14px] font-bold text-slate-100">2. 등록 기준 확인</h3>
+          <button type="button" disabled={guideLoading} onClick={() => void loadGuides()} className={`${controlBase} inline-flex w-full items-center justify-center gap-1 border-[#0e1e3a] bg-[#0e1e3a] text-white sm:w-auto`}>
+            {guideLoading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-4 w-4 text-[#e6c877]" aria-hidden="true" />}
+            {guideLoading ? '기준 조회 중…' : guideStatus === 'idle' ? '등록된 인수·예외 기준 확인하기' : guideStatus === 'ok' ? '기준 다시 확인' : '다시 시도'}
+          </button>
+          <p role={guideStatus === 'partial' || guideStatus === 'failed' ? 'alert' : 'status'}
+            className={`text-[13px] ${guideStatus === 'partial' || guideStatus === 'failed' ? 'font-semibold text-rose-700' : guideStatus === 'ok' ? 'text-[#0e1e3a]' : 'text-slate-500'}`}>
+            {statusLine[guideStatus]}
+          </p>
+          {guideError && !guideLoading ? <p className="break-words text-[12px] text-rose-700">상세: {guideError}</p> : null}
+          {insurers.length ? (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {insurers.map((ins, idx) => {
+                const gs = context.guides.filter(g => g.insurer === ins)
+                const es = context.exceptions.filter(e => e.insurer === ins)
+                const all = [...gs.map(g => g.verified), ...es.map(e => e.verified)]
+                const verified = all.filter(Boolean).length
+                const showable = !guideLoading && guideStatus !== 'idle' && all.length > 0
+                const open = showable && openCards.has(idx)
+                const bodyId = `${reviewId}-card-${idx}`
+                return (
+                  <li key={ins} className="min-w-0 rounded-lg border border-slate-800 bg-slate-950 p-2.5">
+                    <p className="break-words text-[13px] font-bold text-[#0e1e3a]">{ins}</p>
+                    <p className="mt-0.5 text-[13px] text-slate-300">인수 기준 {sourceText(guideMeta.underwritingOk, gs.length)} · 예외 기준 {sourceText(guideMeta.exceptionOk, es.length)}</p>
+                    {showable ? <p className="text-[12px] text-slate-500">검수됨 {verified}건 · 검수 전 {all.length - verified}건 (등록 참고 기준)</p> : null}
+                    {showable ? (
+                      <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={() => toggleCard(idx)} className={`${control} mt-1 inline-flex items-center gap-1`}>
+                        <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />세부 조건 {open ? '접기' : '보기'}
+                      </button>
+                    ) : null}
+                    <ul id={bodyId} hidden={!open} className="mt-2 space-y-1">
+                      {gs.map((g, i) => <li key={`g${i}`} className="break-words rounded-lg bg-white p-2 text-[12px] text-slate-300"><b>{g.disease}</b> — 등록 기준(참고): {UNDERWRITING_STATUS_LABEL[g.status as UnderwritingStatus] ?? '추가 확인'} · {g.verified ? '검수됨' : '검수 전'}<p className="mt-1 text-slate-500">{g.note || '세부 조건 미입력'} · 상품명·기준일 미제공</p></li>)}
+                      {es.map(e => <li key={e.id} className="break-words rounded-lg bg-white p-2 text-[12px] text-slate-300"><b>{e.disease}</b> — 예외 기준 · 상품구분 {e.productClass || '미제공'} · {e.verified ? '검수됨' : '검수 전'}<p className="mt-1 text-slate-500">경과 {e.minElapsed || '확인 필요'} / 치료 {e.treatmentPeriod || '확인 필요'} / 수술 {e.surgery || '확인 필요'} · 자료 수정일 {e.updatedAt ? new Date(e.updatedAt).toLocaleDateString('ko-KR') : '미제공'}</p>{e.note ? <p className="mt-1">{e.note}</p> : null}</li>)}
+                    </ul>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : null}
+          <details className="rounded-lg border border-slate-800 px-3">
+            <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-bold text-slate-300">자료 기준 안내</summary>
+            <ul className="list-disc space-y-1 pb-2 pl-5 text-[12px] leading-relaxed text-slate-400">
+              <li>병명·별칭이 정확히 일치한 등록 기준만 연결합니다. 일치 0건·검수 전·미조회는 가입 가능 또는 불가를 뜻하지 않습니다.</li>
+              <li>등록 기준(인수 가이드)에는 상품명·기준일이 없어 ‘미제공’으로 표시합니다.</li>
+              <li>예외 기준의 날짜는 자료 수정일이며 공식 심사 기준일이 아닙니다.</li>
+              <li>보험사 최종 심사·특정 상품 가입 가능 여부를 확정하지 않습니다.</li>
+            </ul>
+          </details>
+        </div>
+      </section>
+    )
+  }
 
   const allVisibleSelected = !!visible.length && visibleSelected.length === visible.length
   const someVisibleSelected = visibleSelected.length > 0 && !allVisibleSelected

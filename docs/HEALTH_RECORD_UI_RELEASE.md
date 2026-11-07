@@ -1,3 +1,25 @@
+# 건강기록 UI 데스크톱 반영 — v1.0.56
+
+기준: `origin/main` d343b7b (v1.0.55, PR #92 병합 이후). 공개 최신 릴리스 v1.0.55 확인 → 1.0.56 patch. 의존성 변경 없음.
+
+## 변경
+
+- 가입 검토 탭 3단계 정리(UI 계획 3단계): 1. 보험사 선택(요약 + 펼침 목록) → 2. 등록 기준 확인(상태 한 줄 + 보험사별 카드, 세부 조건 펼침) → 3. AI 참고 요약(큰 버튼, 질문은 접힌 선택 사항).
+- 기준 조회 상태를 두 소스 응답 ok 값으로 구분(미조회/조회 중/완료(0건 포함)/일부 실패/전체 실패) — `src/renderer/src/services/health-record/guideLoadState.ts` + `test/hrGuideLoadState.test.mjs`.
+- 조회 서비스·매칭 규칙·AI 프롬프트/API·청구 저장·인쇄·집계·인증·DB·전역 테마 변경 없음.
+
+## 검증
+
+- `npm run typecheck`, `npm run build` 통과 (로컬 Windows). `node --test test/hrGuideLoadState.test.mjs` 5/5 통과.
+- 임시 esbuild + Edge headless/CDP 하네스(저장소 미추가): 실제 `ResultReport`(내부 `HealthRecordWorkspace` 포함)를 합성 결과로 렌더,
+  `listUnderwriting`/`listExceptions`/`askHealthRecordAi`/`healthClaimStore` 모듈 mock, `--host-resolver-rules`로 외부 네트워크 차단. 32/32 통과:
+  탭 진입·보험사 체크·기간/고객 변경 시 기준·AI 자동호출 0(버튼에서만 호출), 미조회/선택 0/두 소스 성공·0건/부분 실패/전체 실패/catch 표시,
+  재조회 중 이전 완료 미표시, 세부 조건 펼침(상품명·기준일 미제공·자료 수정일·검수 여부), 키보드 Enter 펼침·aria-expanded, DOM id 한글 없음,
+  AI 분석 중/완료/실패·다시 시도, 보험사 변경 시 답변 초기화, 기간·고객 변경 전 지연 응답 무시, 탭 왕복 시 AI 답변·질문·기준·청구 선택 보존,
+  375px·1280px 가로 넘침 없음, 가입 검토 영역 텍스트 대비 최저 4.76:1, 터치 대상 44px 이상.
+  합성 화면: `docs/ui/health-review-mobile-375-synthetic.png`, `health-review-pc-1280-synthetic.png`, `health-review-partial-failure-pc-1280-synthetic.png`.
+- 미검증: 실제 Electron 앱·실제 Supabase 기준 조회·실제 AI 호출·실기기 모바일·스크린리더, 실손 입력 유지(이번 하네스에서 미확인, 마운트 구조 변경 없음).
+
 # 건강기록 UI 데스크톱 반영 — v1.0.55
 
 기준: `origin/main` 8a05811 (v1.0.54, PR #90 병합 이후). 공개 최신 릴리스 v1.0.54 확인 → 1.0.55 patch.

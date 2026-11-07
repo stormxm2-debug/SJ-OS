@@ -35,6 +35,7 @@ import HealthRecordWorkspace from '@renderer/components/health-record/HealthReco
 import SonsonEstimator from '@renderer/components/health-record/SonsonEstimator'
 import RecentCareTable from '@renderer/components/health-record/RecentCareTable'
 import { admissionSummary, buildCareRecords, CARE_PERIODS, calendarMonthsAgo, filterCareResult, healthErrorHelp, localYmd, periodStart, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
+import type { GuideLoadStatus } from '@renderer/services/health-record/guideLoadState'
 
 /**
  * 고객 건강기록 조회 — CODEF 간편인증. 상품(건강보험공단/심평원)별로 입력·요청변수가 달라
@@ -1017,6 +1018,8 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
   const [carePeriod, setCarePeriod] = useState<CarePeriod>('all')
   const filteredResult = useMemo(() => filterCareResult(result, carePeriod), [result, carePeriod])
   const [underwritingContext, setUnderwritingContext] = useState<HrUnderwritingContext>({ insurers: [], guides: [], exceptions: [] })
+  // 표시 전용 메타데이터 — AI 답변 초기화 의존성에 넣지 않는다(기준 내용 변경은 underwritingContext가 담당).
+  const [guideStatus, setGuideStatus] = useState<GuideLoadStatus>('idle')
   const [detailView, setDetailView] = useState<'episodes' | 'disease' | 'sections' | 'raw'>('episodes')
   const [groupBy, setGroupBy] = useState<GroupBy>('year')
   const [detailOpen, setDetailOpen] = useState(false)
@@ -1063,7 +1066,7 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
   const tabs: { id: ResultTab; label: string; hint: string; guide: string }[] = [
     { id: 'summary', label: '한눈에 요약', hint: '핵심 수치·이력', guide: '핵심 수치와 최근 3개월 이력을 먼저 보고, 필요할 때 상세 기록을 펼치세요.' },
     { id: 'claims', label: '청구 관리', hint: '청구 상태 확인', guide: '기록을 검색·선택해 청구 상태(수동 확인)를 저장하고 목록을 출력합니다.' },
-    { id: 'review', label: '가입 검토', hint: '기준 조회·AI', guide: '보험사 기준을 불러온 뒤, 버튼을 눌러 AI 통합 인수 요약을 받습니다.' }
+    { id: 'review', label: '가입 검토', hint: '기준 조회·AI', guide: '건강기록과 등록된 기준을 연결해 상담 시 확인할 내용을 정리합니다.' }
   ]
   const activeTab = tabs.find((t) => t.id === tab) ?? tabs[0]
   const onTabKey = (e: React.KeyboardEvent<HTMLButtonElement>, index: number): void => {
@@ -1122,7 +1125,7 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
 
       <div id="hr-result-panel" role="tabpanel" aria-labelledby={`hr-tab-${tab}`}>
         {/* 같은 위치(패널 첫 자식)에 한 번만 마운트 — 탭은 표시 모드만 바꾼다(청구 상태·검색·선택·기준 조회 유지, 저장 API 재호출 없음). */}
-        <HealthRecordWorkspace result={filteredResult} requestId={requestId} period={carePeriod} mode={tab} onContextChange={setUnderwritingContext} />
+        <HealthRecordWorkspace result={filteredResult} requestId={requestId} period={carePeriod} mode={tab} onContextChange={setUnderwritingContext} onGuideStatusChange={setGuideStatus} />
 
         {tab === 'summary' ? (
           <>
@@ -1224,26 +1227,46 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
         ) : null}
 
         {tab === 'review' ? (
-          <section className="mt-3 rounded-xl border border-slate-800 bg-white p-3" aria-label="AI 통합 인수 요약">
-            <h3 className="text-[13px] font-bold text-slate-100">2. AI 통합 인수 요약</h3>
-            <p className="mt-1 text-[12px] leading-relaxed text-slate-500">선택한 기간의 건강기록 요약과 위에서 불러온 기준을 함께 검토합니다. 버튼을 누를 때만 AI를 호출합니다.</p>
+          <section className="mt-3 rounded-xl border border-slate-800 bg-white p-3" aria-label="AI 참고 요약">
+            <h3 className="text-[14px] font-bold text-slate-100">3. AI 참고 요약</h3>
+            <p className="mt-1 text-[13px] leading-relaxed text-slate-400">선택 기간 건강기록과 2단계에서 연결된 기준을 함께 검토합니다. 버튼을 누를 때만 AI를 호출합니다.</p>
+            {(() => {
+              // 기준 상태 안내 — AI 실행을 막지 않고 어떤 기준이 반영되는지만 알린다(조회 중에는 끝난 뒤 실행).
+              const n = underwritingContext.guides.length + underwritingContext.exceptions.length
+              const note = guideStatus === 'loading' ? '기준 조회 중입니다. 조회가 끝난 뒤 실행하세요.'
+                : underwritingContext.insurers.length === 0 ? '선택한 보험사가 없어 건강기록만 요약합니다(기준 미반영).'
+                : guideStatus === 'idle' ? '기준을 아직 확인하지 않아 건강기록만 요약합니다(기준 미확인).'
+                : guideStatus === 'failed' ? '기준 조회에 실패해 건강기록만 요약합니다(기준 미확인).'
+                : guideStatus === 'partial' ? `일부 기준 조회 실패 — 확인된 기준 ${n}건만 참고로 반영합니다.`
+                : n === 0 ? '일치한 등록 기준이 없어 건강기록만 요약합니다(미매칭 — 가입 가능을 뜻하지 않음).'
+                : `연결된 기준 ${n}건(인수 ${underwritingContext.guides.length} · 예외 ${underwritingContext.exceptions.length})을 참고로 반영합니다.`
+              return <p className={`mt-1 text-[13px] ${guideStatus === 'partial' || guideStatus === 'failed' ? 'text-rose-700' : 'text-[#0e1e3a]'}`}>{note}</p>
+            })()}
             {sections.length === 0 ? (
-              <p className="mt-2 text-[12px] text-slate-500">선택한 기간에 기록이 없어 AI 요약을 요청할 수 없습니다.</p>
+              <p className="mt-2 text-[13px] text-slate-500">선택한 기간에 기록이 없어 AI 요약을 요청할 수 없습니다.</p>
             ) : (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <input value={aiQ} onChange={(e) => setAiQ(e.target.value)} aria-label="AI에게 질문(선택)" placeholder="질문(선택) — 예: 최근 2년 입원·수술 정리해줘"
-                  className="min-h-9 w-full min-w-0 flex-1 rounded-lg border border-slate-700 bg-white px-3 py-1.5 text-[13px] text-slate-100 sm:w-auto" />
-                <button type="button" onClick={() => void runAi()} disabled={aiBusy}
-                  className="inline-flex min-h-9 items-center gap-1 rounded-lg bg-[#0e1e3a] px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-50">
-                  {aiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 text-[#e6c877]" />}
-                  {aiBusy ? '분석 중…' : 'AI 통합 인수 요약 받기'}
+              <div className="mt-2 space-y-2">
+                <details className="rounded-lg border border-slate-800 px-3">
+                  <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-bold text-slate-300">질문 추가 (선택){aiQ.trim() ? ' · 입력됨' : ''}</summary>
+                  <input value={aiQ} onChange={(e) => setAiQ(e.target.value)} aria-label="AI에게 질문(선택)" placeholder="예: 최근 2년 입원·수술 정리해줘"
+                    className="mb-2 min-h-11 w-full min-w-0 rounded-lg border border-slate-700 bg-white px-3 text-[14px] text-slate-100" />
+                </details>
+                <button type="button" onClick={() => void runAi()} disabled={aiBusy || guideStatus === 'loading'}
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-lg bg-[#0e1e3a] px-4 text-[13px] font-bold text-white disabled:opacity-50 sm:w-auto">
+                  {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ShieldCheck className="h-4 w-4 text-[#e6c877]" aria-hidden="true" />}
+                  {aiBusy ? '분석 중…' : aiErr ? '다시 시도' : aiAnswer !== null ? 'AI 요약 다시 받기' : 'AI 참고 요약 받기'}
                 </button>
               </div>
             )}
-            {aiErr ? <p role="alert" className="mt-2 text-[12px] text-rose-500">{aiErr}</p> : null}
-            {aiAnswer ? <div className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-[13px] leading-relaxed text-slate-100">{aiAnswer}</div> : null}
-            <p className="mt-2 text-[12px] leading-relaxed text-slate-500">※ 이름·주민번호 등 식별자는 보내지 않고 비식별 요약만 AI에 전달합니다. 병명·수술·투약 연결은 (진료일·기관) 매칭 기반 추정이며 의학적 확정이 아닙니다.</p>
-            <p className="mt-1 text-[12px] text-amber-700">보험사 최종 심사·특정 상품 가입 가능 여부를 확정하지 않습니다.</p>
+            {aiBusy ? <p role="status" className="mt-2 text-[13px] text-slate-500">AI가 분석 중입니다…</p> : null}
+            {aiErr && !aiBusy ? <p role="alert" className="mt-2 break-words text-[13px] font-semibold text-rose-700">AI 요약 실패: {aiErr} — ‘다시 시도’를 누르세요.</p> : null}
+            {aiAnswer !== null && !aiBusy ? (
+              <div className="mt-2">
+                <p role="status" className="text-[12px] font-bold text-[#0e1e3a]">요약 완료 · 상담 참고용</p>
+                <div className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 text-[13px] leading-relaxed text-slate-100">{aiAnswer || '(빈 응답)'}</div>
+              </div>
+            ) : null}
+            <p className="mt-2 text-[12px] leading-relaxed text-slate-500">식별자는 보내지 않고 비식별 요약만 전달합니다 · 병명·수술·투약 연결은 추정이며, 보험사 최종 심사·가입 가능 여부를 확정하지 않습니다.</p>
           </section>
         ) : null}
 
