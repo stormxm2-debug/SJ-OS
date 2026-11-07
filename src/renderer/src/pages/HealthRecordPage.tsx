@@ -33,6 +33,7 @@ import { deriveEntryPhase, type EntryPhase } from '@renderer/services/health-rec
 import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
 import HealthRecordWorkspace from '@renderer/components/health-record/HealthRecordWorkspace'
 import SonsonEstimator from '@renderer/components/health-record/SonsonEstimator'
+import RecentCareTable from '@renderer/components/health-record/RecentCareTable'
 import { admissionSummary, buildCareRecords, CARE_PERIODS, calendarMonthsAgo, filterCareResult, healthErrorHelp, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
 
 /**
@@ -1018,6 +1019,7 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
   const [underwritingContext, setUnderwritingContext] = useState<HrUnderwritingContext>({ insurers: [], guides: [], exceptions: [] })
   const [detailView, setDetailView] = useState<'disease' | 'sections' | 'raw'>('disease')
   const [groupBy, setGroupBy] = useState<GroupBy>('year')
+  const [episodesOpen, setEpisodesOpen] = useState(false)
   const sections = useMemo(() => collectSections(filteredResult), [filteredResult])
   const raw = useMemo(() => JSON.stringify(result, null, 2), [result])
   const totalRows = sections.reduce((n, s) => n + s.rows.length, 0)
@@ -1089,7 +1091,7 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
           </button>
         ))}
       </div>
-      <p className="mt-1 text-[11px] text-slate-500">조회된 자료 안에서 기간을 나눕니다. 날짜 미상 기록은 ‘조회 전체’에서 확인하세요.</p>
+      <p className="mt-1 text-[12px] text-slate-500">조회된 자료 안에서 기간을 나눕니다. 날짜 미상 기록은 ‘조회 전체’에서 확인하세요.</p>
 
       <div role="tablist" aria-label="조회 결과 보기" className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-950 p-1">
         {tabs.map((t, i) => (
@@ -1102,13 +1104,15 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
       </div>
 
       <div id="hr-result-panel" role="tabpanel" aria-labelledby={`hr-tab-${tab}`}>
+        {/* 최근 3개월 고정 표 — 공통 기간과 별개로 전체 result에서 계산. 비활성 탭에서도 null 슬롯을 유지해 아래 워크스페이스 위치(상태)가 바뀌지 않는다. */}
+        {tab === 'summary' ? <RecentCareTable result={result} /> : null}
         {/* 같은 위치에 한 번만 마운트 — 탭은 표시 모드만 바꾼다(청구 상태·검색·선택 유지, 저장 API 재호출 없음). */}
         <HealthRecordWorkspace result={filteredResult} requestId={requestId} period={carePeriod} mode={tab} onContextChange={setUnderwritingContext} />
 
         {tab === 'summary' ? (
           <>
             {sections.length > 0 && highlights.hasAny ? (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-[#fecdd3] bg-rose-50 px-3 py-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
                 <span className="text-[12px] font-bold text-rose-700">주목</span>
                 {highlights.inpatientVisits > 0 ? <BigChip tone="rose">입원 {highlights.inpatientVisits}건</BigChip> : null}
@@ -1119,15 +1123,25 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
                 {highlights.bigSelfPay.map((d) => (
                   <BigChip key={`sp-${d.disease}`} tone="amber">고액 {won(d.selfPayTotal)} · {d.disease}</BigChip>
                 ))}
-                <span className="w-full text-[11px] text-rose-700/70">보험 상담 시 확인 권장 신호(추정). 입원·수술·잦은 통원·고액 진료는 담보 해당 여부를 약관으로 확인하세요.</span>
+                <span className="w-full text-[12px] text-rose-700/70">보험 상담 시 확인 권장 신호(추정). 입원·수술·잦은 통원·고액 진료는 담보 해당 여부를 약관으로 확인하세요.</span>
               </div>
             ) : null}
 
             {sections.length === 0 ? (
               <p className="mt-3 text-[13px] text-slate-500">선택한 기간에 표시할 기록이 없습니다. ‘조회 전체’ 또는 아래 원본 보기를 확인하세요. 기록이 없다는 것이 이상 없음·가입 가능을 뜻하지 않습니다.</p>
             ) : (
-              <div className="mt-3">
-                <EpisodeView episodes={episodes} records={careRecords} />
+              <div className="mt-3 rounded-xl border border-slate-800">
+                <button type="button" onClick={() => setEpisodesOpen((v) => !v)} aria-expanded={episodesOpen} aria-controls="hr-episode-detail"
+                  className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-[13px] font-bold text-slate-100 hover:bg-slate-950">
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${episodesOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+                  상병별 상세 기록 {episodes.length}개
+                  <span className="ml-auto text-[12px] font-semibold text-slate-400">{episodesOpen ? '접기' : '펼치기'}</span>
+                </button>
+                {episodesOpen ? (
+                  <div id="hr-episode-detail" className="border-t border-slate-800 p-3">
+                    <EpisodeView episodes={episodes} records={careRecords} />
+                  </div>
+                ) : null}
               </div>
             )}
 
@@ -1147,8 +1161,8 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
               </div>
               {detailView === 'raw' ? (
                 <>
-                  <p className="mt-2 text-[11px] text-slate-500">원본은 기간 선택과 관계없이 조회 전체 응답입니다.</p>
-                  <pre className="mt-1 max-h-80 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-100">{raw}</pre>
+                  <p className="mt-2 text-[12px] text-slate-500">원본은 기간 선택과 관계없이 조회 전체 응답입니다.</p>
+                  <pre className="mt-1 max-h-80 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[12px] leading-relaxed text-slate-100">{raw}</pre>
                 </>
               ) : sections.length === 0 ? (
                 <p className="mt-2 text-[12px] text-slate-500">선택한 기간에 표시할 기록이 없습니다.</p>
@@ -1160,8 +1174,8 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
                     <div key={s.key}>
                       {sections.length > 1 ? (
                         <div className="mb-1.5 flex items-center gap-2">
-                          <span className="rounded-full bg-[#0e1e3a] px-2.5 py-0.5 text-[11px] font-bold text-white">{s.label}</span>
-                          <span className="text-[11px] font-semibold text-slate-400">{s.rows.length}건</span>
+                          <span className="rounded-full bg-[#0e1e3a] px-2.5 py-0.5 text-[12px] font-bold text-white">{s.label}</span>
+                          <span className="text-[12px] font-semibold text-slate-400">{s.rows.length}건</span>
                         </div>
                       ) : null}
                       {SECTION_SPECS[s.key] ? (
@@ -1198,8 +1212,8 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
             )}
             {aiErr ? <p role="alert" className="mt-2 text-[12px] text-rose-500">{aiErr}</p> : null}
             {aiAnswer ? <div className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-[13px] leading-relaxed text-slate-100">{aiAnswer}</div> : null}
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">※ 이름·주민번호 등 식별자는 보내지 않고 비식별 요약만 AI에 전달합니다. 병명·수술·투약 연결은 (진료일·기관) 매칭 기반 추정이며 의학적 확정이 아닙니다.</p>
-            <p className="mt-1 text-[11px] text-amber-700">보험사 최종 심사·특정 상품 가입 가능 여부를 확정하지 않습니다.</p>
+            <p className="mt-2 text-[12px] leading-relaxed text-slate-500">※ 이름·주민번호 등 식별자는 보내지 않고 비식별 요약만 AI에 전달합니다. 병명·수술·투약 연결은 (진료일·기관) 매칭 기반 추정이며 의학적 확정이 아닙니다.</p>
+            <p className="mt-1 text-[12px] text-amber-700">보험사 최종 심사·특정 상품 가입 가능 여부를 확정하지 않습니다.</p>
           </section>
         ) : null}
 
@@ -1217,9 +1231,9 @@ function BigChip({ tone, children }: { tone: 'rose' | 'amber' | 'slate'; childre
   const cls = tone === 'rose'
     ? 'border-rose-300 bg-white text-rose-700'
     : tone === 'amber'
-      ? 'border-amber-300 bg-amber-100 text-amber-800'
-      : 'border-slate-300 bg-white text-slate-600'
-  return <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${cls}`}>{children}</span>
+      ? 'border-amber-300 bg-[#fef3c7] text-amber-800'
+      : 'border-slate-700 bg-white text-slate-300'
+  return <span className={`rounded-full border px-2.5 py-0.5 text-[13px] font-bold ${cls}`}>{children}</span>
 }
 
 /** 수술 부위 일러스트 — 인체 실루엣 + 해당 부위 강조점(실제 수술 사진 아님, 부위 안내용). */
@@ -1262,40 +1276,40 @@ function SurgeryRow({ occ }: { occ: SurgeryOccasion }): JSX.Element {
   const { label, seq } = sequelaeForSurgery(occ.primaryName, occ.partGroup)
   const others = occ.names.filter((n) => n !== occ.primaryName)
   return (
-    <li className="overflow-hidden rounded-lg border border-rose-200 bg-rose-50/40">
+    <li className="overflow-hidden rounded-lg border border-[#fecdd3] bg-rose-50/40">
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-start gap-2 p-1.5 text-left hover:bg-[#fff1f2]">
         <SurgeryIcon group={occ.partGroup} className="mt-0.5 h-9 w-5 shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1">
-            <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">수술</span>
-            {occ.bodyPart ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">부위: {occ.bodyPart}</span> : null}
+            <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[11px] font-extrabold text-white">수술</span>
+            {occ.bodyPart ? <span className="rounded-full bg-[#fef3c7] px-2 py-0.5 text-[11px] font-bold text-amber-800">부위: {occ.bodyPart}</span> : null}
             <span className="text-[12px] font-semibold text-slate-100">{occ.primaryName}</span>
-            {others.length ? <span className="text-[10px] text-slate-400">외 {others.length}건</span> : null}
+            {others.length ? <span className="text-[11px] text-slate-400">외 {others.length}건</span> : null}
           </div>
-          <div className="mt-0.5 text-[11px] text-slate-500">{ymd(occ.date)}{occ.hospital ? ` · ${occ.hospital}` : ''}</div>
+          <div className="mt-0.5 text-[12px] text-slate-500">{ymd(occ.date)}{occ.hospital ? ` · ${occ.hospital}` : ''}</div>
         </div>
-        <span className="mt-0.5 shrink-0 text-[10px] font-semibold text-rose-600">{open ? '닫기' : '자세히'}</span>
+        <span className="mt-0.5 shrink-0 text-[11px] font-semibold text-rose-600">{open ? '닫기' : '자세히'}</span>
       </button>
 
       {open ? (
-        <div className="border-t border-rose-100 bg-white p-2.5">
+        <div className="border-t border-[#ffe4e6] bg-white p-2.5">
           <div className="flex items-start gap-3">
-            <div className="shrink-0 rounded-lg border border-slate-100 bg-[#f8fafc] p-1.5">
+            <div className="shrink-0 rounded-lg border border-slate-800 bg-[#f8fafc] p-1.5">
               <SurgeryIcon group={occ.partGroup} className="h-20 w-11" />
             </div>
             <div className="min-w-0 flex-1 text-[12px]">
               <div className="flex flex-wrap items-center gap-1">
                 <span className="text-slate-100"><b>수술명</b> · {occ.primaryName}</span>
-                {label ? <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">{label}</span> : null}
+                {label ? <span className="rounded-full bg-[#ffe4e6] px-2 py-0.5 text-[11px] font-bold text-rose-700">{label}</span> : null}
               </div>
               <div className="mt-0.5 text-slate-300"><b>추정 부위</b> · {occ.bodyPart || '부위 추정 어려움(명칭 기반)'}</div>
-              <div className="mt-0.5 text-[11px] text-slate-500">{ymd(occ.date)}{occ.hospital ? ` · ${occ.hospital}` : ''}</div>
-              {others.length ? <div className="mt-0.5 text-[11px] text-slate-500">같은 날 항목: {others.join(', ')}</div> : null}
+              <div className="mt-0.5 text-[12px] text-slate-500">{ymd(occ.date)}{occ.hospital ? ` · ${occ.hospital}` : ''}</div>
+              {others.length ? <div className="mt-0.5 text-[12px] text-slate-500">같은 날 항목: {others.join(', ')}</div> : null}
             </div>
           </div>
 
-          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
-            <div className="flex items-center gap-1 text-[11px] font-extrabold text-amber-800">
+          <div className="mt-2 rounded-lg border border-[#fde68a] bg-amber-50 p-2">
+            <div className="flex items-center gap-1 text-[12px] font-extrabold text-amber-800">
               <AlertTriangle className="h-3.5 w-3.5" /> 후유장해 가능성{label ? ` · ${label}` : ''}(일반 참고)
             </div>
             <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-amber-900">
@@ -1303,12 +1317,12 @@ function SurgeryRow({ occ }: { occ: SurgeryOccasion }): JSX.Element {
                 <li key={i}>{r}</li>
               ))}
             </ul>
-            <div className="mt-1.5 rounded-md bg-white/70 px-2 py-1 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+            <div className="mt-1.5 rounded-md bg-white/70 px-2 py-1 text-[12px] font-semibold text-amber-800 ring-1 ring-[#fde68a]">
               💡 보험 확인: {seq.insurancePoint}
             </div>
           </div>
 
-          <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
             ※ 위 후유장해는 해당 수술에서 <b>일반적으로 거론되는 유형</b>일 뿐, 실제 발생 여부·정도는 개인·수술 범위에 따라 다릅니다. 보험상 후유장해는 <b>의료진 진단과 약관의 후유장해분류표(지급률)</b>로 확정되며, 수술명·부위도 <b>명칭 기반 추정</b>입니다. 의학적·보험적 확정이 아닙니다.
           </p>
         </div>
@@ -1320,7 +1334,7 @@ function SurgeryRow({ occ }: { occ: SurgeryOccasion }): JSX.Element {
 function HrChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }): JSX.Element {
   return (
     <button type="button" onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${active ? 'border-[#c6982f] bg-[#fdf7ea] text-[#8a6a1f]' : 'border-slate-700 bg-white text-slate-400'}`}>
+      className={`min-h-9 rounded-full border px-3 py-1 text-[12px] font-bold ${active ? 'border-[#c6982f] bg-[#fdf7ea] text-[#8a6a1f]' : 'border-slate-700 bg-white text-slate-400'}`}>
       {children}
     </button>
   )
@@ -1332,31 +1346,31 @@ function DiseaseSummaryView({ diseases }: { diseases: DiseaseSummary[] }): JSX.E
   const period = (a: string, b: string): string => (a && b ? `${ymd(a)} ~ ${ymd(b)}` : a ? ymd(a) : '')
   return (
     <div className="space-y-2">
-      <p className="text-[11px] text-slate-500">같은 병명(표기 기준)으로 묶은 <b>추정</b> 요약 — 수술·투약은 (진료일·기관) 일치로 연결했습니다. 표기가 다르면 같은 질환도 분리될 수 있어요(의학적 확정 아님).</p>
+      <p className="text-[12px] text-slate-500">같은 병명(표기 기준)으로 묶은 <b>추정</b> 요약 — 수술·투약은 (진료일·기관) 일치로 연결했습니다. 표기가 다르면 같은 질환도 분리될 수 있어요(의학적 확정 아님).</p>
       <ul className="grid gap-2 lg:grid-cols-2">
         {diseases.map((d) => {
           const flags = diseaseFlags(d)
           const emphasize = flags.length > 0
           const occasions = groupSurgeryOccasions(d.surgeries)
           return (
-          <li key={d.disease} className={`rounded-xl border bg-white p-3 shadow-sm ${emphasize ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-800'}`}>
+          <li key={d.disease} className={`rounded-xl border bg-white p-3 shadow-sm ${emphasize ? 'border-rose-300 ring-1 ring-[#fecdd3]' : 'border-slate-800'}`}>
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[13px] font-bold text-slate-100">{d.disease}</span>
-              <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-white">{d.visitCount}회 방문</span>
-              {d.inpatientVisits > 0 ? <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-extrabold text-white">입원 {d.inpatientVisits}</span> : null}
-              {occasions.length ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200">수술 {occasions.length}회</span> : null}
-              {d.outpatientVisits >= 7 ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-800">통원 {d.outpatientVisits}회</span> : null}
+              <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[11px] font-bold text-white">{d.visitCount}회 방문</span>
+              {d.inpatientVisits > 0 ? <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-extrabold text-white">입원 {d.inpatientVisits}</span> : null}
+              {occasions.length ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700 ring-1 ring-[#fecdd3]">수술 {occasions.length}회</span> : null}
+              {d.outpatientVisits >= 7 ? <span className="rounded-full bg-[#fef3c7] px-2 py-0.5 text-[11px] font-extrabold text-amber-800">통원 {d.outpatientVisits}회</span> : null}
             </div>
-            <div className="mt-1 text-[11px] text-slate-500">
+            <div className="mt-1 text-[12px] text-slate-500">
               {period(d.firstDate, d.lastDate)}
               {d.departments.length ? ` · ${d.departments.join('/')}` : ''}
               {d.selfPayTotal ? ` · 본인부담 ${won(d.selfPayTotal)}` : ''}
             </div>
-            {d.hospitals.length ? <div className="mt-0.5 text-[11px] text-slate-400">병원: {d.hospitals.join(', ')}</div> : null}
+            {d.hospitals.length ? <div className="mt-0.5 text-[12px] text-slate-400">병원: {d.hospitals.join(', ')}</div> : null}
 
             {occasions.length ? (
               <div className="mt-1.5">
-                <div className="text-[10px] font-semibold text-slate-500">수술 {occasions.length}회(추정) — 누르면 부위·후유장해 안내. 단순 처치 제외, 같은 날 수술은 1회로 묶음.</div>
+                <div className="text-[11px] font-semibold text-slate-500">수술 {occasions.length}회(추정) — 누르면 부위·후유장해 안내. 단순 처치 제외, 같은 날 수술은 1회로 묶음.</div>
                 <ul className="mt-1 space-y-1.5">
                   {occasions.map((occ, i) => (
                     <SurgeryRow key={i} occ={occ} />
@@ -1367,14 +1381,14 @@ function DiseaseSummaryView({ diseases }: { diseases: DiseaseSummary[] }): JSX.E
 
             {d.medications.length ? (
               <div className="mt-1.5">
-                <div className="text-[10px] font-semibold text-slate-500">투약(추정)</div>
+                <div className="text-[11px] font-semibold text-slate-500">투약(추정)</div>
                 <ul className="mt-0.5 space-y-0.5">
                   {d.medications.map((x, i) => (
                     <li key={i} className="text-[12px] text-slate-300">
                       <span className="font-medium text-slate-200">{x.name}</span>
-                      {x.ingredient ? <span className="ml-1 text-[11px] text-slate-500">{x.ingredient}</span> : ''}
-                      {x.days ? <span className="ml-1 text-[11px] text-slate-500">· {x.days}일분</span> : ''}
-                      <span className="ml-1 text-[11px] text-slate-500">· {ymd(x.date)}</span>
+                      {x.ingredient ? <span className="ml-1 text-[12px] text-slate-500">{x.ingredient}</span> : ''}
+                      {x.days ? <span className="ml-1 text-[12px] text-slate-500">· {x.days}일분</span> : ''}
+                      <span className="ml-1 text-[12px] text-slate-500">· {ymd(x.date)}</span>
                     </li>
                   ))}
                 </ul>
@@ -1407,7 +1421,7 @@ function EpisodeView({ episodes, records }: { episodes: DiseaseEpisode[]; record
 
   return (
     <div className="space-y-2">
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[12px] text-slate-500">
         같은 병명을 <b>비슷한 시기(약 {EPISODE_GAP_DAYS}일 이내)</b>로 묶었습니다. 카드를 <b>누르면</b> 방문·수술·투약 상세가 펼쳐져요. (추정 — 수술·투약은 진료일·기관 매칭, 의학적 확정 아님)
       </p>
       <ul className="space-y-2">
@@ -1419,43 +1433,43 @@ function EpisodeView({ episodes, records }: { episodes: DiseaseEpisode[]; record
           const emphasize = e.inpatient || surgCount > 0 || e.selfPayTotal >= BIG_SELFPAY_THRESHOLD
           const admission = admissionSummary(records.filter(r=>normalizeDisease(r.disease)===e.disease && e.visits.some(v=>v.date===r.date && v.hospital===r.hospital)))
           return (
-            <li key={id} className={`overflow-hidden rounded-xl border bg-white shadow-sm ${emphasize ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-800'}`}>
+            <li key={id} className={`overflow-hidden rounded-xl border bg-white shadow-sm ${emphasize ? 'border-rose-300 ring-1 ring-[#fecdd3]' : 'border-slate-800'}`}>
               <button type="button" onClick={() => toggle(id)} aria-expanded={isOpen} className="flex w-full items-start gap-2 p-3 text-left hover:bg-[#f8fafc]">
                 <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[13px] font-bold text-slate-100">{e.disease}</span>
-                    <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[10px] font-bold text-white">방문 {e.visitCount}회</span>
-                    {e.inpatient ? <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-extrabold text-white">입원 {admission.knownDays?`${admission.knownDays}일`:'일수 확인 필요'}{admission.knownDays && admission.unknown?' + 미확인':''}</span> : null}
-                    {surgCount ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200">수술 {surgCount}회</span> : null}
-                    {e.selfPayTotal >= BIG_SELFPAY_THRESHOLD ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-800">고액</span> : null}
+                    <span className="rounded-full bg-[#0e1e3a] px-2 py-0.5 text-[11px] font-bold text-white">방문 {e.visitCount}회</span>
+                    {e.inpatient ? <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-extrabold text-white">입원 {admission.knownDays?`${admission.knownDays}일`:'일수 확인 필요'}{admission.knownDays && admission.unknown?' + 미확인':''}</span> : null}
+                    {surgCount ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700 ring-1 ring-[#fecdd3]">수술 {surgCount}회</span> : null}
+                    {e.selfPayTotal >= BIG_SELFPAY_THRESHOLD ? <span className="rounded-full bg-[#fef3c7] px-2 py-0.5 text-[11px] font-extrabold text-amber-800">고액</span> : null}
                   </div>
-                  <div className="mt-0.5 text-[11px] text-slate-500">
+                  <div className="mt-0.5 text-[12px] text-slate-500">
                     {period(e.firstDate, e.lastDate)}
                     {e.departments.length ? ` · ${e.departments.join('/')}` : ''}
                     {e.selfPayTotal ? ` · 본인부담 ${won(e.selfPayTotal)}` : ''}
                   </div>
                 </div>
-                <span className="mt-0.5 shrink-0 text-[10px] font-semibold text-slate-400">{isOpen ? '접기' : '상세'}</span>
+                <span className="mt-0.5 shrink-0 text-[11px] font-semibold text-slate-400">{isOpen ? '접기' : '상세'}</span>
               </button>
 
               {isOpen ? (
-                <div className="border-t border-slate-100 px-3 pb-3 pt-2.5">
-                  {e.hospitals.length ? <div className="text-[11px] text-slate-400">병원: {e.hospitals.join(', ')}</div> : null}
+                <div className="border-t border-slate-800 px-3 pb-3 pt-2.5">
+                  {e.hospitals.length ? <div className="text-[12px] text-slate-400">병원: {e.hospitals.join(', ')}</div> : null}
 
                   <div className="mt-1.5">
-                    <div className="text-[10px] font-semibold text-slate-500">방문 내역 ({e.visitCount}회)</div>
+                    <div className="text-[11px] font-semibold text-slate-500">방문 내역 ({e.visitCount}회)</div>
                     <ul className="mt-1 space-y-1">
                       {e.visits.map((v, vi) => (
                         <li key={vi} className="flex flex-wrap items-center gap-1.5 text-[12px]">
-                          <span className="rounded-md bg-[#eef2f7] px-2 py-0.5 text-[11px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">{ymd(v.date) || '날짜미상'}</span>
+                          <span className="rounded-md bg-[#eef2f7] px-2 py-0.5 text-[12px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">{ymd(v.date) || '날짜미상'}</span>
                           {v.inpatient ? (
-                            <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">입원</span>
+                            <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[11px] font-extrabold text-white">입원</span>
                           ) : v.type ? (
-                            <span className="rounded bg-[#eef2f7] px-1.5 py-0.5 text-[10px] font-semibold text-[#334155] ring-1 ring-[#e2e8f0]">{v.type}</span>
+                            <span className="rounded bg-[#eef2f7] px-1.5 py-0.5 text-[11px] font-semibold text-[#334155] ring-1 ring-[#e2e8f0]">{v.type}</span>
                           ) : null}
                           <span className="text-slate-200">{v.hospital || '-'}</span>
-                          {v.selfPay ? <span className="text-[11px] text-slate-500">· {won(v.selfPay)}</span> : null}
+                          {v.selfPay ? <span className="text-[12px] text-slate-500">· {won(v.selfPay)}</span> : null}
                         </li>
                       ))}
                     </ul>
@@ -1463,7 +1477,7 @@ function EpisodeView({ episodes, records }: { episodes: DiseaseEpisode[]; record
 
                   {occasions.length ? (
                     <div className="mt-2">
-                      <div className="text-[10px] font-semibold text-slate-500">수술 {occasions.length}회(추정) — 누르면 부위·후유장해 안내. 단순 처치 제외, 같은 날 수술은 1회로 묶음.</div>
+                      <div className="text-[11px] font-semibold text-slate-500">수술 {occasions.length}회(추정) — 누르면 부위·후유장해 안내. 단순 처치 제외, 같은 날 수술은 1회로 묶음.</div>
                       <ul className="mt-1 space-y-1.5">
                         {occasions.map((occ, xi) => (
                           <SurgeryRow key={xi} occ={occ} />
@@ -1474,14 +1488,14 @@ function EpisodeView({ episodes, records }: { episodes: DiseaseEpisode[]; record
 
                   {e.medications.length ? (
                     <div className="mt-2">
-                      <div className="text-[10px] font-semibold text-slate-500">투약(추정)</div>
+                      <div className="text-[11px] font-semibold text-slate-500">투약(추정)</div>
                       <ul className="mt-0.5 space-y-0.5">
                         {e.medications.map((x, mi) => (
                           <li key={mi} className="text-[12px] text-slate-300">
                             <span className="font-medium text-slate-200">{x.name}</span>
-                            {x.ingredient ? <span className="ml-1 text-[11px] text-slate-500">{x.ingredient}</span> : ''}
-                            {x.days ? <span className="ml-1 text-[11px] text-slate-500">· {x.days}일분</span> : ''}
-                            <span className="ml-1 text-[11px] text-slate-500">· {ymd(x.date)}</span>
+                            {x.ingredient ? <span className="ml-1 text-[12px] text-slate-500">{x.ingredient}</span> : ''}
+                            {x.days ? <span className="ml-1 text-[12px] text-slate-500">· {x.days}일분</span> : ''}
+                            <span className="ml-1 text-[12px] text-slate-500">· {ymd(x.date)}</span>
                           </li>
                         ))}
                       </ul>
@@ -1503,7 +1517,7 @@ function TreatmentReport({ records }: { records: Row[] }): JSX.Element {
   return (
     <>
       <div className="mt-3">
-        <div className="mb-1 text-[11px] font-semibold text-slate-400">카테고리 보고서 · 진료형태별</div>
+        <div className="mb-1 text-[12px] font-semibold text-slate-400">카테고리 보고서 · 진료형태별</div>
         <div className="overflow-x-auto rounded-xl border border-slate-800">
           <table className="w-full text-[12px]">
             <thead>
@@ -1535,7 +1549,7 @@ function TreatmentReport({ records }: { records: Row[] }): JSX.Element {
       </div>
 
       <div className="mt-4">
-        <div className="mb-1 text-[11px] font-semibold text-slate-400">진료 상세 내역 · 치료/투약</div>
+        <div className="mb-1 text-[12px] font-semibold text-slate-400">진료 상세 내역 · 치료/투약</div>
         <div className="overflow-x-auto rounded-xl border border-slate-800">
           <table className="w-full whitespace-nowrap text-[12px]">
             <thead>
@@ -1556,7 +1570,7 @@ function TreatmentReport({ records }: { records: Row[] }): JSX.Element {
                   <td className="px-3 py-2 font-medium">{String(r.resHospitalName ?? '') || '-'}</td>
                   <td className="px-3 py-2">{ymd(r.resTreatStartDate)}</td>
                   <td className="px-3 py-2">
-                    <span className="rounded-full bg-[#eef2f7] px-2 py-0.5 text-[11px] font-semibold text-[#334155] ring-1 ring-[#e2e8f0]">{String(r.resTreatType ?? '') || '-'}</span>
+                    <span className="rounded-full bg-[#eef2f7] px-2 py-0.5 text-[12px] font-semibold text-[#334155] ring-1 ring-[#e2e8f0]">{String(r.resTreatType ?? '') || '-'}</span>
                   </td>
                   <td className="px-3 py-2 text-right">{num(r.resPrescribeCnt)}회</td>
                   <td className="px-3 py-2 text-right font-semibold text-[#8a6a1f]">{num(r.resPrescribeDays)}일분</td>
@@ -1568,7 +1582,7 @@ function TreatmentReport({ records }: { records: Row[] }): JSX.Element {
             </tbody>
           </table>
         </div>
-        <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+        <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
           ※ 「진료받은 내용」(건강보험공단) 전 항목 — 진료형태(받은 치료 구분)·처방횟수·투약일수·방문(입원)일수·본인/공단 부담금. 개별 약품명은 「내가먹는약 한눈에」에서 확인하세요.
         </p>
       </div>
@@ -1648,7 +1662,7 @@ function GenericTable({ records }: { records: Row[] }): JSX.Element {
 
   return (
     <div className="mt-3">
-      <div className="mb-1 text-[11px] font-semibold text-slate-400">상세 내역 · 약품/투약</div>
+      <div className="mb-1 text-[12px] font-semibold text-slate-400">상세 내역 · 약품/투약</div>
       <div className="overflow-x-auto rounded-xl border border-slate-800">
         <table className="w-full whitespace-nowrap text-[12px]">
           <thead>
@@ -1671,7 +1685,7 @@ function GenericTable({ records }: { records: Row[] }): JSX.Element {
           </tbody>
         </table>
       </div>
-      <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">※ CODEF 응답 전 항목을 표로 표시합니다. 컬럼명은 상품 스펙 확정 후 더 다듬을 수 있어요.</p>
+      <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">※ CODEF 응답 전 항목을 표로 표시합니다. 컬럼명은 상품 스펙 확정 후 더 다듬을 수 있어요.</p>
     </div>
   )
 }
@@ -1730,7 +1744,7 @@ export function SpecTable({ cols, records, groupBy = 'year' }: { cols: ColSpec[]
     <div className="space-y-3">
       {/* 요약(금액 섹션만) */}
       {wonCols.length ? (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-xl border border-[#fde68a] bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
           <span className="font-bold">합계 {records.length}건</span>
           {wonCols.map((c) => (
             <span key={c.key}>{c.label} <b>{won(totals[c.key])}</b></span>
@@ -1742,9 +1756,9 @@ export function SpecTable({ cols, records, groupBy = 'year' }: { cols: ColSpec[]
         <div key={g.ym}>
           {/* 월 헤더(날짜별 정리) */}
           <div className="sticky top-0 z-[1] -mx-1 mb-1.5 flex items-center gap-2 bg-white/95 px-1 py-1 backdrop-blur">
-            <span className="rounded-full bg-[#0e1e3a] px-2.5 py-0.5 text-[11px] font-bold text-white">{g.ym}</span>
-            <span className="text-[11px] font-semibold text-slate-400">{g.rows.length}건</span>
-            {wonCols.length && g.self ? <span className="text-[11px] text-slate-400">본인부담 {won(g.self)}</span> : null}
+            <span className="rounded-full bg-[#0e1e3a] px-2.5 py-0.5 text-[12px] font-bold text-white">{g.ym}</span>
+            <span className="text-[12px] font-semibold text-slate-400">{g.rows.length}건</span>
+            {wonCols.length && g.self ? <span className="text-[12px] text-slate-400">본인부담 {won(g.self)}</span> : null}
           </div>
 
           <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -1754,12 +1768,12 @@ export function SpecTable({ cols, records, groupBy = 'year' }: { cols: ColSpec[]
               const inpatient = /입원/.test(type)
               const surgeryRow = /(수술|절제|적출|성형|이식|봉합|절개)/.test(type) || /(수술|절제|적출|성형|이식|봉합|절개)/.test(String(r.resCodeName ?? r.resOperationName ?? ''))
               return (
-                <li key={i} className={`rounded-xl border bg-white p-3 shadow-sm ${inpatient || surgeryRow ? 'border-rose-300 ring-1 ring-rose-200' : 'border-slate-800'}`}>
+                <li key={i} className={`rounded-xl border bg-white p-3 shadow-sm ${inpatient || surgeryRow ? 'border-rose-300 ring-1 ring-[#fecdd3]' : 'border-slate-800'}`}>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="rounded-md bg-[#eef2f7] px-2 py-0.5 text-[11px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">{dayLabel(r[dateCol.key])}</span>
+                    <span className="rounded-md bg-[#eef2f7] px-2 py-0.5 text-[12px] font-bold text-[#334155] ring-1 ring-[#e2e8f0]">{dayLabel(r[dateCol.key])}</span>
                     <span className="flex items-center gap-1">
-                      {surgeryRow ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700 ring-1 ring-rose-200">수술</span> : null}
-                      {type ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${inpatient ? 'bg-rose-600 text-white' : 'border border-slate-700 text-slate-400'}`}>{type}</span> : null}
+                      {surgeryRow ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-700 ring-1 ring-[#fecdd3]">수술</span> : null}
+                      {type ? <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${inpatient ? 'bg-rose-600 text-white' : 'border border-slate-700 text-slate-400'}`}>{type}</span> : null}
                     </span>
                   </div>
                   {hospitalKey && r[hospitalKey] ? <div className="mt-1 text-[13px] font-bold text-slate-100">{String(r[hospitalKey])}</div> : null}
@@ -1780,7 +1794,7 @@ export function SpecTable({ cols, records, groupBy = 'year' }: { cols: ColSpec[]
                   </dl>
 
                   {amounts.length ? (
-                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-slate-800 pt-1.5 text-[11px]">
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-slate-800 pt-1.5 text-[12px]">
                       {amounts.map((c) => (
                         <span key={c.key} className="text-slate-400">{c.label} <b className="text-[#8a6a1f]">{won(r[c.key])}</b></span>
                       ))}
