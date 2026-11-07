@@ -78,13 +78,15 @@ export default function RecentCareTable({ result }: { result: Record<string, unk
   const [expanded, setExpanded] = useState(false)
   const rows = expanded ? s.records : s.records.slice(0, INITIAL_ROWS)
   return (
-    <section className="mt-3 rounded-xl border border-slate-800 bg-white" aria-labelledby="hr-recent-title">
+    <section className="mt-4 rounded-xl border-2 border-[#0e1e3a]/20 bg-white" aria-labelledby="hr-recent-title">
       <div className="border-b border-slate-800 px-3 py-2.5">
-        <h3 id="hr-recent-title" className="text-[14px] font-bold text-slate-100">
-          최근 3개월 병원·약물 이력 <span className="font-semibold text-slate-400">· {s.records.length}건</span>
+        <h3 id="hr-recent-title" className="flex flex-wrap items-center gap-2 text-[14px] font-bold text-slate-100">
+          <span className="rounded-full bg-[#0e1e3a] px-2.5 py-0.5 text-[12px] font-bold text-white">최근 3개월 고정</span>
+          병원·약물 이력 <span className="font-semibold text-slate-400">{s.records.length}건</span>
         </h3>
-        <p className="mt-0.5 text-[12px] leading-relaxed text-slate-500">
-          {dateLabel(s.start)} ~ {dateLabel(s.end)} 고정(위 기간 선택과 별개) · 고지 확인용 참고이며 고지 의무·인수 여부를 판정하지 않습니다.
+        <p className="mt-1 text-[13px] text-slate-300">
+          <b className="text-slate-100">{dateLabel(s.start)} ~ {dateLabel(s.end)}</b>
+          <span className="text-slate-500"> · 적용 기간 버튼과 무관 · 고지 판정 아님</span>
         </p>
       </div>
 
