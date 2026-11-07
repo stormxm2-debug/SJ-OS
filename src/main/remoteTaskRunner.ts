@@ -68,13 +68,17 @@ function git(args: string[], cwd: string): Promise<{ code: number; out: string; 
   })
 }
 
-async function waitForJob(jobId: string, timeoutMs = 20 * 60 * 1000): Promise<ReturnType<typeof getAutoBuildJob>> {
+// 러너 1건 실행의 실제 종료 상태들. 'timed-out'(15분 하드 리밋)·'needs-review'·'skipped' 를
+// 포함해야 waitForJob 가 즉시 반환한다(이전엔 빠져 있어 시간초과 후에도 최대 20분 더 대기).
+const JOB_TERMINAL_STATUSES = new Set<string>(['succeeded', 'failed', 'blocked', 'cancelled', 'timed-out', 'needs-review', 'skipped'])
+
+// claudeAutoBuild 의 하드 실행 리밋(15분)보다 약간만 길게. 리밋을 무제한으로 늘리지 않는다.
+async function waitForJob(jobId: string, timeoutMs = 16 * 60 * 1000): Promise<ReturnType<typeof getAutoBuildJob>> {
   const start = Date.now()
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const job = getAutoBuildJob(jobId)
-    const st = job?.status
-    if (st === 'succeeded' || st === 'failed' || st === 'blocked' || st === 'cancelled') return job
+    if (job && JOB_TERMINAL_STATUSES.has(job.status)) return job
     if (Date.now() - start > timeoutMs) return job
     await new Promise((r) => setTimeout(r, 2000))
   }
@@ -99,14 +103,37 @@ export function makeRunnerDeps(config: RemoteRunnerConfig, workspace: string, st
       const dirty = await git(['status', '--short'], workspace)
       if (dirty.code !== 0) return { ok: false, changedFiles: [], checks: {}, reason: 'git status 실패' }
       if (dirty.out.trim().length > 0) {
-        // 더럽다면: 이전 원격작업(claude/remote-*)의 잔여물이면 자동 정리하고 진행,
-        // 그 외(사용자가 main 등에서 작업 중)면 훼손하지 않도록 거부.
+        // 복구 우선: 미커밋 변경은 절대 삭제하지 않는다.
         const cur = (await git(['branch', '--show-current'], workspace)).out.trim()
         if (cur.startsWith('claude/remote-')) {
-          await git(['checkout', '-f', 'main'], workspace)
-          await git(['clean', '-fd'], workspace)
+          // 이전 원격작업의 미커밋 잔여물 — clean -fd 로 삭제하지 않고 복구 가능한 named stash 로
+          // 보존한 뒤 진행한다(추적/비추적 모두 포함). 보존이 확인되지 않으면 삭제 없이 중단.
+          const label = `sj-remote-autostash:${branch}:${new Date().toISOString()}`
+          const before = (await git(['stash', 'list'], workspace)).out
+          const stash = await git(['stash', 'push', '--include-untracked', '-m', label], workspace)
+          const listed = (await git(['stash', 'list'], workspace)).out
+          const preserved =
+            stash.code === 0 &&
+            /saved working directory/i.test(`${stash.out}\n${stash.err}`) &&
+            listed.includes(label) &&
+            listed.length > before.length
+          if (!preserved) {
+            return {
+              ok: false,
+              changedFiles: [],
+              checks: {},
+              reason: '미커밋 변경 보존(stash) 확인 실패 — 삭제하지 않고 작업을 중단했습니다. 수동으로 git stash list 를 확인하세요.'
+            }
+          }
+          // 보존 확인됨 — 깨끗해진 트리에서 계속(복구: git stash list / git stash apply).
         } else {
-          return { ok: false, changedFiles: [], checks: {}, reason: '작업 폴더에 미커밋 변경이 있어 실행하지 않았습니다.' }
+          // 사용자가 main 등에서 작업 중 — 건드리지 않고 거부(보존).
+          return {
+            ok: false,
+            changedFiles: [],
+            checks: {},
+            reason: '작업 폴더에 미커밋 변경이 있어 보존을 위해 실행하지 않았습니다(수동 커밋 또는 stash 후 재시도).'
+          }
         }
       }
       await git(['fetch', 'origin', 'main'], workspace)
@@ -118,7 +145,13 @@ export function makeRunnerDeps(config: RemoteRunnerConfig, workspace: string, st
       const checks = { typecheck: done?.verification.typecheckStatus as string | undefined, build: done?.verification.buildStatus as string | undefined, test: undefined as string | undefined }
       const changed = await git(['status', '--short'], workspace)
       const changedFiles = changed.out.split(/\r?\n/).map((l) => l.slice(3).trim()).filter(Boolean)
-      if (done?.status !== 'succeeded') return { ok: false, changedFiles, checks, reason: done?.errorSummary ?? '러너 작업이 성공하지 못했습니다.' }
+      if (done?.status !== 'succeeded') {
+        const reason =
+          done?.status === 'timed-out'
+            ? '실행 시간 초과(약 15분)로 중단되어 검증을 건너뜀 — 미커밋 변경은 작업 폴더에 남아 있으며 다음 실행 시 stash 로 보존됩니다.'
+            : done?.errorSummary ?? `러너 작업이 성공하지 못했습니다(status=${done?.status ?? 'unknown'}).`
+        return { ok: false, changedFiles, checks, reason }
+      }
       if (!changedFiles.length) return { ok: false, changedFiles, checks, reason: '변경된 파일이 없습니다(작업이 파일을 만들지 못함).' }
       const add = await git(['add', '--', ...changedFiles], workspace)
       if (add.code !== 0) return { ok: false, changedFiles, checks, reason: 'git add 실패' }
@@ -228,9 +261,11 @@ export function registerRemoteTaskIpc(): void {
   ipcMain.handle('remote-task:get-config', () => loadRemoteConfig())
   ipcMain.handle('remote-task:set-config', (_e, patch: Partial<RemoteRunnerConfig>) => saveRemoteConfig(patch ?? {}))
   ipcMain.handle('remote-task:status', () => getRemoteRunnerStatus(loadRemoteConfig()))
-  ipcMain.handle('remote-task:start', () => startRemoteTaskRunner(loadRemoteConfig(), workspace, dataDir))
+  // 시작/정지는 config.enabled 에 영속화한다 → 명시적 정지는 앱 재시작에도 유지되어
+  // 원격 수신이 자동으로 다시 켜지지 않는다(복구 우선 지시). 다시 받으려면 명시적으로 시작.
+  ipcMain.handle('remote-task:start', () => startRemoteTaskRunner(saveRemoteConfig({ enabled: true }), workspace, dataDir))
   ipcMain.handle('remote-task:stop', () => {
     stopRemoteTaskRunner()
-    return getRemoteRunnerStatus(loadRemoteConfig())
+    return getRemoteRunnerStatus(saveRemoteConfig({ enabled: false }))
   })
 }

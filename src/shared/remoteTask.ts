@@ -117,46 +117,31 @@ export interface ProcessedEntry {
 export type ProcessedState = Record<string, ProcessedEntry>
 
 /**
- * 선점/실행 상태가 '중단된 채 묶였다'고 보기까지의 시간(ms).
- * 러너 1건 실행은 최대 ~20분(waitForJob) 이므로 그보다 넉넉히 길게 둔다.
- * 이 시간이 지난 claimed/running 은 (앱이 실행 도중 종료된 잔여물로 보고) 재시도 가능으로 전환.
+ * 이미 처리된(또는 처리 중인) 작업인가 — 자동 재실행 대상에서 제외할지 판단한다.
+ *
+ * 복구 우선 정책(이슈 #76): 상태가 남아 있는 task id 는 자동으로 다시 실행하지 않는다.
+ *  - succeeded: 완료(중복 방지).
+ *  - failed/rejected: 자동 재실행 금지(무한 재시도 방지). 재개하려면 새 task id 를 쓰거나
+ *    상태 항목을 명시적으로 초기화해야 한다(명시적 재개/새 작업 정책).
+ *  - claimed/running: 진행 중 중복 방지. 앱이 실행 도중 종료돼 묶인 잔여물은 러너가 '새로
+ *    시작'될 때 markInterruptedAsFailed 로 failed(중단)로 정리되어 역시 자동 재실행되지 않는다.
+ *
+ * 즉, 같은 task id 가 실패·중단·시간초과를 반복하며 매 폴링마다 자동 재실행되는 악순환을 막는다.
  */
-export const STALE_CLAIM_MS = 30 * 60 * 1000
-
-/**
- * 이미 '선점/실행/완료'된 작업인가(중복 실행 방지).
- * - succeeded: 영구히 완료(재실행 안 함).
- * - claimed/running: 최근이면 진행 중으로 보고 중복 방지(true). 단, updatedAt 이
- *   staleMs 보다 오래됐으면 '앱이 실행 도중 종료돼 묶인 잔여물'로 보고 재시도 허용(false).
- *   updatedAt 을 해석할 수 없으면(구버전/비정상) 보수적으로 중복으로 간주(true).
- * - failed/rejected: 재시도 가능(false).
- */
-export function isAlreadyHandled(
-  state: ProcessedState,
-  taskId: string,
-  nowMs: number = Date.now(),
-  staleMs: number = STALE_CLAIM_MS
-): boolean {
-  const e = state[taskId]
-  if (!e) return false
-  if (e.status === 'succeeded') return true
-  if (e.status === 'claimed' || e.status === 'running') {
-    const t = Date.parse(e.updatedAt)
-    if (!Number.isFinite(t)) return true // 나이 불명 → 보수적으로 중복 간주
-    return nowMs - t < staleMs // 최근=진행 중(중복), 오래됨=묶인 잔여물(재시도)
-  }
-  return false // failed/rejected
+export function isAlreadyHandled(state: ProcessedState, taskId: string): boolean {
+  return Boolean(state[taskId])
 }
 
 /**
- * 재시작 시 정리용: '중단된 채 묶인' claimed/running 항목을 failed(재시도 대상)로 전환한다.
+ * 재시작 시 정리용: '중단된 채 묶인' claimed/running 항목을 failed(중단)로 전환한다.
  * 러너가 '새로' 시작되는 시점엔 실제 진행 중인 작업이 없으므로, 남아 있는 선점/실행 상태는
- * 이전 프로세스가 실행 도중 종료된 잔여물이다. 이를 즉시 재시도 가능하게 만든다(영구 skip 방지).
- * 순수 함수 — 바뀐 상태와 바뀐 taskId 목록을 반환한다.
+ * 이전 프로세스가 실행 도중 종료된 잔여물이다. 이를 failed(중단)로 정리해 (1) 상태 화면·보고가
+ * 'running' 으로 오인되지 않게 하고 (2) 자동 재실행되지 않도록 한다(무한 재시도 방지). 재개는
+ * 새 task id 또는 명시적 초기화로만 한다. 순수 함수 — 바뀐 상태와 바뀐 taskId 목록을 반환한다.
  */
 export function markInterruptedAsFailed(
   state: ProcessedState,
-  reason = '앱 재시작으로 중단됨(재시도 대상)',
+  reason = '앱 재시작으로 중단됨(자동 재실행 안 함 — 새 작업/명시적 재개 필요)',
   nowIso: string = new Date().toISOString()
 ): { state: ProcessedState; changed: string[] } {
   const out: ProcessedState = { ...state }

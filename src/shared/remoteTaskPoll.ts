@@ -107,8 +107,8 @@ export async function pollOnce(config: RemoteRunnerConfig, state: ProcessedState
       continue
     }
     const task = d!
-    const nowMs = Date.parse(deps.now())
-    if (isAlreadyHandled(cur, task.taskId, Number.isFinite(nowMs) ? nowMs : Date.now())) {
+    if (isAlreadyHandled(cur, task.taskId)) {
+      // 완료·실패·거부·진행중 — 자동 재실행하지 않음(명시적 재개/새 작업 정책).
       actions.push(`skip-dup:${task.taskId}`)
       continue
     }
