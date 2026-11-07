@@ -90,14 +90,32 @@ export default function HealthRecordWorkspace({ result, requestId, period, mode,
     if (!visible.length) return
     if (!printCareRecords(visible, statusOf, `${CARE_PERIODS.find(p=>p.value===period)?.label} · ${ready?(filter==='all'?'전체 상태':CLAIM_LABELS[filter]):'청구 상태 미조회'} · 기준일 ${dateLabel(localYmd())}`)) setError('출력 창을 열지 못했습니다. 팝업 허용 여부를 확인하세요.')
   }
-  if (mode === 'summary') return (
-    <section className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-white p-3" aria-label="핵심 수치">
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {[['기록',`${rows.length}건`],['입원 일수',`${admission.knownDays}일${admission.unknown?` + 미확인 ${admission.unknown}건`:''}`],['수술(명칭 기반 추정)',`${new Set(rows.filter(r=>r.surgery).map(r=>JSON.stringify([r.date,r.hospital]))).size}회`],['미청구로 확인',ready?`${rows.filter(r=>statusOf(r)==='unclaimed').length}건`:'상태 확인 필요']].map(([label,value])=><div key={label} className="min-w-0 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2"><div className="text-[11px] text-slate-500">{label}</div><strong className="break-words text-[16px] text-slate-100">{value}</strong></div>)}
-      </div>
-      <p className="text-[11px] leading-relaxed text-slate-500">입원일수는 동일 날짜·기관의 최대값을 한 번 합산한 원자료 추정 합계입니다. 연속 입원·여러 기관의 중복 기간은 추가 확인하세요. 최근 기록이라는 사실만으로 고지 의무가 확정되지 않습니다.</p>
-    </section>
-  )
+  if (mode === 'summary') {
+    const periodText = period === 'all' ? '조회 전체' : `최근 ${CARE_PERIODS.find(p=>p.value===period)?.label ?? ''}`
+    const kpis: [string, string, string][] = [
+      ['기록', `${rows.length}건`, ''],
+      ['입원 일수(추정)', `${admission.knownDays}일`, admission.unknown ? `일수 미확인 ${admission.unknown}건 별도` : ''],
+      ['수술(명칭 기반 추정)', `${new Set(rows.filter(r=>r.surgery).map(r=>JSON.stringify([r.date,r.hospital]))).size}회`, ''],
+      ['미청구로 확인', ready ? `${rows.filter(r=>statusOf(r)==='unclaimed').length}건` : '상태 확인 필요', ready ? '수동 확인 기준' : (requestId ? (loading ? '청구 상태 조회 중' : '청구 상태 미조회') : '저장된 요청에서 확인')]
+    ]
+    return (
+      <section className="mt-3 rounded-xl border border-slate-800 bg-white p-3" aria-labelledby="hr-kpi-title">
+        <h3 id="hr-kpi-title" className="flex flex-wrap items-center gap-2 text-[14px] font-bold text-slate-100">
+          한눈에 요약
+          <span className="rounded-full border border-[#c6982f] bg-[#fdf7ea] px-2.5 py-0.5 text-[12px] font-bold text-[#0e1e3a]">선택 기간 · {periodText}</span>
+        </h3>
+        <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {kpis.map(([label, value, sub]) => (
+            <div key={label} className="min-w-0 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5">
+              <div className="text-[12px] font-semibold text-slate-400">{label}</div>
+              <strong className="mt-0.5 block break-words text-[22px] leading-tight text-[#0e1e3a]">{value}</strong>
+              {sub ? <div className="mt-0.5 text-[12px] text-slate-500">{sub}</div> : null}
+            </div>
+          ))}
+        </div>
+      </section>
+    )
+  }
 
   if (mode === 'review') return (
     <section className="mt-3 space-y-2 rounded-xl border border-slate-800 bg-white p-3" aria-label="보험사 기준 조회">
