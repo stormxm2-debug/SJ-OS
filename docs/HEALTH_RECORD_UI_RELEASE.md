@@ -1,3 +1,43 @@
+# 건강기록 UI 데스크톱 반영 — v1.0.56
+
+기준: `origin/main` d343b7b (v1.0.55, PR #92 병합 이후). 공개 최신 릴리스 v1.0.55 확인 → 1.0.56 patch. 의존성 변경 없음.
+
+## 변경
+
+- 가입 검토 탭 3단계 정리(UI 계획 3단계): 1. 보험사 선택(요약 + 펼침 목록) → 2. 등록 기준 확인(상태 한 줄 + 보험사별 카드, 세부 조건 펼침) → 3. AI 참고 요약(큰 버튼, 질문은 접힌 선택 사항).
+- 기준 조회 상태를 두 소스 응답 ok 값으로 구분(미조회/조회 중/완료(0건 포함)/일부 실패/전체 실패) — `src/renderer/src/services/health-record/guideLoadState.ts` + `test/hrGuideLoadState.test.mjs`.
+- 조회 서비스·매칭 규칙·AI 프롬프트/API·청구 저장·인쇄·집계·인증·DB·전역 테마 변경 없음.
+
+## 검증
+
+- `npm run typecheck`, `npm run build` 통과 (로컬 Windows). `node --test test/hrGuideLoadState.test.mjs` 5/5 통과.
+- 임시 esbuild + Edge headless/CDP 하네스(저장소 미추가): 실제 `ResultReport`(내부 `HealthRecordWorkspace` 포함)를 합성 결과로 렌더,
+  `listUnderwriting`/`listExceptions`/`askHealthRecordAi`/`healthClaimStore` 모듈 mock, `--host-resolver-rules`로 외부 네트워크 차단. 32/32 통과:
+  탭 진입·보험사 체크·기간/고객 변경 시 기준·AI 자동호출 0(버튼에서만 호출), 미조회/선택 0/두 소스 성공·0건/부분 실패/전체 실패/catch 표시,
+  재조회 중 이전 완료 미표시, 세부 조건 펼침(상품명·기준일 미제공·자료 수정일·검수 여부), 키보드 Enter 펼침·aria-expanded, DOM id 한글 없음,
+  AI 분석 중/완료/실패·다시 시도, 보험사 변경 시 답변 초기화, 기간·고객 변경 전 지연 응답 무시, 탭 왕복 시 AI 답변·질문·기준·청구 선택 보존,
+  375px·1280px 가로 넘침 없음, 가입 검토 영역 텍스트 대비 최저 4.76:1, 터치 대상 44px 이상.
+  합성 화면: `docs/ui/health-review-mobile-375-synthetic.png`, `health-review-pc-1280-synthetic.png`, `health-review-partial-failure-pc-1280-synthetic.png`.
+- 미검증: 실제 Electron 앱·실제 Supabase 기준 조회·실제 AI 호출·실기기 모바일·스크린리더, 실손 입력 유지(이번 하네스에서 미확인, 마운트 구조 변경 없음).
+
+## 보완 (PR93 리뷰 반영, 같은 v1.0.56)
+
+- AI 패널 안내 건수를 실제 `askHealthRecordAi` 전송 기준(검수된 인수·예외만)과 일치: "AI 반영 기준 N건(검수됨 · 인수 a · 예외 b)", 검수 전은 "AI 반영에서 제외" 명시,
+  매칭이 전부 검수 전이면 "AI 반영 기준 0건 · 건강기록만 요약", 부분 실패는 "성공한 자료 중 검수된 기준만 반영". 순수 helper `aiGuideNote`(guideLoadState.ts).
+  보험사별 카드의 전체/검수됨/검수 전 건수 의미는 유지. AI 서비스 필터·payload·프롬프트·API·매칭 규칙 변경 없음.
+- 보험사 선택 목록: `hidden` 속성만으로는 Tailwind `.flex`가 덮어 닫혀도 보이던 문제 → 열림 여부에 따라 `flex`/`hidden` 클래스로 실제 display 제어(세부 조건 목록도 동일). aria-expanded/aria-controls 유지.
+- 세부 조건 펼침 state를 index → 보험사명(Set<string>)으로 귀속. 현재 선택 보험사를 옵션 목록에 포함해 예외 기준 조회 실패 시에도 확장 보험사 해제 가능.
+
+### 보완 검증 (이전 32/32 하네스 보고와 별개)
+
+- `npm run typecheck`, `npm run build` 통과. `node --test test/hrGuideLoadState.test.mjs` 9/9(기존 5 + aiGuideNote 4).
+- 임시 esbuild + Edge headless/CDP 하네스(저장소 미추가, 실행 후 삭제): 실제 `ResultReport`를 합성 결과·빌드 CSS로 렌더, 기준 조회/AI/청구 저장 모듈 mock, 외부 네트워크 차단. 17/17 통과:
+  picker 초기 computed display none·높이 0, 키보드 Enter 펼침(display flex·높이>0·aria-expanded)/재접힘, 검수 전 인수1+검수 예외1 → AI 반영 1건(인수 0·예외 1),
+  카드 검수됨 1·검수 전 1 유지, 삼성화재 펼침 후 해제 시 현대해상 미펼침·재선택 후 현대해상 펼침 유지, 예외 조회 실패 후 선택된 확장 보험사 옵션 유지·해제 가능,
+  부분 실패 안내(성공 소스 검수분만)·전부 검수 전 0건 안내, 375/1280 가로 넘침 없음, AI 호출 0.
+- 합성 화면 3장을 보완 후 화면으로 교체(PC 1280 / 375 / 인수 조회 부분 실패 PC 1280).
+- 미검증: 실제 Electron 앱·실제 Supabase·실제 AI 호출·실기기·스크린리더.
+
 # 건강기록 UI 데스크톱 반영 — v1.0.55
 
 기준: `origin/main` 8a05811 (v1.0.54, PR #90 병합 이후). 공개 최신 릴리스 v1.0.54 확인 → 1.0.55 patch.
