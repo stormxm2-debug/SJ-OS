@@ -1,4 +1,36 @@
-# 건강기록 UI 데스크톱 반영 — v1.0.52
+# 건강기록 UI 데스크톱 반영 — v1.0.55
+
+기준: `origin/main` 8a05811 (v1.0.54, PR #90 병합 이후). 공개 최신 릴리스 v1.0.54 확인 → 1.0.55 patch.
+
+## 변경
+
+- 청구 관리 화면 단순화(UI 계획 2단계): PC 간결 목록 / 모바일 카드, 행별 상세 보기, 선택 시에만 작업 툴바,
+  인쇄 범위 안내, 불러오기 실패 재시도. 저장·인쇄·키 생성·인증·DB·AI 코드와 의존성은 변경 없음.
+
+## 검증
+
+- `npm run typecheck`, `npm run build` 통과 (로컬 Windows).
+- 합성 자료 + 가짜 requestId로 실제 `HealthRecordWorkspace`를 렌더(`healthClaimStore`·`printCareRecords`·기준 조회 모듈 mock,
+  외부 네트워크 차단)한 임시 Vite + Edge headless/CDP 하네스에서 25개 시나리오 통과
+  (375px 가로 넘침, 키보드 선택/펼침, 탭 왕복 유지, 필터 변경 선택 초기화, 전체 선택/해제·indeterminate,
+  load 실패 재시도, save 실패/지연/성공, 인쇄 visible 범위, requestId 변경 누수). 합성 화면: `docs/ui/health-claims-*-synthetic.png`.
+- 미검증: 실제 Electron 앱·실제 Supabase 저장·실제 인쇄 창·실기기 모바일·스크린리더. 하네스는 저장소에 추가하지 않음.
+- 위 25/25 시나리오는 PR #91(head 813aadb) 보고 결과이며 이번 보완 후 재실행하지 않음.
+
+### 접근성 보완 (PR #91 검토 반영)
+
+- 문제: `ClaimRow` 상세 id가 `r.key`의 비ASCII 문자를 `_`로 치환해 만들어져, 병원명만 다른 행
+  (`["20261101","가나병원",…]` vs `["20261101","다라병원",…]`)이 같은 DOM id/aria-controls를 가짐. 저장/인쇄 데이터 키 충돌은 아님.
+- 수정: React `useId()` 기반 고유 id로 교체. `r.key`·선택·저장 hash·API 변경 없음.
+- 검증(로컬 Windows): `test/hrClaimRowA11y.test.mjs` — 실제 `ClaimRow` 두 개를 둘 다 펼친 상태로 esbuild 번들 +
+  `renderToStaticMarkup` 렌더 → 중복 id 없음, 각 버튼 aria-controls가 같은 행 상세 영역을 가리킴 통과.
+  이전 id 방식으로 되돌리면 같은 테스트가 "중복 DOM id 없음"에서 실패함을 확인.
+  `hrCareWorkspace`·`hrEntryPhase`와 함께 node 단위 테스트 25건 모두 통과(위 하네스 25개와 별개). `npm run typecheck`·`npm run build` 통과.
+  (`npm test` 전체 중 claim*/coverage* 등 16개 파일은 이번 변경과 무관한 기존 Windows 경로 로더 오류 `ERR_UNSUPPORTED_ESM_URL_SCHEME`로 실패.)
+
+---
+
+## (이전) 건강기록 UI 데스크톱 반영 — v1.0.52
 
 기준: `main` 1da8c69 (UI 누적 PR #85, 실행기 복구 PR #82 병합 이후).
 이 문서는 이미 `main`에 병합된 변경을 데스크톱 배포 버전(1.0.51 → 1.0.52)으로
