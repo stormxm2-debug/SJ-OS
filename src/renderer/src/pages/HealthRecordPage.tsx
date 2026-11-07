@@ -29,6 +29,7 @@ import {
   type SurgeryOccasion,
   type PartGroup
 } from '@renderer/services/health-record/summarize'
+import { deriveEntryPhase, type EntryPhase } from '@renderer/services/health-record/entryPhase'
 import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
 import HealthRecordWorkspace from '@renderer/components/health-record/HealthRecordWorkspace'
 import SonsonEstimator from '@renderer/components/health-record/SonsonEstimator'
@@ -233,6 +234,13 @@ const ymd = (v: unknown): string => {
 
 /** 조회 결과 보관·열람 기간(일). 지나면 cron 이 결과를 비우고 '만료' 처리한다. */
 const RETAIN_DAYS = 30
+/** 최근 요청 기본 표시 건수(더보기로 늘림). */
+const HISTORY_PAGE = 5
+/** 휴대폰 번호 표시용 하이픈(저장·전송 값은 그대로). */
+const formatPhone = (v: string): string => {
+  const d = digits(v)
+  return d.length === 11 ? `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}` : d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : v
+}
 const daysSince = (iso: string): number => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
 
 interface CatRow {
@@ -338,6 +346,8 @@ export default function HealthRecordPage(): JSX.Element {
     setTwoWay(undefined)
     setRequestId(undefined)
     setResult(null)
+    setInvite(null) // 이전 고객 링크가 새 고객 화면에 남지 않게
+    setCopied(false)
     setError(null)
     setNotice(null)
     const c = customers.find((x) => x.id === id)
@@ -355,6 +365,8 @@ export default function HealthRecordPage(): JSX.Element {
     setTwoWay(undefined)
     setRequestId(undefined)
     setResult(null)
+    setInvite(null) // 링크 템플릿(요청변수)이 상품마다 다르므로 이전 링크는 버린다
+    setCopied(false)
     setError(null)
     setNotice(null)
     setConfigNote(null)
@@ -500,6 +512,10 @@ export default function HealthRecordPage(): JSX.Element {
     setNotice(null)
     setConfigNote(null)
     setInvite(null)
+    setCopied(false)
+    // 새 링크 요청 — 열어 둔 이전 결과는 비운다(이전 결과를 새 요청의 성공으로 보이지 않게).
+    setResult(null)
+    setRequestId(undefined)
     if (!canInvite) {
       setError('고객 성함·휴대폰 번호를 확인해주세요.')
       return
@@ -564,244 +580,327 @@ export default function HealthRecordPage(): JSX.Element {
     setError(null)
     setConfigNote(null)
     setTwoWay(undefined)
+    setInvite(null) // 저장 결과 열람 — 진행 중이던 링크 표시는 정리(결과 보기가 우선)
+    setCopied(false)
     setRequestId(h.id)
     setResult(h.result)
     setNotice(`저장된 결과를 불러왔습니다 — ${h.customerName || '고객'} · ${new Date(h.createdAt).toLocaleDateString('ko-KR')}`)
     setTimeout(() => document.getElementById('hr-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
 
+  // ── 조회 전 화면 표시용 파생 상태(요청 변수·핸들러는 위 그대로) ──
+  const [settingsOpen, setSettingsOpen] = useState(false) // 조회 설정 변경(접힘)
+  const [editContact, setEditContact] = useState(false) // 선택 고객의 이름·번호 수정
+  const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE)
+  const providerLabel = AUTH_PROVIDERS.find((p) => p.v === provider)?.label ?? '간편인증'
+  const telecomLabel = TELECOMS.find((t) => t.v === telecom)?.label.replace(/\s*\(.*\)$/, '') ?? ''
+  const hasContact = Boolean(name.trim()) && digits(phone).length >= 10
+  const showSettings = settingsOpen || !validPeriod // 기간이 틀리면 펼쳐서 보여준다
+  const periodSummary = needDate ? `${ymd(startDate)} ~ ${ymd(endDate)}` : '최근 1년 자동'
+  const optionSummary = [
+    selected.supportsSensitive ? `민감상병 ${includeSensitive ? '포함' : '미포함'}` : '',
+    selected.supportsChild ? `자녀 ${includeChild ? '포함' : '미포함'}` : ''
+  ].filter(Boolean).join(' · ')
+  const missingMsg = !name.trim()
+    ? '고객을 선택하거나 성함을 입력하세요.'
+    : digits(phone).length < 10
+      ? '휴대폰 번호를 확인하세요.'
+      : !validPeriod
+        ? `조회기간은 ${ymd(minStart)} ~ ${ymd(maxEnd)} 안이어야 합니다.`
+        : inputMode === 'staff' && digits(idValue).length !== idLen
+          ? `${selected.idField === 'birth' ? '생년월일 8자리' : '주민등록번호 13자리'}를 입력하세요.`
+          : ''
+  type Phase = EntryPhase
+  // 새 인증/링크 작업 상태가 결과 표시보다 우선(entryPhase.ts 참고).
+  const phase: Phase = deriveEntryPhase({
+    inputMode,
+    hasResult: Boolean(result),
+    busy: Boolean(busy),
+    hasTwoWay: Boolean(twoWay),
+    inviteBusy,
+    hasInvite: Boolean(invite),
+    hasError: Boolean(error)
+  })
+  const currentStep: 1 | 2 | 3 = phase === 'done' ? 3 : hasContact ? 2 : 1
+  const PHASE_TEXT: Record<Phase, { title: string; desc: string }> = {
+    idle: {
+      title: '인증 요청 전',
+      desc: inputMode === 'customer' ? '고객에게 인증 링크를 보내세요.' : '고객 휴대폰으로 간편인증을 요청하세요.'
+    },
+    requesting: { title: inputMode === 'customer' ? '링크 만드는 중' : '인증 요청 중', desc: '잠시만 기다려 주세요.' },
+    awaiting: { title: '인증 대기', desc: `고객이 휴대폰(${providerLabel})에서 승인하면 「결과 조회」를 누르세요.` },
+    link_sent: { title: '고객 입력 대기', desc: '고객이 링크에서 인증을 마치면 아래 「최근 요청」에 자동 표시됩니다.' },
+    fetching: { title: '조회 중', desc: '기관에서 건강기록을 받아오고 있습니다.' },
+    done: { title: '조회 성공', desc: '아래 「조회 결과」에서 내용을 확인하세요.' },
+    failed: {
+      title: '조회 실패',
+      desc: twoWay ? '승인을 확인한 뒤 「결과 조회」를 다시 누르세요.' : '내용을 확인하고 다시 요청하세요.'
+    }
+  }
+  const phaseTone =
+    phase === 'done' ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+      : phase === 'failed' ? 'border-rose-300 bg-rose-50 text-rose-800'
+        : phase === 'idle' ? 'border-[#e2e8f0] bg-[#f8fafc] text-[#334155]'
+          : 'border-[#c6982f] bg-[#fdf7ea] text-[#6b5216]'
+  const scrollToResult = (): void => document.getElementById('hr-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const primaryBtn =
+    'inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-[#0e1e3a] px-4 py-3 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-50'
+  const fieldCls =
+    'mt-1 min-h-[44px] w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[14px] text-slate-100 outline-none focus:border-[#c6982f]'
+  const labelCls = 'text-[12px] font-semibold text-slate-400'
+  const visibleHistory = history.slice(0, historyLimit)
+  const hiddenCount = Math.max(0, history.length - visibleHistory.length)
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-x-hidden">
       {/* 헤더 */}
       <div className="rounded-2xl border border-slate-800 bg-[#0e1e3a] px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-[#e6c877]" />
-          <h1 className="text-sm font-extrabold text-white">고객 건강기록 조회</h1>
-          <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/80">{selected.short} · 간편인증(CODEF)</span>
+          <h1 className="text-[15px] font-extrabold text-white">고객 건강기록 조회</h1>
         </div>
-        <p className="mt-1 text-[11px] text-white/60">
-          고객 동의 하에 간편인증으로 건강기록을 확인합니다. 조회 결과는 접근 권한(RLS)으로 보호되며 {RETAIN_DAYS}일 후 자동 만료됩니다.
+        <p className="mt-1 text-[12px] text-white/70">
+          고객 동의 하에 간편인증으로 조회합니다. 결과는 접근 권한으로 보호되며 {RETAIN_DAYS}일 후 자동 만료됩니다.
         </p>
+        <StepGuide current={currentStep} />
       </div>
 
       {configNote ? (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[12px] text-amber-800">
+        <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <b className="font-bold">CODEF 연동 설정 필요</b> — {configNote}
-            <div className="mt-1 text-[11px] text-amber-700">
+            <div className="mt-1 text-[12px] text-amber-700">
               Supabase 시크릿에 CODEF_CLIENT_ID / CODEF_CLIENT_SECRET / CODEF_PUBLIC_KEY 를 등록하면 즉시 동작합니다.
             </div>
           </div>
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* 입력 + 요청 */}
-        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-100">① 조회 상품 · 고객 정보</h2>
-          {/* 주민번호 입력 주체 토글 */}
-          <div className="mt-2 inline-flex rounded-xl border border-[#e2e8f0] bg-[#f8fafc] p-0.5 text-[12px] font-bold">
-            <button type="button" onClick={() => { setInputMode('staff'); setInvite(null) }}
-              className={`rounded-lg px-3 py-1.5 ${inputMode === 'staff' ? 'bg-[#0e1e3a] text-white' : 'text-[#475569]'}`}>직원 직접 입력</button>
-            <button type="button" onClick={() => { setInputMode('customer'); setError(null) }}
-              className={`rounded-lg px-3 py-1.5 ${inputMode === 'customer' ? 'bg-[#0e1e3a] text-white' : 'text-[#475569]'}`}>고객에게 링크</button>
-          </div>
-          <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-            {inputMode === 'staff' ? '직원이 고객 주민번호를 직접 입력해 조회합니다.' : '고객이 링크에서 본인 주민번호를 직접 입력·인증합니다(직원은 주민번호를 입력하지 않음).'}
-          </p>
-          <div className="mt-3 space-y-2.5">
-            <div>
-              <label className="text-[11px] font-semibold text-slate-400">조회 상품</label>
-              <select value={productKey} onChange={(e) => onProductChange(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] font-semibold text-slate-100 outline-none focus:border-[#c6982f]">
-                {HEALTH_PRODUCTS.map((p) => (
-                  <option key={p.key} value={p.key}>{p.label}</option>
-                ))}
-              </select>
-              <p className="mt-0.5 text-[10px] leading-relaxed text-slate-500">{selected.note}</p>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* 1 고객 선택 */}
+        <section aria-labelledby="hr-step1" className="min-w-0 rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+          <h2 id="hr-step1" className="text-[15px] font-bold text-slate-100">1. 고객 선택</h2>
+          <label htmlFor="hr-customer" className={`mt-3 block ${labelCls}`}>내 고객</label>
+          <select id="hr-customer" value={customerId} onChange={(e) => { onSelectCustomer(e.target.value); setEditContact(false) }}
+            className={`${fieldCls} font-semibold`}>
+            <option value="">— 고객 선택 —</option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}{c.phone ? ` (${c.phone})` : ''}</option>
+            ))}
+          </select>
+          {customers.length === 0 ? (
+            <p className="mt-1 text-[12px] text-slate-500">등록된 내 고객이 없습니다. 고객관리에서 등록하거나 아래에 직접 입력하세요.</p>
+          ) : null}
+
+          {customerId && !editContact ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e2e8f0] bg-[#f8fafc] px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-bold text-[#0f172a]">{name || '이름 없음'}</div>
+                <div className="text-[13px] text-[#475569]">{phone ? formatPhone(phone) : '휴대폰 번호 없음'}</div>
+              </div>
+              <button type="button" onClick={() => setEditContact(true)}
+                className="min-h-[36px] rounded-lg border border-[#cbd5e1] bg-white px-3 text-[12px] font-bold text-[#334155]">수정</button>
             </div>
-            <div>
-              <label className="text-[11px] font-semibold text-slate-400">고객 선택 (내 고객)</label>
-              <select value={customerId} onChange={(e) => onSelectCustomer(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] font-semibold text-slate-100 outline-none focus:border-[#c6982f]">
-                <option value="">— 고객 선택 (선택 시 성함·전화·주민번호 자동 입력) —</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}{c.phone ? ` (${c.phone})` : ''}</option>
-                ))}
-              </select>
-              <p className="mt-0.5 text-[10px] text-slate-500">
-                {customers.length === 0
-                  ? '등록된 내 고객이 없습니다. 고객관리에서 등록하면 여기 자동으로 뜹니다.'
-                  : '고객을 선택하면 조회 결과가 그 고객에 연결됩니다(보험금 발굴 등에서 자동 표시).'}
-              </p>
-            </div>
-            <div>
-              <label className="text-[11px] font-semibold text-slate-400">고객 성함</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동"
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
-            </div>
-            <div className="flex gap-2">
-              {inputMode === 'staff' ? (
-                <div className="flex-1">
-                  {selected.idField === 'birth' ? (
-                    <>
-                      <label className="text-[11px] font-semibold text-slate-400">생년월일 (YYYYMMDD · 8자리)</label>
-                      <input value={idValue} onChange={(e) => setIdValue(e.target.value)} inputMode="numeric" maxLength={8} placeholder="19900101"
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
-                    </>
-                  ) : (
-                    <>
-                      <label className="text-[11px] font-semibold text-slate-400">주민등록번호 (13자리)</label>
-                      <div className="relative mt-1">
-                        <input value={idValue} onChange={(e) => setIdValue(e.target.value)} type={showRrn ? 'text' : 'password'} inputMode="numeric" maxLength={14} placeholder="앞 6자리 + 뒤 7자리" autoComplete="off"
-                          className="w-full rounded-lg border border-slate-700 bg-white px-3 py-2 pr-9 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
-                        <button type="button" onClick={() => setShowRrn((v) => !v)} aria-label={showRrn ? '주민번호 숨기기' : '주민번호 보기'} tabIndex={-1}
-                          className="absolute inset-y-0 right-0 flex items-center px-2.5 text-slate-400 hover:text-slate-200">
-                          {showRrn ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : null}
-              <div className="flex-1">
-                <label className="text-[11px] font-semibold text-slate-400">휴대폰 번호{inputMode === 'customer' ? ' (고객 — 링크 발송·인증)' : ''}</label>
-                <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="01012345678"
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
+          ) : (
+            <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <div>
+                <label htmlFor="hr-name" className={labelCls}>고객 성함</label>
+                <input id="hr-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동" className={fieldCls} />
+              </div>
+              <div>
+                <label htmlFor="hr-phone" className={labelCls}>휴대폰 번호</label>
+                <input id="hr-phone" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="01012345678" className={fieldCls} />
               </div>
             </div>
-            {inputMode === 'staff' && selected.idField === 'rrn' ? (
-              <p className="-mt-1 text-[10px] text-slate-500">※ 주민번호는 보안 연결(HTTPS)로 전송되며 화면·앱에 저장되지 않습니다.</p>
+          )}
+          {customerId ? <p className="mt-2 text-[12px] text-slate-500">조회 결과는 이 고객에 연결됩니다.</p> : null}
+        </section>
+
+        {/* 2 본인인증 */}
+        <section aria-labelledby="hr-step2" className="min-w-0 rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+          <h2 id="hr-step2" className="text-[15px] font-bold text-slate-100">2. 본인인증</h2>
+          <p className="mt-1 text-[13px] text-slate-500">
+            {inputMode === 'customer' ? '고객이 링크에서 주민번호를 직접 입력하고 인증합니다.' : '직원이 식별번호를 입력하고 고객 휴대폰으로 인증을 요청합니다.'}
+          </p>
+
+          {/* 조회 설정 한 줄 요약 + 접힌 상세 */}
+          <div className="mt-3 rounded-xl border border-[#e2e8f0] bg-[#f8fafc]">
+            <button type="button" onClick={() => setSettingsOpen((v) => !v)} aria-expanded={showSettings} aria-controls="hr-settings"
+              className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left">
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-bold text-[#0f172a]">{selected.short} · {periodSummary}</span>
+                <span className="block text-[12px] text-[#475569]">
+                  {providerLabel}{needTelecom ? `(${telecomLabel})` : ''}{optionSummary ? ` · ${optionSummary}` : ''}
+                </span>
+              </span>
+              <span className="shrink-0 text-[12px] font-bold text-[#8a6a1f]">조회 설정 변경</span>
+              <ChevronDown aria-hidden className={`h-4 w-4 shrink-0 text-[#8a6a1f] transition ${showSettings ? 'rotate-180' : ''}`} />
+            </button>
+            {showSettings ? (
+              <div id="hr-settings" className="space-y-2.5 border-t border-[#e2e8f0] px-3 pb-3 pt-2.5">
+                <div>
+                  <label htmlFor="hr-product" className={labelCls}>조회 기관·상품</label>
+                  <select id="hr-product" value={productKey} onChange={(e) => onProductChange(e.target.value)} className={`${fieldCls} font-semibold`}>
+                    {HEALTH_PRODUCTS.map((p) => (
+                      <option key={p.key} value={p.key}>{p.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[12px] leading-relaxed text-slate-500">{selected.note}</p>
+                </div>
+                {needDate ? (
+                  <div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label htmlFor="hr-start" className={labelCls}>조회 시작</label>
+                        <input id="hr-start" value={startDate} onChange={(e) => setStartDate(e.target.value)} inputMode="numeric" maxLength={8} placeholder="YYYYMMDD" className={fieldCls} />
+                      </div>
+                      <div>
+                        <label htmlFor="hr-end" className={labelCls}>조회 종료</label>
+                        <input id="hr-end" value={endDate} onChange={(e) => setEndDate(e.target.value)} inputMode="numeric" maxLength={8} placeholder="YYYYMMDD" className={fieldCls} />
+                      </div>
+                    </div>
+                    <p className={`mt-1 text-[12px] ${validPeriod ? 'text-slate-500' : 'font-semibold text-rose-700'}`}>
+                      가능 기간 {ymd(minStart)} ~ {ymd(maxEnd)}{period.recentMonths >= 2 ? ' (최근 2개월은 공단 반영 전)' : ''}
+                    </p>
+                  </div>
+                ) : null}
+                {selected.supportsSensitive || selected.supportsChild ? (
+                  <div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">
+                      {selected.supportsChild ? (
+                        <label className="inline-flex min-h-[36px] items-center gap-2 text-[13px] font-semibold text-slate-300">
+                          <input type="checkbox" checked={includeChild} onChange={(e) => setIncludeChild(e.target.checked)} className="h-4 w-4 accent-[#c6982f]" />
+                          자녀 정보 포함
+                        </label>
+                      ) : null}
+                      {selected.supportsSensitive ? (
+                        <label className="inline-flex min-h-[36px] items-center gap-2 text-[13px] font-semibold text-slate-300">
+                          <input type="checkbox" checked={includeSensitive} onChange={(e) => setIncludeSensitive(e.target.checked)} className="h-4 w-4 accent-[#c6982f]" />
+                          민감상병 포함
+                        </label>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-[12px] text-slate-500">민감상병·자녀 정보를 포함하려면 고객에게 먼저 동의를 받으세요.</p>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
-            <div className="flex gap-2">
-              <div className={needTelecom ? 'flex-1' : 'w-full'}>
-                <label className="text-[11px] font-semibold text-slate-400">간편인증 수단</label>
-                <select value={provider} onChange={(e) => setProvider(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]">
-                  {AUTH_PROVIDERS.map((p) => (
-                    <option key={p.v} value={p.v}>{p.label}</option>
+          </div>
+
+          {/* 인증 수단 (PASS 는 통신사 필요) */}
+          <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <div>
+              <label htmlFor="hr-provider" className={labelCls}>간편인증 수단</label>
+              <select id="hr-provider" value={provider} onChange={(e) => setProvider(e.target.value)} className={fieldCls}>
+                {AUTH_PROVIDERS.map((p) => (
+                  <option key={p.v} value={p.v}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+            {needTelecom ? (
+              <div>
+                <label htmlFor="hr-telecom" className={labelCls}>통신사</label>
+                <select id="hr-telecom" value={telecom} onChange={(e) => setTelecom(e.target.value)} className={fieldCls}>
+                  {TELECOMS.map((t) => (
+                    <option key={t.v} value={t.v}>{t.label}</option>
                   ))}
                 </select>
               </div>
-              {needTelecom ? (
-                <div className="w-40">
-                  <label className="text-[11px] font-semibold text-slate-400">통신사</label>
-                  <select value={telecom} onChange={(e) => setTelecom(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]">
-                    {TELECOMS.map((t) => (
-                      <option key={t.v} value={t.v}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-            </div>
-            {needDate ? (
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="text-[11px] font-semibold text-slate-400">조회 시작 (YYYYMMDD)</label>
-                  <input value={startDate} onChange={(e) => setStartDate(e.target.value)} inputMode="numeric" maxLength={8}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
-                </div>
-                <div className="flex-1">
-                  <label className="text-[11px] font-semibold text-slate-400">조회 종료 (YYYYMMDD)</label>
-                  <input value={endDate} onChange={(e) => setEndDate(e.target.value)} inputMode="numeric" maxLength={8}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[13px] text-slate-100 outline-none focus:border-[#c6982f]" />
-                </div>
-              </div>
-            ) : null}
-            {selected.supportsSensitive || selected.supportsChild ? (
-              <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-0.5">
-                {selected.supportsChild ? (
-                  <label className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-300">
-                    <input type="checkbox" checked={includeChild} onChange={(e) => setIncludeChild(e.target.checked)} className="h-3.5 w-3.5 accent-[#c6982f]" />
-                    자녀 정보 포함
-                  </label>
-                ) : null}
-                {selected.supportsSensitive ? (
-                  <label className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-300">
-                    <input type="checkbox" checked={includeSensitive} onChange={(e) => setIncludeSensitive(e.target.checked)} className="h-3.5 w-3.5 accent-[#c6982f]" />
-                    민감상병 포함
-                  </label>
-                ) : null}
-              </div>
             ) : null}
           </div>
 
+          {/* 직원 직접 입력(보조) — 식별번호 */}
           {inputMode === 'staff' ? (
-            <>
-              <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart}
-                className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0e1e3a] px-4 py-2.5 text-[13px] font-bold text-white transition hover:opacity-90 disabled:opacity-50">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                간편인증 요청
-              </button>
-              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                순서: <b className="text-slate-300">간편인증 요청 → 고객 휴대폰 인증앱(카카오/네이버/통신사PASS 등)에서 승인 → 결과 조회</b>. 각 단계는 한 번씩만 — 결과 조회가 안 되면 「간편인증 요청」부터 다시 하세요.
-                {needDate ? <> 조회 가능 기간은 <b className="text-slate-300">{ymd(minStart)} ~ {ymd(maxEnd)}</b>{period.recentMonths >= 2 ? '(최근 2개월은 공단 반영 전)' : ''}이라 기본값을 그 창으로 설정했습니다.</> : <> 이 상품은 <b className="text-slate-300">최근 1년치</b>를 자동 조회합니다.</>}
-              </p>
-            </>
-          ) : (
-            <>
-              <button type="button" onClick={() => void onInvite()} disabled={inviteBusy || !canInvite}
-                className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 px-4 py-2.5 text-[13px] font-bold text-white transition hover:brightness-110 disabled:opacity-50">
-                {inviteBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-                고객에게 링크 생성·전송
-              </button>
-              {invite ? (
-                <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3">
-                  <div className="text-[11px] font-bold text-indigo-700">{invite.smsSent ? '문자로 링크를 보냈습니다' : '링크가 생성되었습니다 (문자 미설정 — 복사/공유)'}</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <input readOnly value={invite.url} className="min-w-0 flex-1 rounded-lg border border-indigo-200 bg-white px-2 py-1.5 text-[11px] text-indigo-700" />
-                    <button type="button" onClick={() => void copyInvite()} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-indigo-600">
-                      {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />} {copied ? '복사됨' : '복사'}
-                    </button>
-                    <button type="button" onClick={shareInvite} className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-[#FEE500] px-2.5 py-1.5 text-[11px] font-bold text-[#3c1e1e]">
-                      <Share2 className="h-3.5 w-3.5" /> 카톡
+            <div className="mt-2.5">
+              {selected.idField === 'birth' ? (
+                <>
+                  <label htmlFor="hr-id" className={labelCls}>생년월일 (8자리)</label>
+                  <input id="hr-id" value={idValue} onChange={(e) => setIdValue(e.target.value)} inputMode="numeric" maxLength={8} placeholder="19900101" className={fieldCls} />
+                </>
+              ) : (
+                <>
+                  <label htmlFor="hr-id" className={labelCls}>주민등록번호 (13자리)</label>
+                  <div className="relative">
+                    <input id="hr-id" value={idValue} onChange={(e) => setIdValue(e.target.value)} type={showRrn ? 'text' : 'password'} inputMode="numeric" maxLength={14} placeholder="앞 6자리 + 뒤 7자리" autoComplete="off"
+                      className={`${fieldCls} pr-11`} />
+                    <button type="button" onClick={() => setShowRrn((v) => !v)} aria-label={showRrn ? '주민번호 숨기기' : '주민번호 보기'} aria-pressed={showRrn}
+                      className="absolute inset-y-0 right-0 mt-1 flex w-11 items-center justify-center text-slate-400 hover:text-slate-200">
+                      {showRrn ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
-                  <p className="mt-2 text-[10px] leading-relaxed text-indigo-700/70">고객이 링크에서 본인확인을 마치면 아래 「최근 요청」에 결과가 자동 표시됩니다(링크 30분 1회용).</p>
-                </div>
-              ) : null}
-              <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                직원은 주민번호를 입력하지 않습니다. 상품·간편인증 수단{needDate ? '·조회기간' : ''}을 고르고 고객 휴대폰 번호만 입력한 뒤 링크를 보내세요.
-              </p>
-            </>
-          )}
-        </div>
-
-        {/* 승인 대기 + 결과 조회 */}
-        <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-100">② 고객 승인 → 결과 조회</h2>
-          {inputMode === 'customer' ? (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-[12px] text-indigo-700">
-              <Smartphone className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>고객이 <b>링크에서 본인확인</b>을 진행합니다. 완료되면 아래 「최근 요청」에 결과가 <b>자동 표시</b>됩니다(직원 조작 불필요).</span>
-            </div>
-          ) : (
-            <>
-              {twoWay ? (
-                <div className="mt-3 flex items-start gap-2 rounded-xl border border-[#c6982f] bg-[#fdf7ea] px-3 py-2.5 text-[12px] text-[#8a6a1f]">
-                  <Smartphone className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>고객님 휴대폰에서 <b>간편인증을 승인</b>한 뒤 아래 「결과 조회」를 눌러주세요.</span>
-                </div>
-              ) : (
-                <p className="mt-3 text-[12px] text-slate-500">먼저 왼쪽에서 간편인증을 요청하세요.</p>
+                  <p className="mt-1 text-[12px] text-slate-500">주민번호는 보안 연결로 전송되며 화면·앱에 저장되지 않습니다.</p>
+                </>
               )}
+            </div>
+          ) : null}
 
-              <button type="button" onClick={() => void onConfirm()} disabled={Boolean(busy) || !twoWay}
-                className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-white px-4 py-2.5 text-[13px] font-bold text-slate-200 transition hover:bg-slate-950 disabled:opacity-50">
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                결과 조회
+          {/* 현재 상태 + 다음 행동 하나 */}
+          <div role="status" aria-live="polite" className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5 ${phaseTone}`}>
+            {phase === 'requesting' || phase === 'fetching' ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" /> : <Smartphone className="mt-0.5 h-4 w-4 shrink-0" />}
+            <div className="min-w-0">
+              <div className="text-[14px] font-bold">{PHASE_TEXT[phase].title}{(phase === 'requesting' || phase === 'fetching') && busy ? ` · ${busySeconds}초` : ''}</div>
+              <div className="text-[13px]">{PHASE_TEXT[phase].desc}</div>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            {phase === 'done' ? (
+              <button type="button" onClick={scrollToResult} className={primaryBtn}>
+                <Check className="h-5 w-5" /> 결과 보기
               </button>
-
-              {result ? (
-                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[12px] font-semibold text-emerald-700">
-                  조회가 완료됐습니다. 아래 <b>「조회 결과」</b>에서 상세 내역을 확인하세요.
+            ) : inputMode === 'staff' ? (
+              twoWay ? (
+                <button type="button" onClick={() => void onConfirm()} disabled={Boolean(busy)} className={primaryBtn}>
+                  {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />} 결과 조회
+                </button>
+              ) : (
+                <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart} className={primaryBtn}>
+                  {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />} {name.trim() ? `${name.trim()}님께 ` : ''}간편인증 요청
+                </button>
+              )
+            ) : invite ? (
+              <div className="rounded-xl border border-[#c6982f]/50 bg-[#fdf7ea] p-3">
+                <div className="text-[13px] font-bold text-[#6b5216]">{invite.smsSent ? '문자로 링크를 보냈습니다' : '링크가 만들어졌습니다 — 복사하거나 카톡으로 보내세요'}</div>
+                <input readOnly value={invite.url} aria-label="고객 인증 링크" className="mt-2 min-h-[40px] w-full min-w-0 rounded-lg border border-[#e2e8f0] bg-white px-2 text-[12px] text-[#334155]" />
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => void copyInvite()} className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white text-[13px] font-bold text-[#0e1e3a]">
+                    {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />} {copied ? '복사됨' : '링크 복사'}
+                  </button>
+                  <button type="button" onClick={shareInvite} className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg bg-[#FEE500] text-[13px] font-bold text-[#3c1e1e]">
+                    <Share2 className="h-4 w-4" /> 카톡 보내기
+                  </button>
                 </div>
-              ) : null}
-            </>
-          )}
-        </div>
+                <p className="mt-2 text-[12px] text-[#6b5216]">링크는 30분 동안 1회만 쓸 수 있습니다.</p>
+              </div>
+            ) : (
+              <button type="button" onClick={() => void onInvite()} disabled={inviteBusy || !canInvite} className={primaryBtn}>
+                {inviteBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Link2 className="h-5 w-5" />} {name.trim() ? `${name.trim()}님께 ` : ''}인증 링크 보내기
+              </button>
+            )}
+            {phase !== 'done' && missingMsg && !(inputMode === 'staff' && twoWay) && !(inputMode === 'customer' && invite) ? (
+              <p className="mt-1.5 text-[12px] text-slate-500">{missingMsg}</p>
+            ) : null}
+
+            {/* 보조 행동(작은 글자) */}
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[12px]">
+              {inputMode === 'staff' && (twoWay || phase === 'done') ? (
+                <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart}
+                  className="min-h-[36px] font-semibold text-slate-500 underline underline-offset-2 disabled:opacity-50">인증 다시 요청</button>
+              ) : inputMode === 'customer' && (invite || phase === 'done') ? (
+                <button type="button" onClick={() => void onInvite()} disabled={inviteBusy || !canInvite}
+                  className="min-h-[36px] font-semibold text-slate-500 underline underline-offset-2 disabled:opacity-50">링크 다시 만들기</button>
+              ) : <span />}
+              <button type="button"
+                onClick={() => {
+                  if (inputMode === 'customer') { setInputMode('staff'); setInvite(null); setCopied(false); setError(null) } else { setInputMode('customer'); setError(null) }
+                }}
+                className="min-h-[36px] font-semibold text-slate-500 underline underline-offset-2">
+                {inputMode === 'customer' ? '직원이 직접 입력하기' : '고객 링크 방식으로 돌아가기'}
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
 
       {result ? (
@@ -810,60 +909,101 @@ export default function HealthRecordPage(): JSX.Element {
         </div>
       ) : null}
 
-      {notice ? <div className="rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[12px] font-semibold text-emerald-700">{notice}</div> : null}
-      {busy ? <div role="status" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-800"><Loader2 className="h-4 w-4 shrink-0 animate-spin"/><div><b>{busy}</b> · {busySeconds}초 경과<p className="mt-1 text-[11px]">기관 응답 대기 중입니다. 진행률을 임의로 표시하지 않습니다. 시간이 초과되면 아래 최근 요청을 먼저 확인하세요.</p></div></div> : null}
-      {error ? <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[12px] text-rose-700"><b>{healthErrorHelp(error).title}</b><p className="mt-1">{error}</p><p className="mt-1 text-[11px]">{healthErrorHelp(error).action}</p></div> : null}
+      {notice && !error ? <div className="rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[13px] font-semibold text-emerald-700">{notice}</div> : null}
+      {error ? <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[13px] text-rose-700"><b>{healthErrorHelp(error).title}</b><p className="mt-1">{error}</p><p className="mt-1 text-[12px]">{healthErrorHelp(error).action}</p></div> : null}
 
       {/* 최근 요청 — 완료 건은 30일간 저장되어 다시 열람 가능 */}
-      <div className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-100">최근 요청</h2>
-          <button type="button" onClick={() => void refresh()} className="text-[11px] font-semibold text-slate-400 hover:text-slate-200">새로고침</button>
+      <section aria-labelledby="hr-history" className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <h2 id="hr-history" className="text-[15px] font-bold text-slate-100">최근 요청</h2>
+          <button type="button" onClick={() => void refresh()} className="min-h-[36px] px-1 text-[12px] font-semibold text-slate-400 hover:text-slate-200">새로고침</button>
         </div>
-        <p className="mt-0.5 text-[11px] text-slate-500">본인(FC)이 조회한 건만 표시됩니다. 완료 결과는 <b className="text-slate-300">{RETAIN_DAYS}일간 보관</b>되어 다시 열람할 수 있고, 이후 자동 만료됩니다.</p>
+        <p className="mt-0.5 text-[12px] text-slate-500">내가 조회한 건만 보입니다. 완료 결과는 {RETAIN_DAYS}일간 다시 열 수 있습니다.</p>
         <div className="relative mt-2">
           <input
             value={historyQuery}
-            onChange={(e) => onHistorySearch(e.target.value)}
+            onChange={(e) => { onHistorySearch(e.target.value); setHistoryLimit(HISTORY_PAGE) }}
             placeholder="고객 이름으로 검색"
-            className="w-full rounded-lg border border-slate-700 bg-white py-2 pl-8 pr-8 text-[13px] text-[#0f172a] placeholder:text-[#94a3b8] outline-none focus:border-[#c6982f]"
+            aria-label="최근 요청 고객 이름 검색"
+            className="min-h-[44px] w-full rounded-lg border border-slate-700 bg-white py-2 pl-8 pr-10 text-[14px] text-[#0f172a] placeholder:text-[#94a3b8] outline-none focus:border-[#c6982f]"
           />
           <svg className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#94a3b8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
-          {historyQuery ? <button type="button" onClick={() => onHistorySearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-[#94a3b8]">✕</button> : null}
+          {historyQuery ? <button type="button" onClick={() => { onHistorySearch(''); setHistoryLimit(HISTORY_PAGE) }} aria-label="검색어 지우기" className="absolute inset-y-0 right-0 w-10 text-[13px] font-semibold text-[#64748b]">✕</button> : null}
         </div>
         {history.length === 0 ? (
-          <p className="mt-2 text-[12px] text-slate-500">{historyQuery.trim() ? `'${historyQuery.trim()}' 검색 결과가 없습니다.` : '아직 요청이 없습니다.'}</p>
+          <p className="mt-2 text-[13px] text-slate-500">{historyQuery.trim() ? `'${historyQuery.trim()}' 검색 결과가 없습니다.` : '아직 요청이 없습니다.'}</p>
         ) : (
           <div className="mt-2 divide-y divide-slate-800">
-            {history.map((h) => {
+            {visibleHistory.map((h) => {
               const age = daysSince(h.createdAt)
               const canViewRow = h.status === 'completed' && !!h.result && age <= RETAIN_DAYS
               const daysLeft = Math.max(0, RETAIN_DAYS - age)
               return (
-                <div key={h.id} className="flex items-center gap-2 py-2 text-[12px]">
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-semibold text-slate-200">{h.customerName || '고객 미지정'}</span>
-                    {h.staffName ? <span className="ml-1 rounded-full bg-[#eef2f7] px-1.5 py-0.5 text-[10px] font-bold text-[#334155]">FC {h.staffName}</span> : null}
-                  </span>
-                  <span className="shrink-0 text-slate-500">{new Date(h.createdAt).toLocaleString('ko-KR')}</span>
-                  {canViewRow ? <span className="shrink-0 text-[10px] font-semibold text-slate-400">{daysLeft}일 남음</span> : null}
-                  <StatusBadge status={h.status} />
-                  {h.status === 'failed' && h.error ? <span title={healthErrorHelp(h.error).action} className="max-w-44 truncate text-[10px] text-rose-600">{healthErrorHelp(h.error).title}</span> : null}
+                <div key={h.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5">
+                  <div className="min-w-0 flex-1 basis-40">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-[14px] font-semibold text-slate-200">{h.customerName || '고객 미지정'}</span>
+                      <StatusBadge status={h.status} />
+                    </div>
+                    <div className="text-[12px] text-slate-500">
+                      {new Date(h.createdAt).toLocaleString('ko-KR')}
+                      {canViewRow ? ` · ${daysLeft}일 남음` : h.status === 'completed' ? ' · 보관 만료' : ''}
+                    </div>
+                    {h.status === 'failed' && h.error ? (
+                      <div className="text-[12px] text-rose-700">{healthErrorHelp(h.error).title} — {healthErrorHelp(h.error).action}</div>
+                    ) : null}
+                  </div>
                   {canViewRow ? (
                     <button type="button" onClick={() => viewSaved(h)}
-                      className="shrink-0 rounded-lg border border-slate-700 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-200 transition hover:bg-slate-950">
-                      결과 보기
+                      className="min-h-[40px] shrink-0 rounded-lg border border-slate-700 bg-white px-3 text-[13px] font-bold text-slate-200 transition hover:bg-slate-950">
+                      결과 열기
                     </button>
-                  ) : (
-                    <span className="w-[52px] shrink-0 text-right text-[10px] text-slate-400">{h.status === 'completed' ? '보관 만료' : ''}</span>
-                  )}
+                  ) : null}
                 </div>
               )
             })}
           </div>
         )}
-      </div>
+        {hiddenCount > 0 || historyLimit > HISTORY_PAGE ? (
+          <div className="mt-2 flex gap-2">
+            {hiddenCount > 0 ? (
+              <button type="button" onClick={() => setHistoryLimit((n) => n + HISTORY_PAGE)}
+                className="min-h-[44px] flex-1 rounded-lg border border-[#cbd5e1] bg-white text-[13px] font-bold text-[#334155]">
+                더보기 (남은 {hiddenCount}건)
+              </button>
+            ) : null}
+            {historyLimit > HISTORY_PAGE ? (
+              <button type="button" onClick={() => setHistoryLimit(HISTORY_PAGE)}
+                className="min-h-[44px] rounded-lg px-3 text-[13px] font-semibold text-slate-500">접기</button>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
     </div>
+  )
+}
+
+/** 상단 단계 안내 — 1 고객 선택 → 2 본인인증 → 3 결과 확인 (표시 전용). */
+function StepGuide({ current }: { current: 1 | 2 | 3 }): JSX.Element {
+  const steps = ['고객 선택', '본인인증', '결과 확인']
+  return (
+    <ol className="mt-3 flex items-center gap-1.5" aria-label="조회 단계">
+      {steps.map((label, i) => {
+        const n = (i + 1) as 1 | 2 | 3
+        const done = n < current || (n === 3 && current === 3)
+        const active = n === current
+        return (
+          <li key={label} className="flex min-w-0 flex-1 items-center gap-1.5" aria-current={active ? 'step' : undefined}>
+            <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold ${
+              done ? 'bg-[#c6982f] text-[#0e1e3a]' : active ? 'bg-white text-[#0e1e3a]' : 'bg-white/15 text-white/70'}`}>
+              {done ? <Check className="h-3.5 w-3.5" /> : n}
+            </span>
+            <span className={`truncate text-[12px] font-bold ${active || done ? 'text-white' : 'text-white/60'}`}>{label}</span>
+            {i < steps.length - 1 ? <span aria-hidden className="h-px min-w-2 flex-1 bg-white/25" /> : null}
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 
