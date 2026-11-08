@@ -1,3 +1,37 @@
+# 건강기록 UI 데스크톱 반영 — v1.0.62
+
+기준: `main` 0e922c7 (v1.0.61). 1.0.62 patch(한눈에 요약 바로가기 + 기본 행 입원 배지 + 같은 날·병원 시각적 묶음). 의존성 변경 없음.
+
+## 8단계 추가 — 같은 날·같은 병원 시각적 묶음 (최종 QA 대기)
+
+- PR106(ece5978) 변경을 0e922c7 위에 그대로 누적 반영 후 `RecentCareTable` 표시만 묶음 카드로 변경. 새 순수 도우미 `services/health-record/summaryGroups.ts`(`groupSummaryRecords`, 입력 불변·원기록 객체 그대로).
+- 묶음 조건: 유효 날짜 + 비어 있지 않은 병원명이 정확히 같을 때만. 미확인 날짜/병원은 원 key별 독립. 원기록 삭제·중복 제거·병합 없음, 실제 방문 횟수 확정 아님.
+- 처음 6묶음을 통째로 표시(묶음 중간 잘림 없음), `전체 N건 보기`로 펼침. 제목은 원기록 수, KPI·필터·0건/기간 안내는 선행 그대로. 행별 `useId`로 상세 id 유일. PC 표 머리 제거.
+- 검증(실제 실행): `node --test test/hrSummaryGroups.test.mjs test/hrSummaryShortcuts.test.mjs` 7/7 pass. **typecheck·build: 러너 자동 검증 대기(CLI 미실행). 375px/PC 브라우저: Codex 대기(미실행).**
+
+## 변경
+
+- 숫자 카드 바로가기: `HealthRecordWorkspace` summary 분기의 3개 카드(진료기록/입원일수/수술 추정)를 `button`+`aria-pressed`(작은 화살표, 선택 시 금색 강조, Enter/Space 기본 버튼 동작)로 변경. `진료기록`=전체, `입원일수`=`r.kind==='입원'`, `수술 추정`=`r.surgery===true`. 선택 카드를 다시 누르면 전체. 카드 비활성 없음(0건·입원일수 미확인도 누를 수 있음).
+- 카드 숫자는 그대로 선택 기간 전체 기록의 기존 `careKpis`(건수/입원일수 추정/수술 회) — 필터로 재계산하지 않음. 0건 `-`, 입원일수 미확인 `확인 필요` 유지.
+- `ResultReport`: 요약 전용 `summaryFilter`(all/inpatient/surgery) 상태. 새 결과·기간 변경 시 all로 초기화(기간 버튼·`전체 기간 보기`는 같은 이벤트에서 즉시 초기화), 탭 전환만으로는 유지. `filteredResult`·청구·가입 검토·AI·전체 상세 데이터는 좁히지 않음.
+- `RecentCareTable`: 기간 전체 기록에 필터를 먼저 적용한 뒤 기본 6건 자르기(7번째 이후 입원·수술도 표시), 필터 변경 시 목록 펼침 초기화. 제목 `최근 진료 / 입원 기록 / 수술 추정 기록 N건`(목록 건수 — 카드의 일·회 단위와 다를 수 있음) + `전체 진료 보기`(타입 필터만 해제, 기간 유지). 필터 0건: "선택한 기간에 조회된 입원/수술 추정 기록이 없습니다."(조회 자료 범위 안내, 실제 없음 단정 아님). 기간을 전체로 바꾸는 기존 `전체 기록 보기`는 `전체 기간 보기`로 이름 변경(누르면 타입 필터도 해제). 하단 `자세히 보기` 영역 제목은 `전체 상세 기록`으로(목록 필터와 무관함을 구분).
+- 입원 배지: `AdmissionTag`(새 순수 도우미 `admissionBadgeLabel`)를 `RecentCareTable.Row`·`ClaimRow` 병명 옆에 재사용. 확인된 양수 정수 일수 → `입원 N일`, 없거나 무효 → `입원 · 일수 확인 필요`(0일 표시 안 함). 통원·확인 필요 행은 없음. 수술 추정 배지와 동시 표시. 새 판정 로직·PC 열 추가 없음. 약 이름·성분·투약일수는 계속 자세히 보기에만.
+- `careWorkspace.ts`: `SummaryKindFilter`, `filterSummaryRecords`(기존 kind/surgery만 사용, 원 배열 불변), `admissionBadgeLabel` 추가.
+- 서비스 API/DB/RLS/권한·기관 인증/수집·AI·청구 저장/되돌리기/출력·베타 표시·원격 러너 변경 없음.
+
+## 검증 (실제 실행)
+
+- WIP 복원: 이전 작업(hr-summary-shortcuts-20261109-24)이 15분 제한으로 중단되어 미커밋 변경을 러너 보관본(named stash, 기준 0e922c7)에서 그대로 복원. 코드 동작 변경 없음.
+- `npm run typecheck`, `npm run build` 통과 (로컬 Windows).
+- `node --test test/hrSummaryShortcuts.test.mjs test/hrCareWorkspace.test.mjs` 27/27 pass. `test/hrCareWorkspace.test.mjs` 확장(2건): 입원일수 미확인 포함, 입원+수술 겹침, 0건, 7번째 이후 기록, 날짜 미확인은 전체 기간에서만, 원자료·기간 레코드·카드 집계 불변, 배지 문구(null/0/음수/소수/NaN → 일수 확인 필요). `test/hrSummaryShortcuts.test.mjs` 신규(4건): 실제 RecentCareTable·HealthRecordWorkspace(summary)·ClaimRow 정적 렌더 — 필터 목록/제목/0건 문구/aria-pressed/필터와 무관한 카드 숫자/두 배지/약 숨김.
+- 전체 `npm test`는 이번에 실행하지 않음(기존 무관 Windows ESM `c:` scheme 로더 실패 16개 파일은 범위 밖).
+
+## 미검증 · 남은 한계
+
+- **브라우저 QA 미완료 — Codex 대기.** 실제 컴포넌트 합성 브라우저 QA(375px/1280px, 카드 클릭·키보드·기간 변경 초기화·탭 전환 유지·배지 넘침·외부 요청 0건)는 Codex가 PR 최종 head로 수행 예정. 이 문서 작성 시점에는 실행·확인되지 않음.
+- 실제 Electron 앱 전체 화면·실고객 데이터·저장된 요청의 청구 상태 로드는 확인하지 않음.
+- 같은 날·같은 병원 기록 묶기는 위 8단계 추가로 반영(최종 QA 대기).
+
 # 건강기록 UI 데스크톱 반영 — v1.0.61
 
 기준: `main` 9630fff (v1.0.60). 1.0.61 patch(작은 후속 UI 변경). 의존성 변경 없음.

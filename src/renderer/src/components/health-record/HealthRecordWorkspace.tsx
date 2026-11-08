@@ -1,8 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Loader2, Printer, RefreshCw, Undo2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2, Printer, RefreshCw, Undo2 } from 'lucide-react'
 import {
   buildCareRecords, CARE_PERIODS, careKpis, claimRecordKey, CLAIM_LABELS, localYmd, matchCareGuides,
-  type CarePeriod, type CareRecord, type ClaimState, type HrUnderwritingContext
+  type CarePeriod, type CareRecord, type ClaimState, type HrUnderwritingContext, type SummaryKindFilter
 } from '@renderer/services/health-record/careWorkspace'
 import { healthClaimStore, type ClaimChecks } from '@renderer/services/health-record/claimStateStore'
 import { printCareRecords } from '@renderer/services/health-record/printCareRecords'
@@ -24,9 +24,12 @@ interface Props {
   onContextChange: (context: HrUnderwritingContext) => void
   /** 기준 조회 상태(표시용 메타데이터). AI 패널이 기준 미확인·부분 실패를 안내하는 데만 쓴다. */
   onGuideStatusChange?: (status: GuideLoadStatus) => void
+  /** 한눈에 요약 숫자 카드 바로가기(목록 표시 필터). 숫자 자체는 항상 선택 기간 전체 기록으로 계산한다. */
+  summaryFilter?: SummaryKindFilter
+  onSummaryFilterChange?: (filter: SummaryKindFilter) => void
 }
 
-export default function HealthRecordWorkspace({ result, requestId, period, mode, onContextChange, onGuideStatusChange }: Props): JSX.Element {
+export default function HealthRecordWorkspace({ result, requestId, period, mode, onContextChange, onGuideStatusChange, summaryFilter = 'all', onSummaryFilterChange }: Props): JSX.Element {
   const rows = useMemo(() => buildCareRecords(result), [result])
   const [states, setStates] = useState<ClaimChecks>({})
   const [keys, setKeys] = useState<Record<string, string>>({})
@@ -167,20 +170,29 @@ export default function HealthRecordWorkspace({ result, requestId, period, mode,
     // 기록 0건이면 입원·수술을 0으로 단정하지 않고 '-'로 둔다(기록 없음 ≠ 입원·수술 없음).
     const none = k.records === 0
     const admissionValue = k.admissionKnownDays > 0 ? `약 ${k.admissionKnownDays}일` : k.admissionUnknown ? '확인 필요' : (none ? '-' : '0일')
-    const kpis: [string, string, string][] = [
-      ['진료기록', `${k.records}건`, ''],
-      ['입원일수', admissionValue, k.admissionUnknown ? `일수 미확인 ${k.admissionUnknown}건` : ''],
-      ['수술 추정', none ? '-' : `${k.surgeries}회`, '']
+    // 카드는 아래 최근 진료 목록의 바로가기 — 누르면 목록만 좁힌다(숫자·기간·다른 탭 데이터는 그대로). 0건이어도 누를 수 있다.
+    const kpis: [string, string, string, SummaryKindFilter][] = [
+      ['진료기록', `${k.records}건`, '', 'all'],
+      ['입원일수', admissionValue, k.admissionUnknown ? `일수 미확인 ${k.admissionUnknown}건` : '', 'inpatient'],
+      ['수술 추정', none ? '-' : `${k.surgeries}회`, '', 'surgery']
     ]
+    const pick = (f: SummaryKindFilter): void => onSummaryFilterChange?.(f === summaryFilter ? 'all' : f)
     return (
-      <section className="mt-3 grid grid-cols-3 gap-2" aria-label="핵심 숫자">
-        {kpis.map(([label, value, sub]) => (
-          <div key={label} className="min-w-0 rounded-xl border border-slate-800 bg-slate-950 px-2.5 py-2.5 sm:px-3" data-kpi={label}>
-            <div className="text-[12px] font-semibold text-slate-400 sm:text-[13px]">{label}</div>
-            <strong className="mt-0.5 block break-words text-[19px] leading-tight text-[#0e1e3a] sm:text-[22px]">{value}</strong>
-            {sub ? <div className="mt-0.5 text-[12px] text-amber-700">{sub}</div> : null}
-          </div>
-        ))}
+      <section className="mt-3 grid grid-cols-3 gap-2" aria-label="핵심 숫자 · 누르면 최근 진료 목록을 바로 봅니다">
+        {kpis.map(([label, value, sub, f]) => {
+          const on = summaryFilter === f
+          return (
+            <button key={label} type="button" aria-pressed={on} onClick={() => pick(f)} data-kpi={label} disabled={!onSummaryFilterChange}
+              className={`min-w-0 rounded-xl border px-2.5 py-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c6982f] sm:px-3 ${on ? 'border-[#c6982f] bg-[#fdf7ea] ring-1 ring-[#c6982f]' : 'border-slate-800 bg-slate-950 hover:border-slate-600'}`}>
+              <span className="flex items-center justify-between gap-1 text-[12px] font-semibold text-slate-400 sm:text-[13px]">
+                <span className="min-w-0 break-words">{label}</span>
+                <ChevronRight className={`h-3.5 w-3.5 shrink-0 ${on ? 'text-[#7a5c14]' : 'text-slate-500'}`} aria-hidden="true" />
+              </span>
+              <strong className="mt-0.5 block break-words text-[19px] leading-tight text-[#0e1e3a] sm:text-[22px]">{value}</strong>
+              {sub ? <span className="mt-0.5 block text-[12px] text-amber-700">{sub}</span> : null}
+            </button>
+          )
+        })}
       </section>
     )
   }
