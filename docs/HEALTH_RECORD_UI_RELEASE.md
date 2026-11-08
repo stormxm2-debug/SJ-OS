@@ -1,3 +1,28 @@
+# 건강기록 UI 데스크톱 반영 — v1.0.58
+
+기준: `main` 9e584a4 (v1.0.57, PR #97). 1.0.58 patch. 의존성 변경 없음.
+
+## 변경
+
+- UI 계획 5단계: 한눈에 요약 단순화(상세는 HEALTH_RECORD_UI_PLAN.md 5단계 결과).
+- `careWorkspace.ts`: `careListSummary(result, period)`·`careKpis(rows)` 추가, `recentCareSummary`는 3개월 래퍼로 유지, 기간 라벨 `전체`.
+- `RecentCareTable.tsx`: 공통 기간 목록·행별 자세히 보기·모바일 카드·빈 결과/날짜 미확인 안내.
+- 검토 보완(PR98): 목록 날짜는 기존 `validCareDate`로 검증된 값만 `YYYY.MM.DD`로 표시, `20260230` 같은 존재하지 않는 8자리 날짜·빈값은 `날짜 미확인`. 표시만 변경 — 원본값·기록 키·기간 필터·집계는 그대로.
+- `HealthRecordWorkspace.tsx` summary 분기: 핵심 숫자 3개. `HealthRecordPage.tsx` ResultReport: 기본 3개월, 확인 권장 띠 제거, 자료 안내 통합.
+- 청구/가입 검토/AI/원본 수집/고객 전환 가드, 인증·기관 API·DB·RLS 변경 없음.
+
+## 검증 (실제 실행)
+
+- `npm run typecheck` 통과, `npm run build` 통과.
+- `node --test test/hrForegroundGuard.test.mjs test/hrStatusView.test.mjs test/hrCareWorkspace.test.mjs test/hrEntryPhase.test.mjs` 45 pass / 0 fail. 신규 2건: 기간별(3m/1y/3y/5y/전체) 목록 = 숫자 기록 일치·경계 포함·날짜 미확인은 전체에서만, 입원일수 미확인을 0일로 합산하지 않음·수술 방문별 1회·건수 의미 유지.
+- 실제 컴포넌트(ResultReport) 헤드리스 Chrome, 합성 데이터, 375px(mobile 에뮬레이션)·1280px: 가로 넘침 없음, 기본 3개월 선택, 1년/전체 전환 시 숫자와 목록 건수 동시 변경(3→4→5), 날짜 미확인 안내·전체 기록 보기, 빈 결과/기간 밖 결과 문구, 행 자세히 보기 토글(질병코드·처방약 성분·일수 미확인), 좌우 표시, 내부 설명 문구 미노출, 원자료 기본 미노출, 기간 전환 중 네트워크 요청 0건, 청구 관리·가입 검토 탭 정상 표시. 스크린샷은 로컬 임시 폴더에만 두고 업로드하지 않음.
+- 전체 `npm test` 75 중 57 pass / 16 fail: 실패 16건은 수정하지 않은 테스트 파일이 Windows에서 `ERR_UNSUPPORTED_ESM_URL_SCHEME`(기존 로더 문제)로 실패 — 이번 변경과 무관(v1.0.57과 동일).
+
+## 미검증·남은 한계
+
+- 실제 Electron 앱 화면·실고객 데이터·청구 상태 저장 서버 경로(requestId 있는 경우)는 이번에 실행하지 않음.
+- 청구 관리 탭 내부 용어(상병·약물)는 범위 밖이라 유지.
+
 # 건강기록 UI 데스크톱 반영 — v1.0.57
 
 기준: `origin/main` 63cf179 (v1.0.56, PR #94 병합 이후). 공개 최신 릴리스 v1.0.56 확인 → 1.0.57 patch. 의존성 변경 없음.

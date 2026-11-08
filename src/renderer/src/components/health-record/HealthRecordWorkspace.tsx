@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Loader2, Printer, RefreshCw } from 'lucide-react'
 import {
-  admissionSummary, buildCareRecords, CARE_PERIODS, claimRecordKey, CLAIM_LABELS, localYmd, matchCareGuides,
+  buildCareRecords, CARE_PERIODS, careKpis, claimRecordKey, CLAIM_LABELS, localYmd, matchCareGuides,
   type CarePeriod, type CareRecord, type ClaimState, type HrUnderwritingContext
 } from '@renderer/services/health-record/careWorkspace'
 import { healthClaimStore, type ClaimChecks } from '@renderer/services/health-record/claimStateStore'
@@ -62,7 +62,6 @@ export default function HealthRecordWorkspace({ result, requestId, period, mode,
     && `${r.hospital} ${r.disease} ${r.code} ${r.medications.map(m=>m.name).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()))
   // Changing a filter never makes hidden selected rows eligible for a bulk update.
   const visibleSelected = visible.filter(r => selected.has(r.key))
-  const admission = admissionSummary(rows)
   const save = async (status: ClaimState): Promise<void> => {
     if (!requestId || !ready || saving || !visibleSelected.length) return
     const generation = scope.current
@@ -104,28 +103,25 @@ export default function HealthRecordWorkspace({ result, requestId, period, mode,
     if (!printCareRecords(visible, statusOf, `${CARE_PERIODS.find(p=>p.value===period)?.label} · ${ready?(filter==='all'?'전체 상태':CLAIM_LABELS[filter]):'청구 상태 미조회'} · 기준일 ${dateLabel(localYmd())}`)) setError('출력 창을 열지 못했습니다. 팝업 허용 여부를 확인하세요.')
   }
   if (mode === 'summary') {
-    const periodText = period === 'all' ? '조회 전체' : `최근 ${CARE_PERIODS.find(p=>p.value===period)?.label ?? ''}`
+    // 핵심 숫자 3개 — 아래 최근 진료 목록과 같은 기간·같은 기록(rows)으로 계산. 미청구 수는 청구 관리 탭에만 둔다.
+    const k = careKpis(rows)
+    // 기록 0건이면 입원·수술을 0으로 단정하지 않고 '-'로 둔다(기록 없음 ≠ 입원·수술 없음).
+    const none = k.records === 0
+    const admissionValue = k.admissionKnownDays > 0 ? `약 ${k.admissionKnownDays}일` : k.admissionUnknown ? '확인 필요' : (none ? '-' : '0일')
     const kpis: [string, string, string][] = [
-      ['기록', `${rows.length}건`, ''],
-      ['입원 일수(추정)', `${admission.knownDays}일`, admission.unknown ? `일수 미확인 ${admission.unknown}건 별도` : ''],
-      ['수술(명칭 기반 추정)', `${new Set(rows.filter(r=>r.surgery).map(r=>JSON.stringify([r.date,r.hospital]))).size}회`, ''],
-      ['미청구로 확인', ready ? `${rows.filter(r=>statusOf(r)==='unclaimed').length}건` : '상태 확인 필요', ready ? '수동 확인 기준' : (requestId ? (loading ? '청구 상태 조회 중' : '청구 상태 미조회') : '저장된 요청에서 확인')]
+      ['진료기록', `${k.records}건`, ''],
+      ['입원일수', admissionValue, k.admissionUnknown ? `일수 미확인 ${k.admissionUnknown}건` : ''],
+      ['수술 추정', none ? '-' : `${k.surgeries}회`, '']
     ]
     return (
-      <section className="mt-3 rounded-xl border border-slate-800 bg-white p-3" aria-labelledby="hr-kpi-title">
-        <h3 id="hr-kpi-title" className="flex flex-wrap items-center gap-2 text-[14px] font-bold text-slate-100">
-          한눈에 요약
-          <span className="rounded-full border border-[#c6982f] bg-[#fdf7ea] px-2.5 py-0.5 text-[12px] font-bold text-[#0e1e3a]">선택 기간 · {periodText}</span>
-        </h3>
-        <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
-          {kpis.map(([label, value, sub]) => (
-            <div key={label} className="min-w-0 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5">
-              <div className="text-[12px] font-semibold text-slate-400">{label}</div>
-              <strong className="mt-0.5 block break-words text-[22px] leading-tight text-[#0e1e3a]">{value}</strong>
-              {sub ? <div className="mt-0.5 text-[12px] text-slate-500">{sub}</div> : null}
-            </div>
-          ))}
-        </div>
+      <section className="mt-3 grid grid-cols-3 gap-2" aria-label="핵심 숫자">
+        {kpis.map(([label, value, sub]) => (
+          <div key={label} className="min-w-0 rounded-xl border border-slate-800 bg-slate-950 px-2.5 py-2.5 sm:px-3" data-kpi={label}>
+            <div className="text-[12px] font-semibold text-slate-400 sm:text-[13px]">{label}</div>
+            <strong className="mt-0.5 block break-words text-[19px] leading-tight text-[#0e1e3a] sm:text-[22px]">{value}</strong>
+            {sub ? <div className="mt-0.5 text-[12px] text-amber-700">{sub}</div> : null}
+          </div>
+        ))}
       </section>
     )
   }

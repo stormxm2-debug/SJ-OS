@@ -7,7 +7,7 @@ export type CarePeriod = 'all' | '3m' | '1y' | '3y' | '5y'
 export type ClaimState = 'unknown' | 'unclaimed' | 'claimed'
 export const CLAIM_LABELS: Record<ClaimState, string> = { unknown: '미확인', unclaimed: '미청구', claimed: '청구 완료' }
 export const CARE_PERIODS: { value: CarePeriod; label: string }[] = [
-  { value: '3m', label: '3개월' }, { value: '1y', label: '1년' }, { value: '3y', label: '3년' }, { value: '5y', label: '5년' }, { value: 'all', label: '조회 전체' }
+  { value: '3m', label: '3개월' }, { value: '1y', label: '1년' }, { value: '3y', label: '3년' }, { value: '5y', label: '5년' }, { value: 'all', label: '전체' }
 ]
 const text = (r: Row, keys: string[]): string => keys.map(k => String(r[k] ?? '').trim()).find(Boolean) ?? ''
 export const careDate = (r: Row): string => ymd8(text(r, ['resTreatStartDate', 'resTreatDate', 'resDate', 'commStartDate', 'resPrescribeDate', 'resDispenseDate']))
@@ -145,12 +145,12 @@ export function healthErrorHelp(message: string, code = ''): { title: string; ac
   return { title: v.title, action: v.action }
 }
 export interface RecentCareSummary {
-  /** Fixed calendar window (inclusive), independent of the shared period selector. */
+  /** Selected window (inclusive). Empty strings for 'all'. */
   start: string
   end: string
-  /** Records with a valid date inside the window, newest first. */
+  /** Records shown for the period — identical to buildCareRecords(filterCareResult(result, period)), newest first. */
   records: CareRecord[]
-  /** Records whose date is missing or invalid — never counted as recent. */
+  /** Records whose date is missing or invalid (shown only under 'all'). */
   undated: number
   /** All records in the fetched result (any date). */
   total: number
@@ -158,14 +158,32 @@ export interface RecentCareSummary {
   oldest: string
   latest: string
 }
-/** Recent 3 calendar months for disclosure review (reference only, not a disclosure decision). */
-export function recentCareSummary(result: Record<string, unknown>, today = new Date()): RecentCareSummary {
+/** Saved-result display filter for the summary list. Never triggers a new inquiry. */
+export function careListSummary(result: Record<string, unknown>, period: CarePeriod, today = new Date()): RecentCareSummary {
   const all = buildCareRecords(result)
   const dated = all.map(r => r.date).filter(validCareDate).sort()
   return {
-    start: periodStart('3m', today), end: localYmd(today),
-    records: buildCareRecords(filterCareResult(result, '3m', today)),
+    start: period === 'all' ? '' : periodStart(period, today), end: period === 'all' ? '' : localYmd(today),
+    records: period === 'all' ? all : buildCareRecords(filterCareResult(result, period, today)),
     undated: all.filter(r => !validCareDate(r.date)).length,
     total: all.length, oldest: dated[0] ?? '', latest: dated[dated.length - 1] ?? ''
   }
+}
+/** Recent 3 calendar months (reference only, not a disclosure decision). */
+export function recentCareSummary(result: Record<string, unknown>, today = new Date()): RecentCareSummary {
+  return careListSummary(result, '3m', today)
+}
+export interface CareKpis {
+  /** Record count (same meaning as the list; not de-duplicated visits). */
+  records: number
+  admissionKnownDays: number
+  /** Admission visits whose day count is missing — never counted as 0. */
+  admissionUnknown: number
+  /** Distinct date·institution visits with a name-based surgery estimate. */
+  surgeries: number
+}
+export function careKpis(rows: CareRecord[]): CareKpis {
+  const a = admissionSummary(rows)
+  return { records: rows.length, admissionKnownDays: a.knownDays, admissionUnknown: a.unknown,
+    surgeries: new Set(rows.filter(r => r.surgery).map(r => JSON.stringify([r.date, r.hospital]))).size }
 }
