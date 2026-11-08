@@ -23,12 +23,22 @@
 - 변경 없음: 서비스 호출 payload, 서버 start/confirm/invite 재호출·취소(자동 실행 없음), 매개변수·암호화·1회용 세션·150초 timeout·RLS·10초 history poll, deriveEntryPhase. PR96의 coalesce·오류/code 원자 상태·NaN 보관 가드 유지. invite 예외는 기존엔 처리되지 않았으나 이제 현재 작업이면 "링크 생성 중 오류가 발생했습니다." 표시.
 - 실행한 검증: `npm run typecheck` 통과, `npm run build` 통과. `node --test test/hrForegroundGuard.test.mjs test/hrStatusView.test.mjs test/hrCareWorkspace.test.mjs test/hrEntryPhase.test.mjs` 43 pass / 0 fail. 신규 `hrForegroundGuard.test.mjs` 9건은 deferred mock으로 재현 3건 + 늦은 confirm vs 저장 결과/입력방식 전환 + 오래된 catch/finally가 새 busy·오류 미덮음 + 현재 응답 정상 반영 + 페이지 배선(전환 4곳 무효화·핸들러 3개 가드·입력 잠금)을 확인.
 - 전체 `npm test`는 73 중 55 pass / 16 fail: 실패 16건은 이번에 수정하지 않은 테스트 파일(claim*·coverage*·hrSummarize·hrInsuranceEstimate 등)이 Windows에서 `import(원시 경로)`로 ERR_UNSUPPORTED_ESM_URL_SCHEME 발생 — 이 환경의 기존 로더 문제이며 이번 변경과 무관.
-- **모바일/PC 실제 브라우저 재검증은 최종 head 기준으로 대기 중**: 기존 Codex 독립 QA(375 viewport·scale 1, PC, 기존 9시나리오)는 이전 head 결과이며 이번 head 완료로 주장하지 않음. 재현 3건의 실제 브라우저 재확인과 합성 스크린샷·검증 문서는 QA/root가 최종 head로 추가 예정.
+- 후속 Codex 독립 브라우저 QA에서 최종 앱 소스 `bcad9f70714e9bf3209428b18fc65cc2295368a0`로 20/20 통과. 아래 최종 검증 및 `HEALTH_RECORD_UI_QA.md` 참조.
 
-## 한계 (미실행 — 그대로 기록)
+## 최종 독립 브라우저 검증 (Codex, 2026-11-08 KST)
 
-- 합성 HealthRecordPage/ResultReport 브라우저 하네스(서비스 mock, start/confirm/invite 호출 0 계수, 폴링 가상 타이머, PC 1280 / 375 키보드·넘침)는 이번 15분 범위에서 **실행하지 못함**. 위 동작은 순수 helper 단위 테스트와 코드 검토로만 확인.
-- **모바일 gap 미해소**: CDP 375 설정 후 innerWidth / clientWidth / visualViewport.width = 375, scale = 1 직접 확인과 `docs/ui/*-synthetic.png` 저장은 미실행. 다음 작업에서 기존 `test/e2e/build-harness.mjs`(viewport meta 이미 포함)를 재사용해 진행 필요.
+- 실제 HealthRecordPage/ResultReport·프로젝트 Tailwind, 합성 서비스 mock·외부 네트워크 차단으로 최종 소스 20/20 통과.
+- 시간초과/네트워크 CTA 목록만 조회, 갱신 실패 시 기존 목록 유지, 검색 응답 경합, 새 링크/고객/상품 전환, AI 자동 호출 없음 확인.
+- 진행 중 A 고객의 결과·인증 링크·옛 상품 결과가 새 화면에 붙지 않음. 오래된 finally가 새 busy를 지우지 않고 새 고객의 정상 응답은 적용됨. 저장 결과 열람·confirm/입력방식 전환 지연 응답도 확인.
+- 10초 폴링 중 11초 동일 검색 응답은 단일 조회로 완료되며, 무효 날짜의 열람은 차단됨.
+- **모바일 gap 해소**: 실제 innerWidth/clientWidth/visualViewport.width/scrollWidth = 375, scale = 1을 직접 측정. PC 1280px도 확인. PNG 파일 폭만으로 판단하지 않았음.
+- 상세 기록은 [HEALTH_RECORD_UI_QA.md](HEALTH_RECORD_UI_QA.md) 참조. 합성 캡처 4장은 검증 환경에 보관하며 별도 공개 승인 전에는 게시하지 않음.
+- 앱 구현·테스트는 Claude Code, 독립 QA와 검증 문서 정리는 Codex가 담당. 문서 정리에서 앱·테스트 코드는 변경하지 않음.
+
+## 남은 검증 한계
+
+- 실제 Electron 설치 실행·실고객 인증·실제 Supabase/AI 호출·실기기·스크린리더는 검증하지 않았음.
+- 위 초기 '브라우저 미실행'은 최초 구현 단계의 기록이며, 핵심 실제 브라우저·모바일 검증은 후속 독립 QA에서 완료함.
 
 ---
 
