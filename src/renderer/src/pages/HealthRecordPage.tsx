@@ -1161,10 +1161,10 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
     }
   }
 
-  const tabs: { id: ResultTab; label: string; hint: string; guide: string }[] = [
+  const tabs: { id: ResultTab; label: string; hint: string; guide: string; beta?: boolean }[] = [
     { id: 'summary', label: '한눈에 요약', hint: '핵심·최근 진료', guide: '' },
-    { id: 'claims', label: '청구 관리', hint: '청구 상태 확인', guide: '기록을 검색·선택해 청구 상태(수동 확인)를 저장하고 목록을 출력합니다.' },
-    { id: 'review', label: '가입 검토', hint: '기준 조회·AI', guide: '건강기록과 등록된 기준을 연결해 상담 시 확인할 내용을 정리합니다.' }
+    { id: 'claims', label: '청구 관리', beta: true, hint: '청구 상태 확인', guide: '기록을 검색·선택해 청구 상태(수동 확인)를 저장하고 목록을 출력합니다.' },
+    { id: 'review', label: '가입 검토', beta: true, hint: '기준 조회·AI', guide: '건강기록과 등록된 기준을 연결해 상담 시 확인할 내용을 정리합니다.' }
   ]
   const activeTab = tabs.find((t) => t.id === tab) ?? tabs[0]
   const onTabKey = (e: React.KeyboardEvent<HTMLButtonElement>, index: number): void => {
@@ -1195,7 +1195,11 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
           <button key={t.id} id={`hr-tab-${t.id}`} type="button" role="tab" aria-selected={tab === t.id} aria-controls="hr-result-panel"
             tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)} onKeyDown={(e) => onTabKey(e, i)}
             className={`flex min-h-14 min-w-0 flex-col items-center justify-center rounded-xl border-2 px-1 py-1.5 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c6982f] ${tab === t.id ? 'border-[#0e1e3a] border-b-[#c6982f] bg-[#0e1e3a] text-white shadow-sm' : 'border-slate-800 bg-white text-slate-200 hover:bg-slate-950'}`}>
-            <span className="text-[14px] font-bold leading-tight">{t.label}</span>
+            {/* 베타 표시는 안내용 배지일 뿐 — 탭 동작·권한은 다른 탭과 같다. 좁은 화면에서는 배지가 다음 줄로 내려간다. */}
+            <span className="flex max-w-full flex-wrap items-center justify-center gap-x-1 gap-y-0.5">
+              <span className="text-[14px] font-bold leading-tight">{t.label}</span>
+              {t.beta ? <span className={`whitespace-nowrap rounded px-1 text-[10px] font-bold leading-[1.4] ${tab === t.id ? 'bg-[#e6c877] text-[#0e1e3a]' : 'border border-[#c6982f] bg-[#fdf7ea] text-[#7a5c14]'}`}>베타</span> : null}
+            </span>
             <span className={`mt-0.5 text-[11px] leading-tight ${tab === t.id ? 'text-[#e6c877]' : 'text-slate-500'}`}>{t.hint}</span>
           </button>
         ))}

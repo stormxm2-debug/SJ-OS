@@ -1,11 +1,11 @@
 import { ChevronDown } from 'lucide-react'
 import { useId } from 'react'
 import { validCareDate, type CareRecord, type ClaimState } from '@renderer/services/health-record/careWorkspace'
-import { diseaseLabel } from './RecentCareTable'
+import { diseaseLabel, SurgeryTag } from './RecentCareTable'
 
 /**
  * 청구 관리 목록 — PC에서는 6열 행 목록, 375px 모바일에서는 같은 DOM이 간결한 카드로 쌓인다.
- * 기본 행: 선택·날짜·병원·병명(+좌우)·청구 상태·자세히 보기. 코드·진료 구분·수술/독감약/고액 표시·
+ * 기본 행: 선택·날짜·병원·병명(+좌우·수술 추정 배지)·청구 상태·자세히 보기. 코드·진료 구분·참고 표시(수술/독감약/고액)·
  * 처방약 전체(이름·성분·투약일수)·세부 치료·확인일은 자세히 보기에만 둔다(약 이름은 기본 행에 표시하지 않음).
  * 상태(선택·펼침)는 HealthRecordWorkspace가 보유하고 여기서는 표시·이벤트 전달만 한다.
  */
@@ -84,7 +84,7 @@ export function ClaimRow({ r, status, ready, checkedAt, selected, selectDisabled
         <div className="justify-self-end sm:hidden"><StatusBadge status={status} ready={ready} /></div>
         <div className="col-span-2 min-w-0 break-words text-slate-200 sm:col-span-1">{hospital}</div>
         <div className="col-span-2 min-w-0 break-words font-semibold text-slate-100 sm:col-span-1">
-          {diseaseLabel(r)}{r.side && r.side !== '미확인' ? <span className="font-normal text-slate-400"> · {r.side}</span> : null}
+          {diseaseLabel(r)}{r.side && r.side !== '미확인' ? <span className="font-normal text-slate-400"> · {r.side}</span> : null}<SurgeryTag r={r} />
         </div>
         <div className="hidden sm:block"><StatusBadge status={status} ready={ready} /></div>
         <div className="col-start-2 col-end-4 sm:col-auto sm:text-right">
