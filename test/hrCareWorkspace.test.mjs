@@ -183,3 +183,47 @@ test('핵심 숫자: 건수 의미 유지, 입원일수 미확인은 0일로 합
   const none=care.careKpis(care.buildCareRecords({resBasicTreatList:[{...base,resVisitDays:''}]}))
   assert.equal(none.admissionKnownDays,0);assert.equal(none.admissionUnknown,1)
 })
+test('요약 숫자 카드 필터: 기간 전체 대상·입원일수 미확인 포함·입원+수술 겹침·원자료/숫자 불변',()=>{
+  const today=new Date(2026,10,9)
+  // 최신순 10건 중 7번째 이후에만 입원·수술이 있도록 구성(INITIAL_ROWS=6 자르기 전에 필터해야 찾을 수 있음).
+  const list=[]
+  for(let i=1;i<=6;i++) list.push({...base,resTreatType:'외래',resTreatStartDate:`202611${String(i).padStart(2,'0')}`,resHospitalName:`통원${i}병원`,resVisitDays:'1'})
+  list.push({...base,resTreatStartDate:'20261020',resHospitalName:'입원미확인병원',resVisitDays:''})
+  list.push({...base,resTreatStartDate:'20261019',resHospitalName:'입원수술병원',resVisitDays:'5'})
+  list.push({...base,resTreatType:'외래',resTreatStartDate:'20261018',resHospitalName:'외래수술병원'})
+  list.push({...base,resTreatStartDate:'',resHospitalName:'날짜미상병원',resVisitDays:'2'})
+  const result={resBasicTreatList:list,resDetailTreatList:[
+    {resTreatStartDate:'20261019',resHospitalName:'입원수술병원',resOperationName:'관절경 수술'},
+    {resTreatStartDate:'20261018',resHospitalName:'외래수술병원',resOperationName:'봉합 수술'}]}
+  const snapshot=JSON.stringify(result)
+  const s=care.careListSummary(result,'3m',today)
+  assert.equal(s.records.length,9)
+  const before=care.careKpis(s.records)
+  const inpatient=care.filterSummaryRecords(s.records,'inpatient')
+  assert.deepEqual(inpatient.map(r=>r.hospital),['입원미확인병원','입원수술병원'])
+  assert.equal(inpatient[0].admissionDays,null) // 일수 미확인 입원도 입원 필터에 포함
+  const surgery=care.filterSummaryRecords(s.records,'surgery')
+  assert.deepEqual(surgery.map(r=>r.hospital),['입원수술병원','외래수술병원']) // 입원+수술 행은 두 필터 모두에
+  assert.ok(s.records.indexOf(surgery[1])>=6) // 7번째 이후 기록도 필터 결과에 포함
+  assert.equal(care.filterSummaryRecords(s.records,'all'),s.records)
+  // 필터는 목록 표시용 — 원자료·기간 레코드·숫자(건수/입원 일수/수술 회수)는 그대로.
+  assert.equal(JSON.stringify(result),snapshot)
+  assert.equal(s.records.length,9)
+  assert.deepEqual(care.careKpis(s.records),before)
+  assert.deepEqual(before,{records:9,admissionKnownDays:5,admissionUnknown:1,surgeries:2})
+  // 날짜 미확인은 '전체' 기간에서만, 필터도 전체 기간 대상.
+  const all=care.careListSummary(result,'all',today)
+  assert.ok(care.filterSummaryRecords(all.records,'inpatient').some(r=>r.hospital==='날짜미상병원'))
+  assert.ok(!inpatient.some(r=>r.hospital==='날짜미상병원'))
+  // 0건: 수술·입원이 없는 기간 → 빈 배열(실제 없음 단정은 UI 문구가 조회 범위로 안내)
+  const outpatientOnly=care.careListSummary({resBasicTreatList:list.slice(0,6)},'3m',today)
+  assert.equal(care.filterSummaryRecords(outpatientOnly.records,'inpatient').length,0)
+  assert.equal(care.filterSummaryRecords(outpatientOnly.records,'surgery').length,0)
+})
+test('입원 배지 문구: 확인된 양수 일수만 N일, 미확인·무효는 일수 확인 필요, 통원/확인 필요는 없음',()=>{
+  const r=(kind,admissionDays)=>({key:'k',date:'20261101',hospital:'가상병원',disease:'x',code:'',side:'미확인',kind,surgery:false,admissionDays,medications:[],procedures:[],selfPay:0})
+  assert.equal(care.admissionBadgeLabel(r('입원',3)),'입원 3일')
+  for(const d of [null,0,-1,1.5,NaN]) assert.equal(care.admissionBadgeLabel(r('입원',d)),'입원 · 일수 확인 필요')
+  assert.equal(care.admissionBadgeLabel(r('통원',3)),null)
+  assert.equal(care.admissionBadgeLabel(r('확인 필요',null)),null)
+})

@@ -182,6 +182,20 @@ export interface CareKpis {
   /** Distinct date·institution visits with a name-based surgery estimate. */
   surgeries: number
 }
+/** 한눈에 요약 목록 전용 표시 필터 — 숫자 카드 바로가기. 기간·청구·가입 검토·AI 데이터는 좁히지 않는다. */
+export type SummaryKindFilter = 'all' | 'inpatient' | 'surgery'
+/** 기존 r.kind / r.surgery 값만 사용(새 판정 없음). 입원일수 미확인 입원도 포함한다. 원 배열은 바꾸지 않는다. */
+export function filterSummaryRecords(rows: CareRecord[], filter: SummaryKindFilter): CareRecord[] {
+  return filter === 'inpatient' ? rows.filter(r => r.kind === '입원')
+    : filter === 'surgery' ? rows.filter(r => r.surgery === true)
+    : rows
+}
+/** 기본 행 입원 배지 문구 — 확인된 양수 정수 일수만 'N일', 그 외는 '일수 확인 필요'(0일로 표시하지 않음). 입원이 아니면 null. */
+export function admissionBadgeLabel(r: CareRecord): string | null {
+  if (r.kind !== '입원') return null
+  const d = r.admissionDays
+  return typeof d === 'number' && Number.isInteger(d) && d > 0 ? `입원 ${d}일` : '입원 · 일수 확인 필요'
+}
 export function careKpis(rows: CareRecord[]): CareKpis {
   const a = admissionSummary(rows)
   return { records: rows.length, admissionKnownDays: a.knownDays, admissionUnknown: a.unknown,
