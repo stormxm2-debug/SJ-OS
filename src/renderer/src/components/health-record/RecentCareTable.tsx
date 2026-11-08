@@ -1,124 +1,135 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { recentCareSummary, type CareRecord } from '@renderer/services/health-record/careWorkspace'
+import { careListSummary, type CarePeriod, type CareRecord } from '@renderer/services/health-record/careWorkspace'
 
 /**
- * 한눈에 요약 상단 — 최근 3개월(달력 기준 고정) 병원·약물 이력.
- * 공통 기간 선택과 무관하게 전체 조회 결과에서 계산한다. 고지 확인용 참고이며 고지 의무·인수 여부를 판정하지 않는다.
+ * 한눈에 요약 — 선택 기간(공통 기간)의 최근 진료 목록.
+ * 핵심 숫자와 같은 기간·같은 계산(buildCareRecords(filterCareResult))을 쓴다. 저장된 결과의 표시 필터일 뿐
+ * 새 기관 조회·인증·AI 요청을 일으키지 않는다. 고지 의무·인수 여부를 판정하지 않는다.
  */
 const INITIAL_ROWS = 6
 const dateLabel = (s: string): string => (s.length === 8 ? `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6)}` : '날짜 미확인')
-const daysLabel = (d: number): string => (d > 0 ? `${d}일분` : '투약일수 미확인')
+const daysLabel = (d: number): string => (d > 0 ? `${d}일분` : '일수 미확인')
+const MED_ONLY = '약물 단독 기록 · 상병 연결 미확인'
+/** 표시용 병명 — 내부 안내 문구를 짧은 일반 용어로 바꾼다(원자료 값은 바꾸지 않음). */
+const diseaseLabel = (r: CareRecord): string => r.disease === MED_ONLY ? '처방약 기록' : r.disease === '상병 정보 없음' ? '병명 미확인' : r.disease
+const medSummary = (r: CareRecord): string => {
+  if (!r.medications.length) return ''
+  const names = r.medications.slice(0, 2).map((m) => m.name).join(', ')
+  return r.medications.length > 2 ? `${names} 외 ${r.medications.length - 2}건` : names
+}
+export const hasCareDetail = (r: CareRecord): boolean =>
+  !!r.code || r.kind !== '확인 필요' || r.surgery || r.procedures.length > 0 || r.medications.length > 0
 
-function KindCell({ r }: { r: CareRecord }): JSX.Element {
+function Detail({ r, id }: { r: CareRecord; id: string }): JSX.Element {
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      {r.kind === '입원' ? (
-        <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[12px] font-bold text-white">입원 {r.admissionDays == null ? '· 일수 미확인' : `${r.admissionDays}일`}</span>
-      ) : r.kind === '통원' ? (
-        <span className="text-slate-200">통원</span>
-      ) : (
-        <span className="text-slate-400">구분 확인 필요</span>
-      )}
-      {r.surgery ? <span className="rounded border border-rose-600 px-1.5 py-0.5 text-[12px] font-bold text-rose-700">수술(명칭 기반 추정)</span> : null}
-    </div>
+    <dl id={id} className="mt-2 grid gap-x-3 gap-y-1 rounded-lg bg-slate-950 p-2.5 text-[13px] text-slate-200 sm:grid-cols-[7rem_minmax(0,1fr)]">
+      {r.code ? <><dt className="font-semibold text-slate-400">질병코드</dt><dd>{r.code}</dd></> : null}
+      {r.kind !== '확인 필요' ? (
+        <>
+          <dt className="font-semibold text-slate-400">진료 구분</dt>
+          <dd>{r.kind === '입원'
+            ? <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[12px] font-bold text-white">입원 {r.admissionDays == null ? '· 일수 미확인' : `${r.admissionDays}일`}</span>
+            : '통원'}</dd>
+        </>
+      ) : null}
+      {r.surgery ? <><dt className="font-semibold text-slate-400">수술</dt><dd><span className="rounded border border-rose-600 px-1.5 py-0.5 text-[12px] font-bold text-rose-700">수술 추정</span></dd></> : null}
+      {r.procedures.length ? <><dt className="font-semibold text-slate-400">치료 내용</dt><dd className="break-words">{r.procedures.join(', ')}</dd></> : null}
+      {r.medications.length ? (
+        <>
+          <dt className="font-semibold text-slate-400">처방약</dt>
+          <dd>
+            <ul className="space-y-0.5">
+              {r.medications.map((m, i) => (
+                <li key={i} className="break-words">{m.name}{m.ingredient ? <span className="text-slate-500"> ({m.ingredient})</span> : null} · {daysLabel(m.days)}</li>
+              ))}
+            </ul>
+          </dd>
+        </>
+      ) : null}
+    </dl>
   )
 }
 
-function Row({ r }: { r: CareRecord }): JSX.Element {
+function Row({ r, index }: { r: CareRecord; index: number }): JSX.Element {
   const [open, setOpen] = useState(false)
-  const shownMeds = r.medications.slice(0, 2)
-  const hasMore = r.medications.length > shownMeds.length || r.procedures.length > 0 || r.medications.some((m) => m.ingredient)
-  const label = 'sm:hidden text-[12px] font-semibold text-slate-500'
+  const meds = medSummary(r)
+  const detailId = `hr-care-detail-${index}`
+  const canOpen = hasCareDetail(r)
   return (
-    <li className="px-3 py-2.5">
-      <div className="grid gap-x-3 gap-y-1 text-[13px] sm:grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,8.5rem)_minmax(0,1.2fr)]">
-        <div><span className={label}>진료일 </span><b className="text-slate-100">{dateLabel(r.date)}</b></div>
-        <div className="min-w-0 break-words"><span className={label}>병원·약국 </span><span className={r.hospital ? 'text-slate-100' : 'text-slate-400'}>{r.hospital || '기관 미확인'}</span></div>
-        <div className="min-w-0 break-words">
-          <span className={label}>상병 </span>
-          <span className="font-semibold text-slate-100">{r.disease}</span>
-          <div className="text-[12px] text-slate-500">{r.code || '코드 미제공'}{r.side !== '미확인' ? ` · ${r.side}` : ''}</div>
+    <li className="rounded-xl border border-slate-800 bg-white p-3 sm:rounded-none sm:border-0 sm:px-3 sm:py-2.5" data-care-row>
+      <div className="grid gap-y-0.5 text-[14px] sm:grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_7.5rem] sm:items-center sm:gap-x-3 sm:text-[13px]">
+        <div className="flex flex-wrap items-baseline gap-x-2 sm:block">
+          <b className="text-slate-100">{dateLabel(r.date)}</b>
+          <span className="min-w-0 break-words text-slate-300 sm:hidden">{r.hospital || '기관 미확인'}</span>
         </div>
-        <div className="flex flex-wrap items-center gap-1 sm:block"><span className={label}>구분 </span><KindCell r={r} /></div>
-        <div className="min-w-0 break-words">
-          <span className={label}>약물 </span>
-          {shownMeds.length ? shownMeds.map((m, i) => (
-            <div key={i} className="text-slate-200">{m.name} <span className="text-[12px] text-slate-500">· {daysLabel(m.days)}</span></div>
-          )) : <span className="text-slate-400">연결된 약물 없음</span>}
-          {r.medications.length > shownMeds.length ? <div className="text-[12px] text-slate-500">외 {r.medications.length - shownMeds.length}건</div> : null}
+        <div className="hidden min-w-0 break-words text-slate-100 sm:block">{r.hospital || '기관 미확인'}</div>
+        <div className="min-w-0 break-words font-semibold text-slate-100">
+          {diseaseLabel(r)}{r.side !== '미확인' ? <span className="font-normal text-slate-400"> · {r.side}</span> : null}
+        </div>
+        <div className="min-w-0 break-words text-slate-300">
+          {meds ? <><span className="text-[12px] font-semibold text-slate-500 sm:hidden">처방약 </span>{meds}</> : <span className="hidden text-slate-500 sm:inline">-</span>}
+        </div>
+        <div className="sm:text-right">
+          {canOpen ? (
+            <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls={detailId}
+              className="mt-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-[13px] font-semibold text-[#8a6a1f] hover:bg-[#fdf7ea] sm:mt-0">
+              <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+              {open ? '접기' : '자세히 보기'}
+            </button>
+          ) : null}
         </div>
       </div>
-      {hasMore ? (
-        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
-          className="mt-1 inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[12px] font-semibold text-[#8a6a1f] hover:bg-[#fdf7ea]">
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
-          {open ? '세부 접기' : '세부 진료·약물 보기'}
-        </button>
-      ) : null}
-      {open ? (
-        <div className="mt-1 space-y-1 rounded-lg bg-slate-950 p-2 text-[13px] text-slate-200">
-          {r.procedures.length ? <div><b>세부 진료·치료</b> · {r.procedures.join(', ')}</div> : null}
-          {r.medications.length ? (
-            <ul className="space-y-0.5">
-              {r.medications.map((m, i) => (
-                <li key={i}>{m.name}{m.ingredient ? <span className="text-slate-500"> ({m.ingredient})</span> : null} · {daysLabel(m.days)}</li>
-              ))}
-            </ul>
-          ) : null}
-          <p className="text-[12px] text-slate-500">수술·약물 연결은 진료일·기관 일치 기반 추정입니다.</p>
-        </div>
-      ) : null}
+      {open ? <Detail r={r} id={detailId} /> : null}
     </li>
   )
 }
 
-export default function RecentCareTable({ result }: { result: Record<string, unknown> }): JSX.Element {
-  const s = useMemo(() => recentCareSummary(result), [result])
+export default function RecentCareTable({ result, period, onShowAll }: { result: Record<string, unknown>; period: CarePeriod; onShowAll: () => void }): JSX.Element {
+  const s = useMemo(() => careListSummary(result, period), [result, period])
   const [expanded, setExpanded] = useState(false)
+  useEffect(() => { setExpanded(false) }, [period, result])
   const rows = expanded ? s.records : s.records.slice(0, INITIAL_ROWS)
+  const showAllBtn = (
+    <button type="button" onClick={onShowAll} className="min-h-11 rounded-lg border border-slate-700 bg-white px-3 text-[13px] font-bold text-slate-200 hover:bg-slate-950">전체 기록 보기</button>
+  )
   return (
-    <section className="mt-4 rounded-xl border-2 border-[#0e1e3a]/20 bg-white" aria-labelledby="hr-recent-title">
-      <div className="border-b border-slate-800 px-3 py-2.5">
-        <h3 id="hr-recent-title" className="flex flex-wrap items-center gap-2 text-[14px] font-bold text-slate-100">
-          <span className="rounded-full bg-[#0e1e3a] px-2.5 py-0.5 text-[12px] font-bold text-white">최근 3개월 고정</span>
-          병원·약물 이력 <span className="font-semibold text-slate-400">{s.records.length}건</span>
-        </h3>
-        <p className="mt-1 text-[13px] text-slate-300">
-          <b className="text-slate-100">{dateLabel(s.start)} ~ {dateLabel(s.end)}</b>
-          <span className="text-slate-500"> · 적용 기간 버튼과 무관 · 고지 판정 아님</span>
-        </p>
-      </div>
+    <section className="mt-3 rounded-xl border border-slate-800 bg-white" aria-labelledby="hr-recent-title">
+      <h3 id="hr-recent-title" className="border-b border-slate-800 px-3 py-2.5 text-[14px] font-bold text-slate-100">
+        최근 진료 <span className="font-semibold text-slate-400">{s.records.length}건</span>
+      </h3>
 
       {s.records.length ? (
         <>
-          <div className="hidden border-b border-slate-800 bg-slate-950 px-3 py-1.5 text-[12px] font-semibold text-slate-400 sm:grid sm:grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,8.5rem)_minmax(0,1.2fr)] sm:gap-x-3" aria-hidden="true">
-            <span>진료일</span><span>병원·약국</span><span>상병·질병코드</span><span>통원·입원·수술</span><span>약물·투약일수</span>
+          <div className="hidden border-b border-slate-800 bg-slate-950 px-3 py-1.5 text-[12px] font-semibold text-slate-400 sm:grid sm:grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_7.5rem] sm:gap-x-3" aria-hidden="true">
+            <span>날짜</span><span>병원</span><span>병명</span><span>처방약</span><span />
           </div>
-          <ul className="divide-y divide-slate-800">
-            {rows.map((r) => <Row key={r.key} r={r} />)}
+          <ul className="space-y-2 p-2 sm:space-y-0 sm:divide-y sm:divide-slate-800 sm:p-0">
+            {rows.map((r, i) => <Row key={r.key} r={r} index={i} />)}
           </ul>
           {s.records.length > INITIAL_ROWS ? (
             <div className="border-t border-slate-800 p-2">
               <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}
-                className="min-h-10 w-full rounded-lg border border-slate-700 bg-white px-3 text-[13px] font-bold text-slate-200 hover:bg-slate-950">
+                className="min-h-11 w-full rounded-lg border border-slate-700 bg-white px-3 text-[13px] font-bold text-slate-200 hover:bg-slate-950">
                 {expanded ? '접기' : `전체 ${s.records.length}건 보기`}
               </button>
             </div>
           ) : null}
         </>
       ) : (
-        <p className="px-3 py-3 text-[13px] leading-relaxed text-slate-300">
+        <div className="flex flex-wrap items-center gap-2 px-3 py-3 text-[13px] text-slate-300">
           {s.total === 0
-            ? '조회 응답에 진료·투약 목록이 없습니다. 기록이 없다는 것이 이상 없음·가입 가능을 뜻하지 않습니다.'
-            : `최근 3개월에 날짜가 확인된 기록이 없습니다. 조회 자료의 가장 최근 날짜는 ${s.latest ? dateLabel(s.latest) : '확인되지 않음'}이며, 조회 요청 기간이 최근 3개월을 포함했는지 확인하세요(기록 없음과 조회 범위 부족을 구분할 수 없습니다).`}
-        </p>
+            ? <p>조회된 진료·처방 기록이 없습니다.</p>
+            : <><p className="min-w-0 flex-1">선택한 기간에 조회된 기록이 없습니다.</p>{period !== 'all' ? showAllBtn : null}</>}
+        </div>
       )}
 
-      <div className="space-y-0.5 border-t border-slate-800 px-3 py-2 text-[12px] text-slate-500">
-        {s.undated ? <p className="font-semibold text-amber-700">날짜 미확인 {s.undated}건 · 최근 3개월에 포함하지 않았습니다. 전체 기록(기간 ‘조회 전체’)에서 확인하세요.</p> : null}
-        {s.oldest ? <p>조회 자료에 포함된 날짜: {dateLabel(s.oldest)} ~ {dateLabel(s.latest)} (실제 기록 기준이며 요청 기간 전체가 조회됐다는 뜻은 아닙니다)</p> : null}
-      </div>
+      {period !== 'all' && s.undated ? (
+        <p className="flex flex-wrap items-center gap-2 border-t border-slate-800 px-3 py-2 text-[12px] font-semibold text-amber-700">
+          <span className="min-w-0 flex-1">날짜 미확인 {s.undated}건은 전체 기록에서 볼 수 있습니다.</span>
+          {s.records.length ? showAllBtn : null}
+        </p>
+      ) : null}
     </section>
   )
 }

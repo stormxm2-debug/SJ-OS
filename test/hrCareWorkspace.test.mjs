@@ -149,3 +149,37 @@ test('최근 3개월 요약: 빈 응답과 기간 밖 기록을 구분',()=>{
   const old=care.recentCareSummary({resBasicTreatList:[{...base,resTreatStartDate:'20250101'}]},today)
   assert.equal(old.total,1);assert.equal(old.records.length,0);assert.equal(old.latest,'20250101')
 })
+test('공통 기간 목록과 핵심 숫자는 같은 기록에서 계산: 기간별 건수 일치, 날짜 미확인은 전체에서만',()=>{
+  const today=new Date(2026,10,5)
+  const dates=['20261105','20260805','20260804','20251105','20251104','20240101','20211105','']
+  const result={resBasicTreatList:dates.map((d,i)=>({...base,resTreatStartDate:d,resDiseaseName:`진단${i}`,resTreatType:i===1?'입원':'외래'}))}
+  const expected={'3m':2,'1y':4,'3y':6,'5y':7,all:8}
+  for (const p of care.CARE_PERIODS.map(x=>x.value)) {
+    const list=care.careListSummary(result,p,today)
+    const kpiRows=care.buildCareRecords(care.filterCareResult(result,p,today))
+    assert.equal(list.records.length,expected[p],p)
+    assert.deepEqual(list.records.map(r=>r.key),kpiRows.map(r=>r.key),p)
+    assert.equal(care.careKpis(kpiRows).records,list.records.length,p)
+    assert.equal(list.undated,1)
+  }
+  assert.ok(care.careListSummary(result,'all',today).records.some(r=>r.date===''))
+  assert.ok(!care.careListSummary(result,'5y',today).records.some(r=>r.date===''))
+  assert.equal(care.careListSummary(result,'all',today).start,'')
+  // Default list period ('3m') equals the former fixed recent summary.
+  assert.deepEqual(care.recentCareSummary(result,today).records.map(r=>r.key),care.careListSummary(result,'3m',today).records.map(r=>r.key))
+})
+test('핵심 숫자: 건수 의미 유지, 입원일수 미확인은 0일로 합산하지 않고 수술은 방문별 1회',()=>{
+  const rows=care.buildCareRecords({resBasicTreatList:[
+    {...base,resTreatStartDate:'20261101',resHospitalName:'A병원',resVisitDays:'4'},
+    {...base,resTreatStartDate:'20261101',resHospitalName:'A병원',resDiseaseName:'다른 병명',resVisitDays:'4'},
+    {...base,resTreatStartDate:'20261102',resHospitalName:'B병원',resVisitDays:''},
+    {...base,resTreatStartDate:'20261103',resHospitalName:'C병원',resTreatType:'외래',resDiseaseName:'수술 후 관찰'}
+  ],resDetailTreatList:[{resTreatStartDate:'20261101',resHospitalName:'A병원',resOperationName:'관절경 수술'}]})
+  const k=care.careKpis(rows)
+  assert.equal(k.records,4)
+  assert.equal(k.admissionKnownDays,4)
+  assert.equal(k.admissionUnknown,1)
+  assert.equal(k.surgeries,1)
+  const none=care.careKpis(care.buildCareRecords({resBasicTreatList:[{...base,resVisitDays:''}]}))
+  assert.equal(none.admissionKnownDays,0);assert.equal(none.admissionUnknown,1)
+})

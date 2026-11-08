@@ -15,7 +15,6 @@ import {
   collectHrSections,
   summarizeByDisease,
   summarizeEpisodes,
-  buildHighlights,
   diseaseFlags,
   groupKeyOf,
   sequelaeForSurgery,
@@ -35,7 +34,7 @@ import { askHealthRecordAi } from '@renderer/services/health-record/healthRecord
 import HealthRecordWorkspace from '@renderer/components/health-record/HealthRecordWorkspace'
 import SonsonEstimator from '@renderer/components/health-record/SonsonEstimator'
 import RecentCareTable from '@renderer/components/health-record/RecentCareTable'
-import { admissionSummary, buildCareRecords, CARE_PERIODS, calendarMonthsAgo, filterCareResult, localYmd, periodStart, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
+import { admissionSummary, buildCareRecords, CARE_PERIODS, careListSummary, calendarMonthsAgo, filterCareResult, localYmd, periodStart, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
 import { aiGuideNote, type GuideLoadStatus } from '@renderer/services/health-record/guideLoadState'
 
 /**
@@ -1113,7 +1112,8 @@ type ResultTab = 'summary' | 'claims' | 'review'
  *  진료(카테고리 보고서)/약품·기타(상세 표)를 자동 구분한다. */
 export function ResultReport({ result, requestId }: { result: Record<string, unknown>; requestId?: string }): JSX.Element {
   const [tab, setTab] = useState<ResultTab>('summary')
-  const [carePeriod, setCarePeriod] = useState<CarePeriod>('all')
+  // 기본 표시 기간: 최근 3개월. 저장된 결과의 표시 필터일 뿐 새 기관 조회·인증·AI 요청을 일으키지 않는다.
+  const [carePeriod, setCarePeriod] = useState<CarePeriod>('3m')
   const filteredResult = useMemo(() => filterCareResult(result, carePeriod), [result, carePeriod])
   const [underwritingContext, setUnderwritingContext] = useState<HrUnderwritingContext>({ insurers: [], guides: [], exceptions: [] })
   // 표시 전용 메타데이터 — AI 답변 초기화 의존성에 넣지 않는다(기준 내용 변경은 underwritingContext가 담당).
@@ -1123,10 +1123,10 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
   const [detailOpen, setDetailOpen] = useState(false)
   const sections = useMemo(() => collectSections(filteredResult), [filteredResult])
   const raw = useMemo(() => JSON.stringify(result, null, 2), [result])
-  const totalRows = sections.reduce((n, s) => n + s.rows.length, 0)
+  // 자료 안내용 — 실제 기록에 포함된 날짜 범위(요청 기간 전체가 조회됐다는 뜻은 아님).
+  const careSpan = useMemo(() => { const s = careListSummary(result, "all"); return s.oldest ? `${ymd(s.oldest)} ~ ${ymd(s.latest)}` : "" }, [result])
   const diseases = useMemo(() => summarizeByDisease(collectHrSections(filteredResult)), [filteredResult])
   const episodes = useMemo(() => summarizeEpisodes(collectHrSections(filteredResult)), [filteredResult])
-  const highlights = useMemo(() => buildHighlights(collectHrSections(filteredResult)), [filteredResult])
   const careRecords = useMemo(() => buildCareRecords(filteredResult), [filteredResult])
   const userNm = useMemo(() => {
     for (const s of sections) {
@@ -1162,7 +1162,7 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
   }
 
   const tabs: { id: ResultTab; label: string; hint: string; guide: string }[] = [
-    { id: 'summary', label: '한눈에 요약', hint: '핵심 수치·이력', guide: '핵심 수치와 최근 3개월 이력을 먼저 보고, 필요할 때 상세 기록을 펼치세요.' },
+    { id: 'summary', label: '한눈에 요약', hint: '핵심·최근 진료', guide: '' },
     { id: 'claims', label: '청구 관리', hint: '청구 상태 확인', guide: '기록을 검색·선택해 청구 상태(수동 확인)를 저장하고 목록을 출력합니다.' },
     { id: 'review', label: '가입 검토', hint: '기준 조회·AI', guide: '건강기록과 등록된 기준을 연결해 상담 시 확인할 내용을 정리합니다.' }
   ]
@@ -1174,11 +1174,10 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
     setTab(next.id)
     document.getElementById(`hr-tab-${next.id}`)?.focus()
   }
-  const periodText = carePeriod === 'all' ? '조회 전체' : `최근 ${CARE_PERIODS.find((p) => p.value === carePeriod)?.label ?? ''}`
-  const periodRange = carePeriod === 'all' ? '조회된 자료 전체' : `${ymd(periodStart(carePeriod))} ~ ${ymd(localYmd())} · 조회된 자료 안에서만`
+  const periodRange = carePeriod === 'all' ? '조회된 기록 전체' : `${ymd(periodStart(carePeriod))} ~ ${ymd(localYmd())}`
   const detailOptions: { id: typeof detailView; label: string }[] = [
-    { id: 'episodes', label: `상병별 묶음${episodes.length ? ` ${episodes.length}` : ''}` },
-    { id: 'disease', label: `상병 집계${diseases.length ? ` ${diseases.length}` : ''}` },
+    { id: 'episodes', label: `병명별 묶음${episodes.length ? ` ${episodes.length}` : ''}` },
+    { id: 'disease', label: `병명별 집계${diseases.length ? ` ${diseases.length}` : ''}` },
     { id: 'sections', label: '진료순' },
     ...(Object.keys(result).length ? [{ id: 'raw' as const, label: '원자료' }] : [])
   ]
@@ -1188,7 +1187,6 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
       <h2 className="break-words text-[15px] font-bold text-slate-100">
         조회 결과
         {userNm ? <span className="text-slate-400"> · {userNm}</span> : null}
-        {totalRows ? <span className="text-slate-400"> · 총 {totalRows}건</span> : null}
       </h2>
 
       {/* 목적별 3탭 — 이름 + 짧은 설명, 활성 탭은 남색 바탕 + 금색 밑줄. */}
@@ -1202,15 +1200,12 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
           </button>
         ))}
       </div>
-      <p className="mt-2 text-[13px] leading-snug text-slate-400">{activeTab.guide}</p>
+      {activeTab.guide ? <p className="mt-2 text-[13px] leading-snug text-slate-400">{activeTab.guide}</p> : null}
 
-      {/* 공통 기간 — 요약 수치·상세·청구·가입 검토·AI 입력에 같은 기간을 적용한다(최근 3개월 고정 이력은 제외). */}
+      {/* 공통 기간 — 핵심 숫자·최근 진료·자세히 보기·청구·가입 검토·AI 입력에 같은 기간을 적용한다(저장된 결과의 표시 필터). */}
       <div className="mt-2 rounded-xl border border-[#e8d6a8] bg-[#fdf7ea]/60 px-3 py-2" role="group" aria-labelledby="hr-period-title">
-        <div className="flex flex-wrap items-baseline gap-x-2">
-          <span id="hr-period-title" className="text-[13px] font-bold text-slate-100">적용 기간</span>
-          <span className="text-[12px] text-slate-400">요약 수치 · 상세 기록 · 청구 · 가입 검토에 적용</span>
-        </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <span id="hr-period-title" className="sr-only">기간 선택</span>
+        <div className="flex flex-wrap items-center gap-1.5">
           {CARE_PERIODS.map((p) => (
             <button key={p.value} type="button" aria-pressed={carePeriod === p.value} onClick={() => setCarePeriod(p.value)}
               className={`min-h-11 rounded-full border px-3.5 text-[13px] font-bold ${carePeriod === p.value ? 'border-[#c6982f] bg-[#fdf7ea] text-[#0e1e3a] ring-1 ring-[#c6982f]' : 'border-slate-700 bg-white text-slate-300'}`}>
@@ -1218,7 +1213,7 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
             </button>
           ))}
         </div>
-        <p className="mt-1 text-[12px] text-slate-500" aria-live="polite">선택: <b className="text-slate-200">{periodText}</b> ({periodRange})</p>
+        <p className="mt-1 text-[12px] text-slate-500" aria-live="polite">{periodRange}</p>
       </div>
 
       <div id="hr-result-panel" role="tabpanel" aria-labelledby={`hr-tab-${tab}`}>
@@ -1227,34 +1222,15 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
 
         {tab === 'summary' ? (
           <>
-            {sections.length > 0 && highlights.hasAny ? (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-[#fecdd3] bg-rose-50 px-3 py-2">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
-                <span className="text-[13px] font-bold text-rose-700">확인 권장(추정)</span>
-                {highlights.inpatientVisits > 0 ? <BigChip tone="rose">입원 {highlights.inpatientVisits}건</BigChip> : null}
-                {highlights.surgeryCount > 0 ? <BigChip tone="rose">수술(추정) {highlights.surgeryCount}건</BigChip> : null}
-                {highlights.frequentOutpatient.map((d) => (
-                  <BigChip key={d.disease} tone="amber">통원 {d.outpatientVisits}회 · {d.disease}</BigChip>
-                ))}
-                {highlights.bigSelfPay.map((d) => (
-                  <BigChip key={`sp-${d.disease}`} tone="amber">고액 {won(d.selfPayTotal)} · {d.disease}</BigChip>
-                ))}
-              </div>
-            ) : null}
-            {sections.length === 0 ? (
-              <p className="mt-2 text-[13px] text-slate-500">선택한 기간에 표시할 기록이 없습니다. ‘조회 전체’를 선택해 보세요. 기록이 없다는 것이 이상 없음·가입 가능을 뜻하지 않습니다.</p>
-            ) : null}
+            {/* 최근 진료 — 핵심 숫자와 같은 공통 기간·같은 기록으로 계산(고정 3개월 예외 없음). */}
+            <RecentCareTable result={result} period={carePeriod} onShowAll={() => setCarePeriod('all')} />
 
-            {/* 최근 3개월 고정 — 공통 기간과 별개로 전체 result에서 계산. */}
-            <RecentCareTable result={result} />
-
-            {/* 상세 기록 — 한 개의 접힌 영역에서 보기 방식을 선택한다(기본: 상병별 묶음). */}
+            {/* 자세히 보기 — 한 개의 접힌 영역에서 보기 방식을 선택한다(기본: 병명별 묶음). 원자료는 이 안에서만. */}
             <section className="mt-3 rounded-xl border border-slate-800" aria-labelledby="hr-detail-toggle">
               <button id="hr-detail-toggle" type="button" onClick={() => setDetailOpen((v) => !v)} aria-expanded={detailOpen} aria-controls="hr-detail-body"
                 className="flex min-h-12 w-full items-center gap-2 rounded-xl px-3 text-left text-[14px] font-bold text-slate-100 hover:bg-slate-950">
                 <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${detailOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
-                상세 기록
-                <span className="rounded-full border border-[#c6982f] px-2 py-0.5 text-[12px] font-semibold text-[#8a6a1f]">{periodText}</span>
+                자세히 보기
                 <span className="ml-auto text-[12px] font-semibold text-slate-400">{detailOpen ? '접기' : '펼치기'}</span>
               </button>
               {detailOpen ? (
@@ -1276,11 +1252,11 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
                   </div>
                   {detailView === 'raw' ? (
                     <>
-                      <p className="mt-2 text-[12px] text-slate-500">원자료는 기간 선택과 관계없이 조회 전체 응답입니다.</p>
+                      <p className="mt-2 text-[12px] text-slate-500">원자료는 기간 선택과 관계없이 조회된 전체 응답입니다.</p>
                       <pre className="mt-1 max-h-80 overflow-auto rounded-xl border border-slate-800 bg-slate-950 p-3 text-[12px] leading-relaxed text-slate-100">{raw}</pre>
                     </>
                   ) : sections.length === 0 ? (
-                    <p className="mt-2 text-[13px] text-slate-500">선택한 기간에 표시할 기록이 없습니다.</p>
+                    <p className="mt-2 text-[13px] text-slate-500">선택한 기간에 조회된 기록이 없습니다.</p>
                   ) : detailView === 'episodes' ? (
                     <div className="mt-3"><EpisodeView episodes={episodes} records={careRecords} /></div>
                   ) : detailView === 'disease' ? (
@@ -1310,15 +1286,17 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
               ) : null}
             </section>
 
-            {/* 자료 기준 안내 — 반복 주의문을 한곳에 접어 둔다. 값의 의미(추정·미확인)는 각 값 옆에 남긴다. */}
+            {/* 자료 안내 — 처리 방식·자료 범위 설명을 한곳에 접어 둔다. 값의 의미(추정·미확인)는 각 값 옆에 짧게 남긴다. */}
             <details className="mt-3 rounded-xl border border-slate-800 px-3 py-1">
-              <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-bold text-slate-300">자료 기준 안내</summary>
+              <summary className="flex min-h-11 cursor-pointer items-center text-[13px] font-bold text-slate-300">자료 안내</summary>
               <ul className="list-disc space-y-1 pb-2 pl-5 text-[13px] leading-relaxed text-slate-400">
-                <li>적용 기간은 이미 조회된 자료 안에서 나눌 뿐이며, 해당 기간 전체 자료가 조회됐다는 뜻이 아닙니다. 날짜 미상 기록은 ‘조회 전체’에서만 보입니다.</li>
-                <li>입원일수는 동일 날짜·기관의 최대값을 한 번 합산한 원자료 추정 합계입니다. 연속 입원·여러 기관의 중복 기간은 추가 확인하세요.</li>
-                <li>수술·약물·병명 연결은 진료일·기관 매칭과 명칭 기반 추정이며 의학적 확정이 아닙니다.</li>
-                <li>‘확인 권장’ 표시(입원·수술·잦은 통원·고액 진료)는 보험 상담 시 확인할 신호(추정)입니다. 담보 해당 여부는 약관으로 확인하세요.</li>
-                <li>최근 3개월 이력은 고지 확인용 참고입니다. 최근 기록이라는 사실만으로 고지 의무·인수 여부가 확정되지 않습니다.</li>
+                <li>기간 버튼은 이미 조회된 자료를 나눠 보여줄 뿐 새로 조회하지 않으며, 해당 기간 자료가 모두 조회됐다는 뜻이 아닙니다.{careSpan ? ` 조회된 자료의 날짜: ${careSpan}.` : ''}</li>
+                <li>날짜가 확인되지 않은 기록은 ‘전체’에서만 보입니다.</li>
+                <li>기록이 없거나 적다는 것이 건강 이상 없음·가입 가능·수술 없음·청구 가능을 뜻하지 않습니다. 조회 기간·기관 범위가 부족할 수 있습니다.</li>
+                <li>진료기록은 조회된 기록 건수입니다(방문 횟수가 아님).</li>
+                <li>입원일수는 같은 날짜·기관의 최대값을 한 번 합산한 추정치입니다. 일수가 없는 입원은 0일로 세지 않고 ‘일수 미확인’으로 따로 표시합니다.</li>
+                <li>수술 추정과 처방약·병명 연결은 치료 명칭과 진료일·기관 일치로 추정한 것이며 의학적 확정이 아닙니다.</li>
+                <li>최근 기록은 고지 확인용 참고이며 고지 의무·인수 여부를 확정하지 않습니다. 청구 여부는 ‘청구 관리’ 탭에서 확인하세요.</li>
               </ul>
             </details>
           </>
@@ -1369,15 +1347,6 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
       </div>
     </div>
   )
-}
-
-function BigChip({ tone, children }: { tone: 'rose' | 'amber' | 'slate'; children: React.ReactNode }): JSX.Element {
-  const cls = tone === 'rose'
-    ? 'border-rose-300 bg-white text-rose-700'
-    : tone === 'amber'
-      ? 'border-amber-300 bg-[#fef3c7] text-amber-800'
-      : 'border-slate-700 bg-white text-slate-300'
-  return <span className={`rounded-full border px-2.5 py-0.5 text-[13px] font-bold ${cls}`}>{children}</span>
 }
 
 /** 수술 부위 일러스트 — 인체 실루엣 + 해당 부위 강조점(실제 수술 사진 아님, 부위 안내용). */
