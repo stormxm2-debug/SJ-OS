@@ -1,6 +1,7 @@
 import { collectHrSections, looksSurgery, normalizeDisease, num, ymd8, type Row } from './summarize'
 import type { UnderwritingDisease } from '../underwriting/underwritingService'
 import type { ExceptionRule } from '../underwriting/exceptionDiseaseService'
+import { classifyHealthError } from './healthStatusView'
 
 export type CarePeriod = 'all' | '3m' | '1y' | '3y' | '5y'
 export type ClaimState = 'unknown' | 'unclaimed' | 'claimed'
@@ -138,13 +139,10 @@ export function admissionSummary(rows: CareRecord[]): { knownDays: number; unkno
   }
   return { knownDays: [...visits.values()].reduce<number>((n, d) => n + (d ?? 0), 0), unknown: [...visits.values()].filter(d => d == null).length }
 }
+/** 표시용 오류 안내(제목·행동). 분류는 healthStatusView.classifyHealthError 와 공유. */
 export function healthErrorHelp(message: string, code = ''): { title: string; action: string } {
-  if (/TIMEOUT|시간.*초과|응답.*지연/i.test(`${code} ${message}`)) return { title: '조회 응답 지연', action: '최근 요청을 새로고침해 완료 여부를 먼저 확인하세요. 화면 시간초과 후에도 서버 작업은 끝날 수 있습니다.' }
-  if (/이용.*시간|운영.*시간|점검|서비스.*시간/.test(message)) return { title: '기관 이용 시간 확인', action: '기관·연동업체의 공식 이용 시간을 확인한 뒤 다시 요청하세요. 오전 9시 제한은 아직 확인되지 않았습니다.' }
-  if (/외국인|성명|이름|userName/i.test(message)) return { title: '고객 이름 확인', action: '외국인 이름의 공백·순서·길이를 확인하세요. 인증사업자에 등록된 이름과 일치해야 합니다.' }
-  if (/주민|생년|identity|CF-13000/i.test(`${code} ${message}`)) return { title: '본인확인 정보 확인', action: '고객 직접 입력 링크에서 정보를 확인하세요. 같은 오류가 계속되면 상품별 identity 형식·암호화 스펙 확인이 필요합니다.' }
-  if (/만료|완료된 요청|CF-00025/.test(`${code} ${message}`)) return { title: '인증 세션 종료', action: '먼저 최근 요청의 완료 여부를 확인하고, 필요하면 새 인증을 요청하세요.' }
-  return { title: '조회 단계 확인 필요', action: '아래 최근 요청에서 진행 상태를 확인하세요. 개인정보 원문을 포함하지 않은 오류 코드로 담당자에게 문의하세요.' }
+  const v = classifyHealthError(message, code)
+  return { title: v.title, action: v.action }
 }
 export interface RecentCareSummary {
   /** Fixed calendar window (inclusive), independent of the shared period selector. */
