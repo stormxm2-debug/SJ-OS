@@ -1,3 +1,24 @@
+# 건강기록 UI 데스크톱 반영 — v1.0.59
+
+기준: `main` 14acd7c (v1.0.58). 1.0.59 patch(작은 후속 UI 변경). 의존성 변경 없음.
+
+## 변경
+
+- 요청: "처방약은 자세히 보기 누르면 떴으면 좋겠어".
+- `RecentCareTable.tsx`만 변경: 최근 진료 기본 행에서 처방약 이름·요약·`외 N건`·빈칸 `-`와 PC `처방약` 열 제목 제거. 모바일·PC 기본 행은 날짜·병원·병명(+좌우)·자세히 보기만. PC 헤더/행 grid를 같은 4열(`6.5rem / 1fr / 1.4fr / 7.5rem`)로 맞춤. 미사용 `medSummary`/`meds` 삭제.
+- 처방약 전체 이름·성분·투약일수는 행별 `자세히 보기`에서만 표시(기존 Detail 그대로), 접으면 사라짐. 약만 있는 기록도 버튼이 있도록 `hasCareDetail`의 medications 조건 유지. 일반 기록 종류 라벨 `처방약 기록`은 유지.
+- 청구 관리·가입 검토·AI·전체 상세보기·수집/API/DB/인증·집계·기간·기록 키·날짜 검증·고객 전환 가드 변경 없음.
+
+## 검증 (실제 실행)
+
+- `npm run typecheck` 통과, `npm run build` 통과.
+- `node --test test/hrForegroundGuard.test.mjs test/hrStatusView.test.mjs test/hrCareWorkspace.test.mjs test/hrEntryPhase.test.mjs` 45 pass / 0 fail.
+- 실제 `RecentCareTable` 컴포넌트 + 합성 데이터, 빌드된 앱 CSS, 헤드리스 Chrome(CDP 375px mobile·scale 1 / 1280px): 닫힌 행에 약 이름·성분 미노출 → 자세히 보기 시 이름·성분·`N일분`/`일수 미확인` 노출 → 접기 시 다시 미노출. 약만 있는 기록(`처방약 기록`)도 버튼 있음, 펼치면 약 표시. PC 헤더·행 열 위치 일치(4열), 375/1280 가로 넘침 없음. 스크린샷은 로컬 임시 폴더에만 두고 업로드하지 않음.
+
+## 미검증
+
+- 실제 Electron 앱 화면·실고객 데이터는 실행하지 않음(ResultReport 전체 화면이 아니라 컴포넌트 단독 렌더링).
+
 # 건강기록 UI 데스크톱 반영 — v1.0.58
 
 기준: `main` 9e584a4 (v1.0.57, PR #97). 1.0.58 patch. 의존성 변경 없음.
