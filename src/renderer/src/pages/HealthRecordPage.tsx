@@ -30,11 +30,12 @@ import {
   type PartGroup
 } from '@renderer/services/health-record/summarize'
 import { deriveEntryPhase, type EntryPhase } from '@renderer/services/health-record/entryPhase'
+import { classifyHealthError, createHistoryRefresher, healthUiError, historyRowAction, initialHistoryLoad, type HealthUiError, type HistoryLoadState, type HistoryRefresher } from '@renderer/services/health-record/healthStatusView'
 import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
 import HealthRecordWorkspace from '@renderer/components/health-record/HealthRecordWorkspace'
 import SonsonEstimator from '@renderer/components/health-record/SonsonEstimator'
 import RecentCareTable from '@renderer/components/health-record/RecentCareTable'
-import { admissionSummary, buildCareRecords, CARE_PERIODS, calendarMonthsAgo, filterCareResult, healthErrorHelp, localYmd, periodStart, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
+import { admissionSummary, buildCareRecords, CARE_PERIODS, calendarMonthsAgo, filterCareResult, localYmd, periodStart, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
 import { aiGuideNote, type GuideLoadStatus } from '@renderer/services/health-record/guideLoadState'
 
 /**
@@ -297,7 +298,11 @@ export default function HealthRecordPage(): JSX.Element {
     return () => window.clearInterval(timer)
   }, [busy])
   const [notice, setNotice] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // 오류 메시지 + 응답 code(HEALTH_TIMEOUT 등, 표시 분류용 메타데이터만)를 한 상태로 — 새 오류·초기화 때 code 가 함께 바뀐다.
+  const [uiError, setUiError] = useState<HealthUiError | null>(null)
+  const error = uiError?.message ?? null
+  const errorCode = uiError?.code ?? ''
+  const setError = (message: string | null, code = ''): void => setUiError(healthUiError(message, code))
   const [configNote, setConfigNote] = useState<string | null>(null)
 
   const [requestId, setRequestId] = useState<string | undefined>(undefined)
@@ -317,11 +322,22 @@ export default function HealthRecordPage(): JSX.Element {
   const needDate = selected.dateMode === 'range'
   const idLen = selected.idField === 'birth' ? 8 : 13
 
-  const refresh = async (): Promise<void> => {
-    // 본인(FC)이 조회한 것만 + (있으면) 고객명 검색으로 조회.
-    const r = await listHealthRecords(undefined, historyQueryRef.current)
-    if (r.ok) setHistory(r.items)
+  // 최근 요청 로딩 메타데이터 — 늦게 온 이전 응답(이전 검색어 등)이 최신 목록·상태를 덮지 않게 순번으로 가드.
+  const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>(initialHistoryLoad)
+  // 같은 검색어의 진행 중 요청은 공유(폴링·수동 새로고침 겹침), 검색어가 바뀌면 새 요청.
+  const historyRefresherRef = useRef<HistoryRefresher | null>(null)
+  if (!historyRefresherRef.current) {
+    historyRefresherRef.current = createHistoryRefresher<HealthRecordRequest>({
+      // 본인(FC)이 조회한 것만 + (있으면) 고객명 검색으로 조회.
+      load: (q) => listHealthRecords(undefined, q),
+      query: () => historyQueryRef.current,
+      now: () => Date.now(),
+      publish: setHistoryLoad,
+      apply: setHistory // 실패 시 호출되지 않아 기존 목록 유지(빈 목록으로 바꾸지 않음)
+    })
   }
+  const historyRefresher = historyRefresherRef.current
+  const refresh = (): Promise<void> => historyRefresher.refresh()
   const onHistorySearch = (v: string): void => {
     setHistoryQuery(v)
     historyQueryRef.current = v
@@ -450,7 +466,7 @@ export default function HealthRecordPage(): JSX.Element {
         return
       }
       if (!r.ok && r.status !== 'awaiting_auth') {
-        setError(r.error ?? '요청에 실패했습니다.')
+        setError(r.error ?? '요청에 실패했습니다.', r.code ?? '')
         return
       }
       setRequestId(r.requestId)
@@ -489,9 +505,9 @@ export default function HealthRecordPage(): JSX.Element {
         if (deadSession) {
           setTwoWay(undefined)
           setRequestId(undefined)
-          setError('인증 세션이 끝났습니다(1회용). 「간편인증 요청」부터 다시 하세요 — 요청 → 승인 → 결과 조회를 한 번씩만.')
+          setError('인증 세션이 끝났습니다(1회용). 「간편인증 요청」부터 다시 하세요 — 요청 → 승인 → 결과 조회를 한 번씩만.', 'CF-00025')
         } else {
-          setError(r.error ?? '아직 승인 전이거나 조회에 실패했습니다. 고객 승인 후 다시 시도해주세요.')
+          setError(r.error ?? '아직 승인 전이거나 조회에 실패했습니다. 고객 승인 후 다시 시도해주세요.', r.code ?? '')
         }
         return
       }
@@ -546,7 +562,7 @@ export default function HealthRecordPage(): JSX.Element {
         return
       }
       setInvite({ url: r.url, smsSent: Boolean(r.smsSent) })
-      setNotice(r.smsSent ? '고객에게 문자로 링크를 보냈습니다. 고객이 입력하면 아래 「최근 요청」에 결과가 표시됩니다.' : '링크를 생성했습니다. 아래에서 복사하거나 카톡으로 보내세요.')
+      // 발급 결과·문자 발송 여부는 상단 링크 상자에 표시(중복 안내 생략).
       void refresh()
     } finally {
       setInviteBusy(false)
@@ -624,6 +640,13 @@ export default function HealthRecordPage(): JSX.Element {
     hasError: Boolean(error)
   })
   const currentStep: 1 | 2 | 3 = phase === 'done' ? 3 : hasContact ? 2 : 1
+  const errView = classifyHealthError(error ?? '', errorCode)
+  // 응답 확인 필요(시간초과·연결 불확실 등): 주행동은 최근 요청 확인, 새 인증·조회는 보조행동.
+  const checkFirst = phase === 'failed' && errView.checkHistoryFirst
+  const checkHistory = (): void => {
+    void refresh() // 목록 새로고침만 — start/confirm/invite 는 다시 호출하지 않는다.
+    document.getElementById('hr-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
   const PHASE_TEXT: Record<Phase, { title: string; desc: string }> = {
     idle: {
       title: '인증 요청 전',
@@ -631,12 +654,12 @@ export default function HealthRecordPage(): JSX.Element {
     },
     requesting: { title: inputMode === 'customer' ? '링크 만드는 중' : '인증 요청 중', desc: '잠시만 기다려 주세요.' },
     awaiting: { title: '인증 대기', desc: `고객이 휴대폰(${providerLabel})에서 승인하면 「결과 조회」를 누르세요.` },
-    link_sent: { title: '고객 입력 대기', desc: '고객이 링크에서 인증을 마치면 아래 「최근 요청」에 자동 표시됩니다.' },
+    link_sent: { title: '링크 발급됨', desc: '고객 입력·인증 후 아래 「최근 요청」에서 진행을 확인하세요.' },
     fetching: { title: '조회 중', desc: '기관에서 건강기록을 받아오고 있습니다.' },
     done: { title: '조회 성공', desc: '아래 「조회 결과」에서 내용을 확인하세요.' },
     failed: {
-      title: '조회 실패',
-      desc: twoWay ? '승인을 확인한 뒤 「결과 조회」를 다시 누르세요.' : '내용을 확인하고 다시 요청하세요.'
+      title: errView.title,
+      desc: errView.checkHistoryFirst ? errView.action : twoWay && errView.kind === 'general' ? '고객 승인을 확인한 뒤 「결과 조회」를 다시 누르세요.' : errView.action
     }
   }
   const phaseTone =
@@ -645,12 +668,16 @@ export default function HealthRecordPage(): JSX.Element {
         : phase === 'idle' ? 'border-[#e2e8f0] bg-[#f8fafc] text-[#334155]'
           : 'border-[#c6982f] bg-[#fdf7ea] text-[#6b5216]'
   const scrollToResult = (): void => document.getElementById('hr-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const secondaryBtn =
+    'inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-[#cbd5e1] bg-white px-4 py-2 text-[14px] font-bold text-[#0e1e3a] transition hover:bg-[#f8fafc] disabled:opacity-50'
   const primaryBtn =
     'inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-[#0e1e3a] px-4 py-3 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-50'
   const fieldCls =
     'mt-1 min-h-[44px] w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[14px] text-slate-100 outline-none focus:border-[#c6982f]'
   const labelCls = 'text-[12px] font-semibold text-slate-400'
   const visibleHistory = history.slice(0, historyLimit)
+  // 입력한 검색어와 화면 목록의 검색어가 다르면(검색 중/실패) 현재 검색 결과로 오인하지 않게 표시.
+  const staleSearch = historyLoad.lastOkAt !== null && historyQuery.trim() !== historyLoad.shownQuery.trim()
   const hiddenCount = Math.max(0, history.length - visibleHistory.length)
 
   return (
@@ -838,32 +865,38 @@ export default function HealthRecordPage(): JSX.Element {
           ) : null}
 
           {/* 현재 상태 + 다음 행동 하나 */}
-          <div role="status" aria-live="polite" className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5 ${phaseTone}`}>
+          <div id="hr-phase" role="status" aria-live="polite" className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5 ${phaseTone}`}>
             {phase === 'requesting' || phase === 'fetching' ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" /> : <Smartphone className="mt-0.5 h-4 w-4 shrink-0" />}
             <div className="min-w-0">
               <div className="text-[14px] font-bold">{PHASE_TEXT[phase].title}{(phase === 'requesting' || phase === 'fetching') && busy ? ` · ${busySeconds}초` : ''}</div>
               <div className="text-[13px]">{PHASE_TEXT[phase].desc}</div>
+              {phase === 'failed' && error ? <div className="mt-0.5 text-[12px] font-semibold">아래 오류 안내에서 원문을 확인할 수 있습니다.</div> : null}
             </div>
           </div>
 
           <div className="mt-3">
+            {checkFirst ? (
+              <button type="button" onClick={checkHistory} aria-describedby="hr-phase" className={`${primaryBtn} mb-2`}>
+                <RefreshCw className="h-5 w-5" /> 최근 요청 확인 · 새로고침
+              </button>
+            ) : null}
             {phase === 'done' ? (
               <button type="button" onClick={scrollToResult} className={primaryBtn}>
                 <Check className="h-5 w-5" /> 결과 보기
               </button>
             ) : inputMode === 'staff' ? (
               twoWay ? (
-                <button type="button" onClick={() => void onConfirm()} disabled={Boolean(busy)} className={primaryBtn}>
+                <button type="button" onClick={() => void onConfirm()} disabled={Boolean(busy)} className={checkFirst ? secondaryBtn : primaryBtn}>
                   {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />} 결과 조회
                 </button>
               ) : (
-                <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart} className={primaryBtn}>
+                <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart} className={checkFirst ? secondaryBtn : primaryBtn}>
                   {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />} {name.trim() ? `${name.trim()}님께 ` : ''}간편인증 요청
                 </button>
               )
             ) : invite ? (
               <div className="rounded-xl border border-[#c6982f]/50 bg-[#fdf7ea] p-3">
-                <div className="text-[13px] font-bold text-[#6b5216]">{invite.smsSent ? '문자로 링크를 보냈습니다' : '링크가 만들어졌습니다 — 복사하거나 카톡으로 보내세요'}</div>
+                <div className="text-[13px] font-bold text-[#6b5216]">{invite.smsSent ? '링크 발급됨 · 문자 발송 완료' : '링크 발급됨 · 문자 미발송 — 복사하거나 카톡으로 보내세요'}</div>
                 <input readOnly value={invite.url} aria-label="고객 인증 링크" className="mt-2 min-h-[40px] w-full min-w-0 rounded-lg border border-[#e2e8f0] bg-white px-2 text-[12px] text-[#334155]" />
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => void copyInvite()} className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white text-[13px] font-bold text-[#0e1e3a]">
@@ -873,10 +906,10 @@ export default function HealthRecordPage(): JSX.Element {
                     <Share2 className="h-4 w-4" /> 카톡 보내기
                   </button>
                 </div>
-                <p className="mt-2 text-[12px] text-[#6b5216]">링크는 30분 동안 1회만 쓸 수 있습니다.</p>
+                <p className="mt-2 text-[12px] text-[#6b5216]">링크는 30분 동안 1회만 쓸 수 있습니다. 아직 조회 완료가 아닙니다 — 진행은 「최근 요청」에서 확인하세요.</p>
               </div>
             ) : (
-              <button type="button" onClick={() => void onInvite()} disabled={inviteBusy || !canInvite} className={primaryBtn}>
+              <button type="button" onClick={() => void onInvite()} disabled={inviteBusy || !canInvite} className={checkFirst ? secondaryBtn : primaryBtn}>
                 {inviteBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Link2 className="h-5 w-5" />} {name.trim() ? `${name.trim()}님께 ` : ''}인증 링크 보내기
               </button>
             )}
@@ -912,14 +945,33 @@ export default function HealthRecordPage(): JSX.Element {
       ) : null}
 
       {notice && !error ? <div className="rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[13px] font-semibold text-emerald-700">{notice}</div> : null}
-      {error ? <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[13px] text-rose-700"><b>{healthErrorHelp(error).title}</b><p className="mt-1">{error}</p><p className="mt-1 text-[12px]">{healthErrorHelp(error).action}</p></div> : null}
+      {error ? (
+        <div id="hr-error" role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[13px] text-rose-800">
+          <b>{errView.title}</b>
+          <p className="mt-1">{errView.action}</p>
+          {error.length > 80 ? (
+            <details className="mt-1"><summary className="min-h-[32px] cursor-pointer text-[13px] font-semibold">오류 원문 보기</summary><p className="mt-1 break-words">{error}</p></details>
+          ) : <p className="mt-1 break-words text-[13px]">오류: {error}</p>}
+        </div>
+      ) : null}
 
       {/* 최근 요청 — 완료 건은 30일간 저장되어 다시 열람 가능 */}
       <section aria-labelledby="hr-history" className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           <h2 id="hr-history" className="text-[15px] font-bold text-slate-100">최근 요청</h2>
-          <button type="button" onClick={() => void refresh()} className="min-h-[36px] px-1 text-[12px] font-semibold text-slate-400 hover:text-slate-200">새로고침</button>
+          <button type="button" onClick={() => void refresh()} disabled={historyLoad.loading} aria-describedby="hr-history-status" className="inline-flex min-h-[44px] items-center gap-1 px-2 text-[13px] font-semibold text-slate-300 hover:text-slate-100 disabled:opacity-60">
+            {historyLoad.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} 새로고침
+          </button>
         </div>
+        <div id="hr-history-status" role="status" aria-live="polite" className="text-[12px] text-slate-400">
+          {historyLoad.loading ? '새로고침 중…' : historyLoad.failed ? null : historyLoad.lastOkAt ? `${new Date(historyLoad.lastOkAt).toLocaleTimeString('ko-KR')} 확인` : null}
+        </div>
+        {historyLoad.failed && !historyLoad.loading ? (
+          <div role="alert" className="mt-1 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-[13px] text-rose-800">
+            <span>목록을 불러오지 못했습니다{historyLoad.lastOkAt ? ` — 아래는 ${new Date(historyLoad.lastOkAt).toLocaleTimeString('ko-KR')} 기준 이전 목록` : ''}.</span>
+            <button type="button" onClick={() => void refresh()} className="min-h-[44px] px-2 font-bold underline underline-offset-2">다시 시도</button>
+          </div>
+        ) : null}
         <p className="mt-0.5 text-[12px] text-slate-500">내가 조회한 건만 보입니다. 완료 결과는 {RETAIN_DAYS}일간 다시 열 수 있습니다.</p>
         <div className="relative mt-2">
           <input
@@ -932,14 +984,23 @@ export default function HealthRecordPage(): JSX.Element {
           <svg className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#94a3b8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
           {historyQuery ? <button type="button" onClick={() => { onHistorySearch(''); setHistoryLimit(HISTORY_PAGE) }} aria-label="검색어 지우기" className="absolute inset-y-0 right-0 w-10 text-[13px] font-semibold text-[#64748b]">✕</button> : null}
         </div>
+        {staleSearch ? (
+          <p className="mt-1 text-[13px] font-semibold text-[#6b5216]">
+            {historyLoad.loading ? `'${historyQuery.trim() || '전체'}' 검색 중…` : `'${historyQuery.trim() || '전체'}' 검색 실패.`} 아래는 {historyLoad.shownQuery.trim() ? `'${historyLoad.shownQuery.trim()}' 검색` : '전체'} 목록입니다.
+          </p>
+        ) : null}
         {history.length === 0 ? (
-          <p className="mt-2 text-[13px] text-slate-500">{historyQuery.trim() ? `'${historyQuery.trim()}' 검색 결과가 없습니다.` : '아직 요청이 없습니다.'}</p>
+          <p className="mt-2 text-[13px] text-slate-500">
+            {historyLoad.lastOkAt === null
+              ? (historyLoad.failed ? '아직 목록을 확인하지 못했습니다.' : '불러오는 중…')
+              : historyLoad.shownQuery.trim() ? `'${historyLoad.shownQuery.trim()}' 검색 결과가 없습니다.` : '아직 요청이 없습니다.'}
+          </p>
         ) : (
           <div className="mt-2 divide-y divide-slate-800">
             {visibleHistory.map((h) => {
               const age = daysSince(h.createdAt)
-              const canViewRow = h.status === 'completed' && !!h.result && age <= RETAIN_DAYS
-              const daysLeft = Math.max(0, RETAIN_DAYS - age)
+              const act = historyRowAction(h, age, RETAIN_DAYS)
+              const canViewRow = act.canOpen
               return (
                 <div key={h.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5">
                   <div className="min-w-0 flex-1 basis-40">
@@ -947,13 +1008,11 @@ export default function HealthRecordPage(): JSX.Element {
                       <span className="truncate text-[14px] font-semibold text-slate-200">{h.customerName || '고객 미지정'}</span>
                       <StatusBadge status={h.status} />
                     </div>
-                    <div className="text-[12px] text-slate-500">
-                      {new Date(h.createdAt).toLocaleString('ko-KR')}
-                      {canViewRow ? ` · ${daysLeft}일 남음` : h.status === 'completed' ? ' · 보관 만료' : ''}
-                    </div>
-                    {h.status === 'failed' && h.error ? (
-                      <div className="text-[12px] text-rose-700">{healthErrorHelp(h.error).title} — {healthErrorHelp(h.error).action}</div>
-                    ) : null}
+                    <div className="text-[12px] text-slate-500">{new Date(h.createdAt).toLocaleString('ko-KR')}</div>
+                    <div className={`text-[13px] ${act.tone === 'error' ? 'text-rose-800' : act.tone === 'open' ? 'text-emerald-800' : act.tone === 'wait' ? 'text-[#6b5216]' : 'text-slate-400'}`}>{act.text}</div>
+                    {h.status === 'failed' && h.error && h.error.length > 60 ? (
+                      <details className="text-[12px] text-slate-400"><summary className="min-h-[28px] cursor-pointer">오류 원문</summary><p className="break-words">{h.error}</p></details>
+                    ) : h.status === 'failed' && h.error ? <div className="break-words text-[12px] text-slate-400">오류: {h.error}</div> : null}
                   </div>
                   {canViewRow ? (
                     <button type="button" onClick={() => viewSaved(h)}
