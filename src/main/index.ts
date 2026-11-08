@@ -35,6 +35,7 @@ import { registerJarvisTicketIpc } from './jarvisTicketStore'
 import { registerJarvisReviewerIpc } from './jarvisReviewer'
 import { registerJarvisDirectorIpc } from './jarvisDirector'
 import { registerRemoteTaskIpc, startRemoteTaskRunner, loadRemoteConfig } from './remoteTaskRunner'
+import { registerRemoteProjectIpc, autostartRemoteProjects } from './remoteProjectRunner'
 import {
   commitWorktreeJob,
   getParallelJob,
@@ -370,6 +371,14 @@ app.whenReady().then(() => {
     if (rc.enabled && rc.runnerId) startRemoteTaskRunner(rc, app.getAppPath(), app.getPath('userData'))
   } catch {
     /* 자동 시작 실패는 무시 — 설정 화면에서 수동 시작 가능 */
+  }
+  // 다중 저장소 원격 작업(1단계: SJ AI MARKETING) — 별도 작업 폴더·상태·PR 대상. 기존 SJ-OS 러너와 독립.
+  // 명시적 시작(연결 검사 통과)으로 enabled 된 프로젝트만, 재시작 시 검사를 다시 통과해야 재개.
+  registerRemoteProjectIpc()
+  try {
+    autostartRemoteProjects()
+  } catch {
+    /* 무시 — 설정 화면에서 수동 시작 */
   }
   // Runner environment diagnostics (fixed checks only; no renderer commands).
   ipcMain.handle('sj-claude-build:check-env', () => checkRunnerEnvironment())
