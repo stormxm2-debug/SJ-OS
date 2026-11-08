@@ -17,6 +17,13 @@ export const diseaseLabel = (r: CareRecord): string => r.disease === MED_ONLY ? 
 export const hasCareDetail = (r: CareRecord): boolean =>
   !!r.code || r.kind !== '확인 필요' || r.surgery || r.procedures.length > 0 || r.medications.length > 0
 
+/** 기본 행 병명 옆 '수술 추정' 표시 — 기존 r.surgery(명칭 기반 추정) 값을 그대로 보여줄 뿐 새 판정을 하지 않는다. */
+export function SurgeryTag({ r }: { r: CareRecord }): JSX.Element | null {
+  return r.surgery === true
+    ? <span className="ml-1.5 inline-block whitespace-nowrap rounded border border-rose-600 px-1.5 align-middle text-[11px] font-bold leading-[1.5] text-rose-700">수술 추정</span>
+    : null
+}
+
 function Detail({ r, id }: { r: CareRecord; id: string }): JSX.Element {
   return (
     <dl id={id} className="mt-2 grid gap-x-3 gap-y-1 rounded-lg bg-slate-950 p-2.5 text-[13px] text-slate-200 sm:grid-cols-[7rem_minmax(0,1fr)]">
@@ -60,7 +67,7 @@ function Row({ r, index }: { r: CareRecord; index: number }): JSX.Element {
         </div>
         <div className="hidden min-w-0 break-words text-slate-100 sm:block">{r.hospital || '기관 미확인'}</div>
         <div className="min-w-0 break-words font-semibold text-slate-100">
-          {diseaseLabel(r)}{r.side !== '미확인' ? <span className="font-normal text-slate-400"> · {r.side}</span> : null}
+          {diseaseLabel(r)}{r.side !== '미확인' ? <span className="font-normal text-slate-400"> · {r.side}</span> : null}<SurgeryTag r={r} />
         </div>
         <div className="sm:text-right">
           {canOpen ? (
