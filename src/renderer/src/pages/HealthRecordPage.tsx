@@ -30,11 +30,12 @@ import {
   type PartGroup
 } from '@renderer/services/health-record/summarize'
 import { deriveEntryPhase, type EntryPhase } from '@renderer/services/health-record/entryPhase'
+import { classifyHealthError, createForegroundGuard, createHistoryRefresher, healthUiError, historyRowAction, initialHistoryLoad, PREV_REQUEST_NOTE, runForeground, type ForegroundGuard, type ForegroundTask, type HealthUiError, type HistoryLoadState, type HistoryRefresher } from '@renderer/services/health-record/healthStatusView'
 import { askHealthRecordAi } from '@renderer/services/health-record/healthRecordAiService'
 import HealthRecordWorkspace from '@renderer/components/health-record/HealthRecordWorkspace'
 import SonsonEstimator from '@renderer/components/health-record/SonsonEstimator'
 import RecentCareTable from '@renderer/components/health-record/RecentCareTable'
-import { admissionSummary, buildCareRecords, CARE_PERIODS, calendarMonthsAgo, filterCareResult, healthErrorHelp, localYmd, periodStart, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
+import { admissionSummary, buildCareRecords, CARE_PERIODS, calendarMonthsAgo, filterCareResult, localYmd, periodStart, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
 import { aiGuideNote, type GuideLoadStatus } from '@renderer/services/health-record/guideLoadState'
 
 /**
@@ -297,7 +298,11 @@ export default function HealthRecordPage(): JSX.Element {
     return () => window.clearInterval(timer)
   }, [busy])
   const [notice, setNotice] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // 오류 메시지 + 응답 code(HEALTH_TIMEOUT 등, 표시 분류용 메타데이터만)를 한 상태로 — 새 오류·초기화 때 code 가 함께 바뀐다.
+  const [uiError, setUiError] = useState<HealthUiError | null>(null)
+  const error = uiError?.message ?? null
+  const errorCode = uiError?.code ?? ''
+  const setError = (message: string | null, code = ''): void => setUiError(healthUiError(message, code))
   const [configNote, setConfigNote] = useState<string | null>(null)
 
   const [requestId, setRequestId] = useState<string | undefined>(undefined)
@@ -317,11 +322,37 @@ export default function HealthRecordPage(): JSX.Element {
   const needDate = selected.dateMode === 'range'
   const idLen = selected.idField === 'birth' ? 8 : 13
 
-  const refresh = async (): Promise<void> => {
-    // 본인(FC)이 조회한 것만 + (있으면) 고객명 검색으로 조회.
-    const r = await listHealthRecords(undefined, historyQueryRef.current)
-    if (r.ok) setHistory(r.items)
+  // 최근 요청 로딩 메타데이터 — 늦게 온 이전 응답(이전 검색어 등)이 최신 목록·상태를 덮지 않게 순번으로 가드.
+  const [historyLoad, setHistoryLoad] = useState<HistoryLoadState>(initialHistoryLoad)
+  // 같은 검색어의 진행 중 요청은 공유(폴링·수동 새로고침 겹침), 검색어가 바뀌면 새 요청.
+  const historyRefresherRef = useRef<HistoryRefresher | null>(null)
+  if (!historyRefresherRef.current) {
+    historyRefresherRef.current = createHistoryRefresher<HealthRecordRequest>({
+      // 본인(FC)이 조회한 것만 + (있으면) 고객명 검색으로 조회.
+      load: (q) => listHealthRecords(undefined, q),
+      query: () => historyQueryRef.current,
+      now: () => Date.now(),
+      publish: setHistoryLoad,
+      apply: setHistory // 실패 시 호출되지 않아 기존 목록 유지(빈 목록으로 바꾸지 않음)
+    })
   }
+  const historyRefresher = historyRefresherRef.current
+  // 진행 중 start/confirm/invite 응답을 지금 화면(고객·상품·입력방식·작업)에만 반영하는 표시용 가드.
+  const foregroundRef = useRef<ForegroundGuard | null>(null)
+  if (!foregroundRef.current) foregroundRef.current = createForegroundGuard()
+  const fg = foregroundRef.current
+  // 이전 작업 무효화 + 그 작업의 busy 표시 정리(서버 요청은 취소하지 않음 — 「최근 요청」에서 확인).
+  const dropForeground = (): boolean => {
+    const was = fg.invalidate()
+    setBusy(null)
+    setInviteBusy(false)
+    return was
+  }
+  const beginForeground = (): ForegroundTask => {
+    dropForeground()
+    return fg.begin()
+  }
+  const refresh = (): Promise<void> => historyRefresher.refresh()
   const onHistorySearch = (v: string): void => {
     setHistoryQuery(v)
     historyQueryRef.current = v
@@ -344,6 +375,7 @@ export default function HealthRecordPage(): JSX.Element {
 
   // 고객 선택 → 이름·전화·식별값 자동 입력 + customerId 연결(진행 세션/결과는 초기화).
   const onSelectCustomer = (id: string): void => {
+    const hadPending = dropForeground() // 이전 고객의 늦은 응답이 새 고객 화면을 덮지 않게
     setCustomerId(id)
     setTwoWay(undefined)
     setRequestId(undefined)
@@ -351,7 +383,8 @@ export default function HealthRecordPage(): JSX.Element {
     setInvite(null) // 이전 고객 링크가 새 고객 화면에 남지 않게
     setCopied(false)
     setError(null)
-    setNotice(null)
+    setNotice(hadPending ? PREV_REQUEST_NOTE : null)
+    setConfigNote(null)
     const c = customers.find((x) => x.id === id)
     if (!c) return
     setName(c.name ?? '')
@@ -362,6 +395,7 @@ export default function HealthRecordPage(): JSX.Element {
 
   // 상품을 바꾸면 진행 중이던 세션/결과를 비운다(요청변수가 달라지므로).
   const onProductChange = (key: string): void => {
+    const hadPending = dropForeground() // 옛 상품의 늦은 응답이 새 상품 화면을 덮지 않게
     setProductKey(key)
     setIdValue('')
     setTwoWay(undefined)
@@ -370,7 +404,7 @@ export default function HealthRecordPage(): JSX.Element {
     setInvite(null) // 링크 템플릿(요청변수)이 상품마다 다르므로 이전 링크는 버린다
     setCopied(false)
     setError(null)
-    setNotice(null)
+    setNotice(hadPending ? PREV_REQUEST_NOTE : null)
     setConfigNote(null)
     // 상품별 조회기간 창에 맞춰 기본 날짜를 다시 설정(요청변수가 달라지므로).
     const p = HEALTH_PRODUCTS.find((x) => x.key === key) ?? HEALTH_PRODUCTS[0]
@@ -424,6 +458,7 @@ export default function HealthRecordPage(): JSX.Element {
     Boolean(name.trim()) && digits(idValue).length === idLen && digits(phone).length >= 10 && validPeriod
 
   const onStart = async (): Promise<void> => {
+    const task = beginForeground()
     setError(null)
     setNotice(null)
     setConfigNote(null)
@@ -434,82 +469,90 @@ export default function HealthRecordPage(): JSX.Element {
       const idMsg = selected.idField === 'birth' ? '생년월일(8자리)' : '주민등록번호(13자리)'
       const dateMsg = needDate ? ` 조회기간은 ${ymd(minStart)} ~ ${ymd(maxEnd)} 안이어야 합니다.` : ''
       setError(`고객 성함·${idMsg}·휴대폰 번호를 확인해주세요.${dateMsg}`)
+      fg.invalidate()
       return
     }
     setBusy('고객 휴대폰으로 간편인증을 요청하는 중…')
-    try {
-      const r = await startHealthRecord({
-        customerId: customerId || null,
-        customerName: name.trim(),
-        product: selected.url,
-        param: buildParam(),
-        encryptFields: selected.encrypt
-      })
-      if (r.disabled) {
-        setConfigNote(r.error ?? 'CODEF 연동이 아직 설정되지 않았습니다. 키·상품 URL을 등록하면 바로 동작합니다.')
-        return
-      }
-      if (!r.ok && r.status !== 'awaiting_auth') {
-        setError(r.error ?? '요청에 실패했습니다.')
-        return
-      }
-      setRequestId(r.requestId)
-      setTwoWay(r.twoWay)
-      if (r.status === 'completed' && r.result) setResult(r.result)
-      setNotice(r.message ?? '고객님 휴대폰에서 간편인증을 승인해 주세요. 승인 후 아래 「결과 조회」를 누르세요.')
-      void refresh()
-    } catch {
-      setError('요청 중 오류가 발생했습니다.')
-    } finally {
-      setBusy(null)
-    }
+    await runForeground(fg, task, {
+      work: () =>
+        startHealthRecord({
+          customerId: customerId || null,
+          customerName: name.trim(),
+          product: selected.url,
+          param: buildParam(),
+          encryptFields: selected.encrypt
+        }),
+      apply: (r) => {
+        if (r.disabled) {
+          setConfigNote(r.error ?? 'CODEF 연동이 아직 설정되지 않았습니다. 키·상품 URL을 등록하면 바로 동작합니다.')
+          return
+        }
+        if (!r.ok && r.status !== 'awaiting_auth') {
+          setError(r.error ?? '요청에 실패했습니다.', r.code ?? '')
+          return
+        }
+        setRequestId(r.requestId)
+        setTwoWay(r.twoWay)
+        if (r.status === 'completed' && r.result) setResult(r.result)
+        setNotice(r.message ?? '고객님 휴대폰에서 간편인증을 승인해 주세요. 승인 후 아래 「결과 조회」를 누르세요.')
+        void refresh()
+      },
+      fail: () => setError('요청 중 오류가 발생했습니다.'),
+      settle: () => setBusy(null),
+      stale: () => void refresh() // 지난 작업은 화면 대신 「최근 요청」 목록만 갱신
+    })
   }
 
   const onConfirm = async (): Promise<void> => {
+    const task = beginForeground()
     setError(null)
     if (!twoWay) {
       setError('먼저 간편인증을 요청하세요.')
+      fg.invalidate()
       return
     }
     setBusy('고객 건강기록을 불러오는 중…')
-    try {
-      const r = await confirmHealthRecord({
-        requestId,
-        product: selected.url,
-        param: buildParam(),
-        twoWay,
-        encryptFields: selected.encrypt
-      })
-      if (r.disabled) {
-        setConfigNote(r.error ?? 'CODEF 연동이 아직 설정되지 않았습니다.')
-        return
-      }
-      if (!r.ok) {
-        const deadSession = r.code === 'CF-00025' || /완료된 요청|만료|CF-00025/.test(r.error ?? '')
-        if (deadSession) {
-          setTwoWay(undefined)
-          setRequestId(undefined)
-          setError('인증 세션이 끝났습니다(1회용). 「간편인증 요청」부터 다시 하세요 — 요청 → 승인 → 결과 조회를 한 번씩만.')
-        } else {
-          setError(r.error ?? '아직 승인 전이거나 조회에 실패했습니다. 고객 승인 후 다시 시도해주세요.')
+    await runForeground(fg, task, {
+      work: () =>
+        confirmHealthRecord({
+          requestId,
+          product: selected.url,
+          param: buildParam(),
+          twoWay,
+          encryptFields: selected.encrypt
+        }),
+      apply: (r) => {
+        if (r.disabled) {
+          setConfigNote(r.error ?? 'CODEF 연동이 아직 설정되지 않았습니다.')
+          return
         }
-        return
-      }
-      setResult(r.result ?? {})
-      setRequestId(r.requestId ?? requestId)
-      setTwoWay(undefined) // 2-way 세션은 1회용 — 성공 후 재조회 방지(새 조회는 다시 요청).
-      setNotice('건강기록을 받아왔습니다.')
-      void refresh()
-    } catch {
-      setError('조회 중 오류가 발생했습니다.')
-    } finally {
-      setBusy(null)
-    }
+        if (!r.ok) {
+          const deadSession = r.code === 'CF-00025' || /완료된 요청|만료|CF-00025/.test(r.error ?? '')
+          if (deadSession) {
+            setTwoWay(undefined)
+            setRequestId(undefined)
+            setError('인증 세션이 끝났습니다(1회용). 「간편인증 요청」부터 다시 하세요 — 요청 → 승인 → 결과 조회를 한 번씩만.', 'CF-00025')
+          } else {
+            setError(r.error ?? '아직 승인 전이거나 조회에 실패했습니다. 고객 승인 후 다시 시도해주세요.', r.code ?? '')
+          }
+          return
+        }
+        setResult(r.result ?? {})
+        setRequestId(r.requestId ?? requestId)
+        setTwoWay(undefined) // 2-way 세션은 1회용 — 성공 후 재조회 방지(새 조회는 다시 요청).
+        setNotice('건강기록을 받아왔습니다.')
+        void refresh()
+      },
+      fail: () => setError('조회 중 오류가 발생했습니다.'),
+      settle: () => setBusy(null),
+      stale: () => void refresh()
+    })
   }
 
   // 고객 링크(주민번호 고객 직접 입력) 발급 — 주민번호는 보내지 않고 템플릿만.
   const canInvite = Boolean(name.trim()) && digits(phone).length >= 10 && validPeriod
   const onInvite = async (): Promise<void> => {
+    const task = beginForeground()
     setError(null)
     setNotice(null)
     setConfigNote(null)
@@ -520,37 +563,43 @@ export default function HealthRecordPage(): JSX.Element {
     setRequestId(undefined)
     if (!canInvite) {
       setError('고객 성함·휴대폰 번호를 확인해주세요.')
+      fg.invalidate()
       return
     }
     setInviteBusy(true)
-    try {
-      const template = buildParam() as Record<string, unknown>
-      delete template.identity
-      const r = await inviteCustomerLink({
-        customerId: customerId || null,
-        customerName: name.trim(),
-        phone,
-        product: selected.url,
-        paramTemplate: template,
-        encryptFields: selected.encrypt,
-        idField: selected.idField,
-        idLen,
-        appOrigin: window.location.origin
-      })
-      if (r.disabled) {
-        setConfigNote(r.error ?? '링크 발급 서버(엣지함수)가 아직 배포되지 않았습니다.')
-        return
-      }
-      if (!r.ok || !r.url) {
-        setError(r.error ?? '링크 생성에 실패했습니다.')
-        return
-      }
-      setInvite({ url: r.url, smsSent: Boolean(r.smsSent) })
-      setNotice(r.smsSent ? '고객에게 문자로 링크를 보냈습니다. 고객이 입력하면 아래 「최근 요청」에 결과가 표시됩니다.' : '링크를 생성했습니다. 아래에서 복사하거나 카톡으로 보내세요.')
-      void refresh()
-    } finally {
-      setInviteBusy(false)
-    }
+    await runForeground(fg, task, {
+      work: () => {
+        const template = buildParam() as Record<string, unknown>
+        delete template.identity
+        return inviteCustomerLink({
+          customerId: customerId || null,
+          customerName: name.trim(),
+          phone,
+          product: selected.url,
+          paramTemplate: template,
+          encryptFields: selected.encrypt,
+          idField: selected.idField,
+          idLen,
+          appOrigin: window.location.origin
+        })
+      },
+      apply: (r) => {
+        if (r.disabled) {
+          setConfigNote(r.error ?? '링크 발급 서버(엣지함수)가 아직 배포되지 않았습니다.')
+          return
+        }
+        if (!r.ok || !r.url) {
+          setError(r.error ?? '링크 생성에 실패했습니다.')
+          return
+        }
+        setInvite({ url: r.url, smsSent: Boolean(r.smsSent) })
+        // 발급 결과·문자 발송 여부는 상단 링크 상자에 표시(중복 안내 생략).
+        void refresh()
+      },
+      fail: () => setError('링크 생성 중 오류가 발생했습니다.'),
+      settle: () => setInviteBusy(false),
+      stale: () => void refresh()
+    })
   }
   const copyInvite = async (): Promise<void> => {
     if (!invite) return
@@ -579,6 +628,7 @@ export default function HealthRecordPage(): JSX.Element {
   // 저장된(과거) 결과 다시 보기 — 완료 건이고 보관기간(30일) 안이면 그 결과를 결과 영역에 띄운다.
   const viewSaved = (h: HealthRecordRequest): void => {
     if (!h.result) return
+    dropForeground() // 저장 결과 열람 — 진행 중이던 응답이 이 결과를 덮지 않게
     setError(null)
     setConfigNote(null)
     setTwoWay(undefined)
@@ -624,6 +674,13 @@ export default function HealthRecordPage(): JSX.Element {
     hasError: Boolean(error)
   })
   const currentStep: 1 | 2 | 3 = phase === 'done' ? 3 : hasContact ? 2 : 1
+  const errView = classifyHealthError(error ?? '', errorCode)
+  // 응답 확인 필요(시간초과·연결 불확실 등): 주행동은 최근 요청 확인, 새 인증·조회는 보조행동.
+  const checkFirst = phase === 'failed' && errView.checkHistoryFirst
+  const checkHistory = (): void => {
+    void refresh() // 목록 새로고침만 — start/confirm/invite 는 다시 호출하지 않는다.
+    document.getElementById('hr-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
   const PHASE_TEXT: Record<Phase, { title: string; desc: string }> = {
     idle: {
       title: '인증 요청 전',
@@ -631,12 +688,12 @@ export default function HealthRecordPage(): JSX.Element {
     },
     requesting: { title: inputMode === 'customer' ? '링크 만드는 중' : '인증 요청 중', desc: '잠시만 기다려 주세요.' },
     awaiting: { title: '인증 대기', desc: `고객이 휴대폰(${providerLabel})에서 승인하면 「결과 조회」를 누르세요.` },
-    link_sent: { title: '고객 입력 대기', desc: '고객이 링크에서 인증을 마치면 아래 「최근 요청」에 자동 표시됩니다.' },
+    link_sent: { title: '링크 발급됨', desc: '고객 입력·인증 후 아래 「최근 요청」에서 진행을 확인하세요.' },
     fetching: { title: '조회 중', desc: '기관에서 건강기록을 받아오고 있습니다.' },
     done: { title: '조회 성공', desc: '아래 「조회 결과」에서 내용을 확인하세요.' },
     failed: {
-      title: '조회 실패',
-      desc: twoWay ? '승인을 확인한 뒤 「결과 조회」를 다시 누르세요.' : '내용을 확인하고 다시 요청하세요.'
+      title: errView.title,
+      desc: errView.checkHistoryFirst ? errView.action : twoWay && errView.kind === 'general' ? '고객 승인을 확인한 뒤 「결과 조회」를 다시 누르세요.' : errView.action
     }
   }
   const phaseTone =
@@ -645,12 +702,19 @@ export default function HealthRecordPage(): JSX.Element {
         : phase === 'idle' ? 'border-[#e2e8f0] bg-[#f8fafc] text-[#334155]'
           : 'border-[#c6982f] bg-[#fdf7ea] text-[#6b5216]'
   const scrollToResult = (): void => document.getElementById('hr-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const secondaryBtn =
+    'inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-[#cbd5e1] bg-white px-4 py-2 text-[14px] font-bold text-[#0e1e3a] transition hover:bg-[#f8fafc] disabled:opacity-50'
   const primaryBtn =
     'inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-[#0e1e3a] px-4 py-3 text-[15px] font-bold text-white shadow-sm transition hover:opacity-90 disabled:opacity-50'
   const fieldCls =
-    'mt-1 min-h-[44px] w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[14px] text-slate-100 outline-none focus:border-[#c6982f]'
+    'mt-1 min-h-[44px] w-full rounded-lg border border-slate-700 bg-white px-3 py-2 text-[14px] text-slate-100 outline-none focus:border-[#c6982f] disabled:opacity-60'
+  // 요청 진행 중에는 요청 변수(성함·연락처·식별번호·기간·인증수단·옵션)만 잠가 응답과 화면 입력이 어긋나지 않게 한다.
+  // 고객·상품·입력방식 전환은 열어 두고, 전환 시 진행 중 응답은 표시용 가드로 분리한다.
+  const lockParams = Boolean(busy) || inviteBusy
   const labelCls = 'text-[12px] font-semibold text-slate-400'
   const visibleHistory = history.slice(0, historyLimit)
+  // 입력한 검색어와 화면 목록의 검색어가 다르면(검색 중/실패) 현재 검색 결과로 오인하지 않게 표시.
+  const staleSearch = historyLoad.lastOkAt !== null && historyQuery.trim() !== historyLoad.shownQuery.trim()
   const hiddenCount = Math.max(0, history.length - visibleHistory.length)
 
   return (
@@ -708,11 +772,11 @@ export default function HealthRecordPage(): JSX.Element {
             <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               <div>
                 <label htmlFor="hr-name" className={labelCls}>고객 성함</label>
-                <input id="hr-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동" className={fieldCls} />
+                <input id="hr-name" value={name} onChange={(e) => setName(e.target.value)} disabled={lockParams} placeholder="홍길동" className={fieldCls} />
               </div>
               <div>
                 <label htmlFor="hr-phone" className={labelCls}>휴대폰 번호</label>
-                <input id="hr-phone" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="01012345678" className={fieldCls} />
+                <input id="hr-phone" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={lockParams} inputMode="numeric" placeholder="01012345678" className={fieldCls} />
               </div>
             </div>
           )}
@@ -755,11 +819,11 @@ export default function HealthRecordPage(): JSX.Element {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label htmlFor="hr-start" className={labelCls}>조회 시작</label>
-                        <input id="hr-start" value={startDate} onChange={(e) => setStartDate(e.target.value)} inputMode="numeric" maxLength={8} placeholder="YYYYMMDD" className={fieldCls} />
+                        <input id="hr-start" value={startDate} onChange={(e) => setStartDate(e.target.value)} disabled={lockParams} inputMode="numeric" maxLength={8} placeholder="YYYYMMDD" className={fieldCls} />
                       </div>
                       <div>
                         <label htmlFor="hr-end" className={labelCls}>조회 종료</label>
-                        <input id="hr-end" value={endDate} onChange={(e) => setEndDate(e.target.value)} inputMode="numeric" maxLength={8} placeholder="YYYYMMDD" className={fieldCls} />
+                        <input id="hr-end" value={endDate} onChange={(e) => setEndDate(e.target.value)} disabled={lockParams} inputMode="numeric" maxLength={8} placeholder="YYYYMMDD" className={fieldCls} />
                       </div>
                     </div>
                     <p className={`mt-1 text-[12px] ${validPeriod ? 'text-slate-500' : 'font-semibold text-rose-700'}`}>
@@ -772,13 +836,13 @@ export default function HealthRecordPage(): JSX.Element {
                     <div className="flex flex-wrap gap-x-4 gap-y-2">
                       {selected.supportsChild ? (
                         <label className="inline-flex min-h-[36px] items-center gap-2 text-[13px] font-semibold text-slate-300">
-                          <input type="checkbox" checked={includeChild} onChange={(e) => setIncludeChild(e.target.checked)} className="h-4 w-4 accent-[#c6982f]" />
+                          <input type="checkbox" checked={includeChild} onChange={(e) => setIncludeChild(e.target.checked)} disabled={lockParams} className="h-4 w-4 accent-[#c6982f]" />
                           자녀 정보 포함
                         </label>
                       ) : null}
                       {selected.supportsSensitive ? (
                         <label className="inline-flex min-h-[36px] items-center gap-2 text-[13px] font-semibold text-slate-300">
-                          <input type="checkbox" checked={includeSensitive} onChange={(e) => setIncludeSensitive(e.target.checked)} className="h-4 w-4 accent-[#c6982f]" />
+                          <input type="checkbox" checked={includeSensitive} onChange={(e) => setIncludeSensitive(e.target.checked)} disabled={lockParams} className="h-4 w-4 accent-[#c6982f]" />
                           민감상병 포함
                         </label>
                       ) : null}
@@ -794,7 +858,7 @@ export default function HealthRecordPage(): JSX.Element {
           <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
             <div>
               <label htmlFor="hr-provider" className={labelCls}>간편인증 수단</label>
-              <select id="hr-provider" value={provider} onChange={(e) => setProvider(e.target.value)} className={fieldCls}>
+              <select id="hr-provider" value={provider} onChange={(e) => setProvider(e.target.value)} disabled={lockParams} className={fieldCls}>
                 {AUTH_PROVIDERS.map((p) => (
                   <option key={p.v} value={p.v}>{p.label}</option>
                 ))}
@@ -803,7 +867,7 @@ export default function HealthRecordPage(): JSX.Element {
             {needTelecom ? (
               <div>
                 <label htmlFor="hr-telecom" className={labelCls}>통신사</label>
-                <select id="hr-telecom" value={telecom} onChange={(e) => setTelecom(e.target.value)} className={fieldCls}>
+                <select id="hr-telecom" value={telecom} onChange={(e) => setTelecom(e.target.value)} disabled={lockParams} className={fieldCls}>
                   {TELECOMS.map((t) => (
                     <option key={t.v} value={t.v}>{t.label}</option>
                   ))}
@@ -818,13 +882,13 @@ export default function HealthRecordPage(): JSX.Element {
               {selected.idField === 'birth' ? (
                 <>
                   <label htmlFor="hr-id" className={labelCls}>생년월일 (8자리)</label>
-                  <input id="hr-id" value={idValue} onChange={(e) => setIdValue(e.target.value)} inputMode="numeric" maxLength={8} placeholder="19900101" className={fieldCls} />
+                  <input id="hr-id" value={idValue} onChange={(e) => setIdValue(e.target.value)} disabled={lockParams} inputMode="numeric" maxLength={8} placeholder="19900101" className={fieldCls} />
                 </>
               ) : (
                 <>
                   <label htmlFor="hr-id" className={labelCls}>주민등록번호 (13자리)</label>
                   <div className="relative">
-                    <input id="hr-id" value={idValue} onChange={(e) => setIdValue(e.target.value)} type={showRrn ? 'text' : 'password'} inputMode="numeric" maxLength={14} placeholder="앞 6자리 + 뒤 7자리" autoComplete="off"
+                    <input id="hr-id" value={idValue} onChange={(e) => setIdValue(e.target.value)} disabled={lockParams} type={showRrn ? 'text' : 'password'} inputMode="numeric" maxLength={14} placeholder="앞 6자리 + 뒤 7자리" autoComplete="off"
                       className={`${fieldCls} pr-11`} />
                     <button type="button" onClick={() => setShowRrn((v) => !v)} aria-label={showRrn ? '주민번호 숨기기' : '주민번호 보기'} aria-pressed={showRrn}
                       className="absolute inset-y-0 right-0 mt-1 flex w-11 items-center justify-center text-slate-400 hover:text-slate-200">
@@ -838,32 +902,38 @@ export default function HealthRecordPage(): JSX.Element {
           ) : null}
 
           {/* 현재 상태 + 다음 행동 하나 */}
-          <div role="status" aria-live="polite" className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5 ${phaseTone}`}>
+          <div id="hr-phase" role="status" aria-live="polite" className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2.5 ${phaseTone}`}>
             {phase === 'requesting' || phase === 'fetching' ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin" /> : <Smartphone className="mt-0.5 h-4 w-4 shrink-0" />}
             <div className="min-w-0">
               <div className="text-[14px] font-bold">{PHASE_TEXT[phase].title}{(phase === 'requesting' || phase === 'fetching') && busy ? ` · ${busySeconds}초` : ''}</div>
               <div className="text-[13px]">{PHASE_TEXT[phase].desc}</div>
+              {phase === 'failed' && error ? <div className="mt-0.5 text-[12px] font-semibold">아래 오류 안내에서 원문을 확인할 수 있습니다.</div> : null}
             </div>
           </div>
 
           <div className="mt-3">
+            {checkFirst ? (
+              <button type="button" onClick={checkHistory} aria-describedby="hr-phase" className={`${primaryBtn} mb-2`}>
+                <RefreshCw className="h-5 w-5" /> 최근 요청 확인 · 새로고침
+              </button>
+            ) : null}
             {phase === 'done' ? (
               <button type="button" onClick={scrollToResult} className={primaryBtn}>
                 <Check className="h-5 w-5" /> 결과 보기
               </button>
             ) : inputMode === 'staff' ? (
               twoWay ? (
-                <button type="button" onClick={() => void onConfirm()} disabled={Boolean(busy)} className={primaryBtn}>
+                <button type="button" onClick={() => void onConfirm()} disabled={Boolean(busy)} className={checkFirst ? secondaryBtn : primaryBtn}>
                   {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />} 결과 조회
                 </button>
               ) : (
-                <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart} className={primaryBtn}>
+                <button type="button" onClick={() => void onStart()} disabled={Boolean(busy) || !canStart} className={checkFirst ? secondaryBtn : primaryBtn}>
                   {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />} {name.trim() ? `${name.trim()}님께 ` : ''}간편인증 요청
                 </button>
               )
             ) : invite ? (
               <div className="rounded-xl border border-[#c6982f]/50 bg-[#fdf7ea] p-3">
-                <div className="text-[13px] font-bold text-[#6b5216]">{invite.smsSent ? '문자로 링크를 보냈습니다' : '링크가 만들어졌습니다 — 복사하거나 카톡으로 보내세요'}</div>
+                <div className="text-[13px] font-bold text-[#6b5216]">{invite.smsSent ? '링크 발급됨 · 문자 발송 완료' : '링크 발급됨 · 문자 미발송 — 복사하거나 카톡으로 보내세요'}</div>
                 <input readOnly value={invite.url} aria-label="고객 인증 링크" className="mt-2 min-h-[40px] w-full min-w-0 rounded-lg border border-[#e2e8f0] bg-white px-2 text-[12px] text-[#334155]" />
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => void copyInvite()} className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white text-[13px] font-bold text-[#0e1e3a]">
@@ -873,10 +943,10 @@ export default function HealthRecordPage(): JSX.Element {
                     <Share2 className="h-4 w-4" /> 카톡 보내기
                   </button>
                 </div>
-                <p className="mt-2 text-[12px] text-[#6b5216]">링크는 30분 동안 1회만 쓸 수 있습니다.</p>
+                <p className="mt-2 text-[12px] text-[#6b5216]">링크는 30분 동안 1회만 쓸 수 있습니다. 아직 조회 완료가 아닙니다 — 진행은 「최근 요청」에서 확인하세요.</p>
               </div>
             ) : (
-              <button type="button" onClick={() => void onInvite()} disabled={inviteBusy || !canInvite} className={primaryBtn}>
+              <button type="button" onClick={() => void onInvite()} disabled={inviteBusy || !canInvite} className={checkFirst ? secondaryBtn : primaryBtn}>
                 {inviteBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Link2 className="h-5 w-5" />} {name.trim() ? `${name.trim()}님께 ` : ''}인증 링크 보내기
               </button>
             )}
@@ -895,7 +965,9 @@ export default function HealthRecordPage(): JSX.Element {
               ) : <span />}
               <button type="button"
                 onClick={() => {
+                  const hadPending = dropForeground() // 입력방식 전환 — 이전 방식의 늦은 응답은 화면에 반영하지 않음
                   if (inputMode === 'customer') { setInputMode('staff'); setInvite(null); setCopied(false); setError(null) } else { setInputMode('customer'); setError(null) }
+                  if (hadPending) setNotice(PREV_REQUEST_NOTE)
                 }}
                 className="min-h-[36px] font-semibold text-slate-500 underline underline-offset-2">
                 {inputMode === 'customer' ? '직원이 직접 입력하기' : '고객 링크 방식으로 돌아가기'}
@@ -912,14 +984,33 @@ export default function HealthRecordPage(): JSX.Element {
       ) : null}
 
       {notice && !error ? <div className="rounded-xl border border-slate-800 bg-white px-4 py-2.5 text-[13px] font-semibold text-emerald-700">{notice}</div> : null}
-      {error ? <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[13px] text-rose-700"><b>{healthErrorHelp(error).title}</b><p className="mt-1">{error}</p><p className="mt-1 text-[12px]">{healthErrorHelp(error).action}</p></div> : null}
+      {error ? (
+        <div id="hr-error" role="alert" className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-[13px] text-rose-800">
+          <b>{errView.title}</b>
+          <p className="mt-1">{errView.action}</p>
+          {error.length > 80 ? (
+            <details className="mt-1"><summary className="min-h-[32px] cursor-pointer text-[13px] font-semibold">오류 원문 보기</summary><p className="mt-1 break-words">{error}</p></details>
+          ) : <p className="mt-1 break-words text-[13px]">오류: {error}</p>}
+        </div>
+      ) : null}
 
       {/* 최근 요청 — 완료 건은 30일간 저장되어 다시 열람 가능 */}
       <section aria-labelledby="hr-history" className="rounded-2xl border border-slate-800 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           <h2 id="hr-history" className="text-[15px] font-bold text-slate-100">최근 요청</h2>
-          <button type="button" onClick={() => void refresh()} className="min-h-[36px] px-1 text-[12px] font-semibold text-slate-400 hover:text-slate-200">새로고침</button>
+          <button type="button" onClick={() => void refresh()} disabled={historyLoad.loading} aria-describedby="hr-history-status" className="inline-flex min-h-[44px] items-center gap-1 px-2 text-[13px] font-semibold text-slate-300 hover:text-slate-100 disabled:opacity-60">
+            {historyLoad.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} 새로고침
+          </button>
         </div>
+        <div id="hr-history-status" role="status" aria-live="polite" className="text-[12px] text-slate-400">
+          {historyLoad.loading ? '새로고침 중…' : historyLoad.failed ? null : historyLoad.lastOkAt ? `${new Date(historyLoad.lastOkAt).toLocaleTimeString('ko-KR')} 확인` : null}
+        </div>
+        {historyLoad.failed && !historyLoad.loading ? (
+          <div role="alert" className="mt-1 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-[13px] text-rose-800">
+            <span>목록을 불러오지 못했습니다{historyLoad.lastOkAt ? ` — 아래는 ${new Date(historyLoad.lastOkAt).toLocaleTimeString('ko-KR')} 기준 이전 목록` : ''}.</span>
+            <button type="button" onClick={() => void refresh()} className="min-h-[44px] px-2 font-bold underline underline-offset-2">다시 시도</button>
+          </div>
+        ) : null}
         <p className="mt-0.5 text-[12px] text-slate-500">내가 조회한 건만 보입니다. 완료 결과는 {RETAIN_DAYS}일간 다시 열 수 있습니다.</p>
         <div className="relative mt-2">
           <input
@@ -932,14 +1023,23 @@ export default function HealthRecordPage(): JSX.Element {
           <svg className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#94a3b8]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
           {historyQuery ? <button type="button" onClick={() => { onHistorySearch(''); setHistoryLimit(HISTORY_PAGE) }} aria-label="검색어 지우기" className="absolute inset-y-0 right-0 w-10 text-[13px] font-semibold text-[#64748b]">✕</button> : null}
         </div>
+        {staleSearch ? (
+          <p className="mt-1 text-[13px] font-semibold text-[#6b5216]">
+            {historyLoad.loading ? `'${historyQuery.trim() || '전체'}' 검색 중…` : `'${historyQuery.trim() || '전체'}' 검색 실패.`} 아래는 {historyLoad.shownQuery.trim() ? `'${historyLoad.shownQuery.trim()}' 검색` : '전체'} 목록입니다.
+          </p>
+        ) : null}
         {history.length === 0 ? (
-          <p className="mt-2 text-[13px] text-slate-500">{historyQuery.trim() ? `'${historyQuery.trim()}' 검색 결과가 없습니다.` : '아직 요청이 없습니다.'}</p>
+          <p className="mt-2 text-[13px] text-slate-500">
+            {historyLoad.lastOkAt === null
+              ? (historyLoad.failed ? '아직 목록을 확인하지 못했습니다.' : '불러오는 중…')
+              : historyLoad.shownQuery.trim() ? `'${historyLoad.shownQuery.trim()}' 검색 결과가 없습니다.` : '아직 요청이 없습니다.'}
+          </p>
         ) : (
           <div className="mt-2 divide-y divide-slate-800">
             {visibleHistory.map((h) => {
               const age = daysSince(h.createdAt)
-              const canViewRow = h.status === 'completed' && !!h.result && age <= RETAIN_DAYS
-              const daysLeft = Math.max(0, RETAIN_DAYS - age)
+              const act = historyRowAction(h, age, RETAIN_DAYS)
+              const canViewRow = act.canOpen
               return (
                 <div key={h.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5">
                   <div className="min-w-0 flex-1 basis-40">
@@ -947,13 +1047,11 @@ export default function HealthRecordPage(): JSX.Element {
                       <span className="truncate text-[14px] font-semibold text-slate-200">{h.customerName || '고객 미지정'}</span>
                       <StatusBadge status={h.status} />
                     </div>
-                    <div className="text-[12px] text-slate-500">
-                      {new Date(h.createdAt).toLocaleString('ko-KR')}
-                      {canViewRow ? ` · ${daysLeft}일 남음` : h.status === 'completed' ? ' · 보관 만료' : ''}
-                    </div>
-                    {h.status === 'failed' && h.error ? (
-                      <div className="text-[12px] text-rose-700">{healthErrorHelp(h.error).title} — {healthErrorHelp(h.error).action}</div>
-                    ) : null}
+                    <div className="text-[12px] text-slate-500">{new Date(h.createdAt).toLocaleString('ko-KR')}</div>
+                    <div className={`text-[13px] ${act.tone === 'error' ? 'text-rose-800' : act.tone === 'open' ? 'text-emerald-800' : act.tone === 'wait' ? 'text-[#6b5216]' : 'text-slate-400'}`}>{act.text}</div>
+                    {h.status === 'failed' && h.error && h.error.length > 60 ? (
+                      <details className="text-[12px] text-slate-400"><summary className="min-h-[28px] cursor-pointer">오류 원문</summary><p className="break-words">{h.error}</p></details>
+                    ) : h.status === 'failed' && h.error ? <div className="break-words text-[12px] text-slate-400">오류: {h.error}</div> : null}
                   </div>
                   {canViewRow ? (
                     <button type="button" onClick={() => viewSaved(h)}

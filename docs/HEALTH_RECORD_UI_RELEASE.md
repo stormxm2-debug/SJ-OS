@@ -1,3 +1,47 @@
+# 건강기록 UI 데스크톱 반영 — v1.0.57
+
+기준: `origin/main` 63cf179 (v1.0.56, PR #94 병합 이후). 공개 최신 릴리스 v1.0.56 확인 → 1.0.57 patch. 의존성 변경 없음.
+
+## 변경
+
+- UI 계획 4단계: 조회 진행·오류 안내 통일(상세는 HEALTH_RECORD_UI_PLAN.md 4단계 결과).
+- 신규 `src/renderer/src/services/health-record/healthStatusView.ts` + `test/hrStatusView.test.mjs`, `healthErrorHelp` 위임, `HealthRecordPage.tsx` 표시 변경.
+- healthRecordService(150초 타임아웃·매개변수·암호화·1회용 인증·세션 종료 처리), 폴링 조건/간격, deriveEntryPhase, ResultReport, auth/DB/API/AI 변경 없음.
+
+## 검증 (실제 실행)
+
+- `npm run typecheck` 통과, `npm run build` 통과.
+- `node --test test/hrStatusView.test.mjs test/hrCareWorkspace.test.mjs test/hrEntryPhase.test.mjs` 28 pass / 0 fail
+  (timeout/network 분류·주행동, 분류 문구에 구현 설명/9시 없음, 행 행동·30일 경계(30일 열람 가능/31일 불가)·결과 없음 구분, 늦은 검색 A 응답 무시, 실패 시 목록·마지막 성공 시각 유지, 이전 실패가 최신 로딩을 뒤집지 않음).
+- 검토 보완 후 `node --test test/hrStatusView.test.mjs` 10 pass / 0 fail(동일 query 10초 폴링+11초 응답 수용·로딩 해제, 61초 시뮬 응답 폐기 없음, 동일 query coalesce, A→B→A·이전 finally 가드, 실패/동기 예외 후 재시도, 연속 오류 code 초기화, 보관일수 NaN/30/31). typecheck·build 재통과.
+
+## 독립 QA 재현 3건 보완 (진행 중 요청의 늦은 응답)
+
+- 재현: A start 보류 → B 선택 → A completed = B 화면에 A 결과 / A invite 보류 → B 선택 → B 폼에 A 링크 / 상품 start 보류 → 상품 변경 → 새 상품 폼에 옛 결과.
+- 보완(표시용만): `healthStatusView.ts`에 `createForegroundGuard`·`runForeground`·`PREV_REQUEST_NOTE` 추가. onStart/onConfirm/onInvite는 현재 작업일 때만 결과·requestId·twoWay·링크·안내·오류·configNote·busy 해제를 반영하고, 오래된 응답은 「최근 요청」 목록만 refresh. 고객·상품·입력방식 전환과 저장 결과 열기는 이전 작업을 무효화하고 busy/inviteBusy를 즉시 정리(새 고객은 바로 요청 가능). 진행 중이었으면 "이전 요청은 「최근 요청」에서 확인하세요." 한 줄 안내.
+- 진행 중에는 요청 변수 입력(성함·연락처·식별번호·조회기간·인증수단·통신사·옵션)만 disabled. 고객·상품 선택과 입력방식 전환은 열어 둠. 새 클릭/확인 팝업 없음.
+- 변경 없음: 서비스 호출 payload, 서버 start/confirm/invite 재호출·취소(자동 실행 없음), 매개변수·암호화·1회용 세션·150초 timeout·RLS·10초 history poll, deriveEntryPhase. PR96의 coalesce·오류/code 원자 상태·NaN 보관 가드 유지. invite 예외는 기존엔 처리되지 않았으나 이제 현재 작업이면 "링크 생성 중 오류가 발생했습니다." 표시.
+- 실행한 검증: `npm run typecheck` 통과, `npm run build` 통과. `node --test test/hrForegroundGuard.test.mjs test/hrStatusView.test.mjs test/hrCareWorkspace.test.mjs test/hrEntryPhase.test.mjs` 43 pass / 0 fail. 신규 `hrForegroundGuard.test.mjs` 9건은 deferred mock으로 재현 3건 + 늦은 confirm vs 저장 결과/입력방식 전환 + 오래된 catch/finally가 새 busy·오류 미덮음 + 현재 응답 정상 반영 + 페이지 배선(전환 4곳 무효화·핸들러 3개 가드·입력 잠금)을 확인.
+- 전체 `npm test`는 73 중 55 pass / 16 fail: 실패 16건은 이번에 수정하지 않은 테스트 파일(claim*·coverage*·hrSummarize·hrInsuranceEstimate 등)이 Windows에서 `import(원시 경로)`로 ERR_UNSUPPORTED_ESM_URL_SCHEME 발생 — 이 환경의 기존 로더 문제이며 이번 변경과 무관.
+- 후속 Codex 독립 브라우저 QA에서 최종 앱 소스 `bcad9f70714e9bf3209428b18fc65cc2295368a0`로 20/20 통과. 아래 최종 검증 및 `HEALTH_RECORD_UI_QA.md` 참조.
+
+## 최종 독립 브라우저 검증 (Codex, 2026-11-08 KST)
+
+- 실제 HealthRecordPage/ResultReport·프로젝트 Tailwind, 합성 서비스 mock·외부 네트워크 차단으로 최종 소스 20/20 통과.
+- 시간초과/네트워크 CTA 목록만 조회, 갱신 실패 시 기존 목록 유지, 검색 응답 경합, 새 링크/고객/상품 전환, AI 자동 호출 없음 확인.
+- 진행 중 A 고객의 결과·인증 링크·옛 상품 결과가 새 화면에 붙지 않음. 오래된 finally가 새 busy를 지우지 않고 새 고객의 정상 응답은 적용됨. 저장 결과 열람·confirm/입력방식 전환 지연 응답도 확인.
+- 10초 폴링 중 11초 동일 검색 응답은 단일 조회로 완료되며, 무효 날짜의 열람은 차단됨.
+- **모바일 gap 해소**: 실제 innerWidth/clientWidth/visualViewport.width/scrollWidth = 375, scale = 1을 직접 측정. PC 1280px도 확인. PNG 파일 폭만으로 판단하지 않았음.
+- 상세 기록은 [HEALTH_RECORD_UI_QA.md](HEALTH_RECORD_UI_QA.md) 참조. 합성 캡처 4장은 검증 환경에 보관하며 별도 공개 승인 전에는 게시하지 않음.
+- 앱 구현·테스트는 Claude Code, 독립 QA와 검증 문서 정리는 Codex가 담당. 문서 정리에서 앱·테스트 코드는 변경하지 않음.
+
+## 남은 검증 한계
+
+- 실제 Electron 설치 실행·실고객 인증·실제 Supabase/AI 호출·실기기·스크린리더는 검증하지 않았음.
+- 위 초기 '브라우저 미실행'은 최초 구현 단계의 기록이며, 핵심 실제 브라우저·모바일 검증은 후속 독립 QA에서 완료함.
+
+---
+
 # 건강기록 UI 데스크톱 반영 — v1.0.56
 
 기준: `origin/main` d343b7b (v1.0.55, PR #92 병합 이후). 공개 최신 릴리스 v1.0.55 확인 → 1.0.56 patch. 의존성 변경 없음.
