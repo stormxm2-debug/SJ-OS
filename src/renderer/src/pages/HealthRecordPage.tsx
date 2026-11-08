@@ -34,7 +34,7 @@ import { askHealthRecordAi } from '@renderer/services/health-record/healthRecord
 import HealthRecordWorkspace from '@renderer/components/health-record/HealthRecordWorkspace'
 import SonsonEstimator from '@renderer/components/health-record/SonsonEstimator'
 import RecentCareTable from '@renderer/components/health-record/RecentCareTable'
-import { admissionSummary, buildCareRecords, CARE_PERIODS, careListSummary, calendarMonthsAgo, filterCareResult, localYmd, periodStart, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext } from '@renderer/services/health-record/careWorkspace'
+import { admissionSummary, buildCareRecords, CARE_PERIODS, careListSummary, calendarMonthsAgo, filterCareResult, localYmd, periodStart, validCareDate, type CarePeriod, type CareRecord, type HrUnderwritingContext, type SummaryKindFilter } from '@renderer/services/health-record/careWorkspace'
 import { aiGuideNote, type GuideLoadStatus } from '@renderer/services/health-record/guideLoadState'
 
 /**
@@ -1115,6 +1115,11 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
   // 기본 표시 기간: 최근 3개월. 저장된 결과의 표시 필터일 뿐 새 기관 조회·인증·AI 요청을 일으키지 않는다.
   const [carePeriod, setCarePeriod] = useState<CarePeriod>('3m')
   const filteredResult = useMemo(() => filterCareResult(result, carePeriod), [result, carePeriod])
+  // 한눈에 요약 숫자 카드 바로가기 — 최근 진료 목록 표시 전용(filteredResult·청구·가입 검토·AI 데이터는 좁히지 않음).
+  // 새 결과·기간 변경 시 전체로 되돌린다. 탭 전환만으로는 바뀌지 않는다.
+  const [summaryFilter, setSummaryFilter] = useState<SummaryKindFilter>('all')
+  useEffect(() => { setSummaryFilter('all') }, [result, carePeriod])
+  const changePeriod = (p: CarePeriod): void => { setCarePeriod(p); setSummaryFilter('all') }
   const [underwritingContext, setUnderwritingContext] = useState<HrUnderwritingContext>({ insurers: [], guides: [], exceptions: [] })
   // 표시 전용 메타데이터 — AI 답변 초기화 의존성에 넣지 않는다(기준 내용 변경은 underwritingContext가 담당).
   const [guideStatus, setGuideStatus] = useState<GuideLoadStatus>('idle')
@@ -1211,7 +1216,7 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
         <span id="hr-period-title" className="sr-only">기간 선택</span>
         <div className="flex flex-wrap items-center gap-1.5">
           {CARE_PERIODS.map((p) => (
-            <button key={p.value} type="button" aria-pressed={carePeriod === p.value} onClick={() => setCarePeriod(p.value)}
+            <button key={p.value} type="button" aria-pressed={carePeriod === p.value} onClick={() => changePeriod(p.value)}
               className={`min-h-11 rounded-full border px-3.5 text-[13px] font-bold ${carePeriod === p.value ? 'border-[#c6982f] bg-[#fdf7ea] text-[#0e1e3a] ring-1 ring-[#c6982f]' : 'border-slate-700 bg-white text-slate-300'}`}>
               {p.label}
             </button>
@@ -1222,19 +1227,21 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
 
       <div id="hr-result-panel" role="tabpanel" aria-labelledby={`hr-tab-${tab}`}>
         {/* 같은 위치(패널 첫 자식)에 한 번만 마운트 — 탭은 표시 모드만 바꾼다(청구 상태·검색·선택·기준 조회 유지, 저장 API 재호출 없음). */}
-        <HealthRecordWorkspace result={filteredResult} requestId={requestId} period={carePeriod} mode={tab} onContextChange={setUnderwritingContext} onGuideStatusChange={setGuideStatus} />
+        <HealthRecordWorkspace result={filteredResult} requestId={requestId} period={carePeriod} mode={tab} onContextChange={setUnderwritingContext} onGuideStatusChange={setGuideStatus}
+          summaryFilter={summaryFilter} onSummaryFilterChange={setSummaryFilter} />
 
         {tab === 'summary' ? (
           <>
             {/* 최근 진료 — 핵심 숫자와 같은 공통 기간·같은 기록으로 계산(고정 3개월 예외 없음). */}
-            <RecentCareTable result={result} period={carePeriod} onShowAll={() => setCarePeriod('all')} />
+            <RecentCareTable result={result} period={carePeriod} filter={summaryFilter}
+              onShowAll={() => changePeriod('all')} onClearFilter={() => setSummaryFilter('all')} />
 
-            {/* 자세히 보기 — 한 개의 접힌 영역에서 보기 방식을 선택한다(기본: 병명별 묶음). 원자료는 이 안에서만. */}
+            {/* 전체 상세 기록(선택 기간 전체 — 숫자 카드 목록 필터와 무관) — 한 개의 접힌 영역에서 보기 방식을 선택한다(기본: 병명별 묶음). 원자료는 이 안에서만. */}
             <section className="mt-3 rounded-xl border border-slate-800" aria-labelledby="hr-detail-toggle">
               <button id="hr-detail-toggle" type="button" onClick={() => setDetailOpen((v) => !v)} aria-expanded={detailOpen} aria-controls="hr-detail-body"
                 className="flex min-h-12 w-full items-center gap-2 rounded-xl px-3 text-left text-[14px] font-bold text-slate-100 hover:bg-slate-950">
                 <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${detailOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
-                자세히 보기
+                전체 상세 기록
                 <span className="ml-auto text-[12px] font-semibold text-slate-400">{detailOpen ? '접기' : '펼치기'}</span>
               </button>
               {detailOpen ? (
