@@ -13,11 +13,7 @@ const daysLabel = (d: number): string => (d > 0 ? `${d}일분` : '일수 미확�
 const MED_ONLY = '약물 단독 기록 · 상병 연결 미확인'
 /** 표시용 병명 — 내부 안내 문구를 짧은 일반 용어로 바꾼다(원자료 값은 바꾸지 않음). */
 const diseaseLabel = (r: CareRecord): string => r.disease === MED_ONLY ? '처방약 기록' : r.disease === '상병 정보 없음' ? '병명 미확인' : r.disease
-const medSummary = (r: CareRecord): string => {
-  if (!r.medications.length) return ''
-  const names = r.medications.slice(0, 2).map((m) => m.name).join(', ')
-  return r.medications.length > 2 ? `${names} 외 ${r.medications.length - 2}건` : names
-}
+/** 처방약은 기본 행에 표시하지 않고 자세히 보기에서만 보이므로, 약만 있는 기록도 버튼이 있어야 한다. */
 export const hasCareDetail = (r: CareRecord): boolean =>
   !!r.code || r.kind !== '확인 필요' || r.surgery || r.procedures.length > 0 || r.medications.length > 0
 
@@ -53,12 +49,11 @@ function Detail({ r, id }: { r: CareRecord; id: string }): JSX.Element {
 
 function Row({ r, index }: { r: CareRecord; index: number }): JSX.Element {
   const [open, setOpen] = useState(false)
-  const meds = medSummary(r)
   const detailId = `hr-care-detail-${index}`
   const canOpen = hasCareDetail(r)
   return (
     <li className="rounded-xl border border-slate-800 bg-white p-3 sm:rounded-none sm:border-0 sm:px-3 sm:py-2.5" data-care-row>
-      <div className="grid gap-y-0.5 text-[14px] sm:grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_7.5rem] sm:items-center sm:gap-x-3 sm:text-[13px]">
+      <div className="grid gap-y-0.5 text-[14px] sm:grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1.4fr)_7.5rem] sm:items-center sm:gap-x-3 sm:text-[13px]">
         <div className="flex flex-wrap items-baseline gap-x-2 sm:block">
           <b className="text-slate-100">{dateLabel(r.date)}</b>
           <span className="min-w-0 break-words text-slate-300 sm:hidden">{r.hospital || '기관 미확인'}</span>
@@ -66,9 +61,6 @@ function Row({ r, index }: { r: CareRecord; index: number }): JSX.Element {
         <div className="hidden min-w-0 break-words text-slate-100 sm:block">{r.hospital || '기관 미확인'}</div>
         <div className="min-w-0 break-words font-semibold text-slate-100">
           {diseaseLabel(r)}{r.side !== '미확인' ? <span className="font-normal text-slate-400"> · {r.side}</span> : null}
-        </div>
-        <div className="min-w-0 break-words text-slate-300">
-          {meds ? <><span className="text-[12px] font-semibold text-slate-500 sm:hidden">처방약 </span>{meds}</> : <span className="hidden text-slate-500 sm:inline">-</span>}
         </div>
         <div className="sm:text-right">
           {canOpen ? (
@@ -101,8 +93,8 @@ export default function RecentCareTable({ result, period, onShowAll }: { result:
 
       {s.records.length ? (
         <>
-          <div className="hidden border-b border-slate-800 bg-slate-950 px-3 py-1.5 text-[12px] font-semibold text-slate-400 sm:grid sm:grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_7.5rem] sm:gap-x-3" aria-hidden="true">
-            <span>날짜</span><span>병원</span><span>병명</span><span>처방약</span><span />
+          <div className="hidden border-b border-slate-800 bg-slate-950 px-3 py-1.5 text-[12px] font-semibold text-slate-400 sm:grid sm:grid-cols-[6.5rem_minmax(0,1fr)_minmax(0,1.4fr)_7.5rem] sm:gap-x-3" aria-hidden="true">
+            <span>날짜</span><span>병원</span><span>병명</span><span />
           </div>
           <ul className="space-y-2 p-2 sm:space-y-0 sm:divide-y sm:divide-slate-800 sm:p-0">
             {rows.map((r, i) => <Row key={r.key} r={r} index={i} />)}
