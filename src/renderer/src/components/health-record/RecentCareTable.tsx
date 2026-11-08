@@ -12,7 +12,7 @@ const dateLabel = (s: string): string => (validCareDate(s) ? `${s.slice(0, 4)}.$
 const daysLabel = (d: number): string => (d > 0 ? `${d}일분` : '일수 미확인')
 const MED_ONLY = '약물 단독 기록 · 상병 연결 미확인'
 /** 표시용 병명 — 내부 안내 문구를 짧은 일반 용어로 바꾼다(원자료 값은 바꾸지 않음). */
-const diseaseLabel = (r: CareRecord): string => r.disease === MED_ONLY ? '처방약 기록' : r.disease === '상병 정보 없음' ? '병명 미확인' : r.disease
+export const diseaseLabel = (r: CareRecord): string => r.disease === MED_ONLY ? '처방약 기록' : r.disease === '상병 정보 없음' ? '병명 미확인' : r.disease
 /** 처방약은 기본 행에 표시하지 않고 자세히 보기에서만 보이므로, 약만 있는 기록도 버튼이 있어야 한다. */
 export const hasCareDetail = (r: CareRecord): boolean =>
   !!r.code || r.kind !== '확인 필요' || r.surgery || r.procedures.length > 0 || r.medications.length > 0
