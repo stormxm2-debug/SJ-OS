@@ -1,3 +1,26 @@
+# 건강기록 UI 데스크톱 반영 — v1.0.57
+
+기준: `origin/main` 63cf179 (v1.0.56, PR #94 병합 이후). 공개 최신 릴리스 v1.0.56 확인 → 1.0.57 patch. 의존성 변경 없음.
+
+## 변경
+
+- UI 계획 4단계: 조회 진행·오류 안내 통일(상세는 HEALTH_RECORD_UI_PLAN.md 4단계 결과).
+- 신규 `src/renderer/src/services/health-record/healthStatusView.ts` + `test/hrStatusView.test.mjs`, `healthErrorHelp` 위임, `HealthRecordPage.tsx` 표시 변경.
+- healthRecordService(150초 타임아웃·매개변수·암호화·1회용 인증·세션 종료 처리), 폴링 조건/간격, deriveEntryPhase, ResultReport, auth/DB/API/AI 변경 없음.
+
+## 검증 (실제 실행)
+
+- `npm run typecheck` 통과, `npm run build` 통과.
+- `node --test test/hrStatusView.test.mjs test/hrCareWorkspace.test.mjs test/hrEntryPhase.test.mjs` 28 pass / 0 fail
+  (timeout/network 분류·주행동, 분류 문구에 구현 설명/9시 없음, 행 행동·30일 경계(30일 열람 가능/31일 불가)·결과 없음 구분, 늦은 검색 A 응답 무시, 실패 시 목록·마지막 성공 시각 유지, 이전 실패가 최신 로딩을 뒤집지 않음).
+
+## 한계 (미실행 — 그대로 기록)
+
+- 합성 HealthRecordPage/ResultReport 브라우저 하네스(서비스 mock, start/confirm/invite 호출 0 계수, 폴링 가상 타이머, PC 1280 / 375 키보드·넘침)는 이번 15분 범위에서 **실행하지 못함**. 위 동작은 순수 helper 단위 테스트와 코드 검토로만 확인.
+- **모바일 gap 미해소**: CDP 375 설정 후 innerWidth / clientWidth / visualViewport.width = 375, scale = 1 직접 확인과 `docs/ui/*-synthetic.png` 저장은 미실행. 다음 작업에서 기존 `test/e2e/build-harness.mjs`(viewport meta 이미 포함)를 재사용해 진행 필요.
+
+---
+
 # 건강기록 UI 데스크톱 반영 — v1.0.56
 
 기준: `origin/main` d343b7b (v1.0.55, PR #92 병합 이후). 공개 최신 릴리스 v1.0.55 확인 → 1.0.56 patch. 의존성 변경 없음.

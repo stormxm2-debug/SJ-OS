@@ -118,7 +118,7 @@ test('인쇄 HTML은 의료기관·상병·약물 문자열을 실행 가능한 
 })
 test('응답 지연·본인확인·이용 시간 오류에 각각 다른 다음 조치',()=>{
   assert.match(care.healthErrorHelp('응답 시간이 초과되었습니다.').action,/최근 요청/)
-  assert.match(care.healthErrorHelp('주민등록번호 오류').action,/상품별/)
+  assert.match(care.healthErrorHelp('주민등록번호 오류').action,/담당자/); assert.doesNotMatch(care.healthErrorHelp('주민등록번호 오류').action,/identity|암호화/)
   assert.match(care.healthErrorHelp('서비스 이용 시간 제한').action,/공식/)
 })
 test('최근 3개월 요약: 달력 경계 포함, 미래·무효·누락 날짜는 미확인으로 분리',()=>{
