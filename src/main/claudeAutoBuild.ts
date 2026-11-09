@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type {
   ClaudeAutoBuildJob,
@@ -15,7 +15,8 @@ import type {
   QueueState,
   RepairStage,
   ReportPushStatus,
-  SelectedRunner
+  SelectedRunner,
+  VerificationStatus
 } from '@shared/claudeAutoBuild'
 import {
   classifyConflictGroup,
@@ -174,6 +175,12 @@ function maybeRunNext(): void {
 }
 /** Called whenever a job reaches a terminal-ish state, to drive the queue. */
 function onJobSettled(job: ClaudeAutoBuildJob): void {
+  // Remote-project jobs: the project runner reports the outcome itself. Do not generate
+  // SJ-OS repair jobs from another repo's failure, and do not pause the SJ-OS queue.
+  if (isRemoteProjectJob(job)) {
+    if (job.status === 'succeeded' && queueAutoRun) maybeRunNext()
+    return
+  }
   if (job.status === 'timed-out') {
     // A timeout isn't a code error to auto-repair — just pause for manual review.
     pauseQueueWith('이전 작업이 시간 초과로 중단되어 큐를 멈췄습니다. 로그를 확인해주세요.')
@@ -198,6 +205,33 @@ function nextId(): string {
 
 function allowedRoot(): string {
   return resolve(app.getAppPath())
+}
+
+// --- verified remote-project workspaces (main-only) ------------------------
+// The multi-repo remote runner (remoteProjectRunner) registers a workspace ONLY after
+// validating it (separate from SJ-OS, realpath, git root, allow-listed origin). Jobs for
+// such a workspace can only be created via createRemoteProjectAutoBuildJob, which is NOT
+// exposed over IPC — the renderer's createAutoBuildJob stays locked to allowedRoot().
+const remoteWorkspaces = new Set<string>()
+const remoteJobWorkspace = new Map<string, string>()
+export function registerRemoteProjectWorkspace(p: string): void {
+  remoteWorkspaces.add(resolve(p))
+}
+export function unregisterRemoteProjectWorkspace(p: string): void {
+  remoteWorkspaces.delete(resolve(p))
+}
+function isRemoteProjectJob(job: ClaudeAutoBuildJob): boolean {
+  return remoteJobWorkspace.has(job.id)
+}
+/** Validated cwd for a job, or null if the job's workspace is not (or no longer) allowed. */
+function jobWorkspace(job: ClaudeAutoBuildJob): string | null {
+  const ext = remoteJobWorkspace.get(job.id)
+  if (ext === undefined) return job.workspacePath === allowedRoot() ? allowedRoot() : null
+  return remoteWorkspaces.has(ext) && job.workspacePath === ext ? ext : null
+}
+/** True while any code-writing job is running/verifying (one at a time, all workspaces). */
+export function isAutoBuildBusy(): boolean {
+  return hasActiveJob()
 }
 
 /**
@@ -543,6 +577,42 @@ export function createAutoBuildJob(request: CreateAutoBuildJobRequest): ClaudeAu
   return job
 }
 
+/**
+ * Main-only: create a job for a VERIFIED remote-project workspace (see
+ * registerRemoteProjectWorkspace). Never auto-queued ('ready'); the caller runs it
+ * explicitly via runAutoBuildJob. Same prompt safety scan + fixed Claude CLI path.
+ */
+export function createRemoteProjectAutoBuildJob(request: { title: string; prompt: string; workspace: string }): ClaudeAutoBuildJob {
+  const ws = resolve(request.workspace || '')
+  const workspaceAllowed = remoteWorkspaces.has(ws)
+  const safety = scanAutoBuildPrompt(request.prompt ?? '', workspaceAllowed)
+  const status: ClaudeAutoBuildStatus = safety.promptSafe && workspaceAllowed ? 'ready' : 'blocked'
+  const job: ClaudeAutoBuildJob = {
+    id: nextId(),
+    title: request.title || '원격 프로젝트 작업',
+    source: 'remote-task',
+    originalUserCommand: 'remote-task',
+    generatedPrompt: request.prompt,
+    workspacePath: ws,
+    status,
+    safetyResult: safety,
+    logLines: [`작업 생성됨 · ${nowIso()}`, status === 'blocked' ? `차단됨: ${safety.blockedReason}` : `원격 프로젝트 작업 · 작업 폴더 ${ws}`],
+    stdoutPreview: '',
+    stderrPreview: '',
+    verification: { typecheckStatus: 'pending', buildStatus: 'pending', gitStatusShort: '' },
+    queueIndex: ++queueSeq,
+    autoRun: false,
+    conflictGroup: classifyConflictGroup('remote-task'),
+    canRunInParallel: false,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  }
+  remoteJobWorkspace.set(job.id, ws)
+  jobs.set(job.id, job)
+  emitJobUpdate(job)
+  return job
+}
+
 // --- auto-repair loop (generate on failure; run only after approval) -------
 
 function detectFailedStage(job: ClaudeAutoBuildJob): RepairStage {
@@ -755,7 +825,7 @@ export function runAutoBuildJob(id: string): ClaudeAutoBuildJob | null {
   }
 
   // Re-validate safety in main (defense-in-depth).
-  const workspaceAllowed = job.workspacePath === allowedRoot()
+  const workspaceAllowed = jobWorkspace(job) !== null
   const safety = scanAutoBuildPrompt(job.generatedPrompt, workspaceAllowed)
   if (!safety.promptSafe || !workspaceAllowed) {
     return touch(job, {
@@ -813,7 +883,11 @@ function spawnClaude(jobId: string, command: 'claude' | 'npx'): void {
   const runArgs = ['-p', '--permission-mode', CLAUDE_PERMISSION_MODE]
   const args = command === 'claude' ? runArgs : ['@anthropic-ai/claude-code', ...runArgs]
   const label = command === 'claude' ? 'claude' : 'npx @anthropic-ai/claude-code'
-  const cwd = allowedRoot()
+  const cwd = jobWorkspace(job)
+  if (cwd === null) {
+    onJobSettled(touch(job, { status: 'blocked', finishedAt: nowIso(), logLines: [...job.logLines, '차단됨: 작업 폴더가 더 이상 허용되지 않습니다.'] }))
+    return
+  }
   const startMs = Date.now()
 
   log(jobId, `Claude Code 실행 시작 · 러너: ${label}`)
@@ -988,25 +1062,45 @@ function runFixed(cwd: string, command: string, args: string[]): Promise<{ code:
   })
 }
 
+function packageScripts(cwd: string): Set<string> {
+  try {
+    const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> }
+    return new Set(Object.keys(pkg.scripts ?? {}))
+  } catch {
+    return new Set()
+  }
+}
+
 async function runVerification(jobId: string): Promise<void> {
   let job = jobs.get(jobId)
   if (!job) return
-  const cwd = allowedRoot()
+  const remote = isRemoteProjectJob(job)
+  const validCwd = jobWorkspace(job)
+  if (validCwd === null) {
+    onJobSettled(touch(job, { status: 'blocked', finishedAt: nowIso(), logLines: [...job.logLines, '차단됨: 검증 단계에서 작업 폴더가 허용되지 않습니다.'] }))
+    return
+  }
+  const cwd = validCwd
+  // Remote-project repos may not define every script (e.g. docs-only repo): run only the
+  // scripts present in package.json, mark others 'skipped'. SJ-OS jobs are unchanged.
+  const scripts = remote ? packageScripts(cwd) : null
+  const runScript = async (name: 'typecheck' | 'build'): Promise<VerificationStatus> => {
+    if (scripts && !scripts.has(name)) return 'skipped'
+    return (await runFixed(cwd, 'npm', ['run', name])).code === 0 ? 'passed' : 'failed'
+  }
   job = touch(job, {
     status: 'verifying',
     verification: { typecheckStatus: 'running', buildStatus: 'pending', gitStatusShort: '' },
     logLines: [...job.logLines, 'typecheck 시작 · npm run typecheck']
   })
 
-  const tc = await runFixed(cwd, 'npm', ['run', 'typecheck'])
-  const typecheckStatus = tc.code === 0 ? 'passed' : 'failed'
+  const typecheckStatus = await runScript('typecheck')
   job = touch(jobs.get(jobId)!, {
     verification: { ...jobs.get(jobId)!.verification, typecheckStatus, buildStatus: 'running' },
     logLines: [...jobs.get(jobId)!.logLines, `typecheck ${typecheckStatus}`, 'build 시작 · npm run build']
   })
 
-  const bd = await runFixed(cwd, 'npm', ['run', 'build'])
-  const buildStatus = bd.code === 0 ? 'passed' : 'failed'
+  const buildStatus = await runScript('build')
   job = touch(jobs.get(jobId)!, {
     verification: { ...jobs.get(jobId)!.verification, buildStatus },
     logLines: [...jobs.get(jobId)!.logLines, `build ${buildStatus}`, 'git status --short 실행']
@@ -1016,8 +1110,13 @@ async function runVerification(jobId: string): Promise<void> {
   const gitStatusShort = gs.out.trim().slice(0, 2000)
 
   const noFileChanges = gitStatusShort.length === 0
-  const finalStatus: ClaudeAutoBuildStatus =
-    typecheckStatus === 'passed' && buildStatus === 'passed' ? 'succeeded' : 'needs-review'
+  const finalStatus: ClaudeAutoBuildStatus = remote
+    ? typecheckStatus !== 'failed' && buildStatus !== 'failed'
+      ? 'succeeded'
+      : 'needs-review'
+    : typecheckStatus === 'passed' && buildStatus === 'passed'
+      ? 'succeeded'
+      : 'needs-review'
 
   const closingLines: string[] = [`git status --short:\n${gitStatusShort || '(변경 없음)'}`]
   if (finalStatus === 'succeeded' && noFileChanges) {
@@ -1105,6 +1204,7 @@ export async function loadJobCommitState(jobId: string): Promise<ClaudeJobCommit
   const job = jobs.get(jobId)
   const state = baseCommitState(job, jobId)
   if (!job) return { ...state, status: 'blocked', errorMessage: '작업을 찾을 수 없습니다.' }
+  if (isRemoteProjectJob(job)) return { ...state, status: 'blocked', errorMessage: '원격 프로젝트 작업은 원격 러너가 검토용 PR 로만 처리합니다.' }
   const cwd = allowedRoot()
 
   const branchR = await runFixed(cwd, 'git', ['branch', '--show-current'])
@@ -1140,6 +1240,7 @@ export async function commitApprovedJob(jobId: string): Promise<ClaudeJobCommitS
   const job = jobs.get(jobId)
   const state = baseCommitState(job, jobId)
   if (!job) return { ...state, status: 'blocked', errorMessage: '작업을 찾을 수 없습니다.' }
+  if (isRemoteProjectJob(job)) return { ...state, status: 'blocked', errorMessage: '원격 프로젝트 작업은 원격 러너가 검토용 PR 로만 처리합니다.' }
   const cwd = allowedRoot()
   const logLines: string[] = []
 
@@ -1204,7 +1305,7 @@ export async function commitApprovedJob(jobId: string): Promise<ClaudeJobCommitS
 /** Generate a human-readable completion report for a finished job. */
 export async function generateCompletionReport(jobId: string): Promise<ClaudeBuildCompletionReport | null> {
   const job = jobs.get(jobId)
-  if (!job) return null
+  if (!job || isRemoteProjectJob(job)) return null
   const cwd = allowedRoot()
 
   // Changed files: from the last commit if committed, else the working tree.
@@ -1259,6 +1360,7 @@ export async function pushApprovedCommit(jobId: string): Promise<ClaudeJobCommit
   const job = jobs.get(jobId)
   const state = baseCommitState(job, jobId)
   if (!job) return { ...state, status: 'blocked', errorMessage: '작업을 찾을 수 없습니다.' }
+  if (isRemoteProjectJob(job)) return { ...state, status: 'blocked', errorMessage: '원격 프로젝트 작업은 원격 러너가 검토용 PR 로만 처리합니다.' }
   if (!job.committed || !job.commitHash) return { ...state, status: 'blocked', errorMessage: '먼저 커밋을 생성해야 합니다.' }
   const cwd = allowedRoot()
 

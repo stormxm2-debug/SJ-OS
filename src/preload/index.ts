@@ -29,6 +29,7 @@ import type {
   SafeCheckResult
 } from '@shared/claudeAutoBuild'
 import type { RemoteRunnerConfig, RemoteRunnerStatus } from '@shared/remoteTaskPoll'
+import type { RemoteProjectStatus } from '@shared/remoteProjects'
 import type {
   ParallelBuildJob,
   ParallelJobUpdate,
@@ -369,6 +370,15 @@ const api = {
     status: (): Promise<RemoteRunnerStatus> => ipcRenderer.invoke('remote-task:status'),
     start: (): Promise<RemoteRunnerStatus> => ipcRenderer.invoke('remote-task:start'),
     stop: (): Promise<RemoteRunnerStatus> => ipcRenderer.invoke('remote-task:stop')
+  },
+  // 다중 저장소 원격 작업(허용 목록 프로젝트만) — 작업 폴더/runnerId/주기 설정, 연결 검사, 명시적 시작/정지.
+  remoteProjects: {
+    list: (): Promise<RemoteProjectStatus[]> => ipcRenderer.invoke('remote-project:list'),
+    setConfig: (id: string, patch: { workspace?: string; runnerId?: string; pollSeconds?: number }): Promise<RemoteProjectStatus | null> =>
+      ipcRenderer.invoke('remote-project:set-config', id, patch),
+    verify: (id: string): Promise<RemoteProjectStatus> => ipcRenderer.invoke('remote-project:verify', id),
+    start: (id: string): Promise<RemoteProjectStatus> => ipcRenderer.invoke('remote-project:start', id),
+    stop: (id: string): Promise<RemoteProjectStatus> => ipcRenderer.invoke('remote-project:stop', id)
   }
 }
 
