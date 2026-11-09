@@ -10,18 +10,23 @@
 
 import { app, ipcMain } from 'electron'
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { spawnTool, createAutoBuildJob, runAutoBuildJob, getAutoBuildJob } from './claudeAutoBuild'
 import { classifyGhError, markInterruptedAsFailed, type ProcessedState } from '../shared/remoteTask'
+import { createRunLock } from '../shared/remoteProjects'
 import { pollOnce, DEFAULT_REMOTE_CONFIG, type RemoteDeps, type RemoteRunnerConfig, type RemoteRunnerStatus, type ListResult, type RunTaskResult } from '../shared/remoteTaskPoll'
 
 export { DEFAULT_REMOTE_CONFIG } from '../shared/remoteTaskPoll'
 export type { RemoteRunnerConfig, RemoteRunnerStatus } from '../shared/remoteTaskPoll'
 
+// 러너 간 실행 잠금 — SJ-OS 러너(이슈 #76)와 다중 저장소 프로젝트 러너가 동시에 폴링/실행하지 않도록.
+export const remoteRunLock = createRunLock()
+
 // --- 상태 영속화(중복·재시작) ----------------------------------------------
-export function createStateStore(dir: string): { load(): ProcessedState; save(state: ProcessedState): void; path: string } {
-  const path = join(dir, 'remote-task-state.json')
+// fileName: 프로젝트별 상태 분리(기본 remote-task-state.json = SJ-OS). 임시파일→rename 원자적 쓰기.
+export function createStateStore(dir: string, fileName = 'remote-task-state.json'): { load(): ProcessedState; save(state: ProcessedState): void; path: string } {
+  const path = join(dir, fileName)
   return {
     path,
     load(): ProcessedState {
@@ -35,7 +40,9 @@ export function createStateStore(dir: string): { load(): ProcessedState; save(st
     save(state: ProcessedState): void {
       try {
         if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-        writeFileSync(path, JSON.stringify(state, null, 2), 'utf8')
+        const tmp = `${path}.${process.pid}.tmp`
+        writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8')
+        renameSync(tmp, path)
       } catch {
         /* 영속화 실패는 치명적이지 않음 — 다음 주기에 재시도 */
       }
@@ -73,7 +80,7 @@ function git(args: string[], cwd: string): Promise<{ code: number; out: string; 
 const JOB_TERMINAL_STATUSES = new Set<string>(['succeeded', 'failed', 'blocked', 'cancelled', 'timed-out', 'needs-review', 'skipped'])
 
 // claudeAutoBuild 의 하드 실행 리밋(15분)보다 약간만 길게. 리밋을 무제한으로 늘리지 않는다.
-async function waitForJob(jobId: string, timeoutMs = 16 * 60 * 1000): Promise<ReturnType<typeof getAutoBuildJob>> {
+export async function waitForJob(jobId: string, timeoutMs = 16 * 60 * 1000): Promise<ReturnType<typeof getAutoBuildJob>> {
   const start = Date.now()
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -205,6 +212,10 @@ export function startRemoteTaskRunner(config: RemoteRunnerConfig, workspace: str
   const deps = makeRunnerDeps(config, workspace, (s) => store.save(s))
   const tick = async (): Promise<void> => {
     if (ticking) return
+    if (!remoteRunLock.tryAcquire('sj-os')) {
+      lastActions = [`busy:${remoteRunLock.holder() ?? 'other'}`]
+      return
+    }
     ticking = true
     try {
       const outcome = await pollOnce(config, store.load(), deps)
@@ -214,6 +225,7 @@ export function startRemoteTaskRunner(config: RemoteRunnerConfig, workspace: str
       lastActions = [`tick-error: ${e instanceof Error ? e.message : String(e)}`]
     } finally {
       ticking = false
+      remoteRunLock.release('sj-os')
     }
   }
   void tick()
