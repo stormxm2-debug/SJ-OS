@@ -49,6 +49,11 @@ import { listOverviewStaff, type OverviewStaff } from '@renderer/services/commer
 import { buildMeetingMessage, shareMeetingText } from '@renderer/services/share/meetingShare'
 import MapNavButtons from '@renderer/components/ui/MapNavButtons'
 import { sendMeetingAlimtalk } from '@renderer/services/alimtalk/alimtalkService'
+import MonthView from './MonthView'
+import WeekTimeGrid, { sundayOfKey } from './WeekTimeGrid'
+import { buildMonthPdf, loadKoreanFontBytes } from '@renderer/services/schedule/calendarPdf'
+import koreanFontUrl from '@renderer/assets/fonts/NanumGothic-Regular.ttf?url'
+import { kstDayKey } from '@renderer/services/schedule/calendarMonth'
 
 /**
  * 일정관리 v3 — 주간 중심 + AI 한줄 등록.
@@ -179,6 +184,48 @@ export default function SupabaseScheduleManager(): JSX.Element {
   const [weekOffset, setWeekOffset] = useState(0)
   const [selectedDay, setSelectedDay] = useState<Date>(startOfDay(new Date()))
   const [showMonth, setShowMonth] = useState(false)
+  // 주간 시간표(읽기 전용) — 월간과 별도 경로
+  const [showTime, setShowTime] = useState(false)
+  // 월간 화면이 보고 있는 달(PDF 출력용)
+  const [monthAnchor, setMonthAnchor] = useState<{ year: number; monthIndex0: number }>(() => ({
+    year: new Date().getFullYear(),
+    monthIndex0: new Date().getMonth()
+  }))
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfError, setPdfError] = useState<string | undefined>()
+  /** 월간 PDF — 현재 화면 범위(내 일정)만 출력. 권한은 화면 조회 권한과 동일. */
+  const exportMonthPdf = async (): Promise<void> => {
+    setPdfBusy(true)
+    setPdfError(undefined)
+    try {
+      const fontBytes = await loadKoreanFontBytes(koreanFontUrl as string)
+      const bytes = await buildMonthPdf(
+        {
+          year: monthAnchor.year,
+          monthIndex0: monthAnchor.monthIndex0,
+          title: 'SJ INVEST 월간 일정',
+          scopeLabel: `개인 · ${session.name ?? ''}`.trim(),
+          includeNotices: true,
+          events: myEvents.map((ev) => ({ id: ev.id, startsAt: ev.startsAt, title: ev.title })),
+          notices: []
+        },
+        fontBytes
+      )
+      const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `SJ-월간일정-${monthAnchor.year}-${String(monthAnchor.monthIndex0 + 1).padStart(2, '0')}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.setTimeout(() => URL.revokeObjectURL(url), 4000)
+    } catch {
+      setPdfError('PDF 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+    } finally {
+      setPdfBusy(false)
+    }
+  }
   // 관리자 전용 — 직원별 보기 (이번 주 일정을 직원 이름별 접이식 섹션으로)
   const [byStaff, setByStaff] = useState(false)
   const [staffList, setStaffList] = useState<OverviewStaff[]>([])
@@ -420,6 +467,118 @@ export default function SupabaseScheduleManager(): JSX.Element {
     void load()
   }
 
+  // ── 주간 시간표(읽기 전용) — 세로=시간, 가로=요일(일→토). 드래그는 다음 단계. ──
+  if (showTime) {
+    const weekStartKey = sundayOfKey(kstDayKey(selectedDay))
+    const shiftWeek = (delta: number): void => setSelectedDay((d) => addDays(d, delta * 7))
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-[#cbd5e1] bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-[#0e1e3a]" />
+              <h2 className="text-base font-bold text-[#0e1e3a]">일정관리</h2>
+              <span className="text-sm font-semibold text-[#94a3b8]">시간표</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={() => shiftWeek(-1)} aria-label="이전 주" className="rounded-lg border border-[#cbd5e1] bg-white p-2 text-[#94a3b8] transition hover:text-[#0e1e3a]">
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <button type="button" onClick={() => shiftWeek(1)} aria-label="다음 주" className="rounded-lg border border-[#cbd5e1] bg-white p-2 text-[#94a3b8] transition hover:text-[#0e1e3a]">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+              <button type="button" onClick={() => setShowTime(false)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white px-2.5 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a]">
+                월간
+              </button>
+            </div>
+          </div>
+          {error ? (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
+            </div>
+          ) : null}
+        </div>
+        <WeekTimeGrid
+          events={myEvents.map((ev) => ({ id: ev.id, startsAt: ev.startsAt, endsAt: ev.endsAt ?? null, title: ev.title }))}
+          weekStartKey={weekStartKey}
+          onSelectDay={(key) => {
+            const [y, m, d] = key.split('-').map(Number)
+            pickDay(new Date(y, m - 1, d))
+            setShowTime(false)
+          }}
+        />
+      </div>
+    )
+  }
+
+  // ── 월간 보기(달력만) — 별도 경로로 격리해 주간 화면 JSX는 그대로 둔다. ──
+  // 날짜 터치 시 그 날짜 주간/일별 상세로 이동(setShowMonth(false)).
+  if (showMonth) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-[#cbd5e1] bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-[#0e1e3a]" />
+              <h2 className="text-base font-bold text-[#0e1e3a]">일정관리</h2>
+              <span className="text-sm font-semibold text-[#94a3b8]">월간</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => void load()}
+                aria-label="새로고침"
+                className="rounded-lg border border-[#cbd5e1] bg-white p-2 text-[#94a3b8] transition hover:text-[#0e1e3a]"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowMonth(false)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#0e1e3a] bg-[#0e1e3a] px-2.5 py-2 text-xs font-semibold text-white transition"
+              >
+                <CalendarSearch className="h-3.5 w-3.5" /> 주간
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportMonthPdf()}
+                disabled={pdfBusy}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white px-2.5 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a] disabled:opacity-60"
+              >
+                {pdfBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMonth(false)
+                  openCreate()
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:brightness-125"
+              >
+                <Plus className="h-3.5 w-3.5" /> 일정 등록
+              </button>
+            </div>
+          </div>
+          {error ? (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
+            </div>
+          ) : null}
+          {pdfError ? <div className="mt-2 text-[12px] text-rose-600">{pdfError}</div> : null}
+        </div>
+        <MonthView
+          events={myEvents}
+          initialDate={selectedDay}
+          onAnchorChange={(year, monthIndex0) => setMonthAnchor({ year, monthIndex0 })}
+          onSelectDay={(d) => {
+            pickDay(d)
+            setShowMonth(false)
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       {/* 헤더 */}
@@ -447,7 +606,14 @@ export default function SupabaseScheduleManager(): JSX.Element {
                 showMonth ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-slate-800 bg-white text-slate-400 hover:text-slate-200'
               ].join(' ')}
             >
-              <CalendarSearch className="h-3.5 w-3.5" /> 달력
+              <CalendarSearch className="h-3.5 w-3.5" /> 월간
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTime(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-white px-2.5 py-2 text-xs font-semibold text-slate-400 transition hover:text-slate-200"
+            >
+              시간표
             </button>
             {admin ? (
               <button
@@ -607,7 +773,6 @@ export default function SupabaseScheduleManager(): JSX.Element {
           </div>
         ) : null}
 
-        {showMonth ? <MonthCalendar eventsOf={eventsOf} onPick={(d) => pickDay(d)} /> : null}
       </div>
 
       {/* 자동 확정 카톡 결과 안내 (등록 직후 잠깐 표시) */}
@@ -1212,66 +1377,3 @@ function AiBriefBox({
   )
 }
 
-// --- 월 달력 (토글) -----------------------------------------------------------
-
-function MonthCalendar({ eventsOf, onPick }: { eventsOf: (d: Date) => unknown[]; onPick: (d: Date) => void }): JSX.Element {
-  const now = new Date()
-  const [viewYm, setViewYm] = useState<{ y: number; m: number }>({ y: now.getFullYear(), m: now.getMonth() })
-  const first = new Date(viewYm.y, viewYm.m, 1)
-  const gridStart = mondayOf(first)
-  const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
-  const today = startOfDay(new Date())
-
-  return (
-    <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => setViewYm(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 }))}
-          aria-label="이전 달"
-          className="rounded p-1 text-slate-400 hover:text-slate-200"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <div className="text-[12px] font-bold text-slate-200">
-          {viewYm.y}년 {viewYm.m + 1}월
-        </div>
-        <button
-          type="button"
-          onClick={() => setViewYm(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 }))}
-          aria-label="다음 달"
-          className="rounded p-1 text-slate-400 hover:text-slate-200"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
-      <div className="grid grid-cols-7 gap-0.5 text-center">
-        {DAY_NAMES.slice(1).concat(DAY_NAMES[0]).map((n) => (
-          <div key={n} className="py-1 text-[10px] font-medium text-slate-500">
-            {n}
-          </div>
-        ))}
-        {cells.map((d) => {
-          const inMonth = d.getMonth() === viewYm.m
-          const cnt = eventsOf(d).length
-          const isToday = sameDay(d, today)
-          return (
-            <button
-              key={ymd(d)}
-              type="button"
-              onClick={() => onPick(d)}
-              className={[
-                'rounded-lg py-1.5 text-[11px] tabular-nums transition hover:bg-indigo-50',
-                inMonth ? 'text-slate-200' : 'text-slate-600',
-                isToday ? 'bg-indigo-50 font-bold text-indigo-700' : ''
-              ].join(' ')}
-            >
-              {d.getDate()}
-              <div className={['mx-auto mt-0.5 h-1 w-1 rounded-full', cnt > 0 ? 'bg-indigo-500' : 'bg-transparent'].join(' ')} />
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
