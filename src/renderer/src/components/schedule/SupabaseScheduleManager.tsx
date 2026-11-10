@@ -50,6 +50,7 @@ import { buildMeetingMessage, shareMeetingText } from '@renderer/services/share/
 import MapNavButtons from '@renderer/components/ui/MapNavButtons'
 import { sendMeetingAlimtalk } from '@renderer/services/alimtalk/alimtalkService'
 import MonthView from './MonthView'
+import { upsertScheduleEvent } from '@renderer/services/schedule/eventListState'
 import WeekTimeGrid, { sundayOfKey } from './WeekTimeGrid'
 import { buildMonthPdf, loadKoreanFontBytes } from '@renderer/services/schedule/calendarPdf'
 import koreanFontUrl from '@renderer/assets/fonts/NanumGothic-Regular.ttf?url'
@@ -283,12 +284,22 @@ export default function SupabaseScheduleManager(): JSX.Element {
   const today = startOfDay(new Date())
 
   const load = async (): Promise<void> => {
-    const [sRes, cRes, staff] = await Promise.all([listScheduleEvents(), listCustomers(), admin ? listOverviewStaff() : Promise.resolve([])])
-    setEvents(sRes.events)
-    setCustomers(cRes.customers)
-    if (admin) setStaffList(staff.filter((s) => s.role === 'fc' || s.role === 'team-leader'))
-    setError(sRes.ok ? undefined : sRes.error)
-    setLoading(false)
+    try {
+      const [sRes, cRes, staff] = await Promise.all([listScheduleEvents(), listCustomers(), admin ? listOverviewStaff() : Promise.resolve([])])
+      if (sRes.ok) {
+        setEvents(sRes.events)
+        setError(undefined)
+      } else {
+        // 실패 시 이전 목록을 유지하되, 실패 사실을 화면에 알린다(조용히 낡은 목록 보이지 않게).
+        setError(sRes.error ?? '일정 목록을 새로고침하지 못했습니다.')
+      }
+      setCustomers(cRes.customers)
+      if (admin) setStaffList(staff.filter((s) => s.role === 'fc' || s.role === 'team-leader'))
+    } catch {
+      setError('일정 목록을 새로고침하지 못했습니다. 새로고침 버튼을 눌러 주세요.')
+    } finally {
+      setLoading(false)
+    }
   }
   useEffect(() => {
     void load()
@@ -414,6 +425,8 @@ export default function SupabaseScheduleManager(): JSX.Element {
     }
     // 신규 등록 + 고객 연결 시 예약 확정 카톡 자동 발송 (등록은 이미 완료 — 실패해도 안내만)
     if (!form.editingId) void autoSendConfirm(res.event, res.mode)
+    // 저장 응답의 일정을 즉시 목록에 반영 — 재조회가 늦거나 실패해도 달력에 바로 보인다.
+    if (res.event) setEvents((prev) => upsertScheduleEvent(prev, res.event as ScheduleWithCustomer))
     setShowForm(false)
     pickDay(startOfDay(starts))
     void load()
@@ -461,6 +474,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
     }
     // AI 등록도 고객이 목록과 매칭된 경우 동일하게 자동 확정 카톡
     void autoSendConfirm(res.event, res.mode)
+    if (res.event) setEvents((prev) => upsertScheduleEvent(prev, res.event as ScheduleWithCustomer))
     setAiText('')
     setAiPreview(undefined)
     pickDay(startOfDay(starts))
