@@ -187,6 +187,34 @@ export default function SupabaseScheduleManager(): JSX.Element {
   const [showMonth, setShowMonth] = useState(false)
   // 주간 시간표(읽기 전용) — 월간과 별도 경로
   const [showTime, setShowTime] = useState(false)
+  // 뒤로가기: 월간/시간표는 같은 화면 안의 상태라서, 열 때 히스토리 기록을 남기고
+  // 뒤로가기(popstate)가 오면 주간 화면으로 돌아오게 한다. 앱 밖으로 나가지 않는다.
+  useEffect(() => {
+    const inSub = showMonth || showTime
+    const marked = Boolean((window.history.state as { sjScheduleSub?: string } | null)?.sjScheduleSub)
+    try {
+      if (inSub && !marked) {
+        window.history.pushState({ ...(window.history.state ?? {}), sjScheduleSub: showMonth ? 'month' : 'time' }, '')
+      } else if (!inSub && marked) {
+        // 화면에서 '주간'으로 직접 돌아온 경우 남겨 둔 기록을 정리한다.
+        window.history.back()
+      }
+    } catch {
+      /* 히스토리 미지원 환경은 조용히 무시 */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showMonth, showTime])
+  useEffect(() => {
+    const onPop = (e: PopStateEvent): void => {
+      const sub = (e.state as { sjScheduleSub?: string } | null)?.sjScheduleSub
+      if (!sub) {
+        setShowMonth(false)
+        setShowTime(false)
+      }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
   // 월간 화면이 보고 있는 달(PDF 출력용)
   const [monthAnchor, setMonthAnchor] = useState<{ year: number; monthIndex0: number }>(() => ({
     year: new Date().getFullYear(),
