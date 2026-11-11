@@ -1,6 +1,7 @@
 import type { ScheduleAiBrief, ScheduleEvent } from '@shared/commercial/models'
 import type { ScheduleInput } from './scheduleValidation'
 import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
+import { fetchAllPages } from './pagedFetch'
 
 /**
  * Supabase schedule adapter — real queries against public.schedule_events.
@@ -89,9 +90,19 @@ export const supabaseScheduleAdapter = {
     const client = await getClient()
     if (!client) return err('not-configured', '서버 설정이 없습니다.')
     if (!(await currentUserId(client))) return err('no-session', '로그인 세션이 없습니다.')
-    const { data, error } = await client.from('schedule_events').select(SELECT_COLS).order('starts_at', { ascending: true })
+    // PostgREST 기본 1,000행 제한을 피하려고 페이지를 끝까지 가져온다.
+    // 정렬 키에 id 를 더해 페이지 경계에서 행이 중복·누락되지 않게 한다.
+    const { rows, error } = await fetchAllPages<Record<string, unknown>>(async (from, to) => {
+      const res = await client
+        .from('schedule_events')
+        .select(SELECT_COLS)
+        .order('starts_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to)
+      return { rows: (res.data ?? []) as Record<string, unknown>[], error: res.error }
+    })
     if (error) return err('error', '일정 목록을 불러오지 못했습니다.')
-    return { ok: true, data: (data ?? []).map(mapRow) }
+    return { ok: true, data: rows.map(mapRow) }
   },
 
   async getScheduleEvent(id: string): Promise<AdapterResult<ScheduleWithCustomer | null>> {
