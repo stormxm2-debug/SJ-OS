@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { kstDayKey as kstKeyOf, kstTodayKey } from '@renderer/services/schedule/calendarMonth'
 import { gridHeight, layoutDay, type TimedEvent } from '@renderer/services/schedule/weekLayout'
+import { typeStyle } from '@renderer/services/schedule/typeColors'
 
 /**
  * 주간 시간표 (읽기 전용). 세로=시간, 가로=요일(일→토).
@@ -114,7 +115,10 @@ export default function WeekTimeGrid({ events, weekStartKey, onSelectDay }: Week
                         top: b.top,
                         height: b.height,
                         left: `calc(${b.lane * width}% + 2px)`,
-                        width: `calc(${width}% - 4px)`
+                        width: `calc(${width}% - 4px)`,
+                        backgroundColor: typeStyle(b.type).bg,
+                        borderColor: typeStyle(b.type).border,
+                        color: typeStyle(b.type).text
                       }}
                     >
                       <div className="font-semibold tabular-nums text-[#64748b]">{b.startHm}</div>

@@ -14,11 +14,14 @@ export interface TimedEvent {
   startsAt: string
   endsAt?: string | null
   title: string
+  /** 일정 유형(색상 결정용) */
+  type?: string
 }
 
 export interface PlacedBlock {
   id: string
   title: string
+  type?: string
   /** 'HH:MM' (KST) */
   startHm: string
   endHm: string
@@ -111,6 +114,7 @@ export function layoutDay(events: TimedEvent[], opts: LayoutOptions = {}): Place
       out.push({
         id: it.ev.id,
         title: it.ev.title,
+        type: it.ev.type,
         startHm: kstHm(it.ev.startsAt),
         endHm: minutesToHm(it.ce),
         top: Math.round((it.cs - viewStart) * pxPerMin),
