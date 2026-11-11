@@ -51,6 +51,7 @@ import MapNavButtons from '@renderer/components/ui/MapNavButtons'
 import { sendMeetingAlimtalk } from '@renderer/services/alimtalk/alimtalkService'
 import MonthView from './MonthView'
 import { upsertScheduleEvent } from '@renderer/services/schedule/eventListState'
+import { buildEventChipLabel } from '@renderer/services/schedule/eventLabel'
 import WeekTimeGrid, { sundayOfKey } from './WeekTimeGrid'
 import { buildMonthPdf, loadKoreanFontBytes } from '@renderer/services/schedule/calendarPdf'
 import koreanFontUrl from '@renderer/assets/fonts/NanumGothic-Regular.ttf?url'
@@ -609,7 +610,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
           {pdfError ? <div className="mt-2 text-[12px] text-rose-600">{pdfError}</div> : null}
         </div>
         <MonthView
-          events={myEvents}
+          events={myEvents.map((ev) => ({ id: ev.id, startsAt: ev.startsAt, title: ev.title, type: ev.type, label: buildEventChipLabel({ typeLabel: SCHEDULE_TYPE_LABEL[ev.type as ScheduleType] ?? String(ev.type), location: ev.location, customerName: ev.customerName ?? ev.manualCustomerName }) }))}
           initialDate={selectedDay}
           onAnchorChange={(year, monthIndex0) => setMonthAnchor({ year, monthIndex0 })}
           onSelectDay={(d) => {

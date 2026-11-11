@@ -20,6 +20,8 @@ export interface MonthEvent {
   startsAt: string
   title: string
   type?: string
+  /** 칸에 보일 라벨(예: '2차만남 · 화순 · 정현숙'). 없으면 title. */
+  label?: string
 }
 interface MonthViewProps {
   events: MonthEvent[]
@@ -127,7 +129,7 @@ export default function MonthView({ events, initialDate, notices = [], onSelectD
           >
             {/* 모바일(좁은 칸)에선 제목 우선 — 시간은 sm+에서만 표시해 제목이 읽히게 한다. */}
             <span className="hidden font-semibold tabular-nums text-[#64748b] sm:inline">{kstHm(ev.startsAt)} </span>
-            {ev.title}
+            {ev.label ?? ev.title}
           </span>
           )
         })}

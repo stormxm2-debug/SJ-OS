@@ -60,11 +60,11 @@ export default function WeekTimeGrid({ events, weekStartKey, onSelectDay }: Week
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[#cbd5e1] bg-white">
-      {/* 가로 스크롤 영역 — 모바일에서 7일을 넓게 */}
-      <div className="overflow-x-auto">
-        <div style={{ minWidth: 640 }}>
+      {/* 중첩 스크롤을 두지 않는다 — 안쪽 가로 스크롤이 세로 스와이프를 먹어 버려 두 번 해야 했음 */}
+      <div>
+        <div>
           {/* 요일 헤더 */}
-          <div className="grid border-b border-[#e2e8f0] bg-[#f8fafc]" style={{ gridTemplateColumns: '48px repeat(7, minmax(0, 1fr))' }}>
+          <div className="grid border-b border-[#e2e8f0] bg-[#f8fafc]" style={{ gridTemplateColumns: '40px repeat(7, minmax(0, 1fr))' }}>
             <div />
             {dayKeys.map((key, i) => {
               const dayNum = Number(key.split('-')[2])
@@ -88,7 +88,7 @@ export default function WeekTimeGrid({ events, weekStartKey, onSelectDay }: Week
           </div>
 
           {/* 시간축 + 7개 일 열 */}
-          <div className="grid" style={{ gridTemplateColumns: '48px repeat(7, minmax(0, 1fr))' }}>
+          <div className="grid" style={{ gridTemplateColumns: '40px repeat(7, minmax(0, 1fr))' }}>
             {/* 시간 라벨 */}
             <div className="relative" style={{ height }}>
               {hours.map((h) => (
