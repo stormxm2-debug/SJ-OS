@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Megaphone } from 'lucide-react'
 import { monthMatrix, groupByDay, kstHm, kstTodayKey, kstYmd, shiftMonth, type MonthCell } from '@renderer/services/schedule/calendarMonth'
 import { noticesByDayKey, truncateTitle, type CalendarNotice } from '@renderer/services/schedule/calendarNotices'
+import { typeStyle } from '@renderer/services/schedule/typeColors'
 
 /**
  * 월간 캘린더 (일요일→토요일 7열, 큰 칸, 일정 블록 + 공지 상단).
@@ -115,17 +116,21 @@ export default function MonthView({ events, initialDate, notices = [], onSelectD
         {dayNotices.length > 1 ? <span className="px-1 text-[9px] font-medium text-[#0e1e3a]">공지 +{dayNotices.length - 1}</span> : null}
 
         {/* 일반 일정 — 공지 아래, 제목 직사각형 블록 */}
-        {visibleEvents.map((ev) => (
+        {visibleEvents.map((ev) => {
+          const st = typeStyle(ev.type)
+          return (
           <span
             key={ev.id}
             title={ev.title}
-            className="truncate rounded border border-[#cbd5e1] bg-[#f1f5f9] px-1 py-[1px] text-[10px] text-[#334155] sm:text-[11px]"
+            className="truncate rounded border px-1 py-[1px] text-[10px] sm:text-[11px]"
+            style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
           >
             {/* 모바일(좁은 칸)에선 제목 우선 — 시간은 sm+에서만 표시해 제목이 읽히게 한다. */}
             <span className="hidden font-semibold tabular-nums text-[#64748b] sm:inline">{kstHm(ev.startsAt)} </span>
             {ev.title}
           </span>
-        ))}
+          )
+        })}
         {hiddenCount > 0 ? <span className="px-1 text-[10px] font-semibold text-indigo-600">+{hiddenCount}건</span> : null}
       </button>
     )

@@ -501,7 +501,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
               <button type="button" onClick={() => shiftWeek(1)} aria-label="다음 주" className="rounded-lg border border-[#cbd5e1] bg-white p-2 text-[#94a3b8] transition hover:text-[#0e1e3a]">
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
-              <button type="button" onClick={() => setShowTime(false)} className="inline-flex items-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white px-2.5 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a]">
+              <button type="button" onClick={() => setShowTime(false)} className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white px-2.5 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a]">
                 월간
               </button>
             </div>
@@ -513,7 +513,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
           ) : null}
         </div>
         <WeekTimeGrid
-          events={myEvents.map((ev) => ({ id: ev.id, startsAt: ev.startsAt, endsAt: ev.endsAt ?? null, title: ev.title }))}
+          events={myEvents.map((ev) => ({ id: ev.id, startsAt: ev.startsAt, endsAt: ev.endsAt ?? null, title: ev.title, type: ev.type }))}
           weekStartKey={weekStartKey}
           onSelectDay={(key) => {
             const [y, m, d] = key.split('-').map(Number)
@@ -549,7 +549,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
               <button
                 type="button"
                 onClick={() => setShowMonth(false)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#0e1e3a] bg-[#0e1e3a] px-2.5 py-2 text-xs font-semibold text-white transition"
+                className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg border border-[#0e1e3a] bg-[#0e1e3a] px-2.5 py-2 text-xs font-semibold text-white transition"
               >
                 <CalendarSearch className="h-3.5 w-3.5" /> 주간
               </button>
@@ -557,7 +557,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
                 type="button"
                 onClick={() => void exportMonthPdf()}
                 disabled={pdfBusy}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white px-2.5 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a] disabled:opacity-60"
+                className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white px-2.5 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a] disabled:opacity-60"
               >
                 {pdfBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} PDF
               </button>
@@ -567,7 +567,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
                   setShowMonth(false)
                   openCreate()
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:brightness-125"
+                className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg bg-[#0e1e3a] px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:brightness-125"
               >
                 <Plus className="h-3.5 w-3.5" /> 일정 등록
               </button>
@@ -603,7 +603,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
             <h2 className="text-base font-bold text-slate-100">일정관리</h2>
             <span className="text-sm font-semibold text-slate-400">{monthLabel}</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             <button
               type="button"
               onClick={() => void load()}
@@ -616,7 +616,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
               type="button"
               onClick={() => setShowMonth((v) => !v)}
               className={[
-                'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition',
+                'whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition',
                 showMonth ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-slate-800 bg-white text-slate-400 hover:text-slate-200'
               ].join(' ')}
             >
@@ -625,7 +625,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
             <button
               type="button"
               onClick={() => setShowTime(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-white px-2.5 py-2 text-xs font-semibold text-slate-400 transition hover:text-slate-200"
+              className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-white px-2.5 py-2 text-xs font-semibold text-slate-400 transition hover:text-slate-200"
             >
               시간표
             </button>
@@ -634,7 +634,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
                 type="button"
                 onClick={() => setByStaff((v) => !v)}
                 className={[
-                  'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition',
+                  'whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition',
                   byStaff ? 'border-[#c6982f] bg-[#c6982f]/10 text-[#b0821f]' : 'border-slate-800 bg-white text-slate-400 hover:text-slate-200'
                 ].join(' ')}
               >
@@ -644,7 +644,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
             <button
               type="button"
               onClick={() => (showForm ? setShowForm(false) : openCreate())}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:brightness-110"
+              className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:brightness-110"
             >
               {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />} {showForm ? '닫기' : '일정 등록'}
             </button>
