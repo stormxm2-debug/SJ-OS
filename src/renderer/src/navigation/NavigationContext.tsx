@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { View } from './types'
 import { recordFeatureVisit } from './newFeatures'
+import { parseInitialView } from './deepLink'
 
 interface NavigationValue {
   route: View
@@ -25,7 +26,10 @@ export function NavigationProvider({
 }): JSX.Element {
   // 시작 화면 = 홈. (구: 'assistant' — 경영 비서가 관리자 전용이 되면서 직원 첫
   // 화면이 접근거부로 뜨는 문제를 막기 위해 역할 무관 홈으로 통일, 2026-07-20)
-  const [route, setRoute] = useState<View>({ name: 'staff-home' })
+  // 단, 폰 홈 화면 PWA 딥링크(`?view=schedule` 등)로 열면 해당 화면에서 시작한다.
+  const [route, setRoute] = useState<View>(() =>
+    typeof window !== 'undefined' ? parseInitialView(window.location.search) : { name: 'staff-home' }
+  )
   const routeRef = useRef(route)
   routeRef.current = route
 

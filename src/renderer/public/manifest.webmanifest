@@ -1,9 +1,10 @@
 {
+  "id": "/?view=schedule",
   "name": "SJ INVEST",
-  "short_name": "SJ INVEST",
-  "description": "SJ INVEST 보험 업무 앱 (WEALTH · INSURANCE · FUTURE)",
+  "short_name": "SJ 캘린더",
+  "description": "SJ INVEST 보험 업무 앱 (WEALTH · INSURANCE · FUTURE) — 홈 화면에서 내 일정 바로 보기",
   "display": "standalone",
-  "start_url": "/",
+  "start_url": "/?view=schedule",
   "scope": "/",
   "theme_color": "#0e1e3a",
   "background_color": "#0e1e3a",
@@ -21,6 +22,26 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "내 일정",
+      "short_name": "일정",
+      "url": "/?view=schedule",
+      "icons": [{ "src": "/sj-icon-512.png", "sizes": "512x512", "type": "image/png" }]
+    },
+    {
+      "name": "홈",
+      "short_name": "홈",
+      "url": "/?view=staff-home",
+      "icons": [{ "src": "/sj-icon-512.png", "sizes": "512x512", "type": "image/png" }]
+    },
+    {
+      "name": "출퇴근",
+      "short_name": "출퇴근",
+      "url": "/?view=attendance",
+      "icons": [{ "src": "/sj-icon-512.png", "sizes": "512x512", "type": "image/png" }]
     }
   ]
 }
