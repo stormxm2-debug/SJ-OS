@@ -122,7 +122,7 @@ export default function MonthView({ events, initialDate, notices = [], onSelectD
           <span
             key={ev.id}
             title={ev.title}
-            className="truncate rounded border px-1 py-[1px] text-[10px] sm:text-[11px]"
+            className="line-clamp-2 break-all rounded border px-1 py-[2px] text-[11px] leading-[1.25] sm:truncate sm:py-[1px] sm:text-[11px]"
             style={{ backgroundColor: st.bg, borderColor: st.border, color: st.text }}
           >
             {/* 모바일(좁은 칸)에선 제목 우선 — 시간은 sm+에서만 표시해 제목이 읽히게 한다. */}
