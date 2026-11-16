@@ -34,6 +34,7 @@ import TodayContactsPage from '@renderer/pages/TodayContactsPage'
 import PlanRequestPage from '@renderer/pages/PlanRequestPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import MemoPage from '@renderer/pages/MemoPage'
+import ContentBoardPage from '@renderer/pages/ContentBoardPage'
 import AiTeamGuidePage from '@renderer/pages/AiTeamGuidePage'
 import AppInstallPage from '@renderer/pages/AppInstallPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
@@ -159,6 +160,8 @@ export default function Router(): JSX.Element {
       return <SharedFilesPage />
     case 'memo':
       return <MemoPage />
+    case 'content-board':
+      return <ContentBoardPage />
     case 'ai-team-guide':
       return <AiTeamGuidePage />
     case 'app-install':
