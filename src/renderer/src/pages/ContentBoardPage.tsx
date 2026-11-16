@@ -15,6 +15,7 @@ import {
   type Platform
 } from '@renderer/services/content/contentModel'
 import { deleteContent, listContent, saveContent } from '@renderer/services/content/contentService'
+import OpsDesk from '@renderer/components/content/OpsDesk'
 
 /**
  * 콘텐츠 보드 (대표 전용, 1단계). 아이디어 → 제작 → 예약 → 게시 상태를 관리한다.
@@ -158,6 +159,9 @@ export default function ContentBoardPage(): JSX.Element {
           {loadError}
         </div>
       ) : null}
+
+      {/* 운영 데스크: 팀이 움직이는 모습 */}
+      <OpsDesk items={items} />
 
       {/* 상태 필터 + 개수 */}
       <div className="flex flex-wrap gap-1.5">
