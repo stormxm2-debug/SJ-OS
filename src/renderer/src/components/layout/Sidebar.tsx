@@ -159,6 +159,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
       { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
       { key: 'memo', label: '메모장', icon: StickyNote, view: { name: 'memo' }, match: ['memo'] },
+      { key: 'ai-team-guide', label: 'AI 드림팀 가이드', icon: Bot, view: { name: 'ai-team-guide' }, match: ['ai-team-guide'] },
       { key: 'app-install', label: '앱 설치·배포', icon: Download, view: { name: 'app-install' }, match: ['app-install'] }
     ]
   },
@@ -264,6 +265,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
   { key: 'memo', label: '메모장', icon: StickyNote, view: { name: 'memo' }, match: ['memo'] },
+  { key: 'ai-team-guide', label: 'AI 드림팀 가이드', icon: Bot, view: { name: 'ai-team-guide' }, match: ['ai-team-guide'] },
   { key: 'app-install', label: '앱 설치·배포', icon: Download, view: { name: 'app-install' }, match: ['app-install'] },
   { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardListIcon, action: 'birthday-gate' },
   { key: 'my-password', label: '비밀번호 변경', icon: KeyRound, action: 'password-gate' }
@@ -308,6 +310,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
   { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
   { key: 'memo', label: '메모장', icon: StickyNote, view: { name: 'memo' }, match: ['memo'] },
+  { key: 'ai-team-guide', label: 'AI 드림팀 가이드', icon: Bot, view: { name: 'ai-team-guide' }, match: ['ai-team-guide'] },
   { key: 'app-install', label: '앱 설치·배포', icon: Download, view: { name: 'app-install' }, match: ['app-install'] },
   { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' }, match: ['salary'] },
   { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] },

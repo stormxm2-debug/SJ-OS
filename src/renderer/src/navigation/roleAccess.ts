@@ -56,6 +56,7 @@ export const STAFF_ROUTES: ViewName[] = [
   'plan-request',
   'files',
   'memo',
+  'ai-team-guide',
   'app-install',
   'notice'
   // 'assistant'(경영 비서)는 관리자 전용 — 2026-07-20 대표 확정. 자비스 패널(jarvisService)은
@@ -104,8 +105,16 @@ export function routeCategory(name: ViewName): RouteCategory {
   return 'admin'
 }
 
-/** Whether a role may open a route. Owner/admin can open everything. */
+/** 대표(owner) 전용 라우트 — 관리자도 보지 못한다. */
+export const OWNER_ONLY_ROUTES: ViewName[] = [
+  // 새로 만든 기능은 당분간 대표만 사용. 직원에게 열 때는 이 목록에서 빼면 된다.
+  'memo',
+  'ai-team-guide'
+]
+
+/** Whether a role may open a route. Owner/admin can open everything (except owner-only). */
 export function canAccessRoute(role: UserRole, name: ViewName): boolean {
+  if (OWNER_ONLY_ROUTES.includes(name)) return role === 'owner'
   if (role === 'owner' || role === 'admin') return true
   // 총무비서: 명시적으로 막은 라우트만 제외하고 전부 허용(관리자 화면 대부분 + 직원 화면).
   if (role === 'back-office') return !BACKOFFICE_DENY_ROUTES.includes(name)
