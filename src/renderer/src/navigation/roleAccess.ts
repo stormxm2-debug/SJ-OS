@@ -109,7 +109,9 @@ export function routeCategory(name: ViewName): RouteCategory {
 export const OWNER_ONLY_ROUTES: ViewName[] = [
   // 새로 만든 기능은 당분간 대표만 사용. 직원에게 열 때는 이 목록에서 빼면 된다.
   'memo',
-  'ai-team-guide'
+  'ai-team-guide',
+  // 콘텐츠 보드: 대표 전용으로 시작. 나중에 직원에게 열 때 이 목록에서 뺀다.
+  'content-board'
 ]
 
 /** Whether a role may open a route. Owner/admin can open everything (except owner-only). */

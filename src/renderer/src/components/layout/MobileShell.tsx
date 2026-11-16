@@ -35,6 +35,7 @@ import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistant
 import ExemptionsPage from '@renderer/pages/ExemptionsPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import MemoPage from '@renderer/pages/MemoPage'
+import ContentBoardPage from '@renderer/pages/ContentBoardPage'
 import AiTeamGuidePage from '@renderer/pages/AiTeamGuidePage'
 import AppInstallPage from '@renderer/pages/AppInstallPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
@@ -313,6 +314,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <SharedFilesPage />
     case 'memo':
       return canAccessRoute(role, 'memo') ? <MemoPage /> : <MobileAccessDenied />
+    case 'content-board':
+      return canAccessRoute(role, 'content-board') ? <ContentBoardPage /> : <MobileAccessDenied />
     case 'ai-team-guide':
       // 대표 전용 — 직접 주소로 들어와도 차단
       return canAccessRoute(role, 'ai-team-guide') ? <AiTeamGuidePage /> : <MobileAccessDenied />
