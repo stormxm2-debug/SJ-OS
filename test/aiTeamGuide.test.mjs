@@ -30,3 +30,15 @@ test('비밀번호·키를 넣으라는 안내가 없다', () => {
   const all = [...g.GUIDE_STEPS.flatMap((s) => s.commands), ...g.GUIDE_PROMPTS].map((c) => c.text).join('\n')
   assert.ok(!/password\s*[:=]|api[_ -]?key\s*[:=]/i.test(all))
 })
+
+const ra = await load('src/renderer/src/navigation/roleAccess.ts')
+test('AI 드림팀 가이드는 대표만 열 수 있다 (관리자 포함 차단)', () => {
+  assert.equal(ra.canAccessRoute('owner', 'ai-team-guide'), true)
+  for (const role of ['admin', 'team-leader', 'fc', 'back-office']) {
+    assert.equal(ra.canAccessRoute(role, 'ai-team-guide'), false, role)
+  }
+})
+test('다른 화면의 권한은 그대로 (관리자는 기존처럼 전부 열림)', () => {
+  assert.equal(ra.canAccessRoute('admin', 'memo'), true)
+  assert.equal(ra.canAccessRoute('fc', 'memo'), true)
+})
