@@ -34,6 +34,7 @@ import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
 import ExemptionsPage from '@renderer/pages/ExemptionsPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
+import MemoPage from '@renderer/pages/MemoPage'
 import AppInstallPage from '@renderer/pages/AppInstallPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
@@ -309,6 +310,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <ManagerContactsPage />
     case 'files':
       return <SharedFilesPage />
+    case 'memo':
+      return <MemoPage />
     case 'app-install':
       return <AppInstallPage />
     case 'notice':

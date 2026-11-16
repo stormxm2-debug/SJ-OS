@@ -19,6 +19,7 @@ import {
   ListChecks,
   Phone,
   FolderOpen,
+  StickyNote,
   Cake,
   TrendingUp,
   UserPlus,
@@ -89,6 +90,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' } },
       { key: 'consultation', label: '상담기록', icon: ClipboardList, view: { name: 'consultation' } },
       { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' } },
+      { key: 'memo', label: '메모장', icon: StickyNote, view: { name: 'memo' } },
       { key: 'app-install', label: '앱 설치', icon: Download, view: { name: 'app-install' } }
     ]
   },

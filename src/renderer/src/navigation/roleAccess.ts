@@ -55,6 +55,7 @@ export const STAFF_ROUTES: ViewName[] = [
   'security-center',
   'plan-request',
   'files',
+  'memo',
   'app-install',
   'notice'
   // 'assistant'(경영 비서)는 관리자 전용 — 2026-07-20 대표 확정. 자비스 패널(jarvisService)은

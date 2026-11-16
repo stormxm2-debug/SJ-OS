@@ -39,6 +39,7 @@ export type View =
   | { name: 'today-contacts' }
   | { name: 'plan-request' }
   | { name: 'files' }
+  | { name: 'memo' }
   | { name: 'app-install' }
   | { name: 'app-builder' }
   | { name: 'devprompt' }
