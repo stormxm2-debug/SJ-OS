@@ -78,6 +78,22 @@ async function listInactiveStaffIds(): Promise<Set<string>> {
   }
 }
 
+/** 로그인 계정이 비활성/차단된 직원의 profile_id 집합 — 출퇴근 명단·기록에서 숨김.
+ *  (직원 비활성화는 staff_login_accounts.status 만 바꾸고 profiles.status 는 active 로 남아
+ *   출근 현황에 계속 뜨던 문제를 막기 위해, 로그인 비활성 계정도 함께 숨긴다.) */
+async function listLoginInactiveProfileIds(): Promise<Set<string>> {
+  try {
+    await initSupabaseClient()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = getSupabaseClient() as any
+    if (!client) return new Set()
+    const { data } = await client.from('staff_login_accounts').select('profile_id, status').in('status', ['inactive', 'blocked'])
+    return new Set(((data as { profile_id: string | null }[]) ?? []).map((r) => r.profile_id).filter(Boolean) as string[])
+  } catch {
+    return new Set()
+  }
+}
+
 /** Tables whose changes should live-refresh this screen (stable ref for the hook). */
 const RT_TABLES = ['attendance_records', 'profiles']
 
@@ -134,12 +150,20 @@ export default function SupabaseAttendanceManager(): JSX.Element {
 
   const load = async (): Promise<void> => {
     setLoading(true)
-    const [allRes, myRes, staff, inactiveIds] = await Promise.all([listAttendanceRecords(), listMyTodayAttendance(), listActiveStaff(), listInactiveStaffIds()])
+    const [allRes, myRes, staff, inactiveIds, loginInactive] = await Promise.all([
+      listAttendanceRecords(),
+      listMyTodayAttendance(),
+      listActiveStaff(),
+      listInactiveStaffIds(),
+      listLoginInactiveProfileIds()
+    ])
+    // 숨김 대상 = 프로필 비활동 ∪ 로그인계정 비활성/차단. 둘 다 출근 명단·현황·기록에서 제외.
+    const hidden = new Set<string>([...inactiveIds, ...loginInactive])
     setMode(allRes.mode)
-    // 비활동 직원의 출퇴근 기록은 명단·현황·기록에서 제외(본인 기록은 유지).
-    setRecords(allRes.records.filter((r) => !inactiveIds.has(r.staffId)))
+    // 비활동/비활성 직원의 출퇴근 기록은 명단·현황·기록에서 제외(본인 기록은 유지).
+    setRecords(allRes.records.filter((r) => !hidden.has(r.staffId)))
     setMyToday(myRes.records)
-    setStaffList(staff)
+    setStaffList(staff.filter((s) => !hidden.has(s.id)))
     setError(allRes.ok ? undefined : allRes.error)
     setLoading(false)
   }
