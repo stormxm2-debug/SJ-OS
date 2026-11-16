@@ -91,6 +91,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'consultation', label: '상담기록', icon: ClipboardList, view: { name: 'consultation' } },
       { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' } },
       { key: 'memo', label: '메모장', icon: StickyNote, view: { name: 'memo' } },
+      { key: 'ai-team-guide', label: 'AI 드림팀 가이드', icon: Bot, view: { name: 'ai-team-guide' } },
       { key: 'app-install', label: '앱 설치', icon: Download, view: { name: 'app-install' } }
     ]
   },

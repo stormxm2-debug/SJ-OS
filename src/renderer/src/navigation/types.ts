@@ -40,6 +40,7 @@ export type View =
   | { name: 'plan-request' }
   | { name: 'files' }
   | { name: 'memo' }
+  | { name: 'ai-team-guide' }
   | { name: 'app-install' }
   | { name: 'app-builder' }
   | { name: 'devprompt' }
