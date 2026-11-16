@@ -33,6 +33,7 @@ import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import TodayContactsPage from '@renderer/pages/TodayContactsPage'
 import PlanRequestPage from '@renderer/pages/PlanRequestPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
+import MemoPage from '@renderer/pages/MemoPage'
 import AppInstallPage from '@renderer/pages/AppInstallPage'
 import UniversalAppBuilderPage from '@renderer/pages/UniversalAppBuilderPage'
 import DeveloperPromptCenterPage from '@renderer/pages/DeveloperPromptCenterPage'
@@ -155,6 +156,8 @@ export default function Router(): JSX.Element {
       return <ManagerContactsPage />
     case 'files':
       return <SharedFilesPage />
+    case 'memo':
+      return <MemoPage />
     case 'app-install':
       return <AppInstallPage />
     case 'app-builder':
