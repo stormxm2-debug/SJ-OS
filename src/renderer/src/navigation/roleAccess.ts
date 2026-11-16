@@ -106,7 +106,11 @@ export function routeCategory(name: ViewName): RouteCategory {
 }
 
 /** 대표(owner) 전용 라우트 — 관리자도 보지 못한다. */
-export const OWNER_ONLY_ROUTES: ViewName[] = ['ai-team-guide']
+export const OWNER_ONLY_ROUTES: ViewName[] = [
+  // 새로 만든 기능은 당분간 대표만 사용. 직원에게 열 때는 이 목록에서 빼면 된다.
+  'memo',
+  'ai-team-guide'
+]
 
 /** Whether a role may open a route. Owner/admin can open everything (except owner-only). */
 export function canAccessRoute(role: UserRole, name: ViewName): boolean {

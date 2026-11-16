@@ -32,13 +32,18 @@ test('비밀번호·키를 넣으라는 안내가 없다', () => {
 })
 
 const ra = await load('src/renderer/src/navigation/roleAccess.ts')
-test('AI 드림팀 가이드는 대표만 열 수 있다 (관리자 포함 차단)', () => {
+test('대표 전용 목록(메모장·AI 드림팀 가이드)은 대표만 열 수 있다', () => {
   assert.equal(ra.canAccessRoute('owner', 'ai-team-guide'), true)
   for (const role of ['admin', 'team-leader', 'fc', 'back-office']) {
     assert.equal(ra.canAccessRoute(role, 'ai-team-guide'), false, role)
   }
 })
 test('다른 화면의 권한은 그대로 (관리자는 기존처럼 전부 열림)', () => {
-  assert.equal(ra.canAccessRoute('admin', 'memo'), true)
-  assert.equal(ra.canAccessRoute('fc', 'memo'), true)
+  assert.equal(ra.canAccessRoute('admin', 'files'), true)
+  assert.equal(ra.canAccessRoute('fc', 'files'), true)
+})
+
+test('메모장도 대표만 열 수 있다 (직원 공개 전까지)', () => {
+  assert.equal(ra.canAccessRoute('owner', 'memo'), true)
+  for (const role of ['admin', 'team-leader', 'fc', 'back-office']) assert.equal(ra.canAccessRoute(role, 'memo'), false, role)
 })
