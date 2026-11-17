@@ -72,6 +72,7 @@ import type { View, ViewName } from '@renderer/navigation/types'
 import { useAppMode, type AppMode } from '@renderer/navigation/AppModeContext'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { DEMO_USERS, ROLE_LABEL, isAdminRole, canAccessRoute, canSeeAdminMenu } from '@renderer/navigation/roleAccess'
+import { pickVisibleMenuItems } from '@renderer/navigation/menuVisibility'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
 import { openPasswordGate } from '@renderer/services/commercial/passwordService'
@@ -95,7 +96,7 @@ type NavItem = {
   /** 외부 사이트 바로가기 — 새 탭(웹)/기본 브라우저(데스크톱)로 연다. */
   href?: string
   /** 화면 이동 대신 실행하는 동작 (예: 인사 정보 / 비밀번호 변경 창 열기) */
-  action?: 'birthday-gate' | 'password-gate'
+  action?: 'birthday-gate' | 'password-gate' | 'jarvis'
 }
 
 type NavGroup = {
@@ -321,6 +322,12 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'my-password', label: '비밀번호 변경', icon: KeyRound, action: 'password-gate' }
 ]
 
+// 메뉴 표시 목록: 요청한 항목만 한 묶음('메뉴')에 넣는다. 나머지는 숨김(화면 자체는 유지).
+const JARVIS_NAV_ITEM: NavItem = { key: 'jarvis', label: '자비스', icon: Bot, action: 'jarvis' }
+const VISIBLE_NAV_GROUPS: NavGroup[] = [
+  { label: '메뉴', items: pickVisibleMenuItems([...NAV_GROUPS.flatMap((g) => g.items), JARVIS_NAV_ITEM]) }
+]
+
 const MODE_LABEL: Record<AppMode, string> = { ceo: '대표 모드', staff: '직원 모드' }
 
 // 임시 숨김(2026-11, 대표 지시) — 화면에서만 치우고 코드는 남겨둔다. 다시 켜려면 true로.
@@ -354,7 +361,8 @@ export default function Sidebar(): JSX.Element {
   }
 
   // Menu for a non-admin role (FC / 팀장) — 팀 현황 라우트 제거로 역할별 차이 없음.
-  const staffNav: NavItem[] = STAFF_NAV_MVP
+  // 직원 모드 메뉴도 같은 표시 목록(자비스 포함)을 쓴다.
+  const staffNav: NavItem[] = pickVisibleMenuItems([...STAFF_NAV_MVP, JARVIS_NAV_ITEM])
 
   // NEW 뱃지: 2번째 방문 직후 리렌더 없이도 뱃지가 바로 사라지도록 구독한다.
   const [, bumpNewFeatures] = useState(0)
@@ -375,6 +383,7 @@ export default function Sidebar(): JSX.Element {
         onClick={() => {
           if (action === 'birthday-gate') openFamilyBirthdayGate()
           else if (action === 'password-gate') openPasswordGate()
+          else if (action === 'jarvis') jarvisService.open()
           else if (href) window.open(href, '_blank', 'noopener')
           else if (view) navigate(view)
         }}
@@ -502,10 +511,10 @@ export default function Sidebar(): JSX.Element {
           // FC / 팀장: staff-only company menu (no developer/release/admin tools).
           <div className="space-y-1">{renderList('mvp', staffNav)}</div>
         ) : admin && mode === 'staff' ? (
-          <div className="space-y-1">{renderList('staff', STAFF_NAV)}</div>
+          <div className="space-y-1">{renderList('staff', pickVisibleMenuItems([...STAFF_NAV, JARVIS_NAV_ITEM]))}</div>
         ) : (
           <div className="space-y-4">
-            {NAV_GROUPS.map((group) => {
+            {VISIBLE_NAV_GROUPS.map((group) => {
               // 총무비서 등 역할별로 막힌 항목은 제거하고, 남는 항목이 없으면 그룹째 숨긴다.
               const items = group.items.filter((it) => !it.view || canAccessRoute(session.role, it.view.name))
               if (items.length === 0) return null

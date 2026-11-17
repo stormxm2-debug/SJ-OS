@@ -7,6 +7,7 @@ import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeat
 import { isBetaMenu } from '@renderer/navigation/menuTiers'
 import {
   MOBILE_MENU,
+  VISIBLE_MOBILE_MENU,
   listFavorites,
   toggleFavorite,
   subscribeFavorites,
@@ -135,7 +136,7 @@ export default function MobileMenuPage({
           </section>
         ) : null}
 
-        {MOBILE_MENU.map((cat) => {
+        {VISIBLE_MOBILE_MENU.map((cat) => {
           // 라우트 항목은 역할별 접근권한으로 필터(총무비서는 막힌 화면만 숨김).
           // 화면 이동이 아닌 동작(자비스·인사정보·비밀번호)은 항상 노출.
           const accessible = orderedItems(cat, prefs).filter((i) => (i.view ? canAccessRoute(session.role, i.view.name) : true))
