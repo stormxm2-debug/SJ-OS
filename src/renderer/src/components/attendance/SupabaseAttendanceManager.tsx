@@ -38,6 +38,8 @@ import AttendanceCamera, { reverseGeocode, type CapturedAttendancePhoto } from '
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import { feeLabel, lateFeeFor } from '@renderer/services/commercial/attendanceLate'
 import { getSupabaseClient, initSupabaseClient } from '@renderer/services/commercial/supabaseClient'
+import { listApprovedJikchulStaffIds, listPausedStaff, type PausedStaff } from '@renderer/services/commercial/attendanceExtraService'
+import { JikchulSubmitCard, AttendanceManageCard } from './AttendanceExtrasPanel'
 
 /** 활성 직원(설계사·팀장) 프로필 — 미출근 계산용. 관리자/팀장 패널에서만 사용. */
 interface StaffLite {
@@ -140,6 +142,8 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   const [staffList, setStaffList] = useState<StaffLite[]>([])
   // 현황판 조회 날짜 (관리자/팀장) — 기본 오늘, ◀▶·달력으로 지난 날짜 출근 현황 조회.
   const [boardDate, setBoardDate] = useState(() => toDateKey(new Date()))
+  const [pausedList, setPausedList] = useState<PausedStaff[]>([]) // 잠시 멈춤 중인 직원
+  const [jikchulIds, setJikchulIds] = useState<Set<string>>(new Set()) // boardDate 승인 직출 staff_id
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000)
@@ -174,6 +178,18 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   // Live sync: re-load instantly when attendance changes on any device.
   useRealtimeSync(RT_TABLES, load)
 
+  // 직출(승인)·멈춤 상태 로드 — 조회 날짜가 바뀌면 그 날짜의 승인 직출을 다시 가져온다.
+  const loadExtras = async (): Promise<void> => {
+    const [p, j] = await Promise.all([listPausedStaff(), listApprovedJikchulStaffIds(boardDate)])
+    if (p.ok) setPausedList(p.items)
+    setJikchulIds(j)
+  }
+  useEffect(() => {
+    void loadExtras()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardDate])
+  const pausedIds = useMemo(() => new Set(pausedList.map((p) => p.staffId)), [pausedList])
+
   const hasCheckIn = myToday.some((r) => r.type === 'check-in')
   const hasCheckOut = myToday.some((r) => r.type === 'check-out')
   const lastRecord = myToday[0]
@@ -201,23 +217,25 @@ export default function SupabaseAttendanceManager(): JSX.Element {
   }, [boardCheckIns, staffList, session.role, session.teamName])
 
   // ─── 출근 현황 명단 (자동 체크: 미출근→지각→근무중→퇴근 순 정렬) ────────
-  type RosterState = 'absent' | 'late' | 'in' | 'out'
+  type RosterState = 'absent' | 'late' | 'in' | 'out' | 'jikchul'
   const roster = useMemo(() => {
-    const scope = session.role === 'team-leader' ? staffList.filter((s) => s.teamId && s.teamId === session.teamName) : staffList
+    const base = session.role === 'team-leader' ? staffList.filter((s) => s.teamId && s.teamId === session.teamName) : staffList
+    const scope = base.filter((s) => !pausedIds.has(s.id)) // 멈춤 중인 직원은 출근 현황에서 제외
     const inBy = new Map(boardCheckIns.map((r) => [r.staffId, r]))
     const outBy = new Map(
       records.filter((r) => r.type === 'check-out' && new Date(r.timestamp).toDateString() === boardKey).map((r) => [r.staffId, r])
     )
-    const order: Record<RosterState, number> = { absent: 0, late: 1, in: 2, out: 3 }
+    const order: Record<RosterState, number> = { absent: 0, late: 1, in: 2, jikchul: 3, out: 4 }
     return scope
       .map((s) => {
         const rin = inBy.get(s.id)
         const rout = outBy.get(s.id)
-        const state: RosterState = !rin ? 'absent' : rout ? 'out' : (rin.lateFee ?? 0) > 0 ? 'late' : 'in'
+        // 출근 기록이 있으면 퇴근/지각/근무중, 없으면 승인 직출이면 '직출'(미출근 아님) 아니면 미출근.
+        const state: RosterState = rin ? (rout ? 'out' : (rin.lateFee ?? 0) > 0 ? 'late' : 'in') : jikchulIds.has(s.id) ? 'jikchul' : 'absent'
         return { staff: s, rin, rout, state }
       })
       .sort((a, b) => order[a.state] - order[b.state] || a.staff.name.localeCompare(b.staff.name, 'ko'))
-  }, [staffList, boardCheckIns, records, boardKey, session.role, session.teamName])
+  }, [staffList, boardCheckIns, records, boardKey, session.role, session.teamName, pausedIds, jikchulIds])
   const monthlyFines = useMemo(() => {
     const map = new Map<string, { name: string; count: number; sum: number }>()
     for (const r of records) {
@@ -444,6 +462,9 @@ export default function SupabaseAttendanceManager(): JSX.Element {
           <ConfirmBar text="오늘 출근 기록이 없습니다. 퇴근을 기록하시겠습니까?" onYes={() => openCamera('check-out')} onNo={() => setConfirm(null)} />
         ) : null}
 
+        {/* 직출 보고 — 전 직원이 제출(승인되면 그날 출근 면제) */}
+        <JikchulSubmitCard staffName={session.name || '직원'} onChanged={() => void loadExtras()} />
+
         {/* 관리자/팀장 — 출근 현황판 (날짜 이동 가능) + 월별 벌금 정산 */}
         {admin ? (
           <div className="mb-4 space-y-3">
@@ -514,6 +535,7 @@ export default function SupabaseAttendanceManager(): JSX.Element {
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-600">지각 {roster.filter((r) => r.state === 'late').length}</span>
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">{boardIsToday ? '근무중' : '출근'} {roster.filter((r) => r.state === 'in').length}</span>
                     <span className="rounded-full bg-sky-50 px-2 py-0.5 text-sky-600">퇴근 {roster.filter((r) => r.state === 'out').length}</span>
+                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-600">직출 {roster.filter((r) => r.state === 'jikchul').length}</span>
                   </div>
                 </div>
                 <div className="space-y-1">
@@ -527,10 +549,10 @@ export default function SupabaseAttendanceManager(): JSX.Element {
                         <span
                           className={[
                             'inline-flex w-14 shrink-0 justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white',
-                            state === 'absent' ? 'bg-rose-500' : state === 'late' ? 'bg-amber-500' : state === 'in' ? 'bg-emerald-500' : 'bg-sky-500'
+                            state === 'absent' ? 'bg-rose-500' : state === 'late' ? 'bg-amber-500' : state === 'in' ? 'bg-emerald-500' : state === 'jikchul' ? 'bg-indigo-500' : 'bg-sky-500'
                           ].join(' ')}
                         >
-                          {state === 'absent' ? '미출근' : state === 'late' ? '지각' : state === 'in' ? (boardIsToday ? '근무중' : '출근') : '퇴근'}
+                          {state === 'absent' ? '미출근' : state === 'late' ? '지각' : state === 'in' ? (boardIsToday ? '근무중' : '출근') : state === 'jikchul' ? '직출' : '퇴근'}
                         </span>
                         <span className="min-w-0 truncate font-semibold text-slate-100">{staff.name}</span>
                         {rin ? (
@@ -556,6 +578,16 @@ export default function SupabaseAttendanceManager(): JSX.Element {
                 ) : null}
               </div>
             ) : null}
+
+            {/* 직출 승인/반려 + 잠시 멈춤 관리 (관리자) */}
+            <AttendanceManageCard
+              staff={staffList.map((s) => ({ id: s.id, name: s.name }))}
+              paused={pausedList}
+              onChanged={() => {
+                void load()
+                void loadExtras()
+              }}
+            />
 
             {monthlyFines.length > 0 ? (
               <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
