@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { pickVisibleMenuItems } from '@renderer/navigation/menuVisibility'
+import { pickHiddenMenuItems, pickVisibleMenuItems } from '@renderer/navigation/menuVisibility'
 import {
   Clock,
   CalendarDays,
@@ -66,6 +66,8 @@ export interface MobileMenuItem {
 export interface MobileMenuCategory {
   title: string
   items: MobileMenuItem[]
+  /** 제목을 눌러 펼치는 칸 (접힌 상태로 시작) */
+  collapsible?: boolean
 }
 
 export const MOBILE_MENU: MobileMenuCategory[] = [
@@ -305,5 +307,6 @@ export function resetMenuPrefs(): void {
 
 /** 모바일 메뉴 표시 목록: 요청한 항목만 한 묶음('메뉴')에. 나머지는 숨김(화면은 유지). */
 export const VISIBLE_MOBILE_MENU: MobileMenuCategory[] = [
-  { title: '메뉴', items: pickVisibleMenuItems(MOBILE_MENU.flatMap((c) => c.items)) }
+  { title: '메뉴', items: pickVisibleMenuItems(MOBILE_MENU.flatMap((c) => c.items)) },
+  { title: '전체 메뉴', collapsible: true, items: pickHiddenMenuItems(MOBILE_MENU.flatMap((c) => c.items)) }
 ]

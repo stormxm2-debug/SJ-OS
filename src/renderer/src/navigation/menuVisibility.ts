@@ -28,3 +28,16 @@ export function pickVisibleMenuItems<T extends { key: string }>(items: T[]): T[]
   }
   return out
 }
+
+/** 표시 목록에 없는 나머지 항목(원래 순서 유지). '전체 메뉴' 칸에 넣는다. 같은 키는 첫 번째만. */
+export function pickHiddenMenuItems<T extends { key: string }>(items: T[]): T[] {
+  const shown = new Set(VISIBLE_MENU_KEYS)
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (const it of items) {
+    if (shown.has(it.key) || seen.has(it.key)) continue
+    seen.add(it.key)
+    out.push(it)
+  }
+  return out
+}
