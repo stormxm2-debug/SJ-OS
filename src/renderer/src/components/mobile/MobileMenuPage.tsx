@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, Star, LogOut, Pencil, Check, ArrowUp, ArrowDown, Eye, EyeOff, RotateCcw } from 'lucide-react'
+import { X, Star, LogOut, Pencil, Check, ArrowUp, ArrowDown, Eye, EyeOff, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { canAccessRoute } from '@renderer/navigation/roleAccess'
 import type { View } from '@renderer/navigation/types'
@@ -53,6 +53,8 @@ export default function MobileMenuPage({
 
   // 메뉴 순서·숨김 (기기별) — 변경 즉시 리렌더
   const [edit, setEdit] = useState(false)
+  // '전체 메뉴' 칸 펼침 상태 (접힌 상태로 시작)
+  const [openCats, setOpenCats] = useState<Record<string, boolean>>({})
   const [prefs, setPrefs] = useState(() => loadMenuPrefs())
   useEffect(() => subscribeMenuPrefs(() => setPrefs(loadMenuPrefs())), [])
 
@@ -145,8 +147,20 @@ export default function MobileMenuPage({
           const orderedKeys = accessible.map((i) => i.key)
           return (
             <section key={cat.title} className="rounded-2xl border border-slate-800 bg-white p-2 shadow-sm">
-              <div className="px-2 pb-1 pt-1.5 text-[11px] font-bold text-slate-500">{cat.title}</div>
-              {items.map((item, i) => {
+              {cat.collapsible ? (
+                <button
+                  type="button"
+                  onClick={() => setOpenCats((c) => ({ ...c, [cat.title]: !c[cat.title] }))}
+                  aria-expanded={!!openCats[cat.title]}
+                  className="flex w-full items-center justify-between px-2 pb-1 pt-1.5 text-left text-[12px] font-bold text-slate-600"
+                >
+                  <span>{cat.title}</span>
+                  {openCats[cat.title] ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </button>
+              ) : (
+                <div className="px-2 pb-1 pt-1.5 text-[11px] font-bold text-slate-500">{cat.title}</div>
+              )}
+              {cat.collapsible && !openCats[cat.title] ? null : items.map((item, i) => {
                 const Icon = item.icon
                 const fav = favs.includes(item.key)
                 const hidden = prefs.hidden.includes(item.key)

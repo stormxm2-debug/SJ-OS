@@ -72,7 +72,7 @@ import type { View, ViewName } from '@renderer/navigation/types'
 import { useAppMode, type AppMode } from '@renderer/navigation/AppModeContext'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { DEMO_USERS, ROLE_LABEL, isAdminRole, canAccessRoute, canSeeAdminMenu } from '@renderer/navigation/roleAccess'
-import { pickVisibleMenuItems } from '@renderer/navigation/menuVisibility'
+import { pickHiddenMenuItems, pickVisibleMenuItems } from '@renderer/navigation/menuVisibility'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
 import { openPasswordGate } from '@renderer/services/commercial/passwordService'
@@ -324,9 +324,27 @@ const STAFF_NAV_MVP: NavItem[] = [
 
 // 메뉴 표시 목록: 요청한 항목만 한 묶음('메뉴')에 넣는다. 나머지는 숨김(화면 자체는 유지).
 const JARVIS_NAV_ITEM: NavItem = { key: 'jarvis', label: '자비스', icon: Bot, action: 'jarvis' }
+const ALL_NAV_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), JARVIS_NAV_ITEM]
 const VISIBLE_NAV_GROUPS: NavGroup[] = [
-  { label: '메뉴', items: pickVisibleMenuItems([...NAV_GROUPS.flatMap((g) => g.items), JARVIS_NAV_ITEM]) }
+  { label: '메뉴', items: pickVisibleMenuItems(ALL_NAV_ITEMS) },
+  // 나머지 메뉴는 접힌 '전체 메뉴' 칸 안에 (누르면 펼쳐진다)
+  { label: '전체 메뉴', collapsible: true, items: pickHiddenMenuItems(ALL_NAV_ITEMS) }
 ]
+
+/** '전체 메뉴' 칸 제목 버튼 (직원 모드용). */
+function MoreMenuToggle({ open, onToggle }: { open: boolean; onToggle: () => void }): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="mt-1 flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-xs font-bold text-slate-600 hover:bg-slate-50"
+    >
+      <span>전체 메뉴</span>
+      <span aria-hidden>{open ? '▾' : '▸'}</span>
+    </button>
+  )
+}
 
 const MODE_LABEL: Record<AppMode, string> = { ceo: '대표 모드', staff: '직원 모드' }
 
@@ -345,9 +363,10 @@ export default function Sidebar(): JSX.Element {
 
   // Advanced/admin groups start collapsed to keep the main menu clean; a group
   // still auto-expands when the active route lives inside it (see render below).
+  const [staffMoreOpen, setStaffMoreOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {}
-    for (const g of NAV_GROUPS) if (g.collapsible) init[g.label] = true
+    for (const g of [...NAV_GROUPS, ...VISIBLE_NAV_GROUPS]) if (g.collapsible) init[g.label] = true
     return init
   })
 
@@ -509,9 +528,17 @@ export default function Sidebar(): JSX.Element {
         </div>
         {!showAdminMenu ? (
           // FC / 팀장: staff-only company menu (no developer/release/admin tools).
-          <div className="space-y-1">{renderList('mvp', staffNav)}</div>
+          <div className="space-y-1">
+            {renderList('mvp', staffNav)}
+            <MoreMenuToggle open={staffMoreOpen} onToggle={() => setStaffMoreOpen((v) => !v)} />
+            {staffMoreOpen ? renderList('mvp-more', pickHiddenMenuItems(STAFF_NAV_MVP)) : null}
+          </div>
         ) : admin && mode === 'staff' ? (
-          <div className="space-y-1">{renderList('staff', pickVisibleMenuItems([...STAFF_NAV, JARVIS_NAV_ITEM]))}</div>
+          <div className="space-y-1">
+            {renderList('staff', pickVisibleMenuItems([...STAFF_NAV, JARVIS_NAV_ITEM]))}
+            <MoreMenuToggle open={staffMoreOpen} onToggle={() => setStaffMoreOpen((v) => !v)} />
+            {staffMoreOpen ? renderList('staff-more', pickHiddenMenuItems(STAFF_NAV)) : null}
+          </div>
         ) : (
           <div className="space-y-4">
             {VISIBLE_NAV_GROUPS.map((group) => {
