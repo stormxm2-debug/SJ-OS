@@ -573,9 +573,6 @@ export default function SupabaseAttendanceManager(): JSX.Element {
                     )
                   })}
                 </div>
-                {boardIsToday ? (
-                  <div className="mt-1.5 text-[10px] text-slate-500">평일 09:05 미출근자는 공지로도 자동 보고됩니다.</div>
-                ) : null}
               </div>
             ) : null}
 
