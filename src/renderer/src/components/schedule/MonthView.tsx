@@ -78,7 +78,27 @@ export default function MonthView({ events, initialDate, notices = [], onSelectD
     const dayEvents = byDay.get(c.key) ?? []
     const dayNotices = noticesByDay.get(c.key) ?? []
     const isToday = c.key === todayKey
-    const dateNumColor = !c.inMonth ? 'text-[#cbd5e1]' : c.dow === 0 ? 'text-rose-500' : c.dow === 6 ? 'text-sky-600' : 'text-[#0e1e3a]'
+    // 날짜 숫자색: 이번 달은 일=빨강·토=파랑·평일=네이비. 다른 달(넘어간 날)은 흐린
+    // 회색으로 낮추되 주말 색감은 살짝 남긴다.
+    const dateNumColor = !c.inMonth
+      ? c.dow === 0
+        ? 'text-rose-300'
+        : c.dow === 6
+          ? 'text-sky-300'
+          : 'text-[#94a3b8]'
+      : c.dow === 0
+        ? 'text-rose-500'
+        : c.dow === 6
+          ? 'text-sky-600'
+          : 'text-[#0e1e3a]'
+    // 칸 배경: 이번 달 흰색(주말은 빨강/파랑 옅은 틴트), 다른 달은 확실히 더 어두운 회색.
+    const cellBg = !c.inMonth
+      ? 'bg-[#e6ebf2] hover:bg-[#dbe2ec]'
+      : c.dow === 0
+        ? 'bg-rose-50/70 hover:bg-rose-100/70'
+        : c.dow === 6
+          ? 'bg-sky-50/70 hover:bg-sky-100/70'
+          : 'bg-white hover:bg-[#f8fafc]'
     const visibleEvents = dayEvents.slice(0, Math.max(0, maxPerCell - Math.min(dayNotices.length, 1)))
     const hiddenCount = dayEvents.length - visibleEvents.length
     return (
@@ -89,7 +109,7 @@ export default function MonthView({ events, initialDate, notices = [], onSelectD
         aria-label={`${c.y}년 ${c.m + 1}월 ${c.d}일, 일정 ${dayEvents.length}건${dayNotices.length ? `, 공지 ${dayNotices.length}건` : ''}`}
         className={[
           'flex min-h-[86px] flex-col gap-0.5 border-b border-r border-[#e2e8f0] p-1 text-left align-top transition sm:min-h-[112px]',
-          c.inMonth ? 'bg-white hover:bg-[#f8fafc]' : 'bg-[#f8fafc]/60 hover:bg-[#f1f5f9]'
+          cellBg
         ].join(' ')}
       >
         <div className="flex items-center justify-between">
@@ -161,7 +181,14 @@ export default function MonthView({ events, initialDate, notices = [], onSelectD
       {/* 요일 헤더 (일→토) */}
       <div className="grid grid-cols-7 border-b border-[#e2e8f0] bg-[#f8fafc]">
         {DOW.map((n, i) => (
-          <div key={n} className={['py-1.5 text-center text-[11px] font-bold sm:text-[12px]', dowColor(i)].join(' ')}>
+          <div
+            key={n}
+            className={[
+              'py-1.5 text-center text-[11px] font-bold sm:text-[12px]',
+              dowColor(i),
+              i === 0 ? 'bg-rose-50' : i === 6 ? 'bg-sky-50' : ''
+            ].join(' ')}
+          >
             {n}
           </div>
         ))}
