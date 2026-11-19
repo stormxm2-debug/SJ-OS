@@ -53,6 +53,7 @@ import MonthView from './MonthView'
 import { upsertScheduleEvent } from '@renderer/services/schedule/eventListState'
 import { buildEventChipLabel } from '@renderer/services/schedule/eventLabel'
 import WeekTimeGrid, { sundayOfKey } from './WeekTimeGrid'
+import { typeStyle } from '@renderer/services/schedule/typeColors'
 import { buildMonthPdf, loadKoreanFontBytes } from '@renderer/services/schedule/calendarPdf'
 import koreanFontUrl from '@renderer/assets/fonts/NanumGothic-Regular.ttf?url'
 import { kstDayKey } from '@renderer/services/schedule/calendarMonth'
@@ -186,8 +187,10 @@ export default function SupabaseScheduleManager(): JSX.Element {
   const [weekOffset, setWeekOffset] = useState(0)
   const [selectedDay, setSelectedDay] = useState<Date>(startOfDay(new Date()))
   const [showMonth, setShowMonth] = useState(false)
-  // 주간 시간표(읽기 전용) — 월간과 별도 경로
+  // 주간 시간표 — 월간과 별도 경로. 일/주 전환 + 빈칸 클릭 생성 + 일정 팝오버.
   const [showTime, setShowTime] = useState(false)
+  const [timeSpan, setTimeSpan] = useState<'week' | 'day'>('week')
+  const [pickedEventId, setPickedEventId] = useState<string | null>(null)
   // 뒤로가기: 월간/시간표는 같은 화면 안의 상태라서, 열 때 히스토리 기록을 남기고
   // 뒤로가기(popstate)가 오면 주간 화면으로 돌아오게 한다. 앱 밖으로 나가지 않는다.
   useEffect(() => {
@@ -510,10 +513,23 @@ export default function SupabaseScheduleManager(): JSX.Element {
     void load()
   }
 
-  // ── 주간 시간표(읽기 전용) — 세로=시간, 가로=요일(일→토). 드래그는 다음 단계. ──
+  // ── 시간표 — 세로=시간, 가로=요일. 일/주 전환 · 빈칸 클릭 생성 · 일정 클릭 팝오버. ──
   if (showTime) {
-    const weekStartKey = sundayOfKey(kstDayKey(selectedDay))
-    const shiftWeek = (delta: number): void => setSelectedDay((d) => addDays(d, delta * 7))
+    const isDay = timeSpan === 'day'
+    const weekStartKey = isDay ? kstDayKey(selectedDay) : sundayOfKey(kstDayKey(selectedDay))
+    const step = isDay ? 1 : 7
+    const shift = (delta: number): void => setSelectedDay((d) => addDays(d, delta * step))
+    const spanLabel = isDay
+      ? `${selectedDay.getMonth() + 1}/${selectedDay.getDate()} (${['일', '월', '화', '수', '목', '금', '토'][selectedDay.getDay()]})`
+      : `${weekStart.getMonth() + 1}/${weekStart.getDate()} ~ ${addDays(weekStart, 6).getMonth() + 1}/${addDays(weekStart, 6).getDate()}`
+    const legend: { type: ScheduleType; label: string }[] = [
+      { type: 'meeting', label: '만남' },
+      { type: 'closing', label: '클로징' },
+      { type: 'ap', label: 'AP' },
+      { type: 'delivery', label: '증전' },
+      { type: 'personal', label: '개인' }
+    ]
+    const picked = pickedEventId ? myEvents.find((e) => e.id === pickedEventId) : undefined
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border border-[#cbd5e1] bg-white p-4 shadow-sm">
@@ -521,19 +537,43 @@ export default function SupabaseScheduleManager(): JSX.Element {
             <div className="flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-[#0e1e3a]" />
               <h2 className="text-base font-bold text-[#0e1e3a]">일정관리</h2>
-              <span className="text-sm font-semibold text-[#94a3b8]">시간표</span>
+              <span className="text-sm font-semibold text-[#94a3b8]">{spanLabel}</span>
             </div>
             <div className="flex w-full min-w-0 items-center justify-end gap-1.5 overflow-x-auto pb-0.5 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
-              <button type="button" onClick={() => shiftWeek(-1)} aria-label="이전 주" className="rounded-lg border border-[#cbd5e1] bg-white p-2 text-[#94a3b8] transition hover:text-[#0e1e3a]">
+              <div className="mr-1 inline-flex overflow-hidden rounded-lg border border-[#cbd5e1]">
+                <button type="button" onClick={() => setTimeSpan('day')} className={`px-2.5 py-2 text-xs font-semibold transition ${isDay ? 'bg-[#0e1e3a] text-white' : 'bg-white text-[#64748b] hover:text-[#0e1e3a]'}`}>
+                  일
+                </button>
+                <button type="button" onClick={() => setTimeSpan('week')} className={`px-2.5 py-2 text-xs font-semibold transition ${!isDay ? 'bg-[#0e1e3a] text-white' : 'bg-white text-[#64748b] hover:text-[#0e1e3a]'}`}>
+                  주
+                </button>
+              </div>
+              <button type="button" onClick={() => shift(-1)} aria-label={isDay ? '이전 날' : '이전 주'} className="rounded-lg border border-[#cbd5e1] bg-white p-2 text-[#94a3b8] transition hover:text-[#0e1e3a]">
                 <ChevronLeft className="h-3.5 w-3.5" />
               </button>
-              <button type="button" onClick={() => shiftWeek(1)} aria-label="다음 주" className="rounded-lg border border-[#cbd5e1] bg-white p-2 text-[#94a3b8] transition hover:text-[#0e1e3a]">
+              <button type="button" onClick={() => shift(1)} aria-label={isDay ? '다음 날' : '다음 주'} className="rounded-lg border border-[#cbd5e1] bg-white p-2 text-[#94a3b8] transition hover:text-[#0e1e3a]">
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
               <button type="button" onClick={() => setShowTime(false)} className="whitespace-nowrap inline-flex items-center gap-1.5 rounded-lg border border-[#cbd5e1] bg-white px-2.5 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a]">
                 월간
               </button>
             </div>
+          </div>
+          {/* 색상 범례 */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            {legend.map((l) => {
+              const s = typeStyle(l.type)
+              return (
+                <span key={l.type} className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#64748b]">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: s.bg, border: `1px solid ${s.border}` }} />
+                  {l.label}
+                </span>
+              )
+            })}
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#64748b]">
+              <span className="inline-block h-[2px] w-3 bg-rose-500" /> 지금
+            </span>
+            <span className="ml-auto text-[11px] text-[#94a3b8]">빈 시간대를 누르면 일정이 등록돼요</span>
           </div>
           {error ? (
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">
@@ -544,12 +584,58 @@ export default function SupabaseScheduleManager(): JSX.Element {
         <WeekTimeGrid
           events={myEvents.map((ev) => ({ id: ev.id, startsAt: ev.startsAt, endsAt: ev.endsAt ?? null, title: ev.title, type: ev.type }))}
           weekStartKey={weekStartKey}
+          dayCount={isDay ? 1 : 7}
           onSelectDay={(key) => {
             const [y, m, d] = key.split('-').map(Number)
             pickDay(new Date(y, m - 1, d))
             setShowTime(false)
           }}
+          onCreateAt={(key, hm) => {
+            const [y, m, d] = key.split('-').map(Number)
+            const day = new Date(y, m - 1, d)
+            setShowTime(false)
+            openCreate('ap', { day, time: hm })
+          }}
+          onSelectEvent={(id) => setPickedEventId(id)}
         />
+        {/* 일정 팝오버 — 블록을 누르면 상세 + 수정/삭제 */}
+        {picked ? (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-4" onClick={() => setPickedEventId(null)}>
+            <div className="w-full max-w-sm rounded-t-2xl border border-[#cbd5e1] bg-white p-4 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start gap-2">
+                <span className="mt-1 inline-block h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: typeStyle(picked.type).bg, border: `1px solid ${typeStyle(picked.type).border}` }} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold text-[#0e1e3a]">{picked.title}</div>
+                  <div className="mt-0.5 text-[12px] tabular-nums text-[#64748b]">
+                    {picked.startsAt ? new Date(picked.startsAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                    {picked.endsAt ? ` ~ ${new Date(picked.endsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  </div>
+                  {picked.customerName || picked.manualCustomerName ? (
+                    <div className="mt-1 text-[12px] text-[#64748b]">고객: {picked.customerName ?? picked.manualCustomerName}</div>
+                  ) : null}
+                  {picked.location ? <div className="mt-0.5 text-[12px] text-[#64748b]">장소: {picked.location}</div> : null}
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ev = picked
+                    setPickedEventId(null)
+                    setShowTime(false)
+                    openEdit(ev)
+                  }}
+                  className="rounded-lg bg-[#0e1e3a] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1e3a5f]"
+                >
+                  수정
+                </button>
+                <button type="button" onClick={() => setPickedEventId(null)} className="rounded-lg border border-[#cbd5e1] bg-white px-3 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a]">
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     )
   }
