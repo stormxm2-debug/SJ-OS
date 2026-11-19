@@ -191,6 +191,8 @@ export default function SupabaseScheduleManager(): JSX.Element {
   const [showTime, setShowTime] = useState(false)
   const [timeSpan, setTimeSpan] = useState<'week' | 'day'>('week')
   const [pickedEventId, setPickedEventId] = useState<string | null>(null)
+  // 월간 달력에서 날짜를 누르면 화면 전환 없이 그 날 일정을 시트로 띄운다.
+  const [monthSheetDay, setMonthSheetDay] = useState<Date | null>(null)
   // 뒤로가기: 월간/시간표는 같은 화면 안의 상태라서, 열 때 히스토리 기록을 남기고
   // 뒤로가기(popstate)가 오면 주간 화면으로 돌아오게 한다. 앱 밖으로 나가지 않는다.
   useEffect(() => {
@@ -358,6 +360,111 @@ export default function SupabaseScheduleManager(): JSX.Element {
       .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
 
   const dayEvents = eventsOf(selectedDay)
+
+  // 하루 일정표 — 시간·이름·위치 한눈에. 관리자는 FC 전체, FC는 본인 일정.
+  const daySheetEvents = (d: Date, all: boolean): ScheduleWithCustomer[] =>
+    (all ? events : myEvents)
+      .filter((ev) => {
+        const t = Date.parse(ev.startsAt)
+        return !Number.isNaN(t) && sameDay(new Date(t), d)
+      })
+      .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+  const fcDayEvents = daySheetEvents(selectedDay, admin)
+
+  const evName = (ev: ScheduleWithCustomer): string => ev.customerName ?? ev.manualCustomerName ?? ev.title ?? typeLabel(ev.type)
+  const evTimeRange = (ev: ScheduleWithCustomer): string =>
+    ev.endsAt && Date.parse(ev.endsAt) > Date.parse(ev.startsAt) ? `${hhmm(ev.startsAt)}~${hhmm(ev.endsAt)}` : hhmm(ev.startsAt)
+
+  /** 시간·이름·위치 한 줄 목록 (일정관리 하루 일정표 / 월간 날짜 시트 공용). */
+  const renderDayRows = (list: ScheduleWithCustomer[], showStaff: boolean): JSX.Element =>
+    list.length === 0 ? (
+      <div className="py-4 text-center text-[12px] text-[#94a3b8]">일정이 없습니다.</div>
+    ) : (
+      <ul className="divide-y divide-[#e2e8f0]">
+        {list.map((ev) => (
+          <li key={ev.id}>
+            <button
+              type="button"
+              onClick={() => setPickedEventId(ev.id)}
+              className="flex w-full items-start gap-3 px-1 py-2 text-left transition hover:bg-[#f1f5f9]"
+            >
+              <span className="w-[86px] shrink-0 text-[12px] font-bold tabular-nums text-[#0e1e3a]">{evTimeRange(ev)}</span>
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  {showStaff ? (
+                    <span className="rounded-full bg-[#0e1e3a] px-1.5 py-0.5 text-[10px] font-bold text-[#e6c877]">{ev.staffName || '담당 미확인'}</span>
+                  ) : null}
+                  <span className={['truncate text-[13px] font-semibold', ev.status === 'done' ? 'text-[#94a3b8] line-through' : 'text-[#0e1e3a]'].join(' ')}>
+                    {evName(ev)}
+                  </span>
+                  <span className="text-[10px] font-medium text-[#94a3b8]">{typeLabel(ev.type)}</span>
+                </span>
+                <span className="mt-0.5 flex items-center gap-1 text-[11px] text-[#64748b]">
+                  <MapPin className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{ev.location || '위치 미정'}</span>
+                </span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    )
+
+  /** 일정 상세 팝오버 — 시간표·월간·하루 일정표에서 공용. 화면 전환 없이 위에 뜬다. */
+  const renderEventPopover = (): JSX.Element | null => {
+    const picked = pickedEventId ? events.find((e) => e.id === pickedEventId) : undefined
+    if (!picked) return null
+    const canEdit = admin || picked.staffId === session.id
+    return (
+      <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-4" onClick={() => setPickedEventId(null)}>
+        <div className="w-full max-w-sm rounded-t-2xl border border-[#cbd5e1] bg-white p-4 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 inline-block h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: typeStyle(picked.type).bg, border: `1px solid ${typeStyle(picked.type).border}` }} />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-bold text-[#0e1e3a]">{picked.title}</div>
+              <div className="mt-0.5 text-[12px] tabular-nums text-[#64748b]">
+                {picked.startsAt ? new Date(picked.startsAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                {picked.endsAt && Date.parse(picked.endsAt) > Date.parse(picked.startsAt) ? ` ~ ${new Date(picked.endsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+              </div>
+              {admin && picked.staffId !== session.id ? <div className="mt-1 text-[12px] text-[#64748b]">담당: {picked.staffName || '미확인'}</div> : null}
+              {picked.customerName || picked.manualCustomerName ? (
+                <div className="mt-1 text-[12px] text-[#64748b]">고객: {picked.customerName ?? picked.manualCustomerName}</div>
+              ) : null}
+              {picked.location ? (
+                <div className="mt-0.5 text-[12px] text-[#64748b]">
+                  장소: {picked.location}
+                  <div className="mt-1">
+                    <MapNavButtons location={picked.location} />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const ev = picked
+                  setPickedEventId(null)
+                  setMonthSheetDay(null)
+                  setShowTime(false)
+                  setShowMonth(false)
+                  openEdit(ev)
+                }}
+                className="rounded-lg bg-[#0e1e3a] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1e3a5f]"
+              >
+                수정
+              </button>
+            ) : null}
+            <button type="button" onClick={() => setPickedEventId(null)} className="rounded-lg border border-[#cbd5e1] bg-white px-3 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a]">
+              닫기
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   const monthLabel = `${selectedDay.getFullYear()}년 ${selectedDay.getMonth() + 1}월`
 
   // ─── 직원별 보기 (관리자) — 이번 주 일정을 직원 이름별로 그룹 ────────────
@@ -529,7 +636,6 @@ export default function SupabaseScheduleManager(): JSX.Element {
       { type: 'delivery', label: '증전' },
       { type: 'personal', label: '개인' }
     ]
-    const picked = pickedEventId ? myEvents.find((e) => e.id === pickedEventId) : undefined
     return (
       <div className="space-y-4">
         <div className="rounded-2xl border border-[#cbd5e1] bg-white p-4 shadow-sm">
@@ -598,44 +704,8 @@ export default function SupabaseScheduleManager(): JSX.Element {
           }}
           onSelectEvent={(id) => setPickedEventId(id)}
         />
-        {/* 일정 팝오버 — 블록을 누르면 상세 + 수정/삭제 */}
-        {picked ? (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-4" onClick={() => setPickedEventId(null)}>
-            <div className="w-full max-w-sm rounded-t-2xl border border-[#cbd5e1] bg-white p-4 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-start gap-2">
-                <span className="mt-1 inline-block h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: typeStyle(picked.type).bg, border: `1px solid ${typeStyle(picked.type).border}` }} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold text-[#0e1e3a]">{picked.title}</div>
-                  <div className="mt-0.5 text-[12px] tabular-nums text-[#64748b]">
-                    {picked.startsAt ? new Date(picked.startsAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                    {picked.endsAt && Date.parse(picked.endsAt) > Date.parse(picked.startsAt) ? ` ~ ${new Date(picked.endsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : ''}
-                  </div>
-                  {picked.customerName || picked.manualCustomerName ? (
-                    <div className="mt-1 text-[12px] text-[#64748b]">고객: {picked.customerName ?? picked.manualCustomerName}</div>
-                  ) : null}
-                  {picked.location ? <div className="mt-0.5 text-[12px] text-[#64748b]">장소: {picked.location}</div> : null}
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const ev = picked
-                    setPickedEventId(null)
-                    setShowTime(false)
-                    openEdit(ev)
-                  }}
-                  className="rounded-lg bg-[#0e1e3a] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1e3a5f]"
-                >
-                  수정
-                </button>
-                <button type="button" onClick={() => setPickedEventId(null)} className="rounded-lg border border-[#cbd5e1] bg-white px-3 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a]">
-                  닫기
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        {/* 일정 팝오버 — 블록을 누르면 상세 + 수정 */}
+        {renderEventPopover()}
       </div>
     )
   }
@@ -701,9 +771,51 @@ export default function SupabaseScheduleManager(): JSX.Element {
           onAnchorChange={(year, monthIndex0) => setMonthAnchor({ year, monthIndex0 })}
           onSelectDay={(d) => {
             pickDay(d)
-            setShowMonth(false)
+            setMonthSheetDay(d)
           }}
         />
+        {/* 날짜 시트 — 화면 전환 없이 그 날 일정(시간·이름·위치)을 바로 보여준다 */}
+        {monthSheetDay ? (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-4" onClick={() => setMonthSheetDay(null)}>
+            <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-t-2xl border border-[#cbd5e1] bg-white p-4 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-sm font-bold text-[#0e1e3a]">
+                  {monthSheetDay.getMonth() + 1}월 {monthSheetDay.getDate()}일 ({DAY_NAMES[monthSheetDay.getDay()]})
+                  <span className="ml-1.5 text-[12px] font-semibold text-[#94a3b8]">{daySheetEvents(monthSheetDay, false).length}건</span>
+                </div>
+                <button type="button" onClick={() => setMonthSheetDay(null)} aria-label="닫기" className="rounded-lg p-1.5 text-[#94a3b8] transition hover:bg-[#f1f5f9] hover:text-[#0e1e3a]">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">{renderDayRows(daySheetEvents(monthSheetDay, false), false)}</div>
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = monthSheetDay
+                    setMonthSheetDay(null)
+                    setShowMonth(false)
+                    openCreate('ap', { day: d })
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg bg-[#0e1e3a] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#1e3a5f]"
+                >
+                  <Plus className="h-3.5 w-3.5" /> 이 날 일정 등록
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMonthSheetDay(null)
+                    setShowMonth(false)
+                  }}
+                  className="rounded-lg border border-[#cbd5e1] bg-white px-3 py-2 text-xs font-semibold text-[#64748b] transition hover:text-[#0e1e3a]"
+                >
+                  주간에서 보기
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {renderEventPopover()}
       </div>
     )
   }
@@ -938,6 +1050,19 @@ export default function SupabaseScheduleManager(): JSX.Element {
         ) : null}
 
       </div>
+
+      {/* 하루 일정표 — 시간·이름·위치 목록 (관리자: FC 전체) */}
+      <div className="rounded-2xl border border-[#cbd5e1] bg-white p-4 shadow-sm">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <div className="text-sm font-bold text-[#0e1e3a]">
+            {selectedDay.getMonth() + 1}월 {selectedDay.getDate()}일 ({DAY_NAMES[selectedDay.getDay()]}) {admin ? 'FC 일정' : '내 일정'}
+            <span className="ml-1.5 text-[12px] font-semibold text-[#94a3b8]">{fcDayEvents.length}건</span>
+          </div>
+          <span className="text-[11px] text-[#94a3b8]">시간 · 이름 · 위치</span>
+        </div>
+        {renderDayRows(fcDayEvents, admin)}
+      </div>
+      {renderEventPopover()}
 
       {/* 자동 확정 카톡 결과 안내 (등록 직후 잠깐 표시) */}
       {autoTalkNote ? (
