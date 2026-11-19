@@ -1026,21 +1026,31 @@ export default function SupabaseScheduleManager(): JSX.Element {
                 날짜 — {form.day.getFullYear()}년 {form.day.getMonth() + 1}월 {form.day.getDate()}일 ({DAY_NAMES[form.day.getDay()]})
               </div>
               <div className="flex w-full min-w-0 items-center justify-end gap-1.5 overflow-x-auto pb-0.5 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
-                <div className="grid flex-1 grid-cols-7 gap-1">
+                <div className="grid flex-1 grid-cols-7 divide-x divide-slate-800 overflow-hidden rounded-lg border border-slate-800 bg-white">
                   {Array.from({ length: 7 }, (_, i) => addDays(mondayOf(form.day), i)).map((d) => {
                     const sel = sameDay(d, form.day)
+                    const dow = d.getDay()
                     return (
                       <button
                         key={ymd(d)}
                         type="button"
                         onClick={() => setForm((f) => ({ ...f, day: d }))}
                         className={[
-                          'rounded-lg border py-1.5 text-center transition',
-                          sel ? 'border-indigo-400 bg-indigo-50 font-bold text-indigo-700' : 'border-slate-800 bg-white text-slate-300 hover:border-indigo-300'
+                          'flex items-baseline justify-center gap-0.5 py-2 text-center transition',
+                          sel ? 'bg-indigo-600' : 'hover:bg-indigo-50'
                         ].join(' ')}
                       >
-                        <div className="text-[9px] text-slate-500">{DAY_NAMES[d.getDay()]}</div>
-                        <div className="text-[12px] tabular-nums">{d.getDate()}</div>
+                        <span
+                          className={[
+                            'text-[10px] font-semibold',
+                            sel ? 'text-indigo-100' : dow === 0 ? 'text-rose-500' : dow === 6 ? 'text-sky-600' : 'text-slate-500'
+                          ].join(' ')}
+                        >
+                          {DAY_NAMES[dow]}
+                        </span>
+                        <span className={['text-[13px] font-bold tabular-nums', sel ? 'text-white' : 'text-slate-200'].join(' ')}>
+                          {d.getDate()}
+                        </span>
                       </button>
                     )
                   })}
