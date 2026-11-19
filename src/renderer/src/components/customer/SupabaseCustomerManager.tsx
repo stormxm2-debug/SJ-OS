@@ -27,7 +27,7 @@ import {
   listCustomers,
   updateCustomer
 } from '@renderer/services/commercial/customerService'
-import { deleteCustomerRecord } from '@renderer/services/commercial/recordDeleteService'
+import { deleteCustomerRecord, deleteCustomerRecords } from '@renderer/services/commercial/recordDeleteService'
 import CustomerDetailModal from '@renderer/components/customer/CustomerDetailModal'
 import {
   bmiOf,
@@ -169,6 +169,28 @@ export default function SupabaseCustomerManager(): JSX.Element {
     }
     await load()
   }
+
+  // 체크 후 일괄 삭제
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const toggleSelect = (id: string): void =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  const removeSelected = async (ids: string[]): Promise<void> => {
+    if (ids.length === 0) return
+    const msg = `선택한 고객 ${ids.length}명을 완전히 삭제할까요?\n\n⚠️ 이 고객들의 상담기록·고객등록 요청·청구 분석도 함께 삭제되고, 일정의 고객 연결이 해제됩니다. 되돌릴 수 없습니다.`
+    if (typeof window !== 'undefined' && !window.confirm(msg)) return
+    setBulkBusy(true)
+    const res = await deleteCustomerRecords(ids)
+    setBulkBusy(false)
+    setError(res.ok ? undefined : res.error)
+    setSelected(new Set())
+    await load()
+  }
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,6 +226,14 @@ export default function SupabaseCustomerManager(): JSX.Element {
         (c.address ?? '').toLowerCase().includes(q)
     )
   }, [scoped, query])
+
+  // 검색/범위가 바뀌면 화면에 없는 고객이 선택된 채 남지 않게 정리
+  useEffect(() => {
+    setSelected(new Set())
+  }, [query, scope])
+  const visibleIds = visible.map((c) => c.id)
+  const selectedVisible = visibleIds.filter((id) => selected.has(id))
+  const allSelected = visibleIds.length > 0 && selectedVisible.length === visibleIds.length
 
   /** 세대 단위 그룹: 세대주(또는 미배정) → 가족 구성원. */
   const households = useMemo(() => {
@@ -938,12 +968,53 @@ export default function SupabaseCustomerManager(): JSX.Element {
           </div>
         ) : (
           <div className="space-y-2.5">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-950 px-3 py-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-[12px] font-semibold text-slate-300">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-rose-600"
+                  checked={allSelected}
+                  onChange={() => setSelected(allSelected ? new Set() : new Set(visibleIds))}
+                />
+                전체 선택 ({visibleIds.length}명)
+              </label>
+              {selectedVisible.length > 0 ? (
+                <>
+                  <span className="text-[12px] font-bold text-rose-600">{selectedVisible.length}명 선택됨</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(new Set())}
+                    className="rounded-lg border border-slate-800 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-200"
+                  >
+                    선택 해제
+                  </button>
+                  <button
+                    type="button"
+                    disabled={bulkBusy}
+                    onClick={() => void removeSelected(selectedVisible)}
+                    className="ml-auto inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-[12px] font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                  >
+                    {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    선택 {selectedVisible.length}명 삭제
+                  </button>
+                </>
+              ) : (
+                <span className="text-[11px] text-slate-500">체크한 고객을 한 번에 삭제할 수 있어요</span>
+              )}
+            </div>
             {households.map(({ head, members }) => {
               const info = parseRrn(head.rrn)
               const bmiVal = bmiOf(head.heightCm, head.weightKg)
               return (
                 <div key={head.id} className="rounded-xl border border-slate-800 bg-white p-3">
                   <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="checkbox"
+                      aria-label={`${head.name} 선택`}
+                      className="h-4 w-4 cursor-pointer accent-rose-600"
+                      checked={selected.has(head.id)}
+                      onChange={() => toggleSelect(head.id)}
+                    />
                     <button type="button" onClick={() => setDetail(head)} className="flex items-center gap-1.5 text-left">
                       <UserRound className="h-4 w-4 text-slate-500" />
                       <span className="text-sm font-bold text-slate-100 hover:text-indigo-700">{head.name}</span>
@@ -1009,6 +1080,13 @@ export default function SupabaseCustomerManager(): JSX.Element {
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {members.map((m) => (
                         <span key={m.id} className="inline-flex items-center overflow-hidden rounded-full bg-slate-950">
+                          <input
+                            type="checkbox"
+                            aria-label={`${m.name} 선택`}
+                            className="ml-2 h-3.5 w-3.5 cursor-pointer accent-rose-600"
+                            checked={selected.has(m.id)}
+                            onChange={() => toggleSelect(m.id)}
+                          />
                           <button
                             type="button"
                             onClick={() => setDetail(m)}

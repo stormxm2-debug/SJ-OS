@@ -31,6 +31,31 @@ export function deleteCustomerRecord(id: string): Promise<{ ok: boolean; error?:
   return deleteRow('customers', id)
 }
 
+/** 여러 고객 한 번에 삭제 — RLS 밖 행은 건너뛰고 실제 삭제 건수를 돌려준다. */
+export async function deleteCustomerRecords(
+  ids: string[]
+): Promise<{ ok: boolean; deleted: number; error?: string }> {
+  if (ids.length === 0) return { ok: true, deleted: 0 }
+  try {
+    await initSupabaseClient()
+    const client = getSupabaseClient() as any
+    if (!client) return { ok: false, deleted: 0, error: '서버 연결 후 삭제할 수 있습니다.' }
+    let deleted = 0
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200)
+      const { data, error } = await client.from('customers').delete().in('id', chunk).select('id')
+      if (error) return { ok: false, deleted, error: error.message }
+      deleted += Array.isArray(data) ? data.length : 0
+    }
+    if (deleted < ids.length) {
+      return { ok: false, deleted, error: `${ids.length - deleted}명은 삭제 권한이 없어 건너뛰었습니다.` }
+    }
+    return { ok: true, deleted }
+  } catch {
+    return { ok: false, deleted: 0, error: '삭제 중 오류가 발생했습니다.' }
+  }
+}
+
 export function deleteConsultationRecord(id: string): Promise<{ ok: boolean; error?: string }> {
   return deleteRow('consultations', id)
 }
