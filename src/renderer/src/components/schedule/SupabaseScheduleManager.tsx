@@ -608,7 +608,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
                   <div className="text-sm font-bold text-[#0e1e3a]">{picked.title}</div>
                   <div className="mt-0.5 text-[12px] tabular-nums text-[#64748b]">
                     {picked.startsAt ? new Date(picked.startsAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                    {picked.endsAt ? ` ~ ${new Date(picked.endsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                    {picked.endsAt && Date.parse(picked.endsAt) > Date.parse(picked.startsAt) ? ` ~ ${new Date(picked.endsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : ''}
                   </div>
                   {picked.customerName || picked.manualCustomerName ? (
                     <div className="mt-1 text-[12px] text-[#64748b]">고객: {picked.customerName ?? picked.manualCustomerName}</div>
@@ -853,7 +853,8 @@ export default function SupabaseScheduleManager(): JSX.Element {
           </button>
           <div className="grid flex-1 grid-cols-7 gap-1.5">
             {weekDays.map((d) => {
-              const cnt = eventsOf(d).length
+              const dayList = eventsOf(d)
+              const cnt = dayList.length
               const isSel = sameDay(d, selectedDay)
               const isToday = sameDay(d, today)
               const dow = d.getDay()
@@ -863,20 +864,47 @@ export default function SupabaseScheduleManager(): JSX.Element {
                   type="button"
                   onClick={() => setSelectedDay(d)}
                   className={[
-                    'rounded-xl border px-1 py-2 text-center transition',
-                    isSel ? 'border-indigo-400 bg-indigo-50' : 'border-slate-800 bg-white hover:border-indigo-300'
+                    'flex flex-col items-stretch rounded-xl border px-1.5 py-2.5 text-center transition',
+                    isSel
+                      ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200'
+                      : isToday
+                        ? 'border-indigo-300 bg-white'
+                        : 'border-slate-800 bg-white hover:border-indigo-300'
                   ].join(' ')}
                 >
-                  <div className={['text-[10px] font-medium', dow === 0 ? 'text-rose-500' : dow === 6 ? 'text-sky-600' : 'text-slate-500'].join(' ')}>
+                  <div className={['text-[11px] font-semibold', dow === 0 ? 'text-rose-500' : dow === 6 ? 'text-sky-600' : 'text-slate-500'].join(' ')}>
                     {DAY_NAMES[dow]}
                   </div>
-                  <div className={['text-sm font-bold tabular-nums', isSel ? 'text-indigo-700' : 'text-slate-200'].join(' ')}>
-                    {d.getDate()}
-                    {isToday ? <span className="ml-0.5 align-middle text-[8px] text-indigo-500">●</span> : null}
+                  <div className="mt-0.5 flex items-center justify-center gap-1">
+                    <span
+                      className={[
+                        'inline-flex h-7 w-7 items-center justify-center rounded-full text-base font-bold tabular-nums',
+                        isToday ? 'bg-indigo-600 text-white' : isSel ? 'text-indigo-700' : 'text-slate-200'
+                      ].join(' ')}
+                    >
+                      {d.getDate()}
+                    </span>
                   </div>
-                  <div className={['text-[10px]', cnt > 0 ? 'font-semibold text-indigo-600' : 'text-slate-600'].join(' ')}>
+                  <div className={['mt-0.5 text-[10px]', cnt > 0 ? 'font-semibold text-indigo-600' : 'text-slate-600'].join(' ')}>
                     {cnt > 0 ? `${cnt}건` : '·'}
                   </div>
+                  {/* 주 전체 한눈에 — 각 날의 일정 미리보기(데스크톱) */}
+                  {cnt > 0 ? (
+                    <div className="mt-1 hidden flex-col gap-0.5 sm:flex">
+                      {dayList.slice(0, 3).map((ev) => (
+                        <span
+                          key={ev.id}
+                          className={[
+                            'truncate rounded px-1 py-0.5 text-left text-[9px] font-medium leading-tight',
+                            ev.status === 'done' ? 'bg-slate-900 text-slate-500 line-through' : 'bg-indigo-50 text-indigo-700'
+                          ].join(' ')}
+                        >
+                          {hhmm(ev.startsAt)} {ev.customerName ?? ev.manualCustomerName ?? typeLabel(ev.type)}
+                        </span>
+                      ))}
+                      {cnt > 3 ? <span className="text-[9px] font-medium text-slate-500">+{cnt - 3}건 더</span> : null}
+                    </div>
+                  ) : null}
                 </button>
               )
             })}
@@ -1322,7 +1350,13 @@ function EventCard({
         )}
         <span className="ml-auto text-[12px] tabular-nums text-slate-500">
           {hhmm(event.startsAt)}
-          {event.endsAt ? ` ~ ${hhmm(event.endsAt)}` : isActive && started ? ' ~ 진행중' : ''}
+          {/* 종료가 시작보다 뒤일 때만 범위 표시 — 완료 처리 시각이 시작보다 빨라 '17:00~16:27'로
+              거꾸로 보이던 문제 방지. 진행 중이면 '진행중'. */}
+          {event.endsAt && Date.parse(event.endsAt) > Date.parse(event.startsAt)
+            ? ` ~ ${hhmm(event.endsAt)}`
+            : isActive && started
+              ? ' ~ 진행중'
+              : ''}
         </span>
         {isDone ? (
           <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">완료</span>
