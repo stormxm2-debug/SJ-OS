@@ -1,4 +1,5 @@
 import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
+import { sendRegistrationPush } from '@renderer/services/push/webPush'
 
 /**
  * 고객등록(보험사) 요청 서비스.
@@ -99,20 +100,26 @@ export async function listRegistrations(): Promise<{ ok: boolean; items: Custome
 }
 
 /** 고객등록 요청 생성 (직원). */
-export async function createRegistration(customerId: string, insurers: string[]): Promise<{ ok: boolean; error?: string }> {
+export async function createRegistration(customerId: string, insurers: string[]): Promise<{ ok: boolean; error?: string; id?: string }> {
   const client = await getClient()
   if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
   const me = await uid(client)
   if (!me) return { ok: false, error: '로그인 후 사용할 수 있습니다.' }
   if (insurers.length === 0) return { ok: false, error: '등록할 보험사를 선택해주세요.' }
   try {
-    const { error } = await client.from('customer_registrations').insert({
-      customer_id: customerId,
-      staff_id: me,
-      insurers
-    })
+    const { data, error } = await client
+      .from('customer_registrations')
+      .insert({
+        customer_id: customerId,
+        staff_id: me,
+        insurers
+      })
+      .select('id')
+      .single()
     if (error) return { ok: false, error: '요청 저장에 실패했습니다.' }
-    return { ok: true }
+    const id = data?.id ? String(data.id) : ''
+    if (id) void sendRegistrationPush(id, 'new')
+    return { ok: true, id }
   } catch {
     return { ok: false, error: '요청 저장에 실패했습니다.' }
   }
@@ -130,6 +137,7 @@ export async function saveRegistrationNote(reg: CustomerRegistration, note: stri
   try {
     const { error } = await client.from('customer_registrations').update({ note: text }).eq('id', reg.id).eq('status', 'requested')
     if (error) return { ok: false, error: '메모 저장에 실패했습니다.' }
+    void sendRegistrationPush(reg.id, 'memo')
     return { ok: true }
   } catch {
     return { ok: false, error: '메모 저장 중 오류가 발생했습니다.' }
@@ -162,6 +170,7 @@ export async function processRegistration(
       .update({ status: action, note: note?.trim() || null, processed_at: new Date().toISOString(), processed_by: me })
       .eq('id', reg.id)
     if (error) return { ok: false, error: '처리 상태 저장에 실패했습니다.' }
+    void sendRegistrationPush(reg.id, action)
     return { ok: true }
   } catch {
     return { ok: false, error: '처리 중 오류가 발생했습니다.' }
