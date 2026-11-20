@@ -1200,10 +1200,8 @@ export function ResultReport({ result, requestId }: { result: Record<string, unk
           <button key={t.id} id={`hr-tab-${t.id}`} type="button" role="tab" aria-selected={tab === t.id} aria-controls="hr-result-panel"
             tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)} onKeyDown={(e) => onTabKey(e, i)}
             className={`flex min-h-14 min-w-0 flex-col items-center justify-center rounded-xl border-2 px-1 py-1.5 text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c6982f] ${tab === t.id ? 'border-[#0e1e3a] border-b-[#c6982f] bg-[#0e1e3a] text-white shadow-sm' : 'border-slate-800 bg-white text-slate-200 hover:bg-slate-950'}`}>
-            {/* 베타 표시는 안내용 배지일 뿐 — 탭 동작·권한은 다른 탭과 같다. 좁은 화면에서는 배지가 다음 줄로 내려간다. */}
             <span className="flex max-w-full flex-wrap items-center justify-center gap-x-1 gap-y-0.5">
               <span className="text-[14px] font-bold leading-tight">{t.label}</span>
-              {t.beta ? <span className={`whitespace-nowrap rounded px-1 text-[10px] font-bold leading-[1.4] ${tab === t.id ? 'bg-[#e6c877] text-[#0e1e3a]' : 'border border-[#c6982f] bg-[#fdf7ea] text-[#7a5c14]'}`}>베타</span> : null}
             </span>
             <span className={`mt-0.5 text-[11px] leading-tight ${tab === t.id ? 'text-[#e6c877]' : 'text-slate-500'}`}>{t.hint}</span>
           </button>

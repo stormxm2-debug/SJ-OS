@@ -126,6 +126,25 @@ export async function createRegistration(customerId: string, insurers: string[])
 }
 
 /**
+ * 처리 되돌리기: 완료·반려를 다시 '대기'로 되돌린다(다시 처리할 수 있게).
+ * 이미 고객 카드에 반영된 보험사는 그대로 남는다(지우지 않음).
+ */
+export async function reopenRegistration(reg: CustomerRegistration): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  try {
+    const { error } = await client
+      .from('customer_registrations')
+      .update({ status: 'requested', processed_at: null, processed_by: null })
+      .eq('id', reg.id)
+    if (error) return { ok: false, error: '되돌리기에 실패했습니다.' }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '되돌리기 중 오류가 발생했습니다.' }
+  }
+}
+
+/**
  * 총무 메모 저장 (상태는 그대로 '대기'). 저장되면 UPDATE 이벤트가 요청 FC 본인에게
  * "총무 메모 도착" 알림으로 전달되어, FC가 다시 연락을 받을 수 있다.
  */
