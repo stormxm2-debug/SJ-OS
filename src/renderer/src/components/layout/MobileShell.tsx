@@ -51,6 +51,7 @@ import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
 import PasswordChangeGate from '@renderer/components/security/PasswordChangeGate'
 import ErrorBoundary from '@renderer/components/system/ErrorBoundary'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
+import BackOfficeDeskPage from '@renderer/pages/BackOfficeDeskPage'
 import StaffManagePage from '@renderer/pages/StaffManagePage'
 import Dashboard from '@renderer/components/dashboard/Dashboard'
 import CommandCenterPage from '@renderer/pages/CommandCenterPage'
@@ -232,6 +233,7 @@ const MOBILE_ADMIN_ROUTES: ViewName[] = [
   'staff-table',
   'family-birthdays',
   'registration-admin',
+  'backoffice-desk',
   'shared-schedule',
   'staff-manage',
   'staff-login',
@@ -336,6 +338,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <StaffTablePage />
     case 'registration-admin':
       return <RegistrationAdminPage />
+    case 'backoffice-desk':
+      return <BackOfficeDeskPage />
     case 'dashboard':
       return <Dashboard />
     case 'assistant':

@@ -114,9 +114,13 @@ export const OWNER_ONLY_ROUTES: ViewName[] = [
   'content-board'
 ]
 
+/** 총무비서 전용 칸(상황판). 대표·관리자·총무비서만 연다. FC·팀장에게는 메뉴에도 안 보인다. */
+export const BACKOFFICE_DESK_ROUTES: ViewName[] = ['backoffice-desk']
+
 /** Whether a role may open a route. Owner/admin can open everything (except owner-only). */
 export function canAccessRoute(role: UserRole, name: ViewName): boolean {
   if (OWNER_ONLY_ROUTES.includes(name)) return role === 'owner'
+  if (BACKOFFICE_DESK_ROUTES.includes(name)) return role === 'owner' || role === 'admin' || role === 'back-office'
   if (role === 'owner' || role === 'admin') return true
   // 총무비서: 명시적으로 막은 라우트만 제외하고 전부 허용(관리자 화면 대부분 + 직원 화면).
   if (role === 'back-office') return !BACKOFFICE_DENY_ROUTES.includes(name)

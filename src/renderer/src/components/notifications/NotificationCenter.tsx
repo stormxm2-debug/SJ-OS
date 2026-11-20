@@ -24,7 +24,7 @@ interface Toast {
   id: number
   title: string
   body: string
-  target: 'registration-admin' | 'customer' | 'leads' | 'claim-assistant' | 'exemptions' | 'today-contacts' | 'family-birthdays'
+  target: 'registration-admin' | 'backoffice-desk' | 'customer' | 'leads' | 'claim-assistant' | 'exemptions' | 'today-contacts' | 'family-birthdays'
 }
 
 let toastSeq = 1
@@ -40,6 +40,9 @@ export default function NotificationCenter(): JSX.Element | null {
   // 고객등록 요청을 처리하는 사람: 대표·관리자·총무
   const reviewerRef = useRef(false)
   reviewerRef.current = isAdminRole(session.role) || isBackOffice(session.role)
+  // 총무비서는 새 요청을 '총무 상황판'으로, 대표·관리자는 '고객등록 관리'로 안내한다.
+  const backOfficeRef = useRef(false)
+  backOfficeRef.current = isBackOffice(session.role)
 
   const push = (t: Omit<Toast, 'id'>): void => {
     const id = toastSeq++
@@ -106,15 +109,26 @@ export default function NotificationCenter(): JSX.Element | null {
         const row = payload?.new ?? {}
         // 새 요청 → 처리자(대표·관리자·총무)에게 (본인이 방금 만든 요청은 제외)
         if (!reviewerRef.current || String(row.staff_id ?? '') === meRef.current) return
+        const target = backOfficeRef.current ? 'backoffice-desk' : 'registration-admin'
         void describe(client, row).then((d) => {
-          if (active) push({ title: '새 고객등록 요청', body: d, target: 'registration-admin' })
+          if (active) push({ title: '새 고객등록 요청', body: d, target })
         })
       })
       channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'customer_registrations' }, (payload: any) => {
         const row = payload?.new ?? {}
         const status = String(row.status ?? '')
+        if (String(row.staff_id ?? '') !== meRef.current) return
+        // 총무 메모 → 요청한 FC 본인에게 (다시 연락 받으라는 알림)
+        const memo = typeof row.note === 'string' ? row.note.trim() : ''
+        if (status === 'requested') {
+          if (!memo) return
+          void custName(client, row.customer_id).then((c) => {
+            if (active) push({ title: '총무 메모 도착 📝', body: `${c} · ${memo}`, target: 'customer' })
+          })
+          return
+        }
         // 처리 결과 → 요청한 직원 본인에게
-        if (String(row.staff_id ?? '') !== meRef.current || (status !== 'done' && status !== 'rejected')) return
+        if (status !== 'done' && status !== 'rejected') return
         void describe(client, row).then((d) => {
           if (active)
             push({
@@ -208,7 +222,7 @@ export default function NotificationCenter(): JSX.Element | null {
           className="pointer-events-auto flex items-start gap-2.5 rounded-2xl border border-slate-800 bg-white p-3 text-left shadow-xl ring-1 ring-black/5 transition hover:border-indigo-300"
         >
           <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
-            {t.target === 'registration-admin' ? (
+            {t.target === 'registration-admin' || t.target === 'backoffice-desk' ? (
               <ClipboardCheck className="h-4 w-4" />
             ) : t.target === 'leads' ? (
               <PhoneCall className="h-4 w-4" />
@@ -245,6 +259,16 @@ export default function NotificationCenter(): JSX.Element | null {
       ))}
     </div>
   )
+}
+
+/** 고객 이름만 짧게 조회 (메모 알림용). */
+async function custName(client: any, customerId: unknown): Promise<string> {
+  try {
+    const { data } = await client.from('customers').select('name').eq('id', customerId).maybeSingle()
+    return data?.name ? String(data.name) : '고객'
+  } catch {
+    return '고객'
+  }
 }
 
 /** 이벤트 행 → 사람이 읽는 한 줄 (고객·요청자 이름 짧게 조회). */

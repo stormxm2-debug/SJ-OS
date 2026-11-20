@@ -326,6 +326,8 @@ const STAFF_NAV_MVP: NavItem[] = [
 const JARVIS_NAV_ITEM: NavItem = { key: 'jarvis', label: '자비스', icon: Bot, action: 'jarvis' }
 const ALL_NAV_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), JARVIS_NAV_ITEM]
 const VISIBLE_NAV_GROUPS: NavGroup[] = [
+  // 총무비서 전용 칸: FC·팀장에게는 canAccessRoute 에서 걸러져 그룹째 숨겨진다.
+  { label: '총무비서', items: [{ key: 'backoffice-desk', label: '총무 상황판 (고객등록)', icon: ClipboardCheck, view: { name: 'backoffice-desk' }, match: ['backoffice-desk'] }] },
   { label: '메뉴', items: pickVisibleMenuItems(ALL_NAV_ITEMS) },
   // 나머지 메뉴는 접힌 '전체 메뉴' 칸 안에 (누르면 펼쳐진다)
   { label: '전체 메뉴', collapsible: true, items: pickHiddenMenuItems(ALL_NAV_ITEMS) }
