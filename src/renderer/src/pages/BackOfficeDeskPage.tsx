@@ -6,6 +6,7 @@ import { isAdminRole, isBackOffice } from '@renderer/navigation/roleAccess'
 import {
   listRegistrations,
   processRegistration,
+  reopenRegistration,
   saveRegistrationNote,
   REGISTRATION_STATUS_LABEL,
   type CustomerRegistration
@@ -90,6 +91,18 @@ export default function BackOfficeDeskPage(): JSX.Element {
 
   const pending = useMemo(() => items.filter((i) => i.status === 'requested'), [items])
   const processed = useMemo(() => items.filter((i) => i.status !== 'requested').slice(0, 30), [items])
+
+  const reopen = async (reg: CustomerRegistration): Promise<void> => {
+    setBusyId(reg.id)
+    const res = await reopenRegistration(reg)
+    setBusyId(null)
+    if (!res.ok) {
+      setError(res.error)
+      return
+    }
+    setError(undefined)
+    void load()
+  }
 
   const act = async (reg: CustomerRegistration, action: 'done' | 'rejected'): Promise<void> => {
     setBusyId(reg.id)
@@ -324,6 +337,16 @@ export default function BackOfficeDeskPage(): JSX.Element {
                   {canProcess ? r.staffName : ''} {r.processedAt ? `· ${fmt(r.processedAt)}` : ''}
                 </span>
                 {r.note ? <span className="basis-full text-[11px] text-slate-500">📝 {r.note}</span> : null}
+                {canProcess ? (
+                  <button
+                    type="button"
+                    onClick={() => void reopen(r)}
+                    disabled={busyId === r.id}
+                    className="ml-auto rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-60"
+                  >
+                    대기로 되돌리기
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>

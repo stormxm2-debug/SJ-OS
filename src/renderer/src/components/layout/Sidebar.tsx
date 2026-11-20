@@ -67,7 +67,6 @@ import {
 import { useEffect, useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeatures'
-import { isBetaMenu } from '@renderer/navigation/menuTiers'
 import type { View, ViewName } from '@renderer/navigation/types'
 import { useAppMode, type AppMode } from '@renderer/navigation/AppModeContext'
 import { useSession } from '@renderer/navigation/SessionContext'
@@ -327,7 +326,7 @@ const JARVIS_NAV_ITEM: NavItem = { key: 'jarvis', label: '자비스', icon: Bot,
 const ALL_NAV_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), JARVIS_NAV_ITEM]
 const VISIBLE_NAV_GROUPS: NavGroup[] = [
   // 고객등록 칸: 총무·대표·관리자는 상황판(처리), FC·팀장은 본인 등록 현황(읽기 전용).
-  { label: '고객등록 · 총무', items: [{ key: 'backoffice-desk', label: '고객등록 현황 (총무 상황판)', icon: ClipboardCheck, view: { name: 'backoffice-desk' }, match: ['backoffice-desk'] }] },
+  { label: '고객등록', items: [{ key: 'backoffice-desk', label: '고객등록 현황', icon: ClipboardCheck, view: { name: 'backoffice-desk' }, match: ['backoffice-desk'] }] },
   { label: '메뉴', items: pickVisibleMenuItems(ALL_NAV_ITEMS) },
   // 나머지 메뉴는 접힌 '전체 메뉴' 칸 안에 (누르면 펼쳐진다)
   { label: '전체 메뉴', collapsible: true, items: pickHiddenMenuItems(ALL_NAV_ITEMS) }
@@ -420,10 +419,6 @@ export default function Sidebar(): JSX.Element {
         {view && isNewFeature(view.name) ? (
           <span className="shrink-0 rounded-full bg-[#e6c877] px-1.5 py-0.5 text-[9px] font-bold leading-none text-[#0e1e3a]">
             NEW
-          </span>
-        ) : isBetaMenu(key) ? (
-          <span className="shrink-0 rounded-full border border-[#c6982f]/60 bg-[#fdf7ea] px-1.5 py-0.5 text-[9px] font-bold leading-none text-[#8a6a1f]">
-            BETA
           </span>
         ) : null}
       </button>
