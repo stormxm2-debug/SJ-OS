@@ -15,6 +15,8 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(title, {
       body: data.body || '',
       tag: data.tag || undefined,
+      // 누르거나 닫을 때까지 화면에 남긴다(자동으로 사라지지 않음).
+      requireInteraction: true,
       icon: '/sj-icon-512.png',
       badge: '/sj-icon-512.png',
       data: { url: data.url || '/' }
