@@ -119,6 +119,24 @@ export async function createRegistration(customerId: string, insurers: string[])
 }
 
 /**
+ * 총무 메모 저장 (상태는 그대로 '대기'). 저장되면 UPDATE 이벤트가 요청 FC 본인에게
+ * "총무 메모 도착" 알림으로 전달되어, FC가 다시 연락을 받을 수 있다.
+ */
+export async function saveRegistrationNote(reg: CustomerRegistration, note: string): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  const text = note.trim()
+  if (!text) return { ok: false, error: '메모 내용을 입력해주세요.' }
+  try {
+    const { error } = await client.from('customer_registrations').update({ note: text }).eq('id', reg.id).eq('status', 'requested')
+    if (error) return { ok: false, error: '메모 저장에 실패했습니다.' }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '메모 저장 중 오류가 발생했습니다.' }
+  }
+}
+
+/**
  * 관리자 처리: 완료 시 고객의 registered_insurers에 병합(중복 제거) 후 상태 갱신.
  * 반려 시 상태만. UPDATE 이벤트가 요청 직원에게 실시간 알림으로 전달된다.
  */
