@@ -5,6 +5,7 @@
  * 나중에 항목을 더 보이게 하려면 여기 키만 추가하면 된다.
  */
 export const VISIBLE_MENU_KEYS: string[] = [
+  'backoffice-desk', // 고객등록 현황(총무 상황판) — 역할별 접근은 canAccessRoute 가 거른다
   'staff-home', // 홈
   'attendance', // 출퇴근
   'schedule', // 오늘일정(일정)
