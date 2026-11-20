@@ -307,8 +307,8 @@ export function resetMenuPrefs(): void {
 
 /** 모바일 메뉴 표시 목록: 요청한 항목만 한 묶음('메뉴')에. 나머지는 숨김(화면은 유지). */
 export const VISIBLE_MOBILE_MENU: MobileMenuCategory[] = [
-  // 총무비서 전용 칸: FC·팀장에게는 MobileMenuPage 의 canAccessRoute 필터에서 숨겨진다.
-  { title: '총무비서', items: [{ key: 'backoffice-desk', label: '총무 상황판 (고객등록)', icon: ClipboardCheck, view: { name: 'backoffice-desk' } }] },
+  // 고객등록 칸: 총무·대표·관리자는 상황판(처리), FC는 본인 등록 현황(읽기 전용).
+  { title: '고객등록 · 총무', items: [{ key: 'backoffice-desk', label: '고객등록 현황 (총무 상황판)', icon: ClipboardCheck, view: { name: 'backoffice-desk' } }] },
   { title: '메뉴', items: pickVisibleMenuItems(MOBILE_MENU.flatMap((c) => c.items)) },
   { title: '전체 메뉴', collapsible: true, items: pickHiddenMenuItems(MOBILE_MENU.flatMap((c) => c.items)) }
 ]
