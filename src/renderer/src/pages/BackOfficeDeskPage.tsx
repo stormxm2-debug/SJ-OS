@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ClipboardCheck, Loader2, AlertTriangle, CheckCircle2, XCircle, RefreshCw, MessageSquarePlus, BellRing } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
+import { useSession } from '@renderer/navigation/SessionContext'
+import { isAdminRole, isBackOffice } from '@renderer/navigation/roleAccess'
 import {
   listRegistrations,
   processRegistration,
@@ -11,11 +13,14 @@ import {
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 
 /**
- * 총무비서 상황판 — FC가 고객등록을 저장하면 여기에 카드로 올라온다.
- *  - [완료]  : 고객 보험사 반영 + 상태 완료 → 요청 FC에게 알림
- *  - [메모]  : 메모를 남기면 요청 FC에게 "총무 메모 도착" 알림 (다시 연락이 가도록)
- *  - [반려]  : 상태 반려 → 요청 FC에게 알림
- * 목록은 실시간 구독으로 자동 갱신된다. 알림 권한이 없으면 버튼으로 켤 수 있다.
+ * 총무 상황판 — FC가 고객등록을 저장하면 여기에 카드로 올라온다.
+ *  - 총무·대표·관리자: [완료] [메모] [반려] 로 처리한다.
+ *    · 완료: 고객 보험사 반영 + 상태 완료 → 요청 FC에게 알림
+ *    · 메모: 저장 시 요청 FC에게 "총무 메모 도착" 알림 (다시 연락 유도)
+ *    · 반려: 상태 반려 → 요청 FC에게 알림
+ *  - FC: 본인이 올린 고객등록의 진행 상황과 총무 메모를 읽기 전용으로 본다.
+ *    (DB 정책상 FC는 본인 요청만 조회되므로 다른 FC 건은 보이지 않는다.)
+ * 목록은 실시간 구독으로 자동 갱신된다.
  */
 
 const RT_TABLES = ['customer_registrations']
@@ -32,6 +37,10 @@ function readPerm(): NotifyPerm {
 }
 
 export default function BackOfficeDeskPage(): JSX.Element {
+  const { session } = useSession()
+  // 처리 권한: 대표·관리자·총무비서. 그 외(FC·팀장)는 본인 건을 읽기 전용으로 본다.
+  const canProcess = isAdminRole(session.role) || isBackOffice(session.role)
+
   const [items, setItems] = useState<CustomerRegistration[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
@@ -96,7 +105,7 @@ export default function BackOfficeDeskPage(): JSX.Element {
   return (
     <div className="space-y-4">
       <Card
-        title={`총무 상황판 · 대기 ${pending.length}건`}
+        title={canProcess ? `총무 상황판 · 대기 ${pending.length}건` : `내 고객등록 현황 · 대기 ${pending.length}건`}
         icon={<ClipboardCheck className="h-4 w-4 text-indigo-600" />}
         action={
           <button
@@ -109,11 +118,20 @@ export default function BackOfficeDeskPage(): JSX.Element {
         }
       >
         <p className="text-[12px] text-slate-500">
-          FC가 고객등록을 저장하면 여기에 카드가 올라옵니다. <b className="text-slate-300">완료</b>하면 고객 보험사에 반영되고,{' '}
-          <b className="text-slate-300">메모</b>를 남기면 요청한 FC에게 알림이 가서 다시 연락을 받습니다.
+          {canProcess ? (
+            <>
+              FC가 고객등록을 저장하면 여기에 카드가 올라옵니다. <b className="text-slate-300">완료</b>하면 고객 보험사에 반영되고,{' '}
+              <b className="text-slate-300">메모</b>를 남기면 요청한 FC에게 알림이 가서 다시 연락을 받습니다.
+            </>
+          ) : (
+            <>
+              내가 등록한 고객의 진행 상황입니다. 총무가 남긴 <b className="text-slate-300">메모</b>는 여기서 확인하고, 필요한 연락은
+              총무와 직접 나누세요.
+            </>
+          )}
         </p>
 
-        {perm !== 'granted' && perm !== 'unsupported' ? (
+        {canProcess && perm !== 'granted' && perm !== 'unsupported' ? (
           <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
             <BellRing className="h-3.5 w-3.5 shrink-0" />
             <span className="min-w-0 flex-1">
@@ -141,18 +159,20 @@ export default function BackOfficeDeskPage(): JSX.Element {
           </div>
         ) : pending.length === 0 ? (
           <div className="mt-3 rounded-xl border border-dashed border-slate-700 py-8 text-center text-[12px] text-slate-500">
-            대기 중인 고객등록이 없습니다. 👏
+            {canProcess ? '대기 중인 고객등록이 없습니다. 👏' : '대기 중인 고객등록이 없습니다.'}
           </div>
         ) : (
           <div className="mt-3 space-y-2">
             {pending.map((r) => {
-              const editing = memoId === r.id
+              const editing = canProcess && memoId === r.id
               return (
                 <div key={r.id} className="rounded-xl border border-amber-200 bg-amber-50/50 p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">대기</span>
                     <span className="text-sm font-bold text-slate-100">{r.customerName || '(고객)'}</span>
-                    <span className="text-[12px] text-slate-500">{r.staffName || '(FC)'} 등록 · {fmt(r.requestedAt)}</span>
+                    <span className="text-[12px] text-slate-500">
+                      {canProcess ? `${r.staffName || '(FC)'} 등록` : '내가 등록'} · {fmt(r.requestedAt)}
+                    </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {r.insurers.map((ins) => (
@@ -162,7 +182,7 @@ export default function BackOfficeDeskPage(): JSX.Element {
                     ))}
                   </div>
                   {r.note && !editing ? (
-                    <p className="mt-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[12px] text-slate-300">📝 최근 메모: {r.note}</p>
+                    <p className="mt-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[12px] text-slate-300">📝 {canProcess ? '최근 메모' : '총무 메모'}: {r.note}</p>
                   ) : null}
 
                   {editing ? (
@@ -196,7 +216,7 @@ export default function BackOfficeDeskPage(): JSX.Element {
                         </button>
                       </div>
                     </div>
-                  ) : (
+                  ) : canProcess ? (
                     <div className="mt-2 flex flex-wrap justify-end gap-1.5">
                       <button
                         type="button"
@@ -226,7 +246,7 @@ export default function BackOfficeDeskPage(): JSX.Element {
                         {busyId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} 완료
                       </button>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               )
             })}
@@ -234,7 +254,7 @@ export default function BackOfficeDeskPage(): JSX.Element {
         )}
       </Card>
 
-      <Card title="처리 이력" icon={<ClipboardCheck className="h-4 w-4 text-emerald-600" />}>
+      <Card title={canProcess ? '처리 이력' : '처리된 요청'} icon={<ClipboardCheck className="h-4 w-4 text-emerald-600" />}>
         {processed.length === 0 ? (
           <p className="text-[12px] text-slate-500">아직 처리 이력이 없습니다.</p>
         ) : (
@@ -252,7 +272,7 @@ export default function BackOfficeDeskPage(): JSX.Element {
                 <span className="font-semibold text-slate-100">{r.customerName}</span>
                 <span className="text-slate-500">{r.insurers.join(' · ')}</span>
                 <span className="ml-auto text-[11px] text-slate-500">
-                  {r.staffName} · {r.processedAt ? fmt(r.processedAt) : ''}
+                  {canProcess ? r.staffName : ''} {r.processedAt ? `· ${fmt(r.processedAt)}` : ''}
                 </span>
                 {r.note ? <span className="basis-full text-[11px] text-slate-500">📝 {r.note}</span> : null}
               </div>

@@ -123,7 +123,7 @@ export default function NotificationCenter(): JSX.Element | null {
         if (status === 'requested') {
           if (!memo) return
           void custName(client, row.customer_id).then((c) => {
-            if (active) push({ title: '총무 메모 도착 📝', body: `${c} · ${memo}`, target: 'customer' })
+            if (active) push({ title: '총무 메모 도착 📝', body: `${c} · ${memo}`, target: 'backoffice-desk' })
           })
           return
         }
