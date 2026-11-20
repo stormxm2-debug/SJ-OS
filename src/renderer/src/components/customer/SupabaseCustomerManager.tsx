@@ -255,6 +255,8 @@ export default function SupabaseCustomerManager(): JSX.Element {
   const openCreate = (): void => {
     setForm(emptyForm())
     setFormErrors([])
+    setRegPick([])
+    setRegMsg(undefined)
     setShowForm(true)
   }
 
@@ -489,6 +491,12 @@ export default function SupabaseCustomerManager(): JSX.Element {
       }
       const headId = headRes.customer.id
       await updateCustomer(headId, { householdId: headId })
+      // 체크한 보험사가 있으면 고객 저장과 함께 총무에게 등록 요청 (실패해도 고객 저장은 유지)
+      if (regPick.length > 0) {
+        const rr = await createRegistration(headId, regPick)
+        setRegMsg(rr.ok ? { ok: true, text: `${regPick.length}개 보험사 고객등록을 총무에게 요청했습니다.` } : { ok: false, text: rr.error ?? '보험사 등록 요청에 실패했습니다.' })
+        setRegPick([])
+      }
       for (const fam of form.family) {
         await createCustomer({
           name: fam.name,
@@ -828,7 +836,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
           </div>
 
           {/* 고객등록 (보험사) — 저장된 고객에서만, 추후 추가 요청도 여기서 */}
-          {form.editingId ? (
+          {!form.joinHouseholdId ? (
             <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
               <div className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-slate-300">
                 <ShieldCheck className="h-4 w-4 text-indigo-600" /> 고객등록 — 등록할 보험사 체크
@@ -857,6 +865,12 @@ export default function SupabaseCustomerManager(): JSX.Element {
                   )
                 })}
               </div>
+              {form.editingId ? null : (
+                <p className="mb-1 text-[11px] text-slate-500">
+                  체크한 보험사는 고객 저장과 함께 총무에게 등록 요청됩니다{regPick.length > 0 ? ` (${regPick.length}개사)` : ''}.
+                </p>
+              )}
+              {form.editingId ? (
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -869,6 +883,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
                 </button>
                 <span className="text-[11px] text-slate-500">관리자가 처리하면 알림으로 알려드립니다 · ✓ = 이미 등록됨</span>
               </div>
+              ) : null}
               {regMsg ? (
                 <p className={['mt-1.5 text-[11px]', regMsg.ok ? 'text-emerald-600' : 'text-rose-600'].join(' ')}>{regMsg.text}</p>
               ) : null}
