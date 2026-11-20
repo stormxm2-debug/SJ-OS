@@ -47,31 +47,46 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const url = Deno.env.get('SUPABASE_URL') ?? ''
   const anon = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  const authHeader = req.headers.get('Authorization') ?? ''
-
-  // 호출자 권한 범위의 클라이언트: 요청 행이 보이는지를 RLS가 판단한다.
-  const caller = createClient(url, anon, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } })
-  const { data: userData } = await caller.auth.getUser()
-  const me = userData?.user?.id
-  if (!me) return json({ error: 'UNAUTHORIZED' }, 401)
-
-  const { data: row } = await caller
-    .from('customer_registrations')
-    .select('id, customer_id, staff_id, status, note')
-    .eq('id', registrationId)
-    .maybeSingle()
-  if (!row) return json({ error: 'NOT_FOUND' }, 404)
-
   const admin = createClient(url, service, { auth: { persistSession: false } })
 
-  // 호출자 역할 확인 (처리자 여부)
-  const { data: me_ } = await admin.from('profiles').select('role').eq('id', me).maybeSingle()
-  const myRole = String(me_?.role ?? '')
-  if (kind === 'new') {
-    if (row.staff_id !== me) return json({ error: 'FORBIDDEN' }, 403)
-  } else if (!REVIEWER_ROLES.includes(myRole)) {
-    return json({ error: 'FORBIDDEN' }, 403)
+  // 내부 호출(DB 트리거): 비밀값이 맞으면 사용자 검사 없이 처리한다.
+  const internalSecret = Deno.env.get('PUSH_INTERNAL_SECRET') ?? ''
+  const isInternal = internalSecret.length > 0 && req.headers.get('x-push-internal') === internalSecret
+
+  let row: { id: string; customer_id: string; staff_id: string; status: string; note: string | null } | null = null
+  if (isInternal) {
+    const { data } = await admin
+      .from('customer_registrations')
+      .select('id, customer_id, staff_id, status, note')
+      .eq('id', registrationId)
+      .maybeSingle()
+    row = data
+  } else {
+    const authHeader = req.headers.get('Authorization') ?? ''
+    // 호출자 권한 범위의 클라이언트: 요청 행이 보이는지를 RLS가 판단한다.
+    const caller = createClient(url, anon, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } })
+    const { data: userData } = await caller.auth.getUser()
+    const me = userData?.user?.id
+    if (!me) return json({ error: 'UNAUTHORIZED' }, 401)
+
+    const { data } = await caller
+      .from('customer_registrations')
+      .select('id, customer_id, staff_id, status, note')
+      .eq('id', registrationId)
+      .maybeSingle()
+    row = data
+    if (!row) return json({ error: 'NOT_FOUND' }, 404)
+
+    // 호출자 역할 확인 (처리자 여부)
+    const { data: meRow } = await admin.from('profiles').select('role').eq('id', me).maybeSingle()
+    const myRole = String(meRow?.role ?? '')
+    if (kind === 'new') {
+      if (row.staff_id !== me) return json({ error: 'FORBIDDEN' }, 403)
+    } else if (!REVIEWER_ROLES.includes(myRole)) {
+      return json({ error: 'FORBIDDEN' }, 403)
+    }
   }
+  if (!row) return json({ error: 'NOT_FOUND' }, 404)
 
   const [cust, staff] = await Promise.all([
     admin.from('customers').select('name').eq('id', row.customer_id).maybeSingle(),
