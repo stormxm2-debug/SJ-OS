@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bell, X, ClipboardCheck, PhoneCall, ShieldCheck, Hourglass, Sunrise, Cake } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
-import { isAdminRole } from '@renderer/navigation/roleAccess'
+import { isAdminRole, isBackOffice } from '@renderer/navigation/roleAccess'
 import { getBackendConfig } from '@renderer/services/commercial/backendConfig'
 import { getSupabaseClient, initSupabaseClient } from '@renderer/services/commercial/supabaseClient'
 import { subscribeLocalNotifications } from '@renderer/services/notifications/localNotify'
@@ -37,6 +37,9 @@ export default function NotificationCenter(): JSX.Element | null {
   const meRef = useRef<string | null>(null)
   const adminRef = useRef(false)
   adminRef.current = isAdminRole(session.role)
+  // 고객등록 요청을 처리하는 사람: 대표·관리자·총무
+  const reviewerRef = useRef(false)
+  reviewerRef.current = isAdminRole(session.role) || isBackOffice(session.role)
 
   const push = (t: Omit<Toast, 'id'>): void => {
     const id = toastSeq++
@@ -101,8 +104,8 @@ export default function NotificationCenter(): JSX.Element | null {
       channel = client.channel(`sj-notify-${++channelSeq}`)
       channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'customer_registrations' }, (payload: any) => {
         const row = payload?.new ?? {}
-        // 새 요청 → 관리자에게 (본인이 방금 만든 요청은 제외)
-        if (!adminRef.current || String(row.staff_id ?? '') === meRef.current) return
+        // 새 요청 → 처리자(대표·관리자·총무)에게 (본인이 방금 만든 요청은 제외)
+        if (!reviewerRef.current || String(row.staff_id ?? '') === meRef.current) return
         void describe(client, row).then((d) => {
           if (active) push({ title: '새 고객등록 요청', body: d, target: 'registration-admin' })
         })
