@@ -11,6 +11,7 @@ import {
   type CustomerRegistration
 } from '@renderer/services/commercial/registrationService'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
+import { ensureWebPushSubscription, webPushSupported } from '@renderer/services/push/webPush'
 
 /**
  * 총무 상황판 — FC가 고객등록을 저장하면 여기에 카드로 올라온다.
@@ -26,6 +27,15 @@ import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 const RT_TABLES = ['customer_registrations']
 
 type NotifyPerm = NotificationPermission | 'unsupported'
+
+const PUSH_REASON: Record<string, string> = {
+  unsupported: '이 브라우저는 웹 푸시를 지원하지 않습니다.',
+  permission: '알림 권한이 허용되지 않았습니다. 주소창의 사이트 설정에서 알림을 허용해 주세요.',
+  login: '로그인 정보를 확인하지 못했습니다. 다시 로그인해 주세요.',
+  subscription: '이 기기의 알림 구독 정보를 만들지 못했습니다.',
+  save: '서버에 알림 구독을 저장하지 못했습니다.',
+  error: '알림 연결 중 오류가 났습니다.'
+}
 
 function readPerm(): NotifyPerm {
   try {
@@ -48,6 +58,24 @@ export default function BackOfficeDeskPage(): JSX.Element {
   const [memoId, setMemoId] = useState<string | null>(null)
   const [memoText, setMemoText] = useState('')
   const [perm, setPerm] = useState<NotifyPerm>(() => readPerm())
+  // 이 기기의 웹 푸시 연결 상태 (앱을 닫아도 알림이 오도록 서버에 구독을 저장했는지)
+  const [pushState, setPushState] = useState<{ ok: boolean; text: string } | null>(null)
+  const [pushBusy, setPushBusy] = useState(false)
+
+  const connectPush = async (): Promise<void> => {
+    setPushBusy(true)
+    const res = await ensureWebPushSubscription()
+    setPushBusy(false)
+    setPushState(
+      res.ok
+        ? { ok: true, text: '이 기기: 백그라운드 알림 연결됨 ✓' }
+        : { ok: false, text: PUSH_REASON[res.reason ?? 'error'] ?? PUSH_REASON.error }
+    )
+  }
+  useEffect(() => {
+    void connectPush()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const load = async (): Promise<void> => {
     const res = await listRegistrations()
@@ -142,6 +170,27 @@ export default function BackOfficeDeskPage(): JSX.Element {
             {perm === 'default' ? (
               <button type="button" onClick={askNotify} className="rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-500">
                 알림 켜기
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {pushState ? (
+          <div
+            className={[
+              'mt-2 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-[12px]',
+              pushState.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'
+            ].join(' ')}
+          >
+            <span className="min-w-0 flex-1">{pushState.text}</span>
+            {!pushState.ok && webPushSupported() ? (
+              <button
+                type="button"
+                onClick={() => void connectPush()}
+                disabled={pushBusy}
+                className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-60"
+              >
+                {pushBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : null} 다시 연결
               </button>
             ) : null}
           </div>
