@@ -6,6 +6,7 @@ import { isAdminRole, isBackOffice } from '@renderer/navigation/roleAccess'
 import { getBackendConfig } from '@renderer/services/commercial/backendConfig'
 import { getSupabaseClient, initSupabaseClient } from '@renderer/services/commercial/supabaseClient'
 import { subscribeLocalNotifications } from '@renderer/services/notifications/localNotify'
+import { ensureWebPushSubscription } from '@renderer/services/push/webPush'
 
 /**
  * 우하단 알림 센터 (카카오톡 스타일 토스트 + OS 알림).
@@ -101,6 +102,9 @@ export default function NotificationCenter(): JSX.Element | null {
       } catch {
         meRef.current = null
       }
+
+      // 알림 권한이 허용된 기기면 웹 푸시 구독을 (재)등록 — 앱을 닫아도 OS 알림이 오도록.
+      void ensureWebPushSubscription()
 
       // 채널 이름은 (재)구독마다 고유하게 — 닫힌 채널의 topic을 재사용하면 일부
       // supabase-js 버전에서 조용히 죽은 채널에 조인된다 (wakeKey 리마운트 시 재현).
