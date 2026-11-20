@@ -9,7 +9,7 @@ import { getFunctionsBaseUrl, getSupabaseAnonKey, getSupabaseClient, initSupabas
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export const WEB_PUSH_PUBLIC_KEY = 'BALngEileybll-UhgpUrFu0T0r8JY_0nMCtUscwBpkM4tnzpVtUvHyqDY8IXpfReXMUvJV-AaOeXd_kfjDyp_30'
+export const WEB_PUSH_PUBLIC_KEY = 'BLLgDCT6IbTSWj4bH4k2i3OG1OP-rGTOsJTqw7WhxJ2SNd6kNq1i6p2xh7eotbUegrW2iboJ7d5bGlpmrpAHdsM'
 
 export type RegistrationPushKind = 'new' | 'memo' | 'done' | 'rejected'
 
