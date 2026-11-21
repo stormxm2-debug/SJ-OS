@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
 import { Clock, Users, CalendarDays, UserRound, Bot, Sparkles, PhoneCall, ChevronRight } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -171,6 +172,8 @@ export default function StaffMvpDashboard(): JSX.Element {
       {/* Recent announcements */}
       <RecentAnnouncementsWidget />
 
+      {JARVIS_UI_VISIBLE ? (
+      <>
       {/* Jarvis quick launch — navy premium strip */}
       <div
         className="relative overflow-hidden rounded-2xl p-4 text-white shadow-sm ring-1 ring-black/5"
@@ -192,6 +195,8 @@ export default function StaffMvpDashboard(): JSX.Element {
           ))}
         </div>
       </div>
+      </>
+      ) : null}
     </div>
   )
 }

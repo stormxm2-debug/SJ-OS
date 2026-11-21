@@ -64,6 +64,7 @@ import {
   EyeOff,
   RotateCcw
 } from 'lucide-react'
+import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
 import { useEffect, useState } from 'react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { isNewFeature, subscribeNewFeatures } from '@renderer/navigation/newFeatures'
@@ -322,8 +323,8 @@ const STAFF_NAV_MVP: NavItem[] = [
 ]
 
 // 메뉴 표시 목록: 요청한 항목만 한 묶음('메뉴')에 넣는다. 나머지는 숨김(화면 자체는 유지).
-const JARVIS_NAV_ITEM: NavItem = { key: 'jarvis', label: '자비스', icon: Bot, action: 'jarvis' }
-const ALL_NAV_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), JARVIS_NAV_ITEM]
+const JARVIS_NAV_LIST: NavItem[] = JARVIS_UI_VISIBLE ? [{ key: 'jarvis', label: '자비스', icon: Bot, action: 'jarvis' }] : []
+const ALL_NAV_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), ...JARVIS_NAV_LIST]
 const VISIBLE_NAV_GROUPS: NavGroup[] = [
   // 고객등록 칸: 총무·대표·관리자는 상황판(처리), FC·팀장은 본인 등록 현황(읽기 전용).
   { label: '고객등록', items: [{ key: 'backoffice-desk', label: '고객등록 현황', icon: ClipboardCheck, view: { name: 'backoffice-desk' }, match: ['backoffice-desk'] }] },
@@ -382,7 +383,7 @@ export default function Sidebar(): JSX.Element {
 
   // Menu for a non-admin role (FC / 팀장) — 팀 현황 라우트 제거로 역할별 차이 없음.
   // 직원 모드 메뉴도 같은 표시 목록(자비스 포함)을 쓴다.
-  const staffNav: NavItem[] = pickVisibleMenuItems([...STAFF_NAV_MVP, JARVIS_NAV_ITEM])
+  const staffNav: NavItem[] = pickVisibleMenuItems([...STAFF_NAV_MVP, ...JARVIS_NAV_LIST])
 
   // NEW 뱃지: 2번째 방문 직후 리렌더 없이도 뱃지가 바로 사라지도록 구독한다.
   const [, bumpNewFeatures] = useState(0)
@@ -532,7 +533,7 @@ export default function Sidebar(): JSX.Element {
           </div>
         ) : admin && mode === 'staff' ? (
           <div className="space-y-1">
-            {renderList('staff', pickVisibleMenuItems([...STAFF_NAV, JARVIS_NAV_ITEM]))}
+            {renderList('staff', pickVisibleMenuItems([...STAFF_NAV, ...JARVIS_NAV_LIST]))}
             <MoreMenuToggle open={staffMoreOpen} onToggle={() => setStaffMoreOpen((v) => !v)} />
             {staffMoreOpen ? renderList('staff-more', pickHiddenMenuItems(STAFF_NAV)) : null}
           </div>
