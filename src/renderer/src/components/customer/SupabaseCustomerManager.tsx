@@ -1142,8 +1142,13 @@ export default function SupabaseCustomerManager(): JSX.Element {
                       </span>
                     ) : null}
                     {head.registeredInsurers.length > 0 ? (
-                      <span className="inline-flex items-center gap-0.5 font-semibold text-emerald-600">
-                        <ShieldCheck className="h-3 w-3" /> 등록 {head.registeredInsurers.length}개사
+                      <span className="inline-flex flex-wrap items-center gap-1 font-semibold text-emerald-600">
+                        <ShieldCheck className="h-3 w-3" /> 등록
+                        {head.registeredInsurers.map((ins) => (
+                          <span key={ins} className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                            {ins}
+                          </span>
+                        ))}
                       </span>
                     ) : null}
                   </div>
