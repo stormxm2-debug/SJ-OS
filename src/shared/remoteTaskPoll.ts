@@ -21,6 +21,13 @@ export interface RemoteRunnerConfig {
   allowedAuthors: string[]
   runnerId: string
   pollSeconds: number
+  /**
+   * 선택(다중 저장소 러너용): 작업 브랜치 접두사. 지정하면 지시의 branch 가 이 접두사로 시작할
+   * 때만 사용하고, 아니면 `<접두사><task>` 로 강제한다. 미지정(SJ-OS 기본)은 기존 동작 그대로.
+   */
+  branchPrefix?: string
+  /** 선택(다중 저장소 러너용): true 면 지시에 `repo: owner/name` 헤더가 반드시 있어야 한다. */
+  requireRepoHeader?: boolean
 }
 
 export const DEFAULT_REMOTE_CONFIG: RemoteRunnerConfig = {
@@ -95,7 +102,8 @@ export async function pollOnce(config: RemoteRunnerConfig, state: ProcessedState
       allowedAuthors: config.allowedAuthors,
       runnerId: config.runnerId,
       repo: config.repo,
-      expectedRepo: config.repo
+      expectedRepo: config.repo,
+      requireRepo: config.requireRepoHeader === true
     })
     if (!v.ok) {
       if (d && d.taskId && v.code !== 'no-directive' && !cur[d.taskId]) {
@@ -113,7 +121,14 @@ export async function pollOnce(config: RemoteRunnerConfig, state: ProcessedState
       continue
     }
 
-    const branch = task.branch && isSafeBranchName(task.branch) ? task.branch : defaultBranchName(task.taskId)
+    const prefix = config.branchPrefix
+    const branch = prefix
+      ? task.branch && isSafeBranchName(task.branch) && task.branch.startsWith(prefix)
+        ? task.branch
+        : `${prefix}${task.taskId}`.slice(0, 120)
+      : task.branch && isSafeBranchName(task.branch)
+        ? task.branch
+        : defaultBranchName(task.taskId)
     // 선점(claim) 먼저 영속화 — 크래시/재시작 시 중복 실행 방지.
     cur = withProcessed(cur, { taskId: task.taskId, status: 'claimed', updatedAt: deps.now(), branch })
     await deps.saveState(cur)
