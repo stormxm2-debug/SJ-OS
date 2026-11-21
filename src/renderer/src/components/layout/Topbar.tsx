@@ -1,4 +1,4 @@
-import { Bell, Crown, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View } from '@renderer/navigation/types'
@@ -66,19 +66,6 @@ export default function Topbar(): JSX.Element {
         </button>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => navigate({ name: 'approvals' })}
-          className="relative rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
-          aria-label="승인 센터"
-        >
-          <Bell className="h-5 w-5" />
-        </button>
-
-        <div className="flex items-center gap-2 rounded-lg bg-slate-800/70 px-3 py-1.5">
-          <Crown className="h-4 w-4 text-amber-400" />
-          <span className="text-sm font-medium text-slate-200">CEO</span>
-        </div>
       </div>
     </header>
   )
