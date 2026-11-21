@@ -264,6 +264,8 @@ export default function SupabaseScheduleManager(): JSX.Element {
   // 관리자 전용 — 직원별 보기 (이번 주 일정을 직원 이름별 접이식 섹션으로)
   const [byStaff, setByStaff] = useState(false)
   const [staffList, setStaffList] = useState<OverviewStaff[]>([])
+  // 일정 작성자 id → 이름 (서버 일정에는 이름이 없어 프로필로 채운다)
+  const [staffNames, setStaffNames] = useState<Map<string, string>>(new Map())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const [showForm, setShowForm] = useState(false)
@@ -329,6 +331,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
       }
       setCustomers(cRes.customers)
       if (admin) setStaffList(staff.filter((s) => s.role === 'fc' || s.role === 'team-leader'))
+      if (admin) setStaffNames(new Map(staff.map((s) => [s.id, s.name])))
     } catch {
       setError('일정 목록을 새로고침하지 못했습니다. 새로고침 버튼을 눌러 주세요.')
     } finally {
@@ -371,6 +374,8 @@ export default function SupabaseScheduleManager(): JSX.Element {
       .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
   const fcDayEvents = daySheetEvents(selectedDay, admin)
 
+  const staffNameOf = (ev: ScheduleWithCustomer): string =>
+    staffNames.get(ev.staffId) || (ev.staffId === session.id ? session.name ?? '' : '') || (ev.staffName && ev.staffName !== '로컬 사용자' ? ev.staffName : '') || '담당 미확인'
   const evName = (ev: ScheduleWithCustomer): string => ev.customerName ?? ev.manualCustomerName ?? ev.title ?? typeLabel(ev.type)
   const evTimeRange = (ev: ScheduleWithCustomer): string =>
     ev.endsAt && Date.parse(ev.endsAt) > Date.parse(ev.startsAt) ? `${hhmm(ev.startsAt)}~${hhmm(ev.endsAt)}` : hhmm(ev.startsAt)
@@ -392,7 +397,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-1.5">
                   {showStaff ? (
-                    <span className="rounded-full bg-[#0e1e3a] px-1.5 py-0.5 text-[10px] font-bold text-[#e6c877]">{ev.staffName || '담당 미확인'}</span>
+                    <span className="rounded-full bg-[#0e1e3a] px-1.5 py-0.5 text-[10px] font-bold text-[#e6c877]">{staffNameOf(ev)}</span>
                   ) : null}
                   <span className={['truncate text-[13px] font-semibold', ev.status === 'done' ? 'text-[#94a3b8] line-through' : 'text-[#0e1e3a]'].join(' ')}>
                     {evName(ev)}
@@ -426,7 +431,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
                 {picked.startsAt ? new Date(picked.startsAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                 {picked.endsAt && Date.parse(picked.endsAt) > Date.parse(picked.startsAt) ? ` ~ ${new Date(picked.endsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}` : ''}
               </div>
-              {admin && picked.staffId !== session.id ? <div className="mt-1 text-[12px] text-[#64748b]">담당: {picked.staffName || '미확인'}</div> : null}
+              {admin && picked.staffId !== session.id ? <div className="mt-1 text-[12px] text-[#64748b]">담당: {staffNameOf(picked)}</div> : null}
               {picked.customerName || picked.manualCustomerName ? (
                 <div className="mt-1 text-[12px] text-[#64748b]">고객: {picked.customerName ?? picked.manualCustomerName}</div>
               ) : null}
@@ -488,7 +493,7 @@ export default function SupabaseScheduleManager(): JSX.Element {
     // 직원 목록에 없는 작성자(대표 본인 등)도 일정이 있으면 뒤에 표시
     const known = new Set(staffList.map((s) => s.id))
     for (const [id, evs] of byId) {
-      if (!known.has(id)) groups.push({ id, name: evs[0]?.staffName || '(이름없음)', events: evs })
+      if (!known.has(id)) groups.push({ id, name: staffNames.get(id) || evs[0]?.staffName || '(이름없음)', events: evs })
     }
     return groups.sort((a, b) => b.events.length - a.events.length || a.name.localeCompare(b.name, 'ko'))
   }, [byStaff, events, staffList, weekStart])
@@ -1390,6 +1395,8 @@ function EventCard({
 }): JSX.Element {
   const { session } = useSession()
   const [memo, setMemo] = useState(event.memo ?? '')
+  // 메모가 없으면 접어 두고, [미팅 메모 쓰기]를 눌러야 입력칸이 열린다
+  const [memoOpen, setMemoOpen] = useState(Boolean(event.memo?.trim()))
   const [finishing, setFinishing] = useState(false)
   const [analysisNote, setAnalysisNote] = useState<string | undefined>()
 
@@ -1575,14 +1582,36 @@ function EventCard({
         </div>
       ) : null}
 
-      {/* 진행중/당일: 미팅 메모 → 저장=종료 */}
-      {isActive ? (
+      {/* 진행중/당일: 미팅 메모 → 저장=종료 (메모 없으면 접힘) */}
+      {isActive && !memoOpen ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <button type="button" onClick={() => void cancel()} className="text-[11px] text-slate-500 hover:text-rose-600">
+            일정 취소
+          </button>
+          <button
+            type="button"
+            onClick={() => setMemoOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-[12px] font-bold text-emerald-700 transition hover:bg-emerald-50"
+          >
+            <NotebookPen className="h-3.5 w-3.5" /> 미팅 메모 쓰기
+          </button>
+        </div>
+      ) : null}
+      {isActive && memoOpen ? (
         <div className="mt-3">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
-            <NotebookPen className="h-3.5 w-3.5 text-emerald-600" /> 미팅 메모 — 저장하면 이 시각으로 종료됩니다
+          <div className="mb-1 flex items-center justify-between gap-1.5 text-[11px] font-semibold text-slate-300">
+            <span className="inline-flex items-center gap-1.5">
+              <NotebookPen className="h-3.5 w-3.5 text-emerald-600" /> 미팅 메모 — 저장하면 이 시각으로 종료됩니다
+            </span>
+            {!memo.trim() ? (
+              <button type="button" onClick={() => setMemoOpen(false)} className="text-[11px] font-medium text-slate-500 hover:text-slate-300">
+                접기
+              </button>
+            ) : null}
           </div>
           <textarea
             value={memo}
+            autoFocus={!event.memo}
             onChange={(e) => setMemo(e.target.value)}
             placeholder="미팅 내용을 적어주세요. 고객 니즈·금액·다음 약속(예: 다음 주 화요일 저녁)을 적으면 AI 비서가 정리해 드립니다."
             className="h-24 w-full rounded-xl border border-slate-800 bg-white px-3 py-2 text-[13px] leading-6 text-slate-100 focus:outline-none"
