@@ -117,6 +117,8 @@ export default function PerformancePage(): JSX.Element {
   const { session } = useSession()
   const role = session.role
   const isAdmin = role === 'owner' || role === 'admin'
+  // 총무비서(back-office)도 매출 엑셀 업로드 가능 (RLS: source='excel' 쓰기 허용).
+  const canUploadExcel = isAdmin || role === 'back-office'
 
   const [month, setMonth] = useState(currentMonth())
   const [entries, setEntries] = useState<ContractEntry[]>([])
@@ -281,7 +283,7 @@ export default function PerformancePage(): JSX.Element {
       )}
 
       {/* 관리자: 엑셀 업로드 */}
-      {isAdmin ? <AdminExcelUpload month={month} onApplied={load} /> : null}
+      {canUploadExcel ? <AdminExcelUpload month={month} onApplied={load} /> : null}
     </div>
   )
 }
