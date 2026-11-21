@@ -167,7 +167,7 @@ export async function reopenRegistration(reg: CustomerRegistration): Promise<{ o
 }
 
 /**
- * 총무 메모 저장 (상태는 그대로 '대기'). 저장되면 UPDATE 이벤트가 요청 FC 본인에게
+ * 총무 메모 저장 (상태는 그대로 — 대기·완료·반려 모두 가능). 저장되면 UPDATE 이벤트가 요청 FC 본인에게
  * "총무 메모 도착" 알림으로 전달되어, FC가 다시 연락을 받을 수 있다.
  */
 export async function saveRegistrationNote(reg: CustomerRegistration, note: string): Promise<{ ok: boolean; error?: string }> {
@@ -176,7 +176,7 @@ export async function saveRegistrationNote(reg: CustomerRegistration, note: stri
   const text = note.trim()
   if (!text) return { ok: false, error: '메모 내용을 입력해주세요.' }
   try {
-    const { error } = await client.from('customer_registrations').update({ note: text }).eq('id', reg.id).eq('status', 'requested')
+    const { error } = await client.from('customer_registrations').update({ note: text }).eq('id', reg.id)
     if (error) return { ok: false, error: '메모 저장에 실패했습니다.' }
     void sendRegistrationPush(reg.id, 'memo')
     return { ok: true }
