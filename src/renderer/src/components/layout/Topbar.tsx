@@ -1,4 +1,5 @@
 import { Bell, Crown, Sparkles } from 'lucide-react'
+import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View } from '@renderer/navigation/types'
 import { getWorkerById } from '@renderer/data/mockManagement'
@@ -51,6 +52,7 @@ export default function Topbar(): JSX.Element {
 
         <InsurerLinksMenu />
 
+        {JARVIS_UI_VISIBLE ? (
         <button
           type="button"
           onClick={() => {
@@ -62,6 +64,7 @@ export default function Topbar(): JSX.Element {
           <Sparkles className="h-4 w-4 text-[#fcd34d]" />
           자비스
         </button>
+        ) : null}
 
         <button
           type="button"

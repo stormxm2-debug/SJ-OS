@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import Router from '../Router'
@@ -52,7 +53,7 @@ export default function AppShell(): JSX.Element {
       </div>
       {/* 자비스 플로팅 버튼은 대표 지시로 제거 (2026-07) — 자비스는 대시보드
           빠른 실행/단축키로 열 수 있고, 패널 자체는 유지된다. */}
-      <JarvisPanel />
+      {JARVIS_UI_VISIBLE ? <JarvisPanel /> : null}
       {/* 박수 두 번으로 자비스 열기 (옵트인) — 설정 ON일 때만 마이크 감지 */}
       {/* '박수로 자비스 열기' 플로팅 핀 — 대표 지시(2026-11) 임시 숨김. 복구하려면 false→true. */}
       {false && <JarvisClapListener />}

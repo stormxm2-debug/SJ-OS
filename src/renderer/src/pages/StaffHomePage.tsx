@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
 import {
   CalendarDays,
   ClipboardList,
@@ -40,8 +41,7 @@ const QUICK_ACTIONS: QuickAction[] = [
   { key: 'sales-activity', label: '영업활동 입력', icon: <Activity className="h-5 w-5" />, tone: 'from-indigo-500 to-violet-600', onClick: (n) => n({ name: 'sales-activity' }) },
   { key: 'performance', label: '실적 확인', icon: <BarChart3 className="h-5 w-5" />, tone: 'from-emerald-500 to-teal-600', onClick: (n) => n({ name: 'performance' }) },
   { key: 'consultation', label: '상담 준비', icon: <ClipboardList className="h-5 w-5" />, tone: 'from-cyan-500 to-sky-600', onClick: (n) => n({ name: 'consultation' }) },
-  { key: 'insurance-analysis', label: '보험분석 시작', icon: <FileSearch className="h-5 w-5" />, tone: 'from-amber-500 to-orange-600', onClick: (n) => n({ name: 'insurance-analysis' }) },
-  { key: 'jarvis', label: '자비스에게 요청', icon: <Bot className="h-5 w-5" />, tone: 'from-indigo-600 to-blue-700', onClick: () => jarvisService.open() }
+  { key: 'insurance-analysis', label: '보험분석 시작', icon: <FileSearch className="h-5 w-5" />, tone: 'from-amber-500 to-orange-600', onClick: (n) => n({ name: 'insurance-analysis' }) }
 ]
 
 const JARVIS_COMMANDS = [
@@ -91,6 +91,8 @@ export default function StaffHomePage(): JSX.Element {
         </div>
       </Card>
 
+      {JARVIS_UI_VISIBLE ? (
+      <>
       {/* Jarvis recommended commands */}
       <Card title="자비스 추천 명령" icon={<Bot className="h-4 w-4 text-indigo-600" />} action={<span className="text-xs text-slate-500">클릭하면 자비스 입력창에 넣기</span>}>
         <p className="mb-3 text-xs text-slate-500">자비스에게 자연어로 요청할 수 있습니다. 예: 오늘 일정 알려줘 / 이번 달 실적 보여줘</p>
@@ -115,6 +117,8 @@ export default function StaffHomePage(): JSX.Element {
           </div>
         ) : null}
       </Card>
+      </>
+      ) : null}
     </div>
   )
 }

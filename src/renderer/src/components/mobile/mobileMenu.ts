@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
 import { pickHiddenMenuItems, pickVisibleMenuItems } from '@renderer/navigation/menuVisibility'
 import {
   Clock,
@@ -116,8 +117,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' } },
       { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' } },
       { key: 'leads', label: 'DB 배정', icon: ListChecks, view: { name: 'leads' } },
-      { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' } },
-      { key: 'jarvis', label: '자비스', icon: Bot, action: 'jarvis' }
+      { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' } }
     ]
   },
   {

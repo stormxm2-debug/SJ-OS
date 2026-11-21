@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
 import { Home, Clock, UserRound, CalendarDays, Menu, ShieldAlert, RefreshCw, Camera, Loader2 } from 'lucide-react'
 import { captureAndShareElement } from '@renderer/services/share/screenCapture'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -213,7 +214,7 @@ export default function MobileShell(): JSX.Element {
         </button>
       </nav>
 
-      <JarvisPanel />
+      {JARVIS_UI_VISIBLE ? <JarvisPanel /> : null}
       {/* '박수로 자비스 열기' 플로팅 핀 — 대표 지시(2026-11) 임시 숨김. 복구하려면 false→true. */}
       {false && <JarvisClapListener />}
       {/* wakeKey로 함께 리마운트 — 복귀 시 realtime 알림 구독을 새로 맺는다. */}
