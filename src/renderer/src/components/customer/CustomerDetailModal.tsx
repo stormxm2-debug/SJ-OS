@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { UserRound, X, Phone, Pencil, Paperclip, FileText, Image as ImageIcon, ExternalLink, Mic, MessageSquare, Send, Loader2, ImagePlus } from 'lucide-react'
+import { UserRound, X, Phone, Pencil, Paperclip, FileText, Image as ImageIcon, ExternalLink, Mic, MessageSquare, Send, Loader2, ImagePlus, Copy, Check } from 'lucide-react'
 import type { CustomerRecord } from '@shared/commercial/models'
 import { signedUrlsFor } from '@renderer/services/commercial/customerFilesStorage'
 import { parseRrn, bmiOf } from '@renderer/services/commercial/customerValidation'
@@ -21,6 +21,7 @@ export default function CustomerDetailModal({
 }): JSX.Element {
   const [urls, setUrls] = useState<Map<string, string>>(new Map())
   const [mmsOpen, setMmsOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -41,6 +42,15 @@ export default function CustomerDetailModal({
       ? `${customer.heightCm ?? '-'}cm / ${customer.weightKg ?? '-'}kg${bmi ? ` (BMI ${bmi})` : ''}`
       : undefined
 
+  const copyAll = async (): Promise<void> => {
+    const text = buildCustomerText(customer, rrn, heightWeight)
+    const ok = await copyToClipboard(text)
+    if (ok) {
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <div
@@ -53,6 +63,13 @@ export default function CustomerDetailModal({
             <UserRound className="h-4 w-4 text-[#b0821f]" /> 고객 상세
           </h3>
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void copyAll()}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-800 px-2.5 py-1 text-[12px] font-bold text-slate-300 hover:bg-slate-950"
+            >
+              {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />} {copied ? '복사됨' : '전체 복사'}
+            </button>
             {onEdit ? (
               <button
                 type="button"
@@ -205,6 +222,61 @@ function Field({ label, value, wide }: { label: string; value?: string; wide?: b
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s
+}
+
+/** 고객 정보 전체를 복사용 평문 텍스트로 구성 (값이 있는 항목만). */
+function buildCustomerText(
+  c: CustomerRecord,
+  rrn: ReturnType<typeof parseRrn>,
+  heightWeight?: string
+): string {
+  const lines: string[] = []
+  const add = (label: string, value?: string | null): void => {
+    const v = value?.toString().trim()
+    if (v) lines.push(`${label}: ${v}`)
+  }
+  add('이름', c.name)
+  add('전화', c.phone)
+  add('주민번호', c.rrn)
+  add('생년월일', rrn?.birthDate ?? c.birthDate)
+  if (rrn) add('나이/성별', `만 ${rrn.age}세 · ${rrn.gender}`)
+  add('유입경로', c.source)
+  add('관계', c.relation)
+  add('키/몸무게', heightWeight)
+  add('주소', c.address)
+  add('병력', c.medicalHistory)
+  add('메모', c.memo)
+  if (c.tags.length > 0) add('태그', c.tags.join(', '))
+  if (c.registeredInsurers.length > 0) add('등록 보험사', c.registeredInsurers.join(', '))
+  if (c.attachments.length > 0) add('첨부', `${c.attachments.length}건 (${c.attachments.map((a) => a.name).join(', ')})`)
+  add('등록일', new Date(c.createdAt).toLocaleDateString('ko-KR'))
+  return lines.join('\n')
+}
+
+/** 클립보드 복사 — Clipboard API 우선, 실패 시 execCommand 폴백. */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    /* 폴백으로 진행 */
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
 }
 
 /** 고객에게 사진 문자(MMS) 보내기 — 사진(자동압축)+텍스트를 문자로 발송. */
