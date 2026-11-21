@@ -91,7 +91,7 @@ export default function MyDayWidgets(): JSX.Element {
           <ChevronRight className="h-4 w-4 text-white/50" />
         </div>
         <div className="mt-1 text-2xl font-black text-white">{comma(total)}원</div>
-        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-300">
+        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-medium text-white/80">
           <span>생보 {comma(perf?.life ?? 0)}</span>
           <span>손보 {comma(perf?.nonLife ?? 0)}</span>
           <span>
