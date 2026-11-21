@@ -13,6 +13,8 @@ export interface ParsedDirective {
   taskId: string
   runnerId: string
   branch?: string
+  /** 선택: 지시 대상 저장소("owner/name"). 있으면 러너 설정 repo 와 일치해야 한다. */
+  repo?: string
   title: string
   body: string
 }
@@ -23,6 +25,8 @@ export interface DirectiveContext {
   runnerId: string
   repo: string // "owner/name"
   expectedRepo: string // "owner/name"
+  /** true 면 지시에 repo: 헤더가 반드시 있어야 한다(다중 저장소 러너용). */
+  requireRepo?: boolean
 }
 
 export type RejectCode =
@@ -61,6 +65,7 @@ export function defaultBranchName(taskId: string): string {
  *   runner: <runnerId>
  *   title: <짧은 제목>
  *   branch: <선택>
+ *   repo: <선택, owner/name — 있으면 러너 repo 와 일치해야 함>
  *   ---
  *   <작업 범위/완료 기준 본문>
  *   ```
@@ -86,15 +91,20 @@ export function parseTaskDirective(commentBody: string): ParsedDirective | null 
   const runnerId = header.runner ?? ''
   const title = header.title ?? ''
   const branch = header.branch || undefined
+  const repo = header.repo || undefined
   if (!taskId || !runnerId) return null
-  return { taskId, runnerId, title, branch, body }
+  return { taskId, runnerId, title, branch, repo, body }
 }
 
 /** 지시의 작성자·runner·repo·형식을 검증한다(중복 검사는 상태 기반으로 별도). */
 export function validateDirective(d: ParsedDirective | null, ctx: DirectiveContext): ValidationResult {
   if (!d) return { ok: false, code: 'no-directive', reason: 'sj-run 지시 블록 없음' }
   if (!TASK_ID_RE.test(d.taskId)) return { ok: false, code: 'bad-task-id', reason: 'task id 형식 오류(영숫자._- 3~64자)' }
-  if (ctx.repo !== ctx.expectedRepo) return { ok: false, code: 'repo-mismatch', reason: `repo 불일치: ${ctx.repo}` }
+  if (ctx.repo.toLowerCase() !== ctx.expectedRepo.toLowerCase()) return { ok: false, code: 'repo-mismatch', reason: `repo 불일치: ${ctx.repo}` }
+  // 지시 본문의 repo: 헤더(선택) — 있으면 반드시 이 러너의 repo 와 일치(다른 저장소 대상 지시 거부).
+  if (d.repo !== undefined && d.repo.toLowerCase() !== ctx.expectedRepo.toLowerCase())
+    return { ok: false, code: 'repo-mismatch', reason: `지시 repo 불일치: ${d.repo}` }
+  if (ctx.requireRepo && !d.repo) return { ok: false, code: 'missing-fields', reason: 'repo 헤더 필요(owner/name)' }
   if (!ctx.allowedAuthors.map((a) => a.toLowerCase()).includes((ctx.commentAuthor || '').toLowerCase()))
     return { ok: false, code: 'author-not-allowed', reason: `허용되지 않은 작성자: ${ctx.commentAuthor}` }
   if (d.runnerId !== ctx.runnerId) return { ok: false, code: 'runner-mismatch', reason: `이 PC(runner=${ctx.runnerId}) 대상 아님` }
@@ -206,7 +216,19 @@ export interface TaskResult {
   ok: boolean
 }
 
+/**
+ * 게시 텍스트 안의 sj-run 지시 블록 무력화 — 러너의 결과 댓글(허용 작성자 계정으로 게시됨)에
+ * 실행 로그/오류 문구를 통해 sj-run 블록이 섞여 다음 폴링에서 새 작업으로 오인되는 것을 막는다.
+ */
+export function neutralizeDirectives(text: string): string {
+  return String(text ?? '').replace(/```([ \t]*)sj-run/gi, '```$1sj-run-echo')
+}
+
 export function buildResultComment(r: TaskResult): string {
+  return neutralizeDirectives(buildResultCommentRaw(r))
+}
+
+function buildResultCommentRaw(r: TaskResult): string {
   const files = r.changedFiles.slice(0, 40).map((f) => `- \`${f}\``).join('\n')
   const more = r.changedFiles.length > 40 ? `\n…외 ${r.changedFiles.length - 40}개` : ''
   const c = r.checks

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ServerCog, Play, Square, RefreshCw, Save, AlertTriangle } from 'lucide-react'
 import type { RemoteRunnerConfig, RemoteRunnerStatus } from '@shared/remoteTaskPoll'
+import type { RemoteProjectStatus } from '@shared/remoteProjects'
 
 /**
  * 원격 작업 수신 러너(이슈 #76) 설정 화면.
@@ -117,6 +118,92 @@ export default function RemoteRunnerSettingsPage(): JSX.Element {
         <pre className="mt-2 overflow-x-auto rounded-lg bg-slate-950 p-2 text-[11px] text-slate-200">{'```sj-run\ntask: smoke-001\nrunner: ' + (cfg?.runnerId || 'PC-대표-01') + '\ntitle: 스모크 테스트\n---\ndocs/REMOTE_SMOKE.md 파일을 만들어 "ok" 한 줄 작성.\n```'}</pre>
         <p className="mt-2 text-[11px] text-slate-500">실행 결과는 검토용 PR과 이슈 댓글로 자동 게시됩니다. 자격정보·고객정보·전체 로그는 게시하지 않습니다.</p>
       </div>
+
+      <RemoteProjectsSection />
     </div>
   )
 }
+
+type ProjectsApi = {
+  list(): Promise<RemoteProjectStatus[]>
+  setConfig(id: string, patch: { workspace?: string; runnerId?: string; pollSeconds?: number }): Promise<RemoteProjectStatus | null>
+  verify(id: string): Promise<RemoteProjectStatus>
+  start(id: string): Promise<RemoteProjectStatus>
+  stop(id: string): Promise<RemoteProjectStatus>
+}
+function projectsApi(): ProjectsApi | undefined {
+  return typeof window !== 'undefined' ? (window as unknown as { sj?: { remoteProjects?: ProjectsApi } }).sj?.remoteProjects : undefined
+}
+
+/**
+ * 다중 저장소 원격 작업(허용 목록 프로젝트만 — 1단계: SJ AI MARKETING).
+ * repo·이슈·허용 작성자는 코드 허용 목록에서 고정되며 여기서 바꿀 수 없다. 작업 폴더·runner id 만 설정.
+ * 연결 검사(작업 폴더·gh 로그인·비공개 저장소 접근·Claude CLI) 통과 후 '시작'을 눌러야만 수신한다.
+ */
+function RemoteProjectsSection(): JSX.Element | null {
+  const api = projectsApi()
+  const [items, setItems] = useState<RemoteProjectStatus[]>([])
+  const [drafts, setDrafts] = useState<Record<string, { workspace: string; runnerId: string }>>({})
+  const [busy, setBusy] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!api) return
+    void api.list().then((list) => {
+      setItems(list)
+      setDrafts(Object.fromEntries(list.map((p) => [p.id, { workspace: p.workspace, runnerId: p.runnerId }])))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  if (!api) return null
+
+  const update = (next: RemoteProjectStatus | null): void => {
+    if (next) setItems((cur) => cur.map((p) => (p.id === next.id ? next : p)))
+  }
+  const run = async (id: string, label: string, fn: () => Promise<RemoteProjectStatus | null>): Promise<void> => {
+    setBusy(`${id}:${label}`)
+    try {
+      update(await fn())
+    } finally {
+      setBusy(null)
+    }
+  }
+  const field = 'mt-1 w-full rounded-lg border border-slate-700 bg-white px-2 py-2 text-[13px] text-[#0f172a] outline-none focus:border-[#c6982f]'
+  const btn = 'inline-flex items-center gap-1 rounded-lg px-3 py-2 text-[12px] font-semibold disabled:opacity-50'
+
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-white p-5">
+      <div className="flex items-center gap-2 text-[14px] font-bold text-slate-100"><ServerCog className="h-4 w-4 text-[#c6982f]" /> 다른 저장소 원격 작업 (허용 목록)</div>
+      <p className="mt-1 text-[11px] leading-relaxed text-slate-400">SJ-OS 러너와 <b className="text-slate-300">별도 작업 폴더·별도 상태·별도 브랜치</b>로 동작합니다. 저장소·이슈·허용 작성자는 고정이며, 연결 검사 통과 후 <b className="text-slate-300">시작</b>을 눌러야만 수신합니다.</p>
+      {items.map((p) => {
+        const d = drafts[p.id] ?? { workspace: p.workspace, runnerId: p.runnerId }
+        const isBusy = busy !== null
+        return (
+          <div key={p.id} className="mt-4 rounded-xl border border-slate-700 p-3">
+            <div className="flex flex-wrap items-center gap-2 text-[12px]">
+              <b className="text-slate-100">{p.label}</b>
+              <span className="text-slate-400">{p.repo} · 이슈 #{p.issueNumber} · 브랜치 {p.branchPrefix}*</span>
+              <span className={`rounded-full px-2.5 py-1 font-semibold ${p.active ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-200'}`}>{p.connection}</span>
+            </div>
+            {p.problems.length ? <p className="mt-1 text-[11px] text-amber-300">{p.problems.join(' · ')}</p> : null}
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="text-[11px] font-semibold text-slate-400">전용 작업 폴더(SJ-OS 와 다른 경로의 clone)
+                <input value={d.workspace} onChange={(e) => setDrafts({ ...drafts, [p.id]: { ...d, workspace: e.target.value } })} placeholder="C:\Users\...\sj-ai-marketing" className={field} />
+              </label>
+              <label className="text-[11px] font-semibold text-slate-400">이 노트북 runner id
+                <input value={d.runnerId} onChange={(e) => setDrafts({ ...drafts, [p.id]: { ...d, runnerId: e.target.value } })} placeholder="노트북-마케팅-01" className={field} />
+              </label>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" disabled={isBusy} onClick={() => void run(p.id, '저장', () => api.setConfig(p.id, d))} className={`${btn} bg-[#0e1e3a] text-white`}><Save className="h-3.5 w-3.5" /> 저장</button>
+              <button type="button" disabled={isBusy} onClick={() => void run(p.id, '검사', () => api.verify(p.id))} className={`${btn} bg-slate-700 text-slate-200`}><RefreshCw className="h-3.5 w-3.5" /> 연결 검사</button>
+              <button type="button" disabled={isBusy} onClick={() => void run(p.id, '시작', () => api.start(p.id))} className={`${btn} bg-emerald-600 text-white`}><Play className="h-3.5 w-3.5" /> 시작</button>
+              <button type="button" disabled={isBusy} onClick={() => void run(p.id, '정지', () => api.stop(p.id))} className={`${btn} bg-rose-600 text-white`}><Square className="h-3.5 w-3.5" /> 정지</button>
+            </div>
+            {p.lastActions.length ? <p className="mt-2 text-[11px] text-slate-500">최근: {p.lastActions.slice(0, 3).join(', ')}</p> : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
