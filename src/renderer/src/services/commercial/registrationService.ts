@@ -208,7 +208,13 @@ export async function processRegistration(
     }
     const { error } = await client
       .from('customer_registrations')
-      .update({ status: action, note: note?.trim() || null, processed_at: new Date().toISOString(), processed_by: me })
+      // 처리 메모를 따로 넘긴 경우에만 덮어쓴다 — 기존 총무 메모가 완료/반려 시 지워지지 않게.
+      .update({
+        status: action,
+        ...(note?.trim() ? { note: note.trim() } : {}),
+        processed_at: new Date().toISOString(),
+        processed_by: me
+      })
       .eq('id', reg.id)
     if (error) return { ok: false, error: '처리 상태 저장에 실패했습니다.' }
     void sendRegistrationPush(reg.id, action)
