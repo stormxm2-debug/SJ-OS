@@ -133,6 +133,14 @@ export default function NotificationCenter(): JSX.Element | null {
         }
         // 처리 결과 → 요청한 직원 본인에게
         if (status !== 'done' && status !== 'rejected') return
+        // 이미 처리된 건에 총무가 메모만 다시 남긴 경우(처리 시각이 2분 넘게 지남) → 메모 알림
+        const processedMs = Date.parse(String(row.processed_at ?? ''))
+        if (memo && !Number.isNaN(processedMs) && Date.now() - processedMs > 2 * 60 * 1000) {
+          void custName(client, row.customer_id).then((c) => {
+            if (active) push({ title: '총무 메모 도착 📝', body: `${c} · ${memo}`, target: 'backoffice-desk' })
+          })
+          return
+        }
         void describe(client, row).then((d) => {
           if (active)
             push({

@@ -162,7 +162,7 @@ export default function BackOfficeDeskPage(): JSX.Element {
           {canProcess ? (
             <>
               FC가 고객등록을 저장하면 여기에 카드가 올라옵니다. <b className="text-slate-300">완료</b>하면 고객 보험사에 반영되고,{' '}
-              <b className="text-slate-300">메모</b>를 남기면 요청한 FC에게 알림이 가서 다시 연락을 받습니다.
+              <b className="text-slate-300">메모</b>를 남기면(처리된 건 포함) 요청한 FC에게 알림이 가서 다시 연락을 받습니다.
             </>
           ) : (
             <>
@@ -336,16 +336,60 @@ export default function BackOfficeDeskPage(): JSX.Element {
                 <span className="ml-auto text-[11px] text-slate-500">
                   {canProcess ? r.staffName : ''} {r.processedAt ? `· ${fmt(r.processedAt)}` : ''}
                 </span>
-                {r.note ? <span className="basis-full text-[11px] text-slate-500">📝 {r.note}</span> : null}
-                {canProcess ? (
-                  <button
-                    type="button"
-                    onClick={() => void reopen(r)}
-                    disabled={busyId === r.id}
-                    className="ml-auto rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-60"
-                  >
-                    대기로 되돌리기
-                  </button>
+                {r.note && memoId !== r.id ? <span className="basis-full text-[11px] text-slate-500">📝 {r.note}</span> : null}
+                {canProcess && memoId === r.id ? (
+                  <div className="basis-full space-y-1.5">
+                    <textarea
+                      value={memoText}
+                      onChange={(e) => setMemoText(e.target.value)}
+                      rows={2}
+                      maxLength={300}
+                      placeholder="예) 보험사 등록 완료됐어요, 고객에게 안내 부탁 — FC 연락 바람"
+                      className="w-full rounded-lg border border-slate-700 bg-white px-2.5 py-2 text-[12px] text-slate-100 outline-none focus:border-indigo-400"
+                    />
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMemoId(null)
+                          setMemoText('')
+                        }}
+                        className="rounded-lg border border-slate-800 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-400"
+                      >
+                        취소
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void saveMemo(r)}
+                        disabled={busyId === r.id || !memoText.trim()}
+                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-500 disabled:opacity-60"
+                      >
+                        {busyId === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : null} 저장 · FC에게 알림
+                      </button>
+                    </div>
+                  </div>
+                ) : canProcess ? (
+                  <span className="ml-auto flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMemoId(r.id)
+                        setMemoText(r.note ?? '')
+                      }}
+                      disabled={busyId === r.id}
+                      className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-60"
+                    >
+                      <MessageSquarePlus className="h-3 w-3" /> 메모
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void reopen(r)}
+                      disabled={busyId === r.id}
+                      className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-60"
+                    >
+                      대기로 되돌리기
+                    </button>
+                  </span>
                 ) : null}
               </div>
             ))}

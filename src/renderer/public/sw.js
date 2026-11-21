@@ -15,6 +15,8 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(title, {
       body: data.body || '',
       tag: data.tag || undefined,
+      // 같은 건에 메모를 다시 보내도 소리·진동으로 다시 알린다 (조용히 덮어쓰기 방지)
+      renotify: Boolean(data.tag),
       // 누르거나 닫을 때까지 화면에 남긴다(자동으로 사라지지 않음).
       requireInteraction: true,
       icon: '/sj-icon-512.png',
