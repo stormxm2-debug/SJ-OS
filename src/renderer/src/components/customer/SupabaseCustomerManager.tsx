@@ -45,7 +45,7 @@ import {
   signedUrlsFor,
   uploadCustomerFile
 } from '@renderer/services/commercial/customerFilesStorage'
-import { createRegistration, INSURERS } from '@renderer/services/commercial/registrationService'
+import { createRegistration, REGISTRATION_INSURERS } from '@renderer/services/commercial/registrationService'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import { Send, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
@@ -842,7 +842,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
                 <ShieldCheck className="h-4 w-4 text-indigo-600" /> 고객등록 — 등록할 보험사 체크
               </div>
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {INSURERS.map((ins) => {
+                {REGISTRATION_INSURERS.map((ins) => {
                   const done = (customers.find((c) => c.id === form.editingId)?.registeredInsurers ?? []).includes(ins)
                   const picked = regPick.includes(ins)
                   return (

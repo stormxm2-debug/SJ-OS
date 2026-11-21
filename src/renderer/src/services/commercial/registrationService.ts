@@ -27,6 +27,28 @@ export const INSURERS = [
   '기타'
 ] as const
 
+/**
+ * 고객등록 체크박스 전용 — 국내 손해보험사 전체 (+기타).
+ * 대표 지시(2026-11-21): 고객등록 시 손해보험사를 전부 노출한다(생명보험사 제외).
+ * ⚠ 공유 목록 INSURERS(팩스·면제·인수심사·급여·연락처 정렬 등)는 건드리지 않는다.
+ */
+export const REGISTRATION_INSURERS = [
+  '삼성화재',
+  '현대해상',
+  'DB손해보험',
+  'KB손해보험',
+  '메리츠화재',
+  '한화손해보험',
+  '롯데손해보험',
+  '흥국화재',
+  'NH농협손해보험',
+  'MG손해보험',
+  '하나손해보험',
+  'AXA손해보험',
+  '캐롯손해보험',
+  '기타'
+] as const
+
 export type RegistrationStatus = 'requested' | 'done' | 'rejected'
 
 export const REGISTRATION_STATUS_LABEL: Record<RegistrationStatus, string> = {
