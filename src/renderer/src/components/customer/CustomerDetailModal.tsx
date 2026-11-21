@@ -89,7 +89,7 @@ export default function CustomerDetailModal({
         <div className="flex items-center justify-between gap-2 rounded-xl bg-[#0e1e3a] px-4 py-3">
           <div className="min-w-0">
             <div className="truncate text-base font-extrabold text-white">{customer.name}</div>
-            <div className="mt-0.5 text-[12px] text-slate-300">
+            <div className="mt-0.5 text-[12px] font-medium text-white/85">
               {customer.phone || '전화 없음'}
               {rrn ? <span className="ml-2">· 만 {rrn.age}세 · {rrn.gender}</span> : null}
             </div>
