@@ -15,7 +15,9 @@ export default function BrandLogo({
   showWordmark = true,
   showTagline = false,
   wordmarkClassName = 'text-xl',
-  className = ''
+  className = '',
+  onClick,
+  title
 }: {
   markClassName?: string
   showMark?: boolean
@@ -23,9 +25,12 @@ export default function BrandLogo({
   showTagline?: boolean
   wordmarkClassName?: string
   className?: string
+  /** 주면 로고 전체가 버튼이 된다 (예: 클릭 시 홈 이동). */
+  onClick?: () => void
+  title?: string
 }): JSX.Element {
-  return (
-    <div className={['flex items-center gap-2.5', className].join(' ')}>
+  const inner = (
+    <>
       {showMark ? (
         <img
           src={SJ_MARK}
@@ -49,6 +54,22 @@ export default function BrandLogo({
           ) : null}
         </div>
       ) : null}
-    </div>
+    </>
   )
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={title ?? '홈으로'}
+        aria-label={title ?? '홈으로'}
+        className={['flex items-center gap-2.5 rounded-lg transition active:opacity-80', className].join(' ')}
+      >
+        {inner}
+      </button>
+    )
+  }
+
+  return <div className={['flex items-center gap-2.5', className].join(' ')}>{inner}</div>
 }
