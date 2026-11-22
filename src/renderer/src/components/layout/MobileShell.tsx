@@ -127,7 +127,7 @@ export default function MobileShell(): JSX.Element {
       {/* Top bar */}
       <header className="flex shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-[#e6eaf2] bg-white px-3 py-2.5">
         <div className="flex min-w-0 flex-1 items-center">
-          <BrandLogo showMark={false} className="min-w-0" wordmarkClassName="truncate text-[14px]" />
+          <BrandLogo showMark={false} onClick={() => navigate({ name: 'staff-home' })} className="min-w-0" wordmarkClassName="truncate text-[14px]" />
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <a

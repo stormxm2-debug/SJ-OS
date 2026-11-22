@@ -470,7 +470,7 @@ export default function Sidebar(): JSX.Element {
   return (
     <aside className="flex w-64 flex-col border-r border-slate-800 bg-white shadow-sm">
       <div className="flex items-center border-b border-slate-800 px-5 py-5">
-        <BrandLogo markClassName="h-9" wordmarkClassName="text-lg" showTagline />
+        <BrandLogo markClassName="h-9" wordmarkClassName="text-lg" showTagline onClick={() => navigate({ name: 'staff-home' })} />
       </div>
 
       {/* CEO / Staff mode switch — owner/admin only */}
