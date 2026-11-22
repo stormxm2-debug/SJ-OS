@@ -149,6 +149,9 @@ export default function SupabaseCustomerManager(): JSX.Element {
 
   // 고객등록(보험사) 요청 — 수정 화면에서 사용
   const [regPick, setRegPick] = useState<string[]>([])
+  // '기타'를 골랐을 때 직접 입력한 보험사 이름
+  const [regOther, setRegOther] = useState('')
+  const regNames = (): string[] => regPick.map((x) => (x === '기타' && regOther.trim() ? regOther.trim() : x))
   const [regBusy, setRegBusy] = useState(false)
   const [regMsg, setRegMsg] = useState<{ ok: boolean; text: string } | undefined>()
 
@@ -255,7 +258,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
   const openCreate = (): void => {
     setForm(emptyForm())
     setFormErrors([])
-    setRegPick([])
+    setRegPick([]); setRegOther('')
     setRegMsg(undefined)
     setShowForm(true)
   }
@@ -277,7 +280,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
       family: []
     })
     setFormErrors([])
-    setRegPick([])
+    setRegPick([]); setRegOther('')
     setRegMsg(undefined)
     setShowForm(true)
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -287,11 +290,11 @@ export default function SupabaseCustomerManager(): JSX.Element {
     if (!form.editingId || regPick.length === 0) return
     setRegBusy(true)
     setRegMsg(undefined)
-    const res = await createRegistration(form.editingId, regPick)
+    const res = await createRegistration(form.editingId, regNames())
     setRegBusy(false)
     if (res.ok) {
       setRegMsg({ ok: true, text: `${regPick.length}개 보험사 고객등록을 요청했습니다 — 관리자에게 알림이 전송됐어요.` })
-      setRegPick([])
+      setRegPick([]); setRegOther('')
     } else {
       setRegMsg({ ok: false, text: res.error ?? '요청에 실패했습니다.' })
     }
@@ -493,9 +496,9 @@ export default function SupabaseCustomerManager(): JSX.Element {
       await updateCustomer(headId, { householdId: headId })
       // 체크한 보험사가 있으면 고객 저장과 함께 총무에게 등록 요청 (실패해도 고객 저장은 유지)
       if (regPick.length > 0) {
-        const rr = await createRegistration(headId, regPick)
+        const rr = await createRegistration(headId, regNames())
         setRegMsg(rr.ok ? { ok: true, text: `${regPick.length}개 보험사 고객등록을 총무에게 요청했습니다.` } : { ok: false, text: rr.error ?? '보험사 등록 요청에 실패했습니다.' })
-        setRegPick([])
+        setRegPick([]); setRegOther('')
       }
       for (const fam of form.family) {
         await createCustomer({
@@ -865,6 +868,15 @@ export default function SupabaseCustomerManager(): JSX.Element {
                   )
                 })}
               </div>
+              {regPick.includes('기타') ? (
+                <input
+                  value={regOther}
+                  onChange={(e) => setRegOther(e.target.value)}
+                  maxLength={30}
+                  placeholder="보험사 이름을 입력하세요 (예: ○○손해보험)"
+                  className="mb-2 w-full rounded-lg border border-slate-700 bg-white px-2.5 py-1.5 text-[12px] text-slate-100 outline-none focus:border-indigo-400"
+                />
+              ) : null}
               {form.editingId ? null : (
                 <p className="mb-1 text-[11px] text-slate-500">
                   체크한 보험사는 고객 저장과 함께 총무에게 등록 요청됩니다{regPick.length > 0 ? ` (${regPick.length}개사)` : ''}.
