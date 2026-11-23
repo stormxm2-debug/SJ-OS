@@ -38,6 +38,7 @@ export type View =
   | { name: 'referrals' }
   | { name: 'today-contacts' }
   | { name: 'plan-request' }
+  | { name: 'sales-recruiting' }
   | { name: 'files' }
   | { name: 'memo' }
   | { name: 'content-board' }

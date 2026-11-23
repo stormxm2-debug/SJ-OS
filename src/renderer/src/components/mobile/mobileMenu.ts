@@ -107,6 +107,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' } },
       { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' } },
       { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' } },
+      { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' } },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' } },
       { key: 'coverage-analysis', label: '보장분석 정리', icon: ClipboardCheck, view: { name: 'coverage-analysis' } },
       { key: 'hospital-coverage', label: '가입제안서 담보 정리', icon: FileSpreadsheet, view: { name: 'hospital-coverage' } },
