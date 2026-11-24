@@ -33,6 +33,7 @@ import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
 import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import TodayContactsPage from '@renderer/pages/TodayContactsPage'
 import PlanRequestPage from '@renderer/pages/PlanRequestPage'
+import SalesRecruitingListPage from '@renderer/pages/SalesRecruitingListPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import MemoPage from '@renderer/pages/MemoPage'
 import ContentBoardPage from '@renderer/pages/ContentBoardPage'
@@ -156,6 +157,8 @@ export default function Router(): JSX.Element {
       return <TodayContactsPage />
     case 'plan-request':
       return <PlanRequestPage />
+    case 'sales-recruiting':
+      return <SalesRecruitingListPage />
     case 'contacts':
       return <ManagerContactsPage />
     case 'files':
