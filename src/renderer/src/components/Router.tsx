@@ -55,6 +55,7 @@ import StaffManagePage from '@renderer/pages/StaffManagePage'
 import StaffTeamManagementPage from '@renderer/pages/StaffTeamManagementPage'
 import AnnouncementAdminPage from '@renderer/pages/AnnouncementAdminPage'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
+import ConfigStatusPage from '@renderer/pages/ConfigStatusPage'
 import BackOfficeDeskPage from '@renderer/pages/BackOfficeDeskPage'
 import StaffOverviewPage from '@renderer/pages/StaffOverviewPage'
 import StaffTablePage from '@renderer/pages/StaffTablePage'
@@ -208,6 +209,8 @@ export default function Router(): JSX.Element {
       return <AnnouncementAdminPage />
     case 'registration-admin':
       return <RegistrationAdminPage />
+    case 'config-status':
+      return <ConfigStatusPage />
     case 'backoffice-desk':
       return <BackOfficeDeskPage />
     case 'quick-actions':
