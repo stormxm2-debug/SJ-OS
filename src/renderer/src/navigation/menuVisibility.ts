@@ -17,6 +17,16 @@ export const VISIBLE_MENU_KEYS: string[] = [
   'jarvis' // 자비스 (내가 말하는 기능)
 ]
 
+/**
+ * 메뉴 어디에도(메뉴·전체 메뉴, 데스크톱·모바일) 보이지 않게 할 항목 (대표 지시).
+ * 화면(route) 자체는 남겨 둔다 — 다시 보이게 하려면 여기서 키만 빼면 된다.
+ */
+export const REMOVED_MENU_KEYS: string[] = [
+  'salary', // 급여 계산기
+  'sales-activity', // 영업활동
+  'stats-report' // 통계 리포트
+]
+
 /** 항목 목록에서 보이는 것만 골라 VISIBLE_MENU_KEYS 순서로 돌려준다. 같은 키는 첫 번째만. */
 export function pickVisibleMenuItems<T extends { key: string }>(items: T[]): T[] {
   const byKey = new Map<string, T>()
@@ -24,7 +34,7 @@ export function pickVisibleMenuItems<T extends { key: string }>(items: T[]): T[]
   const out: T[] = []
   for (const k of VISIBLE_MENU_KEYS) {
     const hit = byKey.get(k)
-    if (hit) out.push(hit)
+    if (hit && !REMOVED_MENU_KEYS.includes(k)) out.push(hit)
   }
   return out
 }
@@ -32,7 +42,7 @@ export function pickVisibleMenuItems<T extends { key: string }>(items: T[]): T[]
 /** 표시 목록에 없는 나머지 항목(원래 순서 유지). '전체 메뉴' 칸에 넣는다. 같은 키는 첫 번째만. */
 export function pickHiddenMenuItems<T extends { key: string }>(items: T[]): T[] {
   const shown = new Set(VISIBLE_MENU_KEYS)
-  const seen = new Set<string>()
+  const seen = new Set<string>(REMOVED_MENU_KEYS)
   const out: T[] = []
   for (const it of items) {
     if (shown.has(it.key) || seen.has(it.key)) continue
