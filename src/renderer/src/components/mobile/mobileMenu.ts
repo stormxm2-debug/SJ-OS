@@ -223,6 +223,8 @@ export interface MenuPrefs {
   order: Record<string, string[]>
   /** 전체 메뉴에서 숨길 항목 key — 표시만 숨기며 접근권한·즐겨찾기와 무관. */
   hidden: string[]
+  /** 편집의 [맨 위로]로 고정한 항목 — 어느 칸(전체 메뉴 포함)에 있든 메뉴 맨 위에 순서대로. */
+  pinned: string[]
 }
 
 const prefListeners = new Set<FavListener>()
@@ -237,16 +239,21 @@ export function loadMenuPrefs(): MenuPrefs {
         : {}
     const rawHidden = p && typeof p === 'object' && 'hidden' in p ? (p as { hidden: unknown }).hidden : []
     const order: Record<string, string[]> = {}
-    for (const cat of MOBILE_MENU) {
+    // 화면에 실제로 그리는 칸(고객등록·메뉴·전체 메뉴)도 포함해야 ↑↓ 순서가 저장된다.
+    for (const cat of [...MOBILE_MENU, ...VISIBLE_MOBILE_MENU]) {
       const saved = Array.isArray(rawOrder[cat.title]) ? (rawOrder[cat.title] as unknown[]) : []
       order[cat.title] = saved.filter((k): k is string => typeof k === 'string' && cat.items.some((i) => i.key === k))
     }
     const hidden = Array.isArray(rawHidden)
       ? rawHidden.filter((k): k is string => typeof k === 'string' && Boolean(findMenuItem(k)))
       : []
-    return { order, hidden }
+    const rawPinned = p && typeof p === 'object' && 'pinned' in p ? (p as { pinned: unknown }).pinned : []
+    const pinned = Array.isArray(rawPinned)
+      ? rawPinned.filter((k): k is string => typeof k === 'string' && Boolean(findMenuItem(k)))
+      : []
+    return { order, hidden, pinned }
   } catch {
-    return { order: {}, hidden: [] }
+    return { order: {}, hidden: [], pinned: [] }
   }
 }
 
@@ -293,6 +300,33 @@ export function moveMenuItem(catTitle: string, orderedKeys: string[], key: strin
 export function toggleMenuItemHidden(key: string): void {
   const prefs = loadMenuPrefs()
   prefs.hidden = prefs.hidden.includes(key) ? prefs.hidden.filter((k) => k !== key) : [...prefs.hidden, key]
+  saveMenuPrefs(prefs)
+}
+
+/** [맨 위로] — 항목을 메뉴 맨 위(고정 목록 첫 번째)로 올린다. */
+export function pinMenuItemTop(key: string): void {
+  const prefs = loadMenuPrefs()
+  prefs.pinned = [key, ...prefs.pinned.filter((k) => k !== key)]
+  saveMenuPrefs(prefs)
+}
+
+/** 고정 목록 안에서 위/아래 이동. */
+export function movePinnedMenuItem(key: string, dir: -1 | 1): void {
+  const prefs = loadMenuPrefs()
+  const idx = prefs.pinned.indexOf(key)
+  const to = idx + dir
+  if (idx < 0 || to < 0 || to >= prefs.pinned.length) return
+  const next = [...prefs.pinned]
+  next.splice(idx, 1)
+  next.splice(to, 0, key)
+  prefs.pinned = next
+  saveMenuPrefs(prefs)
+}
+
+/** 고정 해제 — 원래 칸으로 돌아간다. */
+export function unpinMenuItem(key: string): void {
+  const prefs = loadMenuPrefs()
+  prefs.pinned = prefs.pinned.filter((k) => k !== key)
   saveMenuPrefs(prefs)
 }
 
