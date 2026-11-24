@@ -11,6 +11,7 @@ import {
   type ContentHistoryEntry
 } from '@renderer/services/content-studio/contentStudioService'
 import { copyText } from '@renderer/services/share/clipboard'
+import ImageStudioCard from '@renderer/components/content/ImageStudioCard'
 
 /**
  * AI 콘텐츠 스튜디오 — 주제 입력 → 릴스 대본·SNS 문구·블로그·고객 안내문 초안 생성
@@ -244,6 +245,9 @@ export default function ContentStudioPage(): JSX.Element {
           반드시 약관과 대조하세요.
         </span>
       </div>
+
+      {/* AI 이미지 생성 (힉스필드) */}
+      <ImageStudioCard />
 
       {/* 영상 제작 도구 바로가기 */}
       <section className="rounded-2xl border border-slate-800 bg-white p-4">
