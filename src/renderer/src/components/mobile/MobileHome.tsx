@@ -7,6 +7,7 @@ import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
 import MyDayWidgets from '@renderer/components/home/MyDayWidgets'
 import { findMenuItem, listFavorites, subscribeFavorites } from './mobileMenu'
+import { REMOVED_MENU_KEYS } from '@renderer/navigation/menuVisibility'
 import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
 import { openPasswordGate } from '@renderer/services/commercial/passwordService'
 
@@ -25,7 +26,9 @@ export default function MobileHome(): JSX.Element {
   useEffect(() => subscribeFavorites(() => setFavKeys(listFavorites())), [])
   // 전체 메뉴(MobileMenuPage)와 반드시 같은 기준으로 걸러야 한다. adminOnly+isAdminRole로
   // 거르면 총무비서가 별표한 관리자 화면이 홈에서만 사라져 "별은 켜졌는데 안 나온다"가 된다.
+  // 메뉴에서 뺀 항목(급여 계산기 등)은 예전에 ⭐해 둔 것이어도 홈에 안 보이게 한다.
   const favItems = favKeys
+    .filter((k) => !REMOVED_MENU_KEYS.includes(k))
     .map((k) => findMenuItem(k))
     .filter((i): i is NonNullable<typeof i> => Boolean(i && (!i.view || canAccessRoute(session.role, i.view.name))))
 
