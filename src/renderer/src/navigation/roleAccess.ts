@@ -117,7 +117,9 @@ export const OWNER_ONLY_ROUTES: ViewName[] = [
   'memo',
   'ai-team-guide',
   // 콘텐츠 보드: 대표 전용으로 시작. 나중에 직원에게 열 때 이 목록에서 뺀다.
-  'content-board'
+  'content-board',
+  // 서버 설정 상태(시크릿 등록 여부) — 대표 전용.
+  'config-status'
 ]
 
 /**

@@ -69,5 +69,6 @@ export type View =
   | { name: 'staff-table' }
   | { name: 'family-birthdays' }
   | { name: 'remote-runner' }
+  | { name: 'config-status' }
 
 export type ViewName = View['name']

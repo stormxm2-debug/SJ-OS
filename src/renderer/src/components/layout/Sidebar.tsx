@@ -199,6 +199,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'registration-admin', label: '고객등록 관리', icon: ShieldCheck, view: { name: 'registration-admin' }, match: ['registration-admin'] },
       { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, match: ['approvals'] },
       { key: 'security-center', label: '보안 모듈 학습', icon: Radar, view: { name: 'security-center' }, match: ['security-center'] },
+      { key: 'config-status', label: '서버 설정 상태', icon: Settings, view: { name: 'config-status' }, match: ['config-status'] },
       // 출퇴근·공지사항은 상단 '자주 쓰는 메뉴'로 이동(2026-11). 본인용 인사정보/비밀번호는 여기 유지.
       { key: 'my-birthday', label: '내 인사 정보', icon: ClipboardListIcon, action: 'birthday-gate' },
       { key: 'my-password', label: '비밀번호 변경', icon: KeyRound, action: 'password-gate' }
