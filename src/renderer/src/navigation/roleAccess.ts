@@ -23,6 +23,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
 /** Staff MVP routes — visible to every role. */
 export const STAFF_ROUTES: ViewName[] = [
   'staff-home',
+  'quick-actions',
   'attendance',
   'fcos',
   'customer',

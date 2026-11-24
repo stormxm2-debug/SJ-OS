@@ -1,21 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
-import {
-  CalendarDays,
-  ClipboardList,
-  BarChart3,
-  UserRound,
-  Activity,
-  FileSearch,
-  Bot,
-  UserPlus,
-  Check,
-  Sparkles,
-  ArrowRight
-} from 'lucide-react'
+import { Bot, Check, ArrowRight } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
-import { useNavigation } from '@renderer/navigation/NavigationContext'
-import type { View } from '@renderer/navigation/types'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import MyDayWidgets from '@renderer/components/home/MyDayWidgets'
 
@@ -25,24 +11,6 @@ import MyDayWidgets from '@renderer/components/home/MyDayWidgets'
  * starts clean; this section is purely navigation + Jarvis prefill (no fake data,
  * no backend, no global listeners). Styling follows Direction A (bright surfaces).
  */
-
-interface QuickAction {
-  key: string
-  label: string
-  icon: ReactNode
-  onClick: (nav: (v: View) => void) => void
-  tone: string
-}
-
-const QUICK_ACTIONS: QuickAction[] = [
-  { key: 'schedule', label: '오늘 일정 보기', icon: <CalendarDays className="h-5 w-5" />, tone: 'from-sky-500 to-blue-600', onClick: (n) => n({ name: 'schedule' }) },
-  { key: 'customer-new', label: '고객 등록', icon: <UserPlus className="h-5 w-5" />, tone: 'from-blue-500 to-indigo-600', onClick: (n) => n({ name: 'customer' }) },
-  { key: 'customer', label: '고객 관리', icon: <UserRound className="h-5 w-5" />, tone: 'from-indigo-500 to-blue-600', onClick: (n) => n({ name: 'customer' }) },
-  { key: 'sales-activity', label: '영업활동 입력', icon: <Activity className="h-5 w-5" />, tone: 'from-indigo-500 to-violet-600', onClick: (n) => n({ name: 'sales-activity' }) },
-  { key: 'performance', label: '실적 확인', icon: <BarChart3 className="h-5 w-5" />, tone: 'from-emerald-500 to-teal-600', onClick: (n) => n({ name: 'performance' }) },
-  { key: 'consultation', label: '상담 준비', icon: <ClipboardList className="h-5 w-5" />, tone: 'from-cyan-500 to-sky-600', onClick: (n) => n({ name: 'consultation' }) },
-  { key: 'insurance-analysis', label: '보험분석 시작', icon: <FileSearch className="h-5 w-5" />, tone: 'from-amber-500 to-orange-600', onClick: (n) => n({ name: 'insurance-analysis' }) }
-]
 
 const JARVIS_COMMANDS = [
   '오늘 일정 알려줘',
@@ -56,7 +24,6 @@ const JARVIS_COMMANDS = [
 ]
 
 export default function StaffHomePage(): JSX.Element {
-  const { navigate } = useNavigation()
   const [copied, setCopied] = useState<string | null>(null)
 
   // Open Jarvis and prefill its input with the command (NOT auto-executed).
@@ -70,26 +37,6 @@ export default function StaffHomePage(): JSX.Element {
     <div className="space-y-5">
       {/* 내 하루 — 본인 일정 + 본인 이번 달 매출 (자기 것만, 실데이터) */}
       <MyDayWidgets />
-
-      {/* Quick Action launcher */}
-      <Card title="빠른 실행" icon={<Sparkles className="h-4 w-4 text-indigo-600" />}>
-        <p className="mb-3 text-xs text-slate-500">자주 쓰는 업무를 빠르게 실행하세요.</p>
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8">
-          {QUICK_ACTIONS.map((a) => (
-            <button
-              key={a.key}
-              type="button"
-              onClick={() => a.onClick(navigate)}
-              className="group flex flex-col items-center gap-2 rounded-xl border border-slate-800 bg-white px-3 py-4 text-center shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-md"
-            >
-              <span className={['flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-sm', a.tone].join(' ')}>
-                {a.icon}
-              </span>
-              <span className="text-sm font-semibold text-slate-200">{a.label}</span>
-            </button>
-          ))}
-        </div>
-      </Card>
 
       {JARVIS_UI_VISIBLE ? (
       <>

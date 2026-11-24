@@ -9,6 +9,7 @@ import SupabaseScheduleManager from './schedule/SupabaseScheduleManager'
 import SupabaseAttendanceManager from './attendance/SupabaseAttendanceManager'
 import CommandCenterPage from '@renderer/pages/CommandCenterPage'
 import StaffHomePage from '@renderer/pages/StaffHomePage'
+import QuickActionsPage from '@renderer/pages/QuickActionsPage'
 import NoticePage from '@renderer/pages/NoticePage'
 import Dashboard from './dashboard/Dashboard'
 import WorkersPage from '@renderer/pages/WorkersPage'
@@ -206,6 +207,8 @@ export default function Router(): JSX.Element {
       return <RegistrationAdminPage />
     case 'backoffice-desk':
       return <BackOfficeDeskPage />
+    case 'quick-actions':
+      return <QuickActionsPage />
     case 'staff-overview':
       return <StaffOverviewPage />
     case 'staff-table':

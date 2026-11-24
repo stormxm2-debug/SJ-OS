@@ -328,6 +328,7 @@ const ALL_NAV_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), ...JARV
 const VISIBLE_NAV_GROUPS: NavGroup[] = [
   // 고객등록 칸: 총무·대표·관리자는 상황판(처리), FC·팀장은 본인 등록 현황(읽기 전용).
   { label: '고객등록', items: [{ key: 'backoffice-desk', label: '고객등록 현황', icon: ClipboardCheck, view: { name: 'backoffice-desk' }, match: ['backoffice-desk'] }] },
+  { label: '빠른 실행', items: [{ key: 'quick-actions', label: '빠른 실행', icon: Sparkles, view: { name: 'quick-actions' }, match: ['quick-actions'] }] },
   { label: '메뉴', items: pickVisibleMenuItems(ALL_NAV_ITEMS) },
   // 나머지 메뉴는 접힌 '전체 메뉴' 칸 안에 (누르면 펼쳐진다)
   { label: '전체 메뉴', collapsible: true, items: pickHiddenMenuItems(ALL_NAV_ITEMS) }
