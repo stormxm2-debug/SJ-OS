@@ -59,6 +59,8 @@ import {
   Pencil,
   Check,
   ArrowUp,
+  ArrowUpToLine,
+  PinOff,
   ArrowDown,
   Eye,
   EyeOff,
@@ -84,7 +86,10 @@ import {
   isSidebarItemHidden,
   moveSidebarItem,
   toggleSidebarItemHidden,
-  resetSidebarPrefs
+  resetSidebarPrefs,
+  pinSidebarItemTop,
+  movePinnedSidebarItem,
+  unpinSidebarItem
 } from './sidebarPrefs'
 
 type NavItem = {
@@ -435,7 +440,11 @@ export default function Sidebar(): JSX.Element {
    * 편집 모드에서는 숨긴 항목도 흐리게 보여 ↑↓ 이동·숨김/복구 버튼을 단다.
    */
   const renderList = (section: string, items: NavItem[]): JSX.Element[] => {
-    const ordered = orderSidebarItems(section, items, navPrefs)
+    const ordered = orderSidebarItems(
+      section,
+      items.filter((it) => !navPrefs.pinned.includes(it.key)),
+      navPrefs
+    )
     const visible = editNav ? ordered : ordered.filter((it) => !isSidebarItemHidden(section, it.key, navPrefs))
     const orderedKeys = ordered.map((it) => it.key)
     const ctrl =
@@ -446,6 +455,9 @@ export default function Sidebar(): JSX.Element {
       return (
         <div key={item.key} className={['flex items-center gap-1', hidden ? 'opacity-45' : ''].join(' ')}>
           <div className="min-w-0 flex-1">{renderItem(item)}</div>
+          <button type="button" onClick={() => pinSidebarItemTop(item.key)} className={ctrl} title="맨 위로" aria-label={`${item.label} 맨 위로`}>
+            <ArrowUpToLine className="h-3.5 w-3.5" />
+          </button>
           <button type="button" disabled={i === 0} onClick={() => moveSidebarItem(section, orderedKeys, item.key, -1)} className={ctrl} aria-label={`${item.label} 위로`}>
             <ArrowUp className="h-3.5 w-3.5" />
           </button>
@@ -470,6 +482,37 @@ export default function Sidebar(): JSX.Element {
       )
     })
   }
+  /** [맨 위로]로 고정한 항목 — 메뉴 맨 위에 순서대로 (전체 메뉴에 있던 것도 끌어올린다). */
+  const renderPinned = (pool: NavItem[]): JSX.Element | null => {
+    const byKey = new Map(pool.map((it) => [it.key, it]))
+    const items = navPrefs.pinned.map((k) => byKey.get(k)).filter((it): it is NavItem => Boolean(it))
+    if (items.length === 0) return null
+    const ctrl =
+      'flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-slate-700 bg-slate-950 text-slate-500 transition hover:text-slate-200 disabled:opacity-30'
+    return (
+      <div className="mb-2 space-y-1 border-b border-slate-800 pb-2">
+        {items.map((item, i) =>
+          !editNav ? (
+            renderItem(item)
+          ) : (
+            <div key={item.key} className="flex items-center gap-1">
+              <div className="min-w-0 flex-1">{renderItem(item)}</div>
+              <button type="button" disabled={i === 0} onClick={() => movePinnedSidebarItem(item.key, -1)} className={ctrl} aria-label={`${item.label} 위로`}>
+                <ArrowUp className="h-3.5 w-3.5" />
+              </button>
+              <button type="button" disabled={i === items.length - 1} onClick={() => movePinnedSidebarItem(item.key, 1)} className={ctrl} aria-label={`${item.label} 아래로`}>
+                <ArrowDown className="h-3.5 w-3.5" />
+              </button>
+              <button type="button" onClick={() => unpinSidebarItem(item.key)} className={ctrl} title="고정 해제" aria-label={`${item.label} 고정 해제`}>
+                <PinOff className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )
+        )}
+      </div>
+    )
+  }
+
 
   return (
     <aside className="flex w-64 flex-col border-r border-slate-800 bg-white shadow-sm">
@@ -531,18 +574,23 @@ export default function Sidebar(): JSX.Element {
         {!showAdminMenu ? (
           // FC / 팀장: staff-only company menu (no developer/release/admin tools).
           <div className="space-y-1">
+            {renderPinned([...staffNav, ...pickHiddenMenuItems(STAFF_NAV_MVP)])}
             {renderList('mvp', staffNav)}
             <MoreMenuToggle open={staffMoreOpen} onToggle={() => setStaffMoreOpen((v) => !v)} />
             {staffMoreOpen ? renderList('mvp-more', pickHiddenMenuItems(STAFF_NAV_MVP)) : null}
           </div>
         ) : admin && mode === 'staff' ? (
           <div className="space-y-1">
+            {renderPinned([...pickVisibleMenuItems([...STAFF_NAV, ...JARVIS_NAV_LIST]), ...pickHiddenMenuItems(STAFF_NAV)])}
             {renderList('staff', pickVisibleMenuItems([...STAFF_NAV, ...JARVIS_NAV_LIST]))}
             <MoreMenuToggle open={staffMoreOpen} onToggle={() => setStaffMoreOpen((v) => !v)} />
             {staffMoreOpen ? renderList('staff-more', pickHiddenMenuItems(STAFF_NAV)) : null}
           </div>
         ) : (
           <div className="space-y-4">
+            {renderPinned(
+              VISIBLE_NAV_GROUPS.flatMap((g) => g.items).filter((it) => !it.view || canAccessRoute(session.role, it.view.name))
+            )}
             {VISIBLE_NAV_GROUPS.map((group) => {
               // 총무비서 등 역할별로 막힌 항목은 제거하고, 남는 항목이 없으면 그룹째 숨긴다.
               const items = group.items.filter((it) => !it.view || canAccessRoute(session.role, it.view.name))

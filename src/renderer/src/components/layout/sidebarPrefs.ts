@@ -13,6 +13,8 @@ const KEY = 'sj-desktop-nav-prefs-v1'
 export interface SidebarPrefs {
   order: Record<string, string[]>
   hidden: Record<string, string[]>
+  /** 메뉴 편집의 [맨 위로]로 고정한 항목 — 어느 칸(전체 메뉴 포함)에 있든 메뉴 맨 위에 순서대로 뜬다. */
+  pinned: string[]
 }
 
 type Listener = () => void
@@ -24,7 +26,10 @@ export function loadSidebarPrefs(): SidebarPrefs {
     const p: unknown = raw ? JSON.parse(raw) : null
     const order: Record<string, string[]> = {}
     const hidden: Record<string, string[]> = {}
+    let pinned: string[] = []
     if (p && typeof p === 'object') {
+      const pp = (p as { pinned?: unknown }).pinned
+      if (Array.isArray(pp)) pinned = pp.filter((k): k is string => typeof k === 'string')
       const po = (p as { order?: unknown }).order
       if (po && typeof po === 'object') {
         for (const [sec, keys] of Object.entries(po as Record<string, unknown>)) {
@@ -38,9 +43,9 @@ export function loadSidebarPrefs(): SidebarPrefs {
         }
       }
     }
-    return { order, hidden }
+    return { order, hidden, pinned }
   } catch {
-    return { order: {}, hidden: {} }
+    return { order: {}, hidden: {}, pinned: [] }
   }
 }
 
@@ -90,6 +95,33 @@ export function toggleSidebarItemHidden(section: string, key: string): void {
   const prefs = loadSidebarPrefs()
   const cur = prefs.hidden[section] ?? []
   prefs.hidden[section] = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]
+  save(prefs)
+}
+
+/** [맨 위로] — 항목을 메뉴 맨 위(고정 목록 첫 번째)로 올린다. */
+export function pinSidebarItemTop(key: string): void {
+  const prefs = loadSidebarPrefs()
+  prefs.pinned = [key, ...prefs.pinned.filter((k) => k !== key)]
+  save(prefs)
+}
+
+/** 고정 목록 안에서 위/아래 이동. */
+export function movePinnedSidebarItem(key: string, dir: -1 | 1): void {
+  const prefs = loadSidebarPrefs()
+  const idx = prefs.pinned.indexOf(key)
+  const to = idx + dir
+  if (idx < 0 || to < 0 || to >= prefs.pinned.length) return
+  const next = [...prefs.pinned]
+  next.splice(idx, 1)
+  next.splice(to, 0, key)
+  prefs.pinned = next
+  save(prefs)
+}
+
+/** 고정 해제 — 원래 칸(메뉴/전체 메뉴)으로 돌아간다. */
+export function unpinSidebarItem(key: string): void {
+  const prefs = loadSidebarPrefs()
+  prefs.pinned = prefs.pinned.filter((k) => k !== key)
   save(prefs)
 }
 
