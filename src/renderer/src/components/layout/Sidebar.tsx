@@ -125,7 +125,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
       { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
-      { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] }
+      { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] },
+      { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] }
     ]
   },
   {
@@ -143,8 +144,6 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
       { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
       { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' }, match: ['plan-request'] },
-  { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] },
-      { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] },
       { key: 'consultation', label: '상담 관리', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
       { key: 'manager-contacts', label: '매니저 연락처 (엑셀 등록)', icon: UsersRound, view: { name: 'manager-contacts' }, match: ['manager-contacts'] },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
@@ -244,12 +243,12 @@ const STAFF_NAV: NavItem[] = [
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
   { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] },
+  { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] },
   // 이하 베타(renderItem에서 BETA 뱃지).
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
   { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
   { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' }, match: ['plan-request'] },
-  { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] },
   { key: 'sales-activity', label: '영업활동', icon: ActivityIcon, view: { name: 'sales-activity' }, match: ['sales-activity'] },
   { key: 'salary', label: '급여 계산기', icon: Calculator, view: { name: 'salary' }, match: ['salary'] },
   { key: 'stats-report', label: '통계 리포트', icon: TrendingUp, view: { name: 'stats-report' }, match: ['stats-report'] },
@@ -295,12 +294,12 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
   { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] },
+  { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] },
   // 이하 베타(renderItem에서 BETA 뱃지).
   { key: 'birthdays', label: '생일 챙기기', icon: Cake, view: { name: 'birthdays' }, match: ['birthdays'] },
   { key: 'referrals', label: '소개 영업', icon: UserPlus, view: { name: 'referrals' }, match: ['referrals'] },
   { key: 'today-contacts', label: '오늘의 접촉', icon: PhoneCall, view: { name: 'today-contacts' }, match: ['today-contacts'] },
   { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' }, match: ['plan-request'] },
-  { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] },
   { key: 'consultation', label: '상담기록', icon: ClipboardListIcon, view: { name: 'consultation' }, match: ['consultation'] },
   { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' }, match: ['insurance-analysis'] },
   { key: 'coverage-analysis', label: '보장분석 정리', icon: ClipboardCheck, view: { name: 'coverage-analysis' }, match: ['coverage-analysis'] },
