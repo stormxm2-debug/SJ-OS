@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { X, Star, LogOut, Pencil, Check, ArrowUp, ArrowDown, Eye, EyeOff, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
+import { X, Star, LogOut, Pencil, Check, ArrowUp, ArrowDown, ArrowUpToLine, PinOff, Eye, EyeOff, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { canAccessRoute } from '@renderer/navigation/roleAccess'
 import type { View } from '@renderer/navigation/types'
@@ -17,7 +17,11 @@ import {
   orderedItems,
   moveMenuItem,
   toggleMenuItemHidden,
-  resetMenuPrefs
+  resetMenuPrefs,
+  pinMenuItemTop,
+  movePinnedMenuItem,
+  unpinMenuItem,
+  type MobileMenuItem
 } from './mobileMenu'
 import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
 import { openPasswordGate } from '@renderer/services/commercial/passwordService'
@@ -137,10 +141,64 @@ export default function MobileMenuPage({
           </section>
         ) : null}
 
+        {/* [맨 위로] 고정 메뉴 — 어느 칸에 있던 항목이든 맨 위에 */}
+        {(() => {
+          const pool = new Map<string, MobileMenuItem>()
+          for (const cat of VISIBLE_MOBILE_MENU)
+            for (const it of cat.items) if (!pool.has(it.key) && (!it.view || canAccessRoute(session.role, it.view.name))) pool.set(it.key, it)
+          const pinnedItems = prefs.pinned.map((k) => pool.get(k)).filter((it): it is MobileMenuItem => Boolean(it))
+          if (pinnedItems.length === 0) return null
+          return (
+            <section className="rounded-2xl border border-[#c6982f]/40 bg-white p-2 shadow-sm">
+              {pinnedItems.map((item, i) => {
+                const Icon = item.icon
+                return (
+                  <div key={item.key} className="flex items-center">
+                    <button
+                      type="button"
+                      disabled={edit}
+                      onClick={() => {
+                        if (item.action === 'jarvis') onJarvis()
+                        else if (item.action === 'birthday-gate') {
+                          openFamilyBirthdayGate()
+                          onClose()
+                        } else if (item.action === 'password-gate') {
+                          openPasswordGate()
+                          onClose()
+                        } else if (item.href) window.open(item.href, '_blank', 'noopener')
+                        else if (item.view) onNavigate(item.view)
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-300 transition active:bg-slate-950"
+                    >
+                      <Icon className="h-4 w-4 shrink-0 text-[#c6982f]" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                    {edit ? (
+                      <div className="flex shrink-0 items-center gap-1 pr-2">
+                        <button type="button" disabled={i === 0} onClick={() => movePinnedMenuItem(item.key, -1)} className={ctrlBtn} aria-label={`${item.label} 위로`}>
+                          <ArrowUp className="h-4 w-4" />
+                        </button>
+                        <button type="button" disabled={i === pinnedItems.length - 1} onClick={() => movePinnedMenuItem(item.key, 1)} className={ctrlBtn} aria-label={`${item.label} 아래로`}>
+                          <ArrowDown className="h-4 w-4" />
+                        </button>
+                        <button type="button" onClick={() => unpinMenuItem(item.key)} className={ctrlBtn} aria-label={`${item.label} 고정 해제`}>
+                          <PinOff className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </section>
+          )
+        })()}
+
         {VISIBLE_MOBILE_MENU.map((cat) => {
           // 라우트 항목은 역할별 접근권한으로 필터(총무비서는 막힌 화면만 숨김).
           // 화면 이동이 아닌 동작(자비스·인사정보·비밀번호)은 항상 노출.
-          const accessible = orderedItems(cat, prefs).filter((i) => (i.view ? canAccessRoute(session.role, i.view.name) : true))
+          const accessible = orderedItems(cat, prefs).filter(
+            (i) => (i.view ? canAccessRoute(session.role, i.view.name) : true) && !prefs.pinned.includes(i.key)
+          )
           const items = edit ? accessible : accessible.filter((i) => !prefs.hidden.includes(i.key))
           if (items.length === 0) return null
           const orderedKeys = accessible.map((i) => i.key)
@@ -199,6 +257,9 @@ export default function MobileMenuPage({
                     </button>
                     {edit ? (
                       <div className="flex shrink-0 items-center gap-1 pr-2">
+                        <button type="button" onClick={() => pinMenuItemTop(item.key)} className={ctrlBtn} aria-label={`${item.label} 맨 위로`}>
+                          <ArrowUpToLine className="h-4 w-4" />
+                        </button>
                         <button type="button" disabled={i === 0} onClick={() => moveMenuItem(cat.title, orderedKeys, item.key, -1)} className={ctrlBtn} aria-label={`${item.label} 위로`}>
                           <ArrowUp className="h-4 w-4" />
                         </button>
