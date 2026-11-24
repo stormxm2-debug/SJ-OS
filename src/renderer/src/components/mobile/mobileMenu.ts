@@ -84,7 +84,8 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } },
       { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' } },
-      { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' } }
+      { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' } },
+      { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' } }
     ]
   },
   {
@@ -107,7 +108,6 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' } },
       { key: 'knowledge', label: '자료 브리핑', icon: BookMarked, view: { name: 'knowledge' } },
       { key: 'plan-request', label: '설계 요청서', icon: FileSignature, view: { name: 'plan-request' } },
-      { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' } },
       { key: 'insurance-analysis', label: '보험분석', icon: FileSearch, view: { name: 'insurance-analysis' } },
       { key: 'coverage-analysis', label: '보장분석 정리', icon: ClipboardCheck, view: { name: 'coverage-analysis' } },
       { key: 'hospital-coverage', label: '가입제안서 담보 정리', icon: FileSpreadsheet, view: { name: 'hospital-coverage' } },

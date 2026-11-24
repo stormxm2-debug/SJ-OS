@@ -18,7 +18,8 @@ export const TOP_MENU_KEYS = [
   'bojang114',
   'performance',
   'notice',
-  'health-record'
+  'health-record',
+  'sales-recruiting'
 ] as const
 
 const TOP_SET = new Set<string>(TOP_MENU_KEYS)
