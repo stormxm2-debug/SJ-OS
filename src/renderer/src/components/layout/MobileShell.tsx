@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
-import { Home, Clock, UserRound, CalendarDays, Menu, ShieldAlert, RefreshCw, Camera, Loader2 } from 'lucide-react'
+import { Home, Clock, UserRound, CalendarDays, ListChecks, Menu, ShieldAlert, RefreshCw, Camera, Loader2 } from 'lucide-react'
 import { captureAndShareElement } from '@renderer/services/share/screenCapture'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import type { View, ViewName } from '@renderer/navigation/types'
@@ -79,7 +79,8 @@ const TABS: { key: string; label: string; icon: typeof Home; view: View; match: 
   { key: 'home', label: '홈', icon: Home, view: { name: 'staff-home' }, match: ['staff-home'] },
   { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' }, match: ['attendance'] },
   { key: 'customer', label: '고객', icon: UserRound, view: { name: 'customer' }, match: ['customer'] },
-  { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] }
+  { key: 'schedule', label: '일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
+  { key: 'sales-recruiting', label: '영업리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] }
 ]
 
 export default function MobileShell(): JSX.Element {
