@@ -27,11 +27,11 @@ test('같은 키가 두 번 있으면 첫 번째만 남는다', () => {
   assert.equal(out.length, 1)
   assert.equal(out[0].n, 1)
 })
-test('표시 목록에 요청한 10개 항목이 모두 있다', () => {
-  for (const k of ['staff-home','attendance','schedule','customer','family-caregiver','bojang114','performance','notice','health-record','jarvis']) {
+test('표시 목록에 요청한 11개 항목이 모두 있다', () => {
+  for (const k of ['staff-home','attendance','schedule','customer','family-caregiver','bojang114','performance','notice','notification-settings','health-record','jarvis']) {
     assert.ok(mv.VISIBLE_MENU_KEYS.includes(k), k)
   }
-  assert.equal(mv.VISIBLE_MENU_KEYS.length, 10)
+  assert.equal(mv.VISIBLE_MENU_KEYS.length, 11)
 })
 
 test('전체 메뉴 칸에는 표시 목록 밖의 항목이 모두 들어간다 (중복 없이)', () => {

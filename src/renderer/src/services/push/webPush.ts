@@ -51,6 +51,15 @@ export async function ensureWebPushSubscription(): Promise<{ ok: boolean; reason
     if (!uid) return { ok: false, reason: 'login' }
     const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } }
     if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return { ok: false, reason: 'subscription' }
+    // 같은 기기에서 다른 계정이 먼저 등록해 둔 경우에도 지금 로그인한 사람에게 넘긴다
+    // (RLS 상 남의 행은 수정할 수 없어 서버 함수로 처리). 함수가 없으면 예전 방식으로.
+    const claim = await client.rpc('claim_push_subscription', {
+      p_endpoint: json.endpoint,
+      p_p256dh: json.keys.p256dh,
+      p_auth: json.keys.auth,
+      p_user_agent: navigator.userAgent.slice(0, 200)
+    })
+    if (!claim.error) return { ok: true }
     const { error } = await client
       .from('push_subscriptions')
       .upsert(
