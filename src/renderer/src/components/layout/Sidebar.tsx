@@ -183,7 +183,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'AI 업무지원',
     items: [
-      { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, match: ['assistant'] }
+      { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, match: ['assistant'] },
+      { key: 'board-meeting', label: '경영 회의실', icon: UsersRound, view: { name: 'board-meeting' }, match: ['board-meeting'] }
     ]
   },
   {

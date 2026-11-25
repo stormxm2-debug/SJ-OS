@@ -145,6 +145,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       // 폰 대표 모드 (2026-07-20 대표 지정 4종)
       { key: 'dashboard', label: 'CEO 대시보드', icon: LayoutDashboard, view: { name: 'dashboard' }, adminOnly: true },
       { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, adminOnly: true },
+      { key: 'board-meeting', label: '경영 회의실', icon: UsersRound, view: { name: 'board-meeting' }, adminOnly: true },
       { key: 'announcements', label: '공지사항 관리', icon: Megaphone, view: { name: 'announcements' }, adminOnly: true },
       { key: 'approvals', label: '승인 센터', icon: ShieldCheck, view: { name: 'approvals' }, adminOnly: true }
     ]
