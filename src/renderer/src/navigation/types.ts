@@ -65,6 +65,7 @@ export type View =
   | { name: 'registration-admin' }
   | { name: 'backoffice-desk' }
   | { name: 'quick-actions' }
+  | { name: 'notification-settings' }
   | { name: 'staff-overview' }
   | { name: 'staff-table' }
   | { name: 'family-birthdays' }

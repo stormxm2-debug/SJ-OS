@@ -90,3 +90,43 @@ export async function sendRegistrationPush(registrationId: string, kind: Registr
     /* 알림 실패는 무시 */
   }
 }
+
+export interface TestPushResult {
+  ok: boolean
+  /** 이 계정에 등록된 기기 수 (폰·PC 브라우저) */
+  devices: number
+  /** 실제로 발송된 수 */
+  sent: number
+  error?: string
+}
+
+/** 알림 테스트 — 로그인한 본인이 등록해 둔 모든 기기로 시험 알림을 보낸다. */
+export async function sendTestPush(): Promise<TestPushResult> {
+  try {
+    const base = getFunctionsBaseUrl()
+    const anon = getSupabaseAnonKey()
+    if (!base || !anon) return { ok: false, devices: 0, sent: 0, error: '서버 연결 후 사용할 수 있습니다.' }
+    await initSupabaseClient()
+    const client = getSupabaseClient() as any
+    const { data } = (await client?.auth?.getSession()) ?? { data: null }
+    const token: string | undefined = data?.session?.access_token
+    if (!token) return { ok: false, devices: 0, sent: 0, error: '로그인 후 사용할 수 있습니다.' }
+    const res = await fetch(`${base}/push-send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ kind: 'test' })
+    })
+    const j = (await res.json().catch(() => ({}))) as { devices?: number; sent?: number; error?: string }
+    if (!res.ok) {
+      return {
+        ok: false,
+        devices: 0,
+        sent: 0,
+        error: j.error === 'PUSH_NOT_CONFIGURED' ? '서버 알림 설정(VAPID)이 아직 안 되어 있습니다.' : '시험 알림 요청에 실패했습니다.'
+      }
+    }
+    return { ok: true, devices: Number(j.devices ?? 0), sent: Number(j.sent ?? 0) }
+  } catch {
+    return { ok: false, devices: 0, sent: 0, error: '시험 알림 요청 중 오류가 발생했습니다.' }
+  }
+}

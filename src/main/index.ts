@@ -197,7 +197,8 @@ function installPermissionHandlers(): void {
     const trusted = isMicOriginAllowed(requestingUrl ?? '')
     // 'media' = mic and/or camera (Voice Mode + 출퇴근 사진); 'geolocation' = 사진
     // 워터마크. Both only for trusted local origins.
-    if (permission === 'media' || permission === 'geolocation') {
+    // 'notifications' = 고객등록·DB배정 등 OS 알림 (우리 앱 화면에서만 허용).
+    if (permission === 'media' || permission === 'geolocation' || permission === 'notifications') {
       callback(trusted)
       return
     }
@@ -206,7 +207,7 @@ function installPermissionHandlers(): void {
   })
 
   ses.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
-    if (permission === 'media' || permission === 'geolocation') {
+    if (permission === 'media' || permission === 'geolocation' || permission === 'notifications') {
       return isMicOriginAllowed(requestingOrigin ?? '')
     }
     return false
@@ -281,6 +282,9 @@ function createWindow(): void {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
+// 윈도우는 앱 ID(AUMID)가 설치 바로가기와 같아야 OS 알림이 표시된다 (package.json build.appId).
+if (process.platform === 'win32') app.setAppUserModelId('com.sjinvest.sjos')
 
 app.whenReady().then(() => {
   // Restrict permissions (mic-only, local origins) before any window loads.
