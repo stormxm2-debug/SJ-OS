@@ -8,6 +8,7 @@ import { useNavigation } from '@renderer/navigation/NavigationContext'
 import JarvisPanel from '@renderer/components/jarvis/JarvisPanel'
 import JarvisClapListener from '@renderer/components/jarvis/JarvisClapListener'
 import NotificationCenter from '@renderer/components/notifications/NotificationCenter'
+import NotificationPromptBanner from '@renderer/components/notifications/NotificationPromptBanner'
 import MorningBriefing from '@renderer/components/notifications/MorningBriefing'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
 import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
@@ -44,6 +45,8 @@ export default function AppShell(): JSX.Element {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />
         <main key={wakeKey} className="flex-1 overflow-y-auto p-6">
+          {/* 알림 꺼진 기기에 '알림 켜기' 안내 (각자 한 번만 허용하면 됨) */}
+          <NotificationPromptBanner />
           {/* 한 화면이 렌더 중 죽어도 앱 전체가 백화면이 되지 않게 막는다.
               route 이름을 key로 줘서 다른 화면으로 이동하면 자동 복구된다. */}
           <ErrorBoundary key={route.name} onGoHome={() => navigate({ name: 'staff-home' })}>

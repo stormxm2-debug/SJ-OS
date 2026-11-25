@@ -50,6 +50,7 @@ import ClaimFinderPage from '@renderer/pages/ClaimFinderPage'
 import FcOsPage from '@renderer/pages/FcOsPage'
 import FamilyBirthdayGate from '@renderer/components/welfare/FamilyBirthdayGate'
 import PasswordChangeGate from '@renderer/components/security/PasswordChangeGate'
+import NotificationPromptBanner from '@renderer/components/notifications/NotificationPromptBanner'
 import ErrorBoundary from '@renderer/components/system/ErrorBoundary'
 import RegistrationAdminPage from '@renderer/pages/RegistrationAdminPage'
 import BackOfficeDeskPage from '@renderer/pages/BackOfficeDeskPage'
@@ -176,6 +177,7 @@ export default function MobileShell(): JSX.Element {
 
       {/* Content — wakeKey 리마운트로 복귀 시 모든 화면 재조회 */}
       <main ref={mainRef} key={wakeKey} className="flex-1 overflow-y-auto overflow-x-hidden p-3 pb-24">
+        <NotificationPromptBanner />
         {/* 한 화면이 렌더 중 죽어도 앱 전체가 백화면이 되지 않게 막는다 */}
         <ErrorBoundary key={route.name} onGoHome={() => navigate({ name: 'staff-home' })}>
           <MobileContent routeName={route.name} role={session.role} />
