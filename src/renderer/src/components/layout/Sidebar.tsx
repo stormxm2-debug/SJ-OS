@@ -239,6 +239,8 @@ const NAV_GROUPS: NavGroup[] = [
  */
 const STAFF_NAV: NavItem[] = [
   { key: 'home', label: '홈', icon: Home, view: { name: 'staff-home' }, match: ['staff-home'] },
+  // 고객등록 현황(총무 상황판): 직원 모드·FC 메뉴에도 같이 보이도록 여기에도 둔다.
+  { key: 'backoffice-desk', label: '고객등록 현황', icon: ClipboardCheck, view: { name: 'backoffice-desk' }, match: ['backoffice-desk'] },
   // 자주 쓰는 메뉴(상단 고정) — menuTiers.TOP_MENU_KEYS 순서.
   { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' }, match: ['attendance'] },
   { key: 'schedule', label: '오늘 일정', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
@@ -290,6 +292,8 @@ const STAFF_NAV: NavItem[] = [
  */
 const STAFF_NAV_MVP: NavItem[] = [
   { key: 'home', label: '홈', icon: Home, view: { name: 'staff-home' }, match: ['staff-home'] },
+  // 고객등록 현황(총무 상황판): 직원 모드·FC 메뉴에도 같이 보이도록 여기에도 둔다.
+  { key: 'backoffice-desk', label: '고객등록 현황', icon: ClipboardCheck, view: { name: 'backoffice-desk' }, match: ['backoffice-desk'] },
   // 자주 쓰는 메뉴(상단 고정) — menuTiers.TOP_MENU_KEYS 순서.
   { key: 'attendance', label: '출퇴근', icon: Clock, view: { name: 'attendance' }, match: ['attendance'] },
   { key: 'schedule', label: '일정관리', icon: CalendarDays, view: { name: 'schedule' }, match: ['schedule'] },
