@@ -13,6 +13,7 @@ export const VISIBLE_MENU_KEYS: string[] = [
   'bojang114', // 한장보험료 비교
   'performance', // 실적(매출현황)
   'notice', // 공지사항
+  'notification-settings', // 알림 설정 (알림 켜기·테스트·켜는 방법)
   'health-record', // 고객 건강기록 조회
   'jarvis' // 자비스 (내가 말하는 기능)
 ]

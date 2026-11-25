@@ -62,6 +62,7 @@ import NotificationCenter from '@renderer/components/notifications/NotificationC
 import MorningBriefing from '@renderer/components/notifications/MorningBriefing'
 import ResolutionLockGate from '@renderer/components/attendance/ResolutionLockGate'
 import NoticePage from '@renderer/pages/NoticePage'
+import NotificationSettingsPage from '@renderer/pages/NotificationSettingsPage'
 import BirthdayPage from '@renderer/pages/BirthdayPage'
 import StatsReportPage from '@renderer/pages/StatsReportPage'
 import ContentStudioPage from '@renderer/pages/ContentStudioPage'
@@ -327,6 +328,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <AppInstallPage />
     case 'notice':
       return <NoticePage />
+    case 'notification-settings':
+      return <NotificationSettingsPage />
     case 'staff-overview':
       return <StaffOverviewPage />
     case 'family-birthdays':

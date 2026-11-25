@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { JARVIS_UI_VISIBLE } from '@renderer/components/jarvis/jarvisVisibility'
 import { pickHiddenMenuItems, pickVisibleMenuItems } from '@renderer/navigation/menuVisibility'
 import {
+  Bell,
   Clock,
   CalendarDays,
   UserRound,
@@ -83,6 +84,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' } },
       { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' } },
+      { key: 'notification-settings', label: '알림 설정', icon: Bell, view: { name: 'notification-settings' } },
       { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' } },
       { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' } },
       { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' } }

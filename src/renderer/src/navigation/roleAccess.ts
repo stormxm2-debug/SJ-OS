@@ -24,6 +24,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
 export const STAFF_ROUTES: ViewName[] = [
   'staff-home',
   'quick-actions',
+  'notification-settings',
   'attendance',
   'fcos',
   'customer',

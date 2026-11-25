@@ -1,4 +1,5 @@
 import {
+  Bell,
   BookOpen,
   Sparkles,
   LayoutDashboard,
@@ -128,7 +129,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
       { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
       { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
-      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+      { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }, { key: 'notification-settings', label: '알림 설정', icon: Bell, view: { name: 'notification-settings' }, match: ['notification-settings'] },
       { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
       { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] },
       { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] }
@@ -246,7 +247,7 @@ const STAFF_NAV: NavItem[] = [
   { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
   { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
   { key: 'performance', label: '실적', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
-  { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+  { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }, { key: 'notification-settings', label: '알림 설정', icon: Bell, view: { name: 'notification-settings' }, match: ['notification-settings'] },
   { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] },
   { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] },
@@ -297,7 +298,7 @@ const STAFF_NAV_MVP: NavItem[] = [
   { key: 'family-caregiver', label: '가족 간병인 접수', icon: HeartHandshake, view: { name: 'family-caregiver' }, match: ['family-caregiver'] },
   { key: 'bojang114', label: '한장보험료 비교', icon: ExternalLink, href: 'https://samsung.bojang114.com/index.html' },
   { key: 'performance', label: '매출현황', icon: BarChart3, view: { name: 'performance' }, match: ['performance'] },
-  { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] },
+  { key: 'notice', label: '공지사항', icon: Megaphone, view: { name: 'notice' }, match: ['notice'] }, { key: 'notification-settings', label: '알림 설정', icon: Bell, view: { name: 'notification-settings' }, match: ['notification-settings'] },
   { key: 'health-record', label: '고객 건강기록 조회', icon: HeartPulse, view: { name: 'health-record' }, match: ['health-record'] },
   { key: 'claim-finder', label: '보험금 발굴', icon: FileSearch, view: { name: 'claim-finder' }, match: ['claim-finder'] },
   { key: 'sales-recruiting', label: '영업·리쿠르팅 리스트', icon: ListChecks, view: { name: 'sales-recruiting' }, match: ['sales-recruiting'] },
