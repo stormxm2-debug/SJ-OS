@@ -120,7 +120,9 @@ export const OWNER_ONLY_ROUTES: ViewName[] = [
   // 콘텐츠 보드: 대표 전용으로 시작. 나중에 직원에게 열 때 이 목록에서 뺀다.
   'content-board',
   // 서버 설정 상태(시크릿 등록 여부) — 대표 전용.
-  'config-status'
+  'config-status',
+  // 경영 회의실(AI 임원회의) — 대표 전용으로 시작. 직원/관리자에게 열 때 이 목록에서 뺀다.
+  'board-meeting'
 ]
 
 /**
