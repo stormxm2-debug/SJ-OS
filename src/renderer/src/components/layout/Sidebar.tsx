@@ -155,6 +155,7 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'coverage-analysis', label: '보장분석 정리', icon: ClipboardCheck, view: { name: 'coverage-analysis' }, match: ['coverage-analysis'] },
       { key: 'hospital-coverage', label: '가입제안서 담보 정리', icon: FileSpreadsheet, view: { name: 'hospital-coverage' }, match: ['hospital-coverage'] },
       { key: 'claim-assistant', label: '보험금 청구비서', icon: ReceiptText, view: { name: 'claim-assistant' }, match: ['claim-assistant'] },
+      { key: 'otp-relay', label: '인증번호 전달함', icon: KeyRound, view: { name: 'otp-relay' }, match: ['otp-relay'] },
       { key: 'exemptions', label: '면책기간 알람', icon: Hourglass, view: { name: 'exemptions' }, match: ['exemptions'] },
       { key: 'wiki', label: '보험 백과사전', icon: BookOpen, view: { name: 'wiki' }, match: ['wiki'] },
       { key: 'content-studio', label: 'AI 콘텐츠 스튜디오', icon: Clapperboard, view: { name: 'content-studio' }, match: ['content-studio'] },

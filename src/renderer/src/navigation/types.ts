@@ -70,5 +70,6 @@ export type View =
   | { name: 'family-birthdays' }
   | { name: 'remote-runner' }
   | { name: 'config-status' }
+  | { name: 'otp-relay' }
 
 export type ViewName = View['name']
