@@ -37,7 +37,7 @@ export function normalizeRegion(raw: string): string {
   return t.split(/\s+/)[0].slice(0, 10)
 }
 
-const REGION_HEADER = /^(지역|시도|시\/도|광역|주소|거주)/
+const REGION_HEADER = /^(지역|시도|시\/도|광역|시군구|시\/군\/구|군구|구군|시군|주소|거주|소재지)/
 
 /** 지역을 나누는 단위: 시·도(전남) 또는 시·군·구(전남 화순군). */
 export type RegionLevel = 'sido' | 'sigungu'
@@ -49,7 +49,8 @@ export type RegionLevel = 'sido' | 'sigungu'
  * 시·군·구를 못 찾으면 시·도만 돌려준다.
  */
 export function regionFromText(raw: string, level: RegionLevel = 'sido'): string {
-  const text = (raw ?? '').trim()
+  // 앞에 붙은 우편번호 "(58100)" / "58100" 은 지운다.
+  const text = (raw ?? '').trim().replace(/^[([]?\d{5}[)\]]?[\s,]*/, '')
   if (!text) return ''
   const sido = normalizeRegion(text)
   if (level === 'sido') return sido
@@ -62,14 +63,16 @@ export function regionFromText(raw: string, level: RegionLevel = 'sido'): string
 /** 파일 판독이 메모에 합쳐 둔 "헤더: 값 / 헤더: 값" 에서 지역을 꺼낸다. 없으면 ''. */
 export function regionOfLead(lead: LeadInput, level: RegionLevel = 'sido'): string {
   const memo = lead.memo ?? ''
+  // 시도·시군구·주소처럼 지역에 관한 열이 여러 개면 순서대로 이어 붙여서 한 번에 읽는다.
+  const values: string[] = []
   for (const part of memo.split(' / ')) {
     const i = part.indexOf(':')
     if (i < 0) continue
     const header = part.slice(0, i).trim()
     const value = part.slice(i + 1).trim()
-    if (REGION_HEADER.test(header) && value) return regionFromText(value, level)
+    if (REGION_HEADER.test(header) && value) values.push(value)
   }
-  return ''
+  return values.length > 0 ? regionFromText(values.join(' '), level) : ''
 }
 
 const PHONE_OK = /^01\d-?\d{3,4}-?\d{4}$/
