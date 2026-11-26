@@ -115,6 +115,9 @@ export default function BoardMeetingPage(): JSX.Element {
           <p className="mt-0.5 text-xs text-slate-400">
             4개 팀(기획·운영·영업·개발)이 지난주 데이터를 바탕으로 경영 자문을 올립니다
           </p>
+          <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#0e1e3a]/5 px-2 py-0.5 text-[11px] font-semibold text-[#8a6a1e]">
+            <CalendarClock className="h-3 w-3" /> 매주 월요일 아침 자동 소집 + 푸시 알림
+          </p>
         </div>
         <button
           type="button"
