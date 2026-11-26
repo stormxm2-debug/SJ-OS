@@ -113,3 +113,35 @@ test('지역별 배정: 담당 FC를 하나도 안 정했거나 해당 DB가 없
   assert.equal(lp.planByRegion([reg('a', '부산')], { 광주: ['x'] }).ok, false)
   assert.equal(lp.planByRegion([], { 광주: ['x'] }).ok, false)
 })
+
+const sm = await load('src/renderer/src/services/commercial/leadSummary.ts')
+
+test('요약: 직원별 건수 내림차순·비율, 합계에 미배정 포함', () => {
+  const s = sm.buildSummary({
+    dbType: '실버DB',
+    mode: 'region',
+    groups: [{ name: '김FC', count: 20 }, { name: '이FC', count: 30 }, { name: '박FC', count: 0 }],
+    unassigned: 10,
+    regions: [{ region: '광주', count: 40 }, { region: '서울', count: 20 }],
+    at: new Date(2026, 10, 26, 9, 5)
+  })
+  assert.equal(s.total, 60)
+  assert.equal(s.assigned, 50)
+  assert.equal(s.unassigned, 10)
+  assert.deepEqual(s.groups.map((g) => [g.name, g.count, g.pct]), [['이FC', 30, 60], ['김FC', 20, 40]])
+  assert.equal(s.subtitle, '2026.11.26 09:05 · [실버DB] · 지역별 FC 배정')
+  assert.equal(s.regionsRest, 0)
+})
+
+test('요약: 지역이 9개 넘으면 나머지는 합계로', () => {
+  const regions = Array.from({ length: 10 }, (_, i) => ({ region: `지역${i}`, count: 10 - i }))
+  const s = sm.buildSummary({ mode: 'auto', groups: [{ name: 'a', count: 1 }], unassigned: 0, regions })
+  assert.equal(s.regions.length, 8)
+  assert.equal(s.regionsRest, 2 + 1)
+})
+
+test('요약: 이미지 높이는 항목 수에 따라 늘어난다', () => {
+  const a = sm.buildSummary({ mode: 'auto', groups: [{ name: 'a', count: 1 }], unassigned: 0, regions: [] })
+  const b = sm.buildSummary({ mode: 'auto', groups: [{ name: 'a', count: 1 }, { name: 'b', count: 1 }], unassigned: 0, regions: [{ region: '광주', count: 2 }] })
+  assert.ok(sm.summaryHeight(b) > sm.summaryHeight(a))
+})
