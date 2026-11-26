@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0E1E3A">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SJ 인증번호 전달"
+            android:textColor="#E6C877"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="보험사 인증문자를 자동으로 총무에게 전달합니다. 아래 두 값을 한 번만 저장하세요."
+            android:textColor="#C9D3E6"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="수신 주소 (URL)"
+            android:textColor="#9FB0CC"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF"
+            android:inputType="textUri"
+            android:padding="12dp"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="내 기기 토큰"
+            android:textColor="#9FB0CC"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/token"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF"
+            android:inputType="text"
+            android:padding="12dp"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:backgroundTint="#C6982F"
+            android:text="저장하고 시작"
+            android:textColor="#201603"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/test"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="#1B3A6B"
+            android:text="테스트 전송"
+            android:textColor="#E6C877" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="SMS 권한을 허용해야 자동 전달됩니다."
+            android:textColor="#E6C877"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="※ 내부 전용 앱입니다. 인증번호가 오면 자동으로 전달되며, 앱을 닫아도 동작합니다. (배터리 최적화 예외로 두면 더 안정적)"
+            android:textColor="#7E8CA6"
+            android:textSize="11sp" />
+    </LinearLayout>
+</ScrollView>

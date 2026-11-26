@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SJ 인증번호</string>
+    <string name="default_url">https://kmjnluubjgyxkppxxjel.supabase.co/functions/v1/otp-ingest</string>
+</resources>
