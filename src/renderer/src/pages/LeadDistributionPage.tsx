@@ -137,6 +137,9 @@ export default function LeadDistributionPage(): JSX.Element {
   // 지역별 FC 배정: 지역 → 담당 FC id 목록 / FC당 최대 건수 / 저장된 담당 지역
   const [regionMap, setRegionMap] = useState<Record<string, string[]>>({})
   const [regionCap, setRegionCap] = useState('')
+  // 지역 통째 배정: 지역 → FC 1명 (빈 값 = 배정 안 함) / 배정 안 한 지역도 미배정으로 저장할지
+  const [regionOne, setRegionOne] = useState<Record<string, string>>({})
+  const [saveLeftover, setSaveLeftover] = useState(false)
   const [savedMap, setSavedMap] = useState<Record<string, string[]>>({})
   const [regionMsg, setRegionMsg] = useState('')
   // 방금 한 배분의 요약(이미지로 저장·복사). 개인정보 없이 건수만.
@@ -194,9 +197,27 @@ export default function LeadDistributionPage(): JSX.Element {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignMode, regionKey, savedMap])
+  useEffect(() => {
+    if (assignMode !== 'region-one') return
+    setRegionOne((prev) => {
+      const next = { ...prev }
+      for (const r of analysis.regions) if (!(r.region in next)) next[r.region] = savedMap[r.region]?.[0] ?? ''
+      return next
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignMode, regionKey, savedMap])
+  const regionOneMap = useMemo(
+    () => Object.fromEntries(Object.entries(regionOne).map(([region, id]) => [region, id ? [id] : []])),
+    [regionOne]
+  )
   const regionPreview = useMemo(
-    () => (assignMode === 'region' ? planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined) : null),
-    [assignMode, pendingRows, regionMap, regionCap]
+    () =>
+      assignMode === 'region'
+        ? planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined)
+        : assignMode === 'region-one'
+          ? planByRegion(pendingRows, regionOneMap)
+          : null,
+    [assignMode, pendingRows, regionMap, regionCap, regionOneMap]
   )
   const countSum = useMemo(() => staff.reduce((a, st) => a + toCount(counts[st.id]), 0), [staff, counts])
   const byStaff = useMemo(() => {
@@ -241,6 +262,48 @@ export default function LeadDistributionPage(): JSX.Element {
       return
     }
     const typeTag = selectedType ? `[${selectedType}] ` : ''
+    if (assignMode === 'region-one') {
+      const plan = planByRegion(pendingRows, regionOneMap)
+      if (!plan.ok) {
+        setDistMsg(plan.error ?? '지역별 담당 FC를 골라 주세요.')
+        return
+      }
+      const lines = plan.groups.map((g) => `${staff.find((st) => st.id === g.fcId)?.name ?? '직원'} ${g.rows.length}건`)
+      const summary = [...lines]
+      if (plan.leftover.length > 0) {
+        summary.push(saveLeftover ? `미배정으로 저장 ${plan.leftover.length}건` : `남겨 둠(저장 안 함) ${plan.leftover.length}건`)
+      }
+      if (typeof window !== 'undefined' && !window.confirm(`${typeTag}아래대로 배정할까요?\n\n${summary.join('\n')}`)) return
+      setBusy(true)
+      setDistMsg('')
+      const res = await assignByCounts(
+        plan.groups.map((g) => ({ fc: { id: g.fcId, name: staff.find((st) => st.id === g.fcId)?.name ?? '' }, rows: g.rows })),
+        saveLeftover ? plan.leftover : [],
+        selectedType || undefined
+      )
+      setBusy(false)
+      if (!res.ok) {
+        setDistMsg(res.error ?? '배정에 실패했습니다.')
+        return
+      }
+      setDistMsg(
+        `✅ ${typeTag}${res.assigned}건을 지역별로 배정했습니다 — ${lines.join(' · ')}${
+          plan.leftover.length > 0 ? (saveLeftover ? `. 미배정 ${res.unassigned}건은 목록에서 재배정할 수 있어요` : `. 남은 ${plan.leftover.length}건은 목록에 그대로 있어요`) : ''
+        }.`
+      )
+      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'region', groups: plan.groups.map((g) => ({ name: staff.find((st) => st.id === g.fcId)?.name ?? '직원', count: g.rows.length })), unassigned: saveLeftover ? res.unassigned : 0, regions: analysis.regions }))
+      // 배정한 행은 목록에서 빼고, 안 한 행은 그대로 남겨 다음에 배정한다.
+      if (saveLeftover) {
+        setImported([])
+        setImportSummary('')
+        setPaste('')
+      } else {
+        const done = new Set(plan.groups.flatMap((g) => g.rows))
+        setImported((prev) => prev.filter((it) => !done.has(it.row)))
+      }
+      await load()
+      return
+    }
     if (assignMode === 'region') {
       const plan = planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined)
       if (!plan.ok) {
@@ -616,6 +679,48 @@ export default function LeadDistributionPage(): JSX.Element {
             </div>
           ) : null}
 
+          {assignMode === 'region-one' ? (
+            <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="mb-2 text-[12px] font-bold text-slate-200">지역마다 담당 FC 한 명 고르기</div>
+              {analysis.regions.length === 0 ? (
+                <p className="text-[11px] text-slate-500">DB 파일에서 지역(지역·시도·주소) 열을 찾지 못했습니다. 파일에 지역 열이 있어야 합니다.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {analysis.regions.map((r) => (
+                    <label key={r.region} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-[12px] text-slate-200">
+                      <span>
+                        {r.region} <span className="text-slate-500">{r.count}건</span>
+                      </span>
+                      <select
+                        value={regionOne[r.region] ?? ''}
+                        onChange={(e) => setRegionOne((prev) => ({ ...prev, [r.region]: e.target.value }))}
+                        className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[12px] text-slate-100 outline-none focus:border-[#c6982f]"
+                      >
+                        <option value="">배정 안 함</option>
+                        {staff.map((st) => (
+                          <option key={st.id} value={st.id}>
+                            {st.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <label className="mt-2 flex items-center gap-2 text-[11px] text-slate-400">
+                <input type="checkbox" checked={saveLeftover} onChange={(e) => setSaveLeftover(e.target.checked)} className="h-3.5 w-3.5 accent-[#c6982f]" />
+                배정 안 한 지역·지역 없는 DB도 미배정으로 저장 (끄면 목록에 그대로 남아 다음에 배정)
+              </label>
+              {regionPreview ? (
+                <p className="mt-2 text-[11px] text-slate-500">
+                  {regionPreview.ok
+                    ? `배정 ${regionPreview.groups.reduce((a, g) => a + g.rows.length, 0)}건 · 남는 ${regionPreview.leftover.length}건`
+                    : regionPreview.error}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {assignMode === 'region' ? (
             <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -767,6 +872,7 @@ export default function LeadDistributionPage(): JSX.Element {
               <option value="auto">자동 배정 (최소부하 균등)</option>
               <option value="counts">개수 지정 배정</option>
               <option value="region">지역별 FC 배정</option>
+              <option value="region-one">지역 통째 배정 (한 지역 → 한 FC)</option>
               {staff.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}에게 배정
@@ -785,11 +891,13 @@ export default function LeadDistributionPage(): JSX.Element {
             <span className="text-[12px] text-slate-500">
               {assignMode === 'auto'
                 ? `활성 직원 ${staff.length}명에게 최소부하 순으로 균등 배정`
-                : assignMode === 'region'
-                  ? '지역별로 지정한 FC에게 번갈아 배정 (저장 전에 확인창이 뜹니다)'
-                  : assignMode === 'counts'
-                    ? '직원별로 입력한 개수만큼 파일 순서대로 배정 (저장 전에 확인창이 뜹니다)'
-                    : `${staff.find((s) => s.id === assignMode)?.name ?? '선택 직원'}에게 전량 배정`}
+                : assignMode === 'region-one'
+                  ? '선택한 지역은 고른 FC 한 명에게 통째로 배정 (저장 전에 확인창이 뜹니다)'
+                  : assignMode === 'region'
+                    ? '지역별로 지정한 FC에게 번갈아 배정 (저장 전에 확인창이 뜹니다)'
+                    : assignMode === 'counts'
+                      ? '직원별로 입력한 개수만큼 파일 순서대로 배정 (저장 전에 확인창이 뜹니다)'
+                      : `${staff.find((s) => s.id === assignMode)?.name ?? '선택 직원'}에게 전량 배정`}
               {selectedType ? ` · [${selectedType}]` : ''}
             </span>
           </div>
