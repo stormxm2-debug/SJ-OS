@@ -5,9 +5,14 @@
 총무 "인증번호 전달함" 보드에 자동으로 뜹니다. (FC는 손대지 않음)
 
 ## 동작
-1. 수신 SMS에서 인증 관련 키워드(`인증`, `OTP`, `코드` 등) + 4~8자리 숫자를 추출
-2. 보험사명을 본문에서 자동 태깅(가능할 때)
-3. `otp-ingest`로 `{ token, code, insurer, sender, raw }` POST (기기 토큰으로 인증)
+1. **문자(SMS)** 수신 → 인증 키워드(`인증`,`OTP`,`코드` 등) + 4~8자리 숫자 추출
+2. **카카오톡 알림톡** 수신 → 알림 내용에서 동일하게 추출 (알림 접근 권한 필요)
+3. 보험사명을 본문에서 자동 태깅(가능할 때)
+4. `otp-ingest`로 `{ token, code, insurer, sender, raw }` POST (기기 토큰으로 인증)
+
+## 권한
+- `RECEIVE_SMS`/`READ_SMS` — 문자 인증번호 자동 수신
+- **알림 접근(NotificationListener)** — **카카오 알림톡** 캡처. 앱의 "카톡 알림 접근 허용" 버튼 → 설정에서 'SJ 인증번호' ON. (카톡 알림이 실제로 떠야 읽힘)
 
 ## 설치 (사이드로드)
 1. GitHub Actions의 **Android OTP APK** 워크플로우 결과물(`sj-otp-apk`)에서 `app-debug.apk` 다운로드

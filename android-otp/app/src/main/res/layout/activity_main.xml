@@ -79,6 +79,15 @@
             android:text="테스트 전송"
             android:textColor="#E6C877" />
 
+        <Button
+            android:id="@+id/notif"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:backgroundTint="#FEE500"
+            android:text="카톡 알림 접근 허용 (알림톡 받기)"
+            android:textColor="#201603" />
+
         <TextView
             android:id="@+id/status"
             android:layout_width="match_parent"
