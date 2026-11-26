@@ -57,7 +57,7 @@ import {
 import { parseLeadFile } from '@renderer/services/commercial/leadImport'
 import { buildSummary, type LeadSummary } from '@renderer/services/commercial/leadSummary'
 import { copySummaryPng, downloadSummaryPng } from '@renderer/services/commercial/leadSummaryImage'
-import { analyzeLeads, equalCounts, planByCounts, planByRegion, toCount } from '@renderer/services/commercial/leadPlan'
+import { analyzeLeads, equalCounts, planByCounts, planByRegion, toCount, type RegionLevel } from '@renderer/services/commercial/leadPlan'
 import FileDropZone from '@renderer/components/ui/FileDropZone'
 
 const RT_TABLES = ['leads', 'lead_db_types']
@@ -140,6 +140,8 @@ export default function LeadDistributionPage(): JSX.Element {
   // 지역 통째 배정: 지역 → FC 1명 (빈 값 = 배정 안 함) / 배정 안 한 지역도 미배정으로 저장할지
   const [regionOne, setRegionOne] = useState<Record<string, string>>({})
   const [saveLeftover, setSaveLeftover] = useState(false)
+  // 지역을 나누는 단위: 기본은 시·군·구(전남 화순군)
+  const [regionLevel, setRegionLevel] = useState<RegionLevel>('sigungu')
   const [savedMap, setSavedMap] = useState<Record<string, string[]>>({})
   const [regionMsg, setRegionMsg] = useState('')
   // 방금 한 배분의 요약(이미지로 저장·복사). 개인정보 없이 건수만.
@@ -185,7 +187,7 @@ export default function LeadDistributionPage(): JSX.Element {
     [parsed, imported]
   )
   const overdue = useMemo(() => leads.filter(isOverdue), [leads])
-  const analysis = useMemo(() => analyzeLeads(imported.map((i) => i.row)), [imported])
+  const analysis = useMemo(() => analyzeLeads(imported.map((i) => i.row), regionLevel), [imported, regionLevel])
   // 지역 모드로 들어오거나 파일의 지역이 바뀌면, 아직 정하지 않은 지역은 저장된 담당 FC로 채운다.
   const regionKey = analysis.regions.map((r) => r.region).join('|')
   useEffect(() => {
@@ -213,11 +215,11 @@ export default function LeadDistributionPage(): JSX.Element {
   const regionPreview = useMemo(
     () =>
       assignMode === 'region'
-        ? planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined)
+        ? planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined, regionLevel)
         : assignMode === 'region-one'
-          ? planByRegion(pendingRows, regionOneMap)
+          ? planByRegion(pendingRows, regionOneMap, undefined, regionLevel)
           : null,
-    [assignMode, pendingRows, regionMap, regionCap, regionOneMap]
+    [assignMode, pendingRows, regionMap, regionCap, regionOneMap, regionLevel]
   )
   const countSum = useMemo(() => staff.reduce((a, st) => a + toCount(counts[st.id]), 0), [staff, counts])
   const byStaff = useMemo(() => {
@@ -263,7 +265,7 @@ export default function LeadDistributionPage(): JSX.Element {
     }
     const typeTag = selectedType ? `[${selectedType}] ` : ''
     if (assignMode === 'region-one') {
-      const plan = planByRegion(pendingRows, regionOneMap)
+      const plan = planByRegion(pendingRows, regionOneMap, undefined, regionLevel)
       if (!plan.ok) {
         setDistMsg(plan.error ?? '지역별 담당 FC를 골라 주세요.')
         return
@@ -305,7 +307,7 @@ export default function LeadDistributionPage(): JSX.Element {
       return
     }
     if (assignMode === 'region') {
-      const plan = planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined)
+      const plan = planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined, regionLevel)
       if (!plan.ok) {
         setDistMsg(plan.error ?? '지역별 담당 FC를 확인해 주세요.')
         return
@@ -682,10 +684,21 @@ export default function LeadDistributionPage(): JSX.Element {
           {assignMode === 'region-one' ? (
             <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="mb-2 text-[12px] font-bold text-slate-200">지역마다 담당 FC 한 명 고르기</div>
+              <label className="mb-2 flex items-center gap-2 text-[11px] text-slate-400">
+                지역 나누는 단위
+                <select
+                  value={regionLevel}
+                  onChange={(e) => setRegionLevel(e.target.value as RegionLevel)}
+                  className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[12px] text-slate-100 outline-none focus:border-[#c6982f]"
+                >
+                  <option value="sigungu">시·군·구 (전남 화순군)</option>
+                  <option value="sido">시·도 (전남)</option>
+                </select>
+              </label>
               {analysis.regions.length === 0 ? (
                 <p className="text-[11px] text-slate-500">DB 파일에서 지역(지역·시도·주소) 열을 찾지 못했습니다. 파일에 지역 열이 있어야 합니다.</p>
               ) : (
-                <div className="space-y-1.5">
+                <div className="max-h-80 space-y-1.5 overflow-y-auto">
                   {analysis.regions.map((r) => (
                     <label key={r.region} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-[12px] text-slate-200">
                       <span>
@@ -739,10 +752,21 @@ export default function LeadDistributionPage(): JSX.Element {
                   담당 지역 저장
                 </button>
               </div>
+              <label className="mb-2 flex items-center gap-2 text-[11px] text-slate-400">
+                지역 나누는 단위
+                <select
+                  value={regionLevel}
+                  onChange={(e) => setRegionLevel(e.target.value as RegionLevel)}
+                  className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[12px] text-slate-100 outline-none focus:border-[#c6982f]"
+                >
+                  <option value="sigungu">시·군·구 (전남 화순군)</option>
+                  <option value="sido">시·도 (전남)</option>
+                </select>
+              </label>
               {analysis.regions.length === 0 ? (
                 <p className="text-[11px] text-slate-500">DB 파일에서 지역(지역·시도·주소) 열을 찾지 못했습니다. 지역별 배정은 파일에 지역 열이 있어야 합니다.</p>
               ) : (
-                <div className="space-y-1.5">
+                <div className="max-h-80 space-y-1.5 overflow-y-auto">
                   {analysis.regions.map((r) => (
                     <div key={r.region} className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5">
                       <div className="mb-1 text-[12px] font-semibold text-slate-100">
