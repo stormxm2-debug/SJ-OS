@@ -192,3 +192,25 @@ test('전남의 여러 시·군이 각각 따로 나뉜다', () => {
   assert.equal(a.regions.length, 7)
   assert.deepEqual(a.regions[0], { region: '전남 화순군', count: 2 })
 })
+
+test('기존 고객 위치: 지역마다 고객이 많은 FC 순서', () => {
+  const rows = [
+    { fcId: 'x', address: '전라남도 화순군 화순읍 1' },
+    { fcId: 'x', address: '전남 화순군 한천면' },
+    { fcId: 'y', address: '전라남도 화순군 능주면' },
+    { fcId: 'y', address: '전라남도 나주시 빛가람동' },
+    { fcId: 'y', address: '(58100) 전라남도 나주시 ○○' },
+    { fcId: 'z', address: '' },
+    { fcId: '', address: '전남 담양군' }
+  ]
+  const aff = lp.customerAffinity(rows, 'sigungu')
+  assert.deepEqual(aff['전남 화순군'], [{ fcId: 'x', count: 2 }, { fcId: 'y', count: 1 }])
+  assert.deepEqual(aff['전남 나주시'], [{ fcId: 'y', count: 2 }])
+  assert.equal(aff['전남 담양군'], undefined)
+})
+
+test('기존 고객 기준 상위 n명은 허용된 FC만, 없으면 빈 배열', () => {
+  const aff = { '전남 화순군': [{ fcId: 'x', count: 3 }, { fcId: 'q', count: 2 }, { fcId: 'y', count: 1 }] }
+  assert.deepEqual(lp.affinityTop(aff, ['전남 화순군', '전남 곡성군'], ['x', 'y'], 1), { '전남 화순군': ['x'], '전남 곡성군': [] })
+  assert.deepEqual(lp.affinityTop(aff, ['전남 화순군'], ['x', 'y'], 3)['전남 화순군'], ['x', 'y'])
+})
