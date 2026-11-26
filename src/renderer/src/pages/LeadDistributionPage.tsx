@@ -33,6 +33,8 @@ import {
   assignLeadsTo,
   assignByCounts,
   findExistingPhones,
+  listRegionMapping,
+  saveRegionMapping,
   listAllLeads,
   listMyLeads,
   listSalesStaff,
@@ -53,7 +55,7 @@ import {
   type SalesStaff
 } from '@renderer/services/commercial/leadService'
 import { parseLeadFile } from '@renderer/services/commercial/leadImport'
-import { analyzeLeads, equalCounts, planByCounts, toCount } from '@renderer/services/commercial/leadPlan'
+import { analyzeLeads, equalCounts, planByCounts, planByRegion, toCount } from '@renderer/services/commercial/leadPlan'
 import FileDropZone from '@renderer/components/ui/FileDropZone'
 
 const RT_TABLES = ['leads', 'lead_db_types']
@@ -130,6 +132,11 @@ export default function LeadDistributionPage(): JSX.Element {
   const [assignMode, setAssignMode] = useState('auto')
   // 개수 지정 배정: 직원 id → 입력한 개수(문자열)
   const [counts, setCounts] = useState<Record<string, string>>({})
+  // 지역별 FC 배정: 지역 → 담당 FC id 목록 / FC당 최대 건수 / 저장된 담당 지역
+  const [regionMap, setRegionMap] = useState<Record<string, string[]>>({})
+  const [regionCap, setRegionCap] = useState('')
+  const [savedMap, setSavedMap] = useState<Record<string, string[]>>({})
+  const [regionMsg, setRegionMsg] = useState('')
 
   // 콜 완료한 내 리드 → 고객 전환 (보험 허브에 연결해 AI 도구로 직행)
   const [convertBusyId, setConvertBusyId] = useState<string | null>(null)
@@ -146,7 +153,10 @@ export default function LeadDistributionPage(): JSX.Element {
   useEffect(() => {
     void load()
     void loadTypes()
-    if (admin) void listSalesStaff().then(setStaff)
+    if (admin) {
+      void listSalesStaff().then(setStaff)
+      void listRegionMapping().then(setSavedMap)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useRealtimeSync(RT_TABLES, () => {
@@ -168,6 +178,21 @@ export default function LeadDistributionPage(): JSX.Element {
   )
   const overdue = useMemo(() => leads.filter(isOverdue), [leads])
   const analysis = useMemo(() => analyzeLeads(imported.map((i) => i.row)), [imported])
+  // 지역 모드로 들어오거나 파일의 지역이 바뀌면, 아직 정하지 않은 지역은 저장된 담당 FC로 채운다.
+  const regionKey = analysis.regions.map((r) => r.region).join('|')
+  useEffect(() => {
+    if (assignMode !== 'region') return
+    setRegionMap((prev) => {
+      const next = { ...prev }
+      for (const r of analysis.regions) if (!(r.region in next)) next[r.region] = savedMap[r.region] ?? []
+      return next
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignMode, regionKey, savedMap])
+  const regionPreview = useMemo(
+    () => (assignMode === 'region' ? planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined) : null),
+    [assignMode, pendingRows, regionMap, regionCap]
+  )
   const countSum = useMemo(() => staff.reduce((a, st) => a + toCount(counts[st.id]), 0), [staff, counts])
   const byStaff = useMemo(() => {
     const m = new Map<string, { name: string; total: number; uncalled: number; overdue: number }>()
@@ -211,6 +236,35 @@ export default function LeadDistributionPage(): JSX.Element {
       return
     }
     const typeTag = selectedType ? `[${selectedType}] ` : ''
+    if (assignMode === 'region') {
+      const plan = planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined)
+      if (!plan.ok) {
+        setDistMsg(plan.error ?? '지역별 담당 FC를 확인해 주세요.')
+        return
+      }
+      const lines = plan.groups.map((g) => `${staff.find((st) => st.id === g.fcId)?.name ?? '직원'} ${g.rows.length}건`)
+      const summary = [...lines]
+      if (plan.leftover.length > 0) summary.push(`미배정 ${plan.leftover.length}건 (지역 없음·담당 FC 없음·상한 초과)`)
+      if (typeof window !== 'undefined' && !window.confirm(`${typeTag}아래대로 배정할까요?\n\n${summary.join('\n')}`)) return
+      setBusy(true)
+      setDistMsg('')
+      const res = await assignByCounts(
+        plan.groups.map((g) => ({ fc: { id: g.fcId, name: staff.find((st) => st.id === g.fcId)?.name ?? '' }, rows: g.rows })),
+        plan.leftover,
+        selectedType || undefined
+      )
+      setBusy(false)
+      if (!res.ok) {
+        setDistMsg(res.error ?? '배정에 실패했습니다.')
+        return
+      }
+      setDistMsg(`✅ ${typeTag}${res.assigned}건을 지역별로 배정했습니다 — ${lines.join(' · ')}${res.unassigned > 0 ? `. 미배정 ${res.unassigned}건은 목록에서 재배정할 수 있어요` : ''}.`)
+      setPaste('')
+      setImported([])
+      setImportSummary('')
+      await load()
+      return
+    }
     if (assignMode === 'counts') {
       const plan = planByCounts(pendingRows, staff.map((st) => st.id), counts)
       if (!plan.ok) {
@@ -553,6 +607,84 @@ export default function LeadDistributionPage(): JSX.Element {
             </div>
           ) : null}
 
+          {assignMode === 'region' ? (
+            <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[12px] font-bold text-slate-200">지역별 담당 FC</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const only = Object.fromEntries(analysis.regions.map((r) => [r.region, regionMap[r.region] ?? []]))
+                    const res = await saveRegionMapping(only)
+                    setRegionMsg(res.ok ? '담당 지역을 저장했습니다. 다음 업로드에도 그대로 쓰입니다.' : res.error ?? '저장에 실패했습니다.')
+                    if (res.ok) setSavedMap(await listRegionMapping())
+                  }}
+                  disabled={analysis.regions.length === 0}
+                  className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800 disabled:opacity-40"
+                >
+                  담당 지역 저장
+                </button>
+              </div>
+              {analysis.regions.length === 0 ? (
+                <p className="text-[11px] text-slate-500">DB 파일에서 지역(지역·시도·주소) 열을 찾지 못했습니다. 지역별 배정은 파일에 지역 열이 있어야 합니다.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {analysis.regions.map((r) => (
+                    <div key={r.region} className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5">
+                      <div className="mb-1 text-[12px] font-semibold text-slate-100">
+                        {r.region} <span className="font-normal text-slate-500">{r.count}건</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {staff.map((st) => {
+                          const on = (regionMap[r.region] ?? []).includes(st.id)
+                          return (
+                            <button
+                              key={st.id}
+                              type="button"
+                              onClick={() =>
+                                setRegionMap((prev) => {
+                                  const cur = prev[r.region] ?? []
+                                  return { ...prev, [r.region]: on ? cur.filter((x) => x !== st.id) : [...cur, st.id] }
+                                })
+                              }
+                              className={[
+                                'rounded-full px-2 py-0.5 text-[11px] font-semibold transition',
+                                on ? 'bg-[#c6982f]/20 text-[#e6c877] ring-1 ring-[#c6982f]/60' : 'border border-slate-700 text-slate-400 hover:text-slate-200'
+                              ].join(' ')}
+                            >
+                              {st.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="mt-2 flex items-center gap-2 text-[11px] text-slate-400">
+                FC당 최대
+                <input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={regionCap}
+                  onChange={(e) => setRegionCap(e.target.value)}
+                  placeholder="제한 없음"
+                  className="w-20 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-right text-[12px] text-slate-100 outline-none focus:border-[#c6982f]"
+                />
+                건 (넘치는 건은 미배정으로 저장)
+              </label>
+              {regionPreview ? (
+                <p className="mt-2 text-[11px] text-slate-500">
+                  {regionPreview.ok
+                    ? `배정 ${regionPreview.groups.reduce((a, g) => a + g.rows.length, 0)}건 · 미배정 ${regionPreview.leftover.length}건 예상`
+                    : regionPreview.error}
+                </p>
+              ) : null}
+              {regionMsg ? <p className="mt-1 text-[11px] text-emerald-400">{regionMsg}</p> : null}
+            </div>
+          ) : null}
+
           {assignMode === 'counts' ? (
             <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -625,6 +757,7 @@ export default function LeadDistributionPage(): JSX.Element {
             >
               <option value="auto">자동 배정 (최소부하 균등)</option>
               <option value="counts">개수 지정 배정</option>
+              <option value="region">지역별 FC 배정</option>
               {staff.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}에게 배정
@@ -643,9 +776,11 @@ export default function LeadDistributionPage(): JSX.Element {
             <span className="text-[12px] text-slate-500">
               {assignMode === 'auto'
                 ? `활성 직원 ${staff.length}명에게 최소부하 순으로 균등 배정`
-                : assignMode === 'counts'
-                  ? '직원별로 입력한 개수만큼 파일 순서대로 배정 (저장 전에 확인창이 뜹니다)'
-                  : `${staff.find((s) => s.id === assignMode)?.name ?? '선택 직원'}에게 전량 배정`}
+                : assignMode === 'region'
+                  ? '지역별로 지정한 FC에게 번갈아 배정 (저장 전에 확인창이 뜹니다)'
+                  : assignMode === 'counts'
+                    ? '직원별로 입력한 개수만큼 파일 순서대로 배정 (저장 전에 확인창이 뜹니다)'
+                    : `${staff.find((s) => s.id === assignMode)?.name ?? '선택 직원'}에게 전량 배정`}
               {selectedType ? ` · [${selectedType}]` : ''}
             </span>
           </div>

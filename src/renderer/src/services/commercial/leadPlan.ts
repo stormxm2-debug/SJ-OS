@@ -124,3 +124,46 @@ export function planByCounts(rows: LeadInput[], order: string[], counts: Record<
   }
   return { ok: true, groups, leftover: rows.slice(cursor) }
 }
+
+export interface RegionPlan {
+  ok: boolean
+  error?: string
+  groups: { fcId: string; rows: LeadInput[] }[]
+  /** 지역이 없거나 담당 FC가 없거나, FC 상한에 걸린 행 — 미배정으로 저장한다. */
+  leftover: LeadInput[]
+}
+
+/**
+ * 지역별 담당 FC 배정.
+ *  - 행의 지역(시·도)에 담당 FC가 있으면 그 FC들에게, 현재 받은 건수가 가장 적은 사람부터 번갈아 준다.
+ *  - cap(FC당 최대 건수)이 있으면 다 찬 FC는 건너뛰고, 모두 차면 미배정으로 남긴다.
+ *  - 지역이 없거나 담당 FC가 없는 행은 미배정.
+ */
+export function planByRegion(rows: LeadInput[], mapping: Record<string, string[]>, cap?: number): RegionPlan {
+  if (rows.length === 0) return { ok: false, error: '배정할 DB가 없습니다.', groups: [], leftover: [] }
+  const mappedRegions = Object.entries(mapping).filter(([, ids]) => ids.length > 0)
+  if (mappedRegions.length === 0) return { ok: false, error: '지역별 담당 FC를 한 곳 이상 지정해 주세요.', groups: [], leftover: [] }
+
+  const limit = cap && cap > 0 ? Math.floor(cap) : Infinity
+  const received = new Map<string, LeadInput[]>()
+  const leftover: LeadInput[] = []
+  for (const row of rows) {
+    const region = regionOfLead(row)
+    const candidates = region ? mapping[region] ?? [] : []
+    let pick: string | null = null
+    for (const id of candidates) {
+      const n = received.get(id)?.length ?? 0
+      if (n >= limit) continue
+      if (pick === null || n < (received.get(pick)?.length ?? 0)) pick = id
+    }
+    if (pick === null) {
+      leftover.push(row)
+      continue
+    }
+    const list = received.get(pick) ?? []
+    list.push(row)
+    received.set(pick, list)
+  }
+  if (received.size === 0) return { ok: false, error: '담당 FC가 지정된 지역의 DB가 없습니다.', groups: [], leftover: rows }
+  return { ok: true, groups: [...received.entries()].map(([fcId, r]) => ({ fcId, rows: r })), leftover }
+}
