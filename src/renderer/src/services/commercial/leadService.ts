@@ -331,6 +331,75 @@ export async function assignLeadsTo(
   }
 }
 
+/**
+ * 이미 등록된 전화번호 찾기 — 같은 사람이 두 번 배정되는 것을 막는 데 쓴다.
+ * 번호는 숫자만 비교한다. 조회에 실패하면 빈 집합(= 중복 표시 없음)을 돌려준다.
+ */
+export async function findExistingPhones(phones: string[]): Promise<Set<string>> {
+  const found = new Set<string>()
+  const wanted = [...new Set(phones.map((p) => p.trim()).filter(Boolean))]
+  if (wanted.length === 0) return found
+  const client = await getClient()
+  if (!client) return found
+  try {
+    for (let i = 0; i < wanted.length; i += 100) {
+      const chunk = wanted.slice(i, i + 100)
+      const { data } = await client.from('leads').select('phone').in('phone', chunk)
+      for (const row of (data as any[]) ?? []) {
+        if (row?.phone) found.add(String(row.phone).replace(/\D/g, ''))
+      }
+    }
+  } catch {
+    /* 중복 조회 실패는 배정을 막지 않는다 */
+  }
+  return found
+}
+
+/**
+ * 개수 지정 배정: 직원별 묶음은 그 직원에게, 남는 행은 미배정으로 한꺼번에 저장한다.
+ * (콜 24시간 시계는 배정된 행에만 시작된다.)
+ */
+export async function assignByCounts(
+  groups: { fc: { id: string; name: string }; rows: LeadInput[] }[],
+  leftover: LeadInput[],
+  dbType?: string
+): Promise<{ ok: boolean; assigned: number; unassigned: number; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, assigned: 0, unassigned: 0, error: '서버 연결 후 사용할 수 있습니다.' }
+  const me = await uid(client)
+  if (!me) return { ok: false, assigned: 0, unassigned: 0, error: '로그인 후 사용할 수 있습니다.' }
+  const nowIso = new Date().toISOString()
+  const type = dbType?.trim() || null
+  const base = (lead: LeadInput): Record<string, unknown> => ({
+    name: (lead.name ?? '').trim(),
+    phone: lead.phone?.trim() || null,
+    source: lead.source?.trim() || null,
+    memo: lead.memo?.trim() || null,
+    status: 'new',
+    db_type: type,
+    created_by: me
+  })
+  const rows: Record<string, unknown>[] = []
+  for (const g of groups) {
+    for (const lead of g.rows) {
+      rows.push({ ...base(lead), assigned_fc_id: g.fc.id, assigned_fc_name: g.fc.name, assigned_at: nowIso })
+    }
+  }
+  const assigned = rows.length
+  for (const lead of leftover) {
+    rows.push({ ...base(lead), assigned_fc_id: null, assigned_fc_name: null, assigned_at: null })
+  }
+  const valid = rows.filter((r) => String(r.name))
+  if (valid.length === 0) return { ok: false, assigned: 0, unassigned: 0, error: '이름이 있는 리드가 없습니다.' }
+  try {
+    const { error } = await client.from('leads').insert(valid)
+    if (error) return { ok: false, assigned: 0, unassigned: 0, error: error.message }
+    return { ok: true, assigned, unassigned: valid.length - assigned }
+  } catch {
+    return { ok: false, assigned: 0, unassigned: 0, error: '배정 저장 중 오류가 발생했습니다.' }
+  }
+}
+
 /** 관리자: 리드 재배정 — 24시간 콜 시계를 리셋(assigned_at=now, status=new, first_call 초기화). */
 export async function reassignLead(leadId: string, fcId: string, fcName: string): Promise<{ ok: boolean; error?: string }> {
   const client = await getClient()
