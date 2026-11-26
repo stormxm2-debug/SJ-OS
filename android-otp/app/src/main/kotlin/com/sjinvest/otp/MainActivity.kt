@@ -10,7 +10,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import kotlin.concurrent.thread
 
-/** 1회 설정 화면: 수신 주소 + 기기 토큰 저장, 알림 접근 허용, 테스트 전송. */
+/** 1회 설정 화면: 수신 주소 + 기기 토큰 저장, 알림 접근·접근성 허용, 테스트 전송. */
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,7 +29,7 @@ class MainActivity : AppCompatActivity() {
                 .putString("url", urlEt.text.toString().trim())
                 .putString("token", tokenEt.text.toString().trim())
                 .apply()
-            status.text = "저장됨 ✓ 아래 '알림 접근 허용'까지 켜면 끝입니다."
+            status.text = "저장됨 ✓ 아래 ①알림 접근, ②접근성 둘 다 켜주세요."
         }
 
         findViewById<Button>(R.id.test).setOnClickListener {
@@ -48,28 +48,44 @@ class MainActivity : AppCompatActivity() {
             try {
                 startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
             } catch (e: Exception) {
-                status.text = "설정 화면을 열 수 없습니다. 설정 > 알림 접근에서 'SJ 인증번호'를 켜주세요."
+                status.text = "설정 > 알림 접근에서 'SJ 인증번호'를 켜주세요."
             }
         }
 
-        updateNotifStatus(status)
+        findViewById<Button>(R.id.accessibility).setOnClickListener {
+            try {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            } catch (e: Exception) {
+                status.text = "설정 > 접근성 > 설치된 앱에서 'SJ 인증번호'를 켜주세요."
+            }
+        }
+
+        updateStatus(status)
     }
 
     override fun onResume() {
         super.onResume()
-        updateNotifStatus(findViewById(R.id.status))
+        updateStatus(findViewById(R.id.status))
     }
 
-    private fun updateNotifStatus(status: TextView) {
-        if (!isNotificationAccessEnabled()) {
-            status.text = "마지막 단계: '알림 접근 허용'을 눌러 'SJ 인증번호'를 켜주세요. (문자·카톡 인증번호를 읽습니다)"
-        } else {
-            status.text = "준비 완료 ✓ 인증번호가 오면 자동으로 전달됩니다."
+    private fun updateStatus(status: TextView) {
+        val notif = isNotificationAccessEnabled()
+        val acc = isAccessibilityEnabled()
+        status.text = when {
+            notif && acc -> "준비 완료 ✓ 문자·카톡 인증번호가 자동으로 전달됩니다."
+            !notif && !acc -> "① '알림 접근', ② '접근성'을 둘 다 켜주세요."
+            !notif -> "① '알림 접근 허용'을 켜주세요. (문자·카톡 알림용)"
+            else -> "② '카톡 화면 읽기(접근성)'을 켜주세요. (알림톡이 안 뜨는 보험사용)"
         }
     }
 
     private fun isNotificationAccessEnabled(): Boolean {
         val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: ""
+        return flat.contains(packageName)
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        val flat = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
         return flat.contains(packageName)
     }
 }
