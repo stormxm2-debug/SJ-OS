@@ -1,15 +1,18 @@
 package com.sjinvest.otp
 
 import android.content.Context
+import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import kotlin.concurrent.thread
 
 /**
- * 알림 접근으로 인증번호를 캡처한다. (문자 읽기 권한 READ_SMS/RECEIVE_SMS 불필요)
+ * 알림 접근으로 인증번호를 캡처한다. (문자 읽기 권한 불필요)
+ *  - 문자(SMS) 앱 알림 (삼성/구글/기본 메시지)
  *  - 카카오톡 알림톡 (com.kakao.talk)
- *  - 문자(SMS) 앱 알림 (삼성/구글/기본 메시지) — 문자가 오면 뜨는 "알림"을 읽음
- * 문자 권한을 쓰지 않으므로 구글의 사이드로드 하드 차단(악성 앱 의심)에 걸리지 않는다.
+ *
+ * 삼성 메시지·카카오톡은 'MessagingStyle' 알림이라 본문이 android.text 가 아니라
+ * android.messages 배열/textLines 에 들어간다. 모든 칸을 읽어 본문을 합친다.
  * (사용자가 설정에서 '알림 접근'을 허용해야 동작)
  */
 class NotificationListener : NotificationListenerService() {
@@ -17,15 +20,33 @@ class NotificationListener : NotificationListenerService() {
         val pkg = sbn.packageName ?: return
         val channel = when {
             pkg == "com.kakao.talk" -> "카카오톡"
-            SMS_PACKAGES.contains(pkg) -> "문자"
+            isSmsApp(pkg) -> "문자"
             else -> return
         }
 
-        val ex = sbn.notification?.extras ?: return
+        val n = sbn.notification ?: return
+        val ex = n.extras ?: Bundle()
+        val parts = ArrayList<String>()
+        fun add(cs: CharSequence?) {
+            val s = cs?.toString()?.trim()
+            if (!s.isNullOrBlank()) parts.add(s)
+        }
+        add(ex.getCharSequence("android.title"))
+        add(ex.getCharSequence("android.text"))
+        add(ex.getCharSequence("android.bigText"))
+        add(ex.getCharSequence("android.subText"))
+        add(ex.getCharSequence("android.summaryText"))
+        add(ex.getCharSequence("android.infoText"))
+        ex.getCharSequenceArray("android.textLines")?.forEach { add(it) }
+        // MessagingStyle(삼성 메시지/카톡) — 본문이 messages 배열에 들어감
+        @Suppress("DEPRECATION")
+        ex.getParcelableArray("android.messages")?.forEach { p ->
+            (p as? Bundle)?.let { add(it.getCharSequence("text")) }
+        }
+        add(n.tickerText)
+
         val title = ex.getCharSequence("android.title")?.toString() ?: ""
-        val text = ex.getCharSequence("android.text")?.toString() ?: ""
-        val big = ex.getCharSequence("android.bigText")?.toString() ?: ""
-        val body = listOf(text, big, title).filter { it.isNotBlank() }.joinToString(" ").trim()
+        val body = parts.joinToString(" ").trim()
         if (body.isBlank()) return
 
         // 인증 관련 알림만 전송 (개인 문자/대화 오탐 방지)
@@ -43,6 +64,12 @@ class NotificationListener : NotificationListenerService() {
         if (url.isBlank() || token.isBlank()) return
 
         thread { Sender.post(url, token, code, insurer, sender, body.take(200)) }
+    }
+
+    /** 문자(SMS/MMS) 앱 판별 — 알려진 패키지 + 이름 패턴. */
+    private fun isSmsApp(pkg: String): Boolean {
+        if (SMS_PACKAGES.contains(pkg)) return true
+        return pkg.contains("messaging") || pkg.contains(".mms") || pkg.endsWith(".messages")
     }
 
     /** 같은 메시지로 알림이 여러 번 갱신되므로 60초 내 동일 코드는 1회만 전송. */
