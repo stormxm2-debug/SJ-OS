@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">SJ 인증번호</string>
     <string name="default_url">https://kmjnluubjgyxkppxxjel.supabase.co/functions/v1/otp-ingest</string>
+    <string name="accessibility_desc">카카오톡 화면에 보이는 보험사 인증번호를 읽어 총무에게 자동 전달합니다. (카톡 화면에만 반응, 다른 앱은 읽지 않음)</string>
 </resources>
