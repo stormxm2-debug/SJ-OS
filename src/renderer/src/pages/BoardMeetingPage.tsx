@@ -8,9 +8,12 @@ import {
   Lightbulb,
   Flag,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Wrench,
+  Check
 } from 'lucide-react'
 import { useSession } from '@renderer/navigation/SessionContext'
+import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { buildAssistantContext } from '@renderer/services/assistant/assistantContext'
 import {
   isSupabaseMode,
@@ -23,6 +26,7 @@ import {
   type BoardReport,
   type SavedReport
 } from '@renderer/services/commercial/boardMeetingService'
+import { createRequest } from '@renderer/services/commercial/devRequestService'
 
 const TEAM_ICON: Record<string, string> = { plan: '🧭', ops: '⚙️', sales: '📈', dev: '🛠️' }
 
@@ -32,7 +36,20 @@ const TEAM_ICON: Record<string, string> = { plan: '🧭', ops: '⚙️', sales: 
  */
 export default function BoardMeetingPage(): JSX.Element {
   const { session } = useSession()
+  const { navigate } = useNavigation()
   const supa = isSupabaseMode()
+  const [requested, setRequested] = useState<Record<string, boolean>>({})
+
+  const onRequestDev = async (index: number, text: string): Promise<void> => {
+    const key = `${reportWeek}:${index}`
+    setRequested((m) => ({ ...m, [key]: true }))
+    try {
+      await createRequest({ title: text, source: 'board-meeting', sourceRef: reportWeek })
+    } catch (e) {
+      setRequested((m) => ({ ...m, [key]: false }))
+      setErr(e instanceof Error ? e.message : '개발 요청 등록 실패')
+    }
+  }
   const [week] = useState<string>(() => currentWeekLabel())
   const [report, setReport] = useState<BoardReport | null>(null)
   const [reportWeek, setReportWeek] = useState<string>('')
@@ -209,16 +226,42 @@ export default function BoardMeetingPage(): JSX.Element {
 
           {report.decisions.length > 0 ? (
             <section className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-5">
-              <div className="mb-2 flex items-center gap-2 text-sm font-bold text-indigo-700">
-                <Flag className="h-4 w-4" /> 대표님 결정이 필요한 안건
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-bold text-indigo-700">
+                  <Flag className="h-4 w-4" /> 대표님 결정이 필요한 안건
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate({ name: 'dev-requests' })}
+                  className="shrink-0 text-[11px] font-semibold text-indigo-500 hover:underline"
+                >
+                  개발 요청함 →
+                </button>
               </div>
-              <ol className="space-y-1.5">
-                {report.decisions.map((s, i) => (
-                  <li key={i} className="flex gap-2 text-sm text-slate-700">
-                    <span className="font-bold text-indigo-500">{i + 1}.</span>
-                    <span className="min-w-0">{s}</span>
-                  </li>
-                ))}
+              <ol className="space-y-2">
+                {report.decisions.map((s, i) => {
+                  const done = requested[`${reportWeek}:${i}`]
+                  return (
+                    <li key={i} className="flex items-start gap-2 text-sm text-slate-700">
+                      <span className="mt-0.5 font-bold text-indigo-500">{i + 1}.</span>
+                      <span className="min-w-0 flex-1">{s}</span>
+                      <button
+                        type="button"
+                        onClick={() => void onRequestDev(i, s)}
+                        disabled={done}
+                        className={[
+                          'shrink-0 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold transition',
+                          done
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-[#0e1e3a] text-white hover:brightness-125'
+                        ].join(' ')}
+                      >
+                        {done ? <Check className="h-3 w-3" /> : <Wrench className="h-3 w-3" />}
+                        {done ? '요청됨' : '개발 요청'}
+                      </button>
+                    </li>
+                  )
+                })}
               </ol>
             </section>
           ) : null}

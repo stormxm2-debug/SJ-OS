@@ -9,6 +9,7 @@ import {
   BarChart3,
   Calculator,
   UsersRound,
+  Wrench,
   ClipboardList as ClipboardListIcon,
   FileSearch,
   Rocket,
@@ -185,7 +186,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'AI 업무지원',
     items: [
       { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, match: ['assistant'] },
-      { key: 'board-meeting', label: '경영 회의실', icon: UsersRound, view: { name: 'board-meeting' }, match: ['board-meeting'] }
+      { key: 'board-meeting', label: '경영 회의실', icon: UsersRound, view: { name: 'board-meeting' }, match: ['board-meeting'] },
+      { key: 'dev-requests', label: '개발 요청함', icon: Wrench, view: { name: 'dev-requests' }, match: ['dev-requests'] }
     ]
   },
   {
