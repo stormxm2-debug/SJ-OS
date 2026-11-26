@@ -458,32 +458,35 @@ export default function Sidebar(): JSX.Element {
     return visible.map((item, i) => {
       if (!editNav) return renderItem(item)
       const hidden = isSidebarItemHidden(section, item.key, navPrefs)
+      // 편집 모드: 이름이 버튼에 밀려 잘리지 않도록, 조작 버튼을 이름 '아래 줄'로 내린다.
       return (
-        <div key={item.key} className={['flex items-center gap-1', hidden ? 'opacity-45' : ''].join(' ')}>
-          <div className="min-w-0 flex-1">{renderItem(item)}</div>
-          <button type="button" onClick={() => pinSidebarItemTop(item.key)} className={ctrl} title="맨 위로" aria-label={`${item.label} 맨 위로`}>
-            <ArrowUpToLine className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" disabled={i === 0} onClick={() => moveSidebarItem(section, orderedKeys, item.key, -1)} className={ctrl} aria-label={`${item.label} 위로`}>
-            <ArrowUp className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            disabled={i === visible.length - 1}
-            onClick={() => moveSidebarItem(section, orderedKeys, item.key, 1)}
-            className={ctrl}
-            aria-label={`${item.label} 아래로`}
-          >
-            <ArrowDown className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleSidebarItemHidden(section, item.key)}
-            className={[ctrl, hidden ? 'text-[#c6982f]' : ''].join(' ')}
-            aria-label={hidden ? `${item.label} 다시 보이기` : `${item.label} 숨기기`}
-          >
-            {hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-          </button>
+        <div key={item.key} className={['rounded-lg', hidden ? 'opacity-45' : ''].join(' ')}>
+          <div>{renderItem(item)}</div>
+          <div className="flex items-center justify-end gap-1 pb-1 pr-1">
+            <button type="button" onClick={() => pinSidebarItemTop(item.key)} className={ctrl} title="맨 위로" aria-label={`${item.label} 맨 위로`}>
+              <ArrowUpToLine className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" disabled={i === 0} onClick={() => moveSidebarItem(section, orderedKeys, item.key, -1)} className={ctrl} aria-label={`${item.label} 위로`}>
+              <ArrowUp className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={i === visible.length - 1}
+              onClick={() => moveSidebarItem(section, orderedKeys, item.key, 1)}
+              className={ctrl}
+              aria-label={`${item.label} 아래로`}
+            >
+              <ArrowDown className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleSidebarItemHidden(section, item.key)}
+              className={[ctrl, hidden ? 'text-[#c6982f]' : ''].join(' ')}
+              aria-label={hidden ? `${item.label} 다시 보이기` : `${item.label} 숨기기`}
+            >
+              {hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </div>
       )
     })
