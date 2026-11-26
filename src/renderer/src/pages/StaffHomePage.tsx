@@ -4,6 +4,7 @@ import { Bot, Check, ArrowRight } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import MyDayWidgets from '@renderer/components/home/MyDayWidgets'
+import SalesListHomeCard from '@renderer/components/home/SalesListHomeCard'
 
 /**
  * Staff Home — quick-action launcher + Jarvis command shortcuts. Sits below the
@@ -37,6 +38,9 @@ export default function StaffHomePage(): JSX.Element {
     <div className="space-y-5">
       {/* 내 하루 — 본인 일정 + 본인 이번 달 매출 (자기 것만, 실데이터) */}
       <MyDayWidgets />
+
+      {/* 영업·리쿠르팅 리스트 바로가기 + 이번 달 요약 */}
+      <SalesListHomeCard />
 
       {JARVIS_UI_VISIBLE ? (
       <>

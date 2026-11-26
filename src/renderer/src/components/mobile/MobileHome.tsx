@@ -6,6 +6,7 @@ import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { jarvisService } from '@renderer/services/jarvis/JarvisService'
 import RecentAnnouncementsWidget from '@renderer/components/home/RecentAnnouncementsWidget'
 import MyDayWidgets from '@renderer/components/home/MyDayWidgets'
+import SalesListHomeCard from '@renderer/components/home/SalesListHomeCard'
 import { findMenuItem, listFavorites, subscribeFavorites } from './mobileMenu'
 import { REMOVED_MENU_KEYS } from '@renderer/navigation/menuVisibility'
 import { openFamilyBirthdayGate } from '@renderer/services/commercial/familyBirthdayService'
@@ -36,6 +37,9 @@ export default function MobileHome(): JSX.Element {
     <div className="space-y-3">
       {/* 내 하루 — 본인 일정 + 본인 이번 달 매출 (자기 것만) */}
       <MyDayWidgets />
+
+      {/* 영업·리쿠르팅 리스트 바로가기 + 이번 달 요약 */}
+      <SalesListHomeCard />
 
       {/* 즐겨찾기 — 전체 메뉴에서 ⭐한 항목이 여기 나타난다 */}
       {favItems.length > 0 ? (
