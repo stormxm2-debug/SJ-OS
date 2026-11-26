@@ -39,15 +39,35 @@ export function normalizeRegion(raw: string): string {
 
 const REGION_HEADER = /^(지역|시도|시\/도|광역|주소|거주)/
 
+/** 지역을 나누는 단위: 시·도(전남) 또는 시·군·구(전남 화순군). */
+export type RegionLevel = 'sido' | 'sigungu'
+
+/**
+ * 주소 문자열 → 지역 이름.
+ *  - sido    : "전라남도 화순군 ○○읍" → "전남"
+ *  - sigungu : "전라남도 화순군 ○○읍" → "전남 화순군", "광주 광산구 ○○동" → "광주 광산구"
+ * 시·군·구를 못 찾으면 시·도만 돌려준다.
+ */
+export function regionFromText(raw: string, level: RegionLevel = 'sido'): string {
+  const text = (raw ?? '').trim()
+  if (!text) return ''
+  const sido = normalizeRegion(text)
+  if (level === 'sido') return sido
+  const tokens = text.split(/\s+/)
+  // 첫 단어는 시·도(또는 알 수 없는 지역명)이므로, 그 뒤에서 시·군·구를 찾는다.
+  const sigungu = tokens.slice(1).find((t) => t.length >= 2 && /[시군구]$/.test(t))
+  return sigungu ? `${sido} ${sigungu}` : sido
+}
+
 /** 파일 판독이 메모에 합쳐 둔 "헤더: 값 / 헤더: 값" 에서 지역을 꺼낸다. 없으면 ''. */
-export function regionOfLead(lead: LeadInput): string {
+export function regionOfLead(lead: LeadInput, level: RegionLevel = 'sido'): string {
   const memo = lead.memo ?? ''
   for (const part of memo.split(' / ')) {
     const i = part.indexOf(':')
     if (i < 0) continue
     const header = part.slice(0, i).trim()
     const value = part.slice(i + 1).trim()
-    if (REGION_HEADER.test(header) && value) return normalizeRegion(value)
+    if (REGION_HEADER.test(header) && value) return regionFromText(value, level)
   }
   return ''
 }
@@ -64,7 +84,7 @@ export interface LeadAnalysis {
   noRegion: number
 }
 
-export function analyzeLeads(rows: LeadInput[]): LeadAnalysis {
+export function analyzeLeads(rows: LeadInput[], level: RegionLevel = 'sido'): LeadAnalysis {
   let withPhone = 0
   let invalidPhone = 0
   let noRegion = 0
@@ -73,7 +93,7 @@ export function analyzeLeads(rows: LeadInput[]): LeadAnalysis {
     const phone = (r.phone ?? '').trim()
     if (phone) withPhone += 1
     if (!PHONE_OK.test(phone)) invalidPhone += 1
-    const region = regionOfLead(r)
+    const region = regionOfLead(r, level)
     if (!region) noRegion += 1
     else byRegion.set(region, (byRegion.get(region) ?? 0) + 1)
   }
@@ -139,7 +159,7 @@ export interface RegionPlan {
  *  - cap(FC당 최대 건수)이 있으면 다 찬 FC는 건너뛰고, 모두 차면 미배정으로 남긴다.
  *  - 지역이 없거나 담당 FC가 없는 행은 미배정.
  */
-export function planByRegion(rows: LeadInput[], mapping: Record<string, string[]>, cap?: number): RegionPlan {
+export function planByRegion(rows: LeadInput[], mapping: Record<string, string[]>, cap?: number, level: RegionLevel = 'sido'): RegionPlan {
   if (rows.length === 0) return { ok: false, error: '배정할 DB가 없습니다.', groups: [], leftover: [] }
   const mappedRegions = Object.entries(mapping).filter(([, ids]) => ids.length > 0)
   if (mappedRegions.length === 0) return { ok: false, error: '지역별 담당 FC를 한 곳 이상 지정해 주세요.', groups: [], leftover: [] }
@@ -148,7 +168,7 @@ export function planByRegion(rows: LeadInput[], mapping: Record<string, string[]
   const received = new Map<string, LeadInput[]>()
   const leftover: LeadInput[] = []
   for (const row of rows) {
-    const region = regionOfLead(row)
+    const region = regionOfLead(row, level)
     const candidates = region ? mapping[region] ?? [] : []
     let pick: string | null = null
     for (const id of candidates) {

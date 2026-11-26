@@ -145,3 +145,30 @@ test('요약: 이미지 높이는 항목 수에 따라 늘어난다', () => {
   const b = sm.buildSummary({ mode: 'auto', groups: [{ name: 'a', count: 1 }, { name: 'b', count: 1 }], unassigned: 0, regions: [{ region: '광주', count: 2 }] })
   assert.ok(sm.summaryHeight(b) > sm.summaryHeight(a))
 })
+
+test('시·군·구 단위: 전남 화순군 / 광주 광산구', () => {
+  assert.equal(lp.regionFromText('전라남도 화순군 화순읍 ○○로 1', 'sigungu'), '전남 화순군')
+  assert.equal(lp.regionFromText('전남 나주시 빛가람동', 'sigungu'), '전남 나주시')
+  assert.equal(lp.regionFromText('광주광역시 광산구 ○○동', 'sigungu'), '광주 광산구')
+  assert.equal(lp.regionFromText('광주 서구', 'sigungu'), '광주 서구')
+  assert.equal(lp.regionFromText('전라남도 화순군', 'sido'), '전남')
+})
+
+test('시·군·구를 못 찾으면 시·도만 돌려준다', () => {
+  assert.equal(lp.regionFromText('전남', 'sigungu'), '전남')
+  assert.equal(lp.regionFromText('', 'sigungu'), '')
+})
+
+test('분석·배정이 시·군·구 단위로 나뉜다', () => {
+  const r = [reg('a', '전라남도 화순군'), reg('b', '전남 화순군 한천면'), reg('c', '전라남도 나주시'), reg('d', '전라남도')]
+  const a = lp.analyzeLeads(r, 'sigungu')
+  assert.deepEqual(a.regions, [{ region: '전남 화순군', count: 2 }, { region: '전남 나주시', count: 1 }, { region: '전남', count: 1 }])
+  const p = lp.planByRegion(r, { '전남 화순군': ['x'], '전남 나주시': ['y'] }, undefined, 'sigungu')
+  assert.equal(p.ok, true)
+  const by = Object.fromEntries(p.groups.map((g) => [g.fcId, g.rows.map((x) => x.name)]))
+  assert.deepEqual(by.x, ['a', 'b'])
+  assert.deepEqual(by.y, ['c'])
+  assert.deepEqual(p.leftover.map((x) => x.name), ['d'])
+  // 시·도 단위로 보면 전부 전남 한 지역
+  assert.deepEqual(lp.analyzeLeads(r, 'sido').regions, [{ region: '전남', count: 4 }])
+})

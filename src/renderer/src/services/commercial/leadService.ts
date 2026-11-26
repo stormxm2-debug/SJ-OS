@@ -378,7 +378,7 @@ export async function assignByCounts(
     memo: lead.memo?.trim() || null,
     status: 'new',
     db_type: type,
-    region: regionOfLead(lead) || null,
+    region: regionOfLead(lead, 'sigungu') || null,
     created_by: me
   })
   const rows: Record<string, unknown>[] = []
