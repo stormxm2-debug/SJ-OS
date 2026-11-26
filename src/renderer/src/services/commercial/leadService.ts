@@ -1,4 +1,5 @@
 import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
+import { regionOfLead } from './leadPlan'
 
 /**
  * DB 배정 서비스.
@@ -377,6 +378,7 @@ export async function assignByCounts(
     memo: lead.memo?.trim() || null,
     status: 'new',
     db_type: type,
+    region: regionOfLead(lead) || null,
     created_by: me
   })
   const rows: Record<string, unknown>[] = []
@@ -397,6 +399,43 @@ export async function assignByCounts(
     return { ok: true, assigned, unassigned: valid.length - assigned }
   } catch {
     return { ok: false, assigned: 0, unassigned: 0, error: '배정 저장 중 오류가 발생했습니다.' }
+  }
+}
+
+/** FC별 담당 지역 → 지역별 FC id 목록. 조회 실패하면 빈 객체. */
+export async function listRegionMapping(): Promise<Record<string, string[]>> {
+  const out: Record<string, string[]> = {}
+  const client = await getClient()
+  if (!client) return out
+  try {
+    const { data } = await client.from('fc_regions').select('fc_id, region')
+    for (const row of (data as any[]) ?? []) {
+      const region = String(row.region ?? '')
+      if (!region) continue
+      ;(out[region] ??= []).push(String(row.fc_id))
+    }
+  } catch {
+    /* 담당 지역을 못 읽어도 직접 지정은 가능 */
+  }
+  return out
+}
+
+/** 지역별 담당 FC 저장(관리자). 넘긴 지역만 덮어쓴다 — 그 지역의 기존 담당을 지우고 새로 넣는다. */
+export async function saveRegionMapping(map: Record<string, string[]>): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  try {
+    for (const [region, ids] of Object.entries(map)) {
+      const del = await client.from('fc_regions').delete().eq('region', region)
+      if (del.error) return { ok: false, error: del.error.message }
+      if (ids.length > 0) {
+        const ins = await client.from('fc_regions').insert(ids.map((fc_id) => ({ fc_id, region })))
+        if (ins.error) return { ok: false, error: ins.error.message }
+      }
+    }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '담당 지역 저장 중 오류가 발생했습니다.' }
   }
 }
 
