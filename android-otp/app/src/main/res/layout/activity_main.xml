@@ -22,7 +22,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="보험사 인증문자를 자동으로 총무에게 전달합니다. 아래 두 값을 한 번만 저장하세요."
+            android:text="문자·카톡 인증번호를 자동으로 총무에게 전달합니다. 아래 두 값을 저장하고, 맨 아래 '알림 접근 허용'을 켜면 끝입니다."
             android:textColor="#C9D3E6"
             android:textSize="13sp" />
 
@@ -85,7 +85,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:backgroundTint="#FEE500"
-            android:text="카톡 알림 접근 허용 (알림톡 받기)"
+            android:text="알림 접근 허용 (문자·카톡 인증번호 읽기)"
             android:textColor="#201603" />
 
         <TextView
@@ -93,7 +93,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="SMS 권한을 허용해야 자동 전달됩니다."
+            android:text="'알림 접근'을 허용해야 자동 전달됩니다."
             android:textColor="#E6C877"
             android:textSize="13sp" />
 

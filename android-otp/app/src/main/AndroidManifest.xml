@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.RECEIVE_SMS" />
-    <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -20,16 +18,7 @@
             </intent-filter>
         </activity>
 
-        <receiver
-            android:name=".SmsReceiver"
-            android:exported="true"
-            android:permission="android.permission.BROADCAST_SMS">
-            <intent-filter android:priority="999">
-                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
-            </intent-filter>
-        </receiver>
-
-        <!-- 카카오톡 알림톡 캡처 (사용자가 '알림 접근' 허용 시 동작) -->
+        <!-- 문자·카카오 알림톡 캡처 (사용자가 '알림 접근' 허용 시 동작, 문자 권한 불필요) -->
         <service
             android:name=".NotificationListener"
             android:exported="false"
