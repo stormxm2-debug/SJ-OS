@@ -55,6 +55,8 @@ import {
   type SalesStaff
 } from '@renderer/services/commercial/leadService'
 import { parseLeadFile } from '@renderer/services/commercial/leadImport'
+import { buildSummary, type LeadSummary } from '@renderer/services/commercial/leadSummary'
+import { copySummaryPng, downloadSummaryPng } from '@renderer/services/commercial/leadSummaryImage'
 import { analyzeLeads, equalCounts, planByCounts, planByRegion, toCount } from '@renderer/services/commercial/leadPlan'
 import FileDropZone from '@renderer/components/ui/FileDropZone'
 
@@ -137,6 +139,9 @@ export default function LeadDistributionPage(): JSX.Element {
   const [regionCap, setRegionCap] = useState('')
   const [savedMap, setSavedMap] = useState<Record<string, string[]>>({})
   const [regionMsg, setRegionMsg] = useState('')
+  // 방금 한 배분의 요약(이미지로 저장·복사). 개인정보 없이 건수만.
+  const [lastSummary, setLastSummary] = useState<LeadSummary | null>(null)
+  const [imgMsg, setImgMsg] = useState('')
 
   // 콜 완료한 내 리드 → 고객 전환 (보험 허브에 연결해 AI 도구로 직행)
   const [convertBusyId, setConvertBusyId] = useState<string | null>(null)
@@ -259,6 +264,7 @@ export default function LeadDistributionPage(): JSX.Element {
         return
       }
       setDistMsg(`✅ ${typeTag}${res.assigned}건을 지역별로 배정했습니다 — ${lines.join(' · ')}${res.unassigned > 0 ? `. 미배정 ${res.unassigned}건은 목록에서 재배정할 수 있어요` : ''}.`)
+      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'region', groups: plan.groups.map((g) => ({ name: staff.find((st) => st.id === g.fcId)?.name ?? '직원', count: g.rows.length })), unassigned: res.unassigned, regions: analysis.regions }))
       setPaste('')
       setImported([])
       setImportSummary('')
@@ -287,6 +293,7 @@ export default function LeadDistributionPage(): JSX.Element {
         return
       }
       setDistMsg(`✅ ${typeTag}${res.assigned}건을 배정했습니다 — ${lines.slice(0, plan.groups.length).join(' · ')}${res.unassigned > 0 ? `. 미배정 ${res.unassigned}건은 목록에서 재배정할 수 있어요` : ''}.`)
+      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'counts', groups: plan.groups.map((g) => ({ name: staff.find((st) => st.id === g.fcId)?.name ?? '직원', count: g.rows.length })), unassigned: res.unassigned, regions: analysis.regions }))
       setPaste('')
       setImported([])
       setImportSummary('')
@@ -307,6 +314,7 @@ export default function LeadDistributionPage(): JSX.Element {
         .map(([id, n]) => `${staff.find((s) => s.id === id)?.name ?? '직원'} ${n}건`)
         .join(' · ')
       setDistMsg(`✅ ${typeTag}${res.assigned}건을 자동 배정했습니다 — ${names}. 배정된 직원에게 알림이 전송됐어요.`)
+      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'auto', groups: Object.entries(res.perStaff).map(([id, n]) => ({ name: staff.find((st) => st.id === id)?.name ?? '직원', count: n })), unassigned: 0, regions: analysis.regions }))
     } else {
       const fc = staff.find((s) => s.id === assignMode)
       if (!fc) {
@@ -321,6 +329,7 @@ export default function LeadDistributionPage(): JSX.Element {
         return
       }
       setDistMsg(`✅ ${typeTag}${res.assigned}건을 ${fc.name}님에게 배정했습니다. 알림이 전송됐어요.`)
+      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'single', groups: [{ name: fc.name, count: res.assigned }], unassigned: 0, regions: analysis.regions }))
     }
     setPaste('')
     setImported([])
@@ -785,6 +794,26 @@ export default function LeadDistributionPage(): JSX.Element {
             </span>
           </div>
           {distMsg ? <p className="mt-2 text-[12px] leading-5 text-slate-300">{distMsg}</p> : null}
+          {lastSummary ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+              <span className="text-[12px] font-semibold text-slate-200">배분 결과 요약 이미지 (고객 개인정보 없음)</span>
+              <button
+                type="button"
+                onClick={async () => setImgMsg((await downloadSummaryPng(lastSummary)) ? '이미지를 저장했습니다.' : '이미지를 만들지 못했습니다.')}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
+              >
+                이미지 저장
+              </button>
+              <button
+                type="button"
+                onClick={async () => setImgMsg((await copySummaryPng(lastSummary)) ? '이미지를 복사했습니다. 카톡에 붙여넣으세요.' : '이 브라우저는 이미지 복사를 지원하지 않습니다. 저장을 이용해 주세요.')}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700"
+              >
+                이미지 복사
+              </button>
+              {imgMsg ? <span className="text-[11px] text-slate-400">{imgMsg}</span> : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
