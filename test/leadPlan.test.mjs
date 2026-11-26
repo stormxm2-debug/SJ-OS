@@ -172,3 +172,23 @@ test('분석·배정이 시·군·구 단위로 나뉜다', () => {
   // 시·도 단위로 보면 전부 전남 한 지역
   assert.deepEqual(lp.analyzeLeads(r, 'sido').regions, [{ region: '전남', count: 4 }])
 })
+
+test('시도·시군구가 따로 있는 파일도 읽는다', () => {
+  const l = { name: 'a', memo: '시도: 전남 / 시군구: 나주시 / 나이: 50' }
+  assert.equal(lp.regionOfLead(l, 'sigungu'), '전남 나주시')
+  assert.equal(lp.regionOfLead(l, 'sido'), '전남')
+  const l2 = { name: 'b', memo: '시도: 전라남도 / 시군구: 화순군 / 주소: 전라남도 화순군 화순읍 ○○로 1' }
+  assert.equal(lp.regionOfLead(l2, 'sigungu'), '전남 화순군')
+})
+
+test('주소 앞 우편번호는 무시한다', () => {
+  assert.equal(lp.regionFromText('(58100) 전라남도 화순군 화순읍', 'sigungu'), '전남 화순군')
+  assert.equal(lp.regionFromText('58100 광주 광산구', 'sigungu'), '광주 광산구')
+})
+
+test('전남의 여러 시·군이 각각 따로 나뉜다', () => {
+  const rows = ['화순군', '나주시', '목포시', '여수시', '순천시', '담양군', '곡성군', '화순군'].map((g, i) => reg(`고객${i}`, `전라남도 ${g} ○○`))
+  const a = lp.analyzeLeads(rows, 'sigungu')
+  assert.equal(a.regions.length, 7)
+  assert.deepEqual(a.regions[0], { region: '전남 화순군', count: 2 })
+})
