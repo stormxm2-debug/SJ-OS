@@ -7,6 +7,7 @@ import { getBackendConfig } from '@renderer/services/commercial/backendConfig'
 import { getSupabaseClient, initSupabaseClient } from '@renderer/services/commercial/supabaseClient'
 import { subscribeLocalNotifications } from '@renderer/services/notifications/localNotify'
 import { ensureWebPushSubscription } from '@renderer/services/push/webPush'
+import { getNotifySeconds, syncNotifyPrefsToServiceWorker } from '@renderer/services/push/notifyPrefs'
 
 /**
  * 우하단 알림 센터 (카카오톡 스타일 토스트 + OS 알림).
@@ -48,11 +49,14 @@ export default function NotificationCenter(): JSX.Element | null {
   const push = (t: Omit<Toast, 'id'>): void => {
     const id = toastSeq++
     setToasts((prev) => [...prev.slice(-3), { ...t, id }])
-    window.setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), 9000)
+    // 표시 시간: '알림 설정'에서 고른 값 (기본 5초, 0 = 누를 때까지)
+    const seconds = getNotifySeconds()
+    if (seconds > 0) window.setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), seconds * 1000)
     // OS 알림 (권한 있으면) — 클릭 시 창 포커스 + 이동
     try {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        const n = new Notification(t.title, { body: t.body, tag: `sj-${id}` })
+        const n = new Notification(t.title, { body: t.body, tag: `sj-${id}`, requireInteraction: seconds === 0 })
+        if (seconds > 0) window.setTimeout(() => n.close(), seconds * 1000)
         n.onclick = () => {
           window.focus()
           navigate({ name: t.target })
@@ -105,6 +109,7 @@ export default function NotificationCenter(): JSX.Element | null {
 
       // 알림 권한이 허용된 기기면 웹 푸시 구독을 (재)등록 — 앱을 닫아도 OS 알림이 오도록.
       void ensureWebPushSubscription()
+      void syncNotifyPrefsToServiceWorker()
 
       // 채널 이름은 (재)구독마다 고유하게 — 닫힌 채널의 topic을 재사용하면 일부
       // supabase-js 버전에서 조용히 죽은 채널에 조인된다 (wakeKey 리마운트 시 재현).

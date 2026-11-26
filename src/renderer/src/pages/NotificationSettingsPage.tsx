@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Bell, BellRing, CheckCircle2, AlertTriangle, Loader2, Monitor, Smartphone, Send } from 'lucide-react'
+import { Bell, BellRing, CheckCircle2, AlertTriangle, Loader2, Monitor, Smartphone, Send, Timer } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import { isElectronRuntime, useIsMobile } from '@renderer/navigation/appTarget'
 import { ensureWebPushSubscription, sendTestPush, webPushSupported } from '@renderer/services/push/webPush'
+import { getNotifySeconds, setNotifySeconds, NOTIFY_SECONDS_OPTIONS, notifySecondsLabel } from '@renderer/services/push/notifyPrefs'
 
 /**
  * 알림 설정 — 알림 켜기 + 알림 테스트 + 기기별(PC·폰) 알림 켜는 방법.
@@ -44,11 +45,20 @@ async function showLocalTest(): Promise<boolean> {
     if ('serviceWorker' in navigator) {
       const reg = await navigator.serviceWorker.getRegistration()
       if (reg) {
-        await reg.showNotification(title, { body, tag: `local-test-${Date.now()}`, icon: '/sj-icon-512.png' })
+        const tag = `local-test-${Date.now()}`
+        const sec = getNotifySeconds()
+        await reg.showNotification(title, { body, tag, icon: '/sj-icon-512.png', requireInteraction: sec === 0 })
+        if (sec > 0 && !/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)) {
+          window.setTimeout(() => {
+            void reg.getNotifications({ tag }).then((list) => list.forEach((n) => n.close()))
+          }, sec * 1000)
+        }
         return true
       }
     }
-    new Notification(title, { body })
+    const sec = getNotifySeconds()
+    const n = new Notification(title, { body, requireInteraction: sec === 0 })
+    if (sec > 0) window.setTimeout(() => n.close(), sec * 1000)
     return true
   } catch {
     return false
@@ -62,6 +72,11 @@ export default function NotificationSettingsPage(): JSX.Element {
   const [perm, setPerm] = useState<Perm>(() => readPerm())
   const [busy, setBusy] = useState<'enable' | 'test' | null>(null)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [seconds, setSeconds] = useState<number>(() => getNotifySeconds())
+  const pickSeconds = (sec: number): void => {
+    setNotifySeconds(sec)
+    setSeconds(sec)
+  }
 
   // 다른 탭/설정에서 권한을 바꾸고 돌아오면 반영
   useEffect(() => {
@@ -203,6 +218,29 @@ export default function NotificationSettingsPage(): JSX.Element {
 
         <p className="mt-3 text-[11px] text-slate-500">
           앱을 닫아도 오는 알림: 고객등록 새 요청 · 총무 메모 · 완료 · 반려. 그 밖의 알림(DB 배정, 면책 종료 등)은 앱이 켜져 있을 때 뜹니다.
+        </p>
+      </Card>
+
+      <Card title="알림 표시 시간" icon={<Timer className="h-4 w-4 text-indigo-600" />}>
+        <p className="mb-3 text-[12px] text-slate-400">알림 창이 화면에 몇 초 동안 떠 있을지 고르세요. 이 기기에만 저장됩니다.</p>
+        <div className="flex flex-wrap gap-2">
+          {NOTIFY_SECONDS_OPTIONS.map((sec) => (
+            <button
+              key={sec}
+              type="button"
+              onClick={() => pickSeconds(sec)}
+              className={[
+                'rounded-xl px-4 py-2 text-sm font-bold transition',
+                seconds === sec ? 'bg-indigo-600 text-white shadow-sm' : 'border border-slate-800 bg-white text-slate-300 hover:border-indigo-300'
+              ].join(' ')}
+            >
+              {notifySecondsLabel(sec)}
+            </button>
+          ))}
+        </div>
+        <p className="mt-3 text-[11px] text-slate-500">
+          적용: 앱 안 알림 카드와 PC 화면 오른쪽 아래 알림. 폰은 알림이 상단 알림 목록에 남아야 해서 자동으로 지우지 않습니다(잠깐 떴다가 목록으로 들어갑니다).
+          바꾼 뒤 [알림 테스트]로 확인해 보세요.
         </p>
       </Card>
 
