@@ -166,6 +166,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'pre-underwriting', label: 'AI 사전심사', icon: ShieldQuestion, view: { name: 'pre-underwriting' }, match: ['pre-underwriting'] },
       { key: 'disease-exceptions', label: '유병자 예외질환', icon: HeartPulse, view: { name: 'disease-exceptions' }, match: ['disease-exceptions'] },
       { key: 'leads', label: 'DB 배정', icon: ListChecks, view: { name: 'leads' }, match: ['leads'] },
+  { key: 'lead-sheets', label: 'DB 업체별 시트', icon: FileSpreadsheet, view: { name: 'lead-sheets' }, match: ['lead-sheets'] },
+      { key: 'lead-sheets', label: 'DB 업체별 시트', icon: FileSpreadsheet, view: { name: 'lead-sheets' }, match: ['lead-sheets'] },
       { key: 'contacts', label: '매니저 연락처', icon: Phone, view: { name: 'contacts' }, match: ['contacts'] },
       { key: 'files', label: '자료실', icon: FolderOpen, view: { name: 'files' }, match: ['files'] },
       { key: 'memo', label: '메모장', icon: StickyNote, view: { name: 'memo' }, match: ['memo'] },

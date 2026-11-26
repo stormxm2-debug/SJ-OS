@@ -82,6 +82,8 @@ export const TEAM_ROUTES: ViewName[] = []
  * 관리자 전용으로 막혀 있어, staff-login 을 열어줘도 승격은 불가능하다.
  */
 export const BACKOFFICE_DENY_ROUTES: ViewName[] = [
+  // DB 업체별 시트: 전체 DB는 대표·관리자만 조회된다(RLS).
+  'lead-sheets',
   // 총무비서 화면에서 출퇴근·일정·고객 건강기록 메뉴는 뺀다(2026-11-20 대표 지시).
   'attendance',
   'schedule',

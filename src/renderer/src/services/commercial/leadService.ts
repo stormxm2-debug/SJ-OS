@@ -61,11 +61,19 @@ export interface Lead {
   status: LeadStatus
   /** DB 종류(태그) — 예: 소상공인DB, 여성일반DB, 실버DB. 관리자 등록 목록에서 선택. */
   dbType: string | null
+  /** DB 업체(회사) — 여러 회사에서 들어오는 DB를 구분한다. */
+  vendor: string | null
   assignedFcId: string | null
   assignedFcName: string | null
   assignedAt: string | null
   firstCallAt: string | null
   createdAt: string
+}
+
+/** DB 업체(회사) 레지스트리 항목 (관리자 관리). */
+export interface LeadVendor {
+  id: string
+  name: string
 }
 
 /** DB 종류 레지스트리 항목 (관리자 관리). */
@@ -132,6 +140,7 @@ function mapLead(r: Record<string, any>): Lead {
     memo: r.memo ?? null,
     status,
     dbType: r.db_type ?? null,
+    vendor: r.vendor ?? null,
     assignedFcId: r.assigned_fc_id ?? null,
     assignedFcName: r.assigned_fc_name ?? null,
     assignedAt: r.assigned_at ?? null,
@@ -163,7 +172,7 @@ export async function listSalesStaff(): Promise<SalesStaff[]> {
  * 리드들을 최소부하 자동분배해 저장 (관리자). 각 직원의 현재 미콜(new) 수를 세어
  * 가장 적은 사람부터 배분하고, 배치 내에서 즉시 카운트를 올려 균등을 유지한다.
  */
-export async function distributeLeads(inputs: LeadInput[], dbType?: string): Promise<{ ok: boolean; assigned: number; perStaff: Record<string, number>; error?: string }> {
+export async function distributeLeads(inputs: LeadInput[], dbType?: string, vendor?: string): Promise<{ ok: boolean; assigned: number; perStaff: Record<string, number>; error?: string }> {
   const clean = inputs.map((i) => ({ ...i, name: (i.name ?? '').trim() })).filter((i) => i.name)
   if (clean.length === 0) return { ok: false, assigned: 0, perStaff: {}, error: '이름이 있는 리드가 없습니다.' }
   const client = await getClient()
@@ -204,6 +213,7 @@ export async function distributeLeads(inputs: LeadInput[], dbType?: string): Pro
       memo: lead.memo?.trim() || null,
       status: 'new',
       db_type: type,
+      vendor: vendor?.trim() || null,
       assigned_fc_id: pick,
       assigned_fc_name: nameById.get(pick) ?? null,
       assigned_at: nowIso,
@@ -227,7 +237,7 @@ export async function listAllLeads(): Promise<{ ok: boolean; leads: Lead[]; erro
   try {
     const { data, error } = await client
       .from('leads')
-      .select('id, name, phone, source, memo, status, db_type, assigned_fc_id, assigned_fc_name, assigned_at, first_call_at, created_at')
+      .select('id, name, phone, source, memo, status, db_type, vendor, assigned_fc_id, assigned_fc_name, assigned_at, first_call_at, created_at')
       .order('assigned_at', { ascending: false })
       .limit(500)
     if (error) return { ok: false, leads: [], error: error.message }
@@ -246,7 +256,7 @@ export async function listMyLeads(): Promise<{ ok: boolean; leads: Lead[]; error
   try {
     const { data, error } = await client
       .from('leads')
-      .select('id, name, phone, source, memo, status, db_type, assigned_fc_id, assigned_fc_name, assigned_at, first_call_at, created_at')
+      .select('id, name, phone, source, memo, status, db_type, vendor, assigned_fc_id, assigned_fc_name, assigned_at, first_call_at, created_at')
       .eq('assigned_fc_id', me)
       .order('assigned_at', { ascending: false })
       .limit(500)
@@ -302,7 +312,8 @@ export async function updateLeadStatus(
 export async function assignLeadsTo(
   inputs: LeadInput[],
   fc: { id: string; name: string },
-  dbType?: string
+  dbType?: string,
+  vendor?: string
 ): Promise<{ ok: boolean; assigned: number; error?: string }> {
   const clean = inputs.map((i) => ({ ...i, name: (i.name ?? '').trim() })).filter((i) => i.name)
   if (clean.length === 0) return { ok: false, assigned: 0, error: '이름이 있는 리드가 없습니다.' }
@@ -319,6 +330,7 @@ export async function assignLeadsTo(
     memo: lead.memo?.trim() || null,
     status: 'new',
     db_type: type,
+    vendor: vendor?.trim() || null,
     assigned_fc_id: fc.id,
     assigned_fc_name: fc.name,
     assigned_at: nowIso,
@@ -364,7 +376,8 @@ export async function findExistingPhones(phones: string[]): Promise<Set<string>>
 export async function assignByCounts(
   groups: { fc: { id: string; name: string }; rows: LeadInput[] }[],
   leftover: LeadInput[],
-  dbType?: string
+  dbType?: string,
+  vendor?: string
 ): Promise<{ ok: boolean; assigned: number; unassigned: number; error?: string }> {
   const client = await getClient()
   if (!client) return { ok: false, assigned: 0, unassigned: 0, error: '서버 연결 후 사용할 수 있습니다.' }
@@ -379,6 +392,7 @@ export async function assignByCounts(
     memo: lead.memo?.trim() || null,
     status: 'new',
     db_type: type,
+    vendor: vendor?.trim() || null,
     region: regionOfLead(lead, 'sigungu') || null,
     created_by: me
   })
@@ -497,6 +511,69 @@ export async function updateLeadDbType(leadId: string, dbType: string | null): P
 // ── DB 종류 레지스트리 (관리자 관리, 전 직원 조회) ─────────────────────────
 
 /** 등록된 DB 종류 목록 (정렬순 → 이름순). */
+export async function listVendors(): Promise<LeadVendor[]> {
+  const client = await getClient()
+  if (!client) return []
+  try {
+    const { data, error } = await client.from('lead_vendors').select('id, name').order('sort_order', { ascending: true }).order('name', { ascending: true })
+    if (error) return []
+    return ((data as any[]) ?? []).map((r) => ({ id: String(r.id), name: String(r.name ?? '') }))
+  } catch {
+    return []
+  }
+}
+
+export async function addVendor(name: string): Promise<{ ok: boolean; error?: string }> {
+  const trimmed = name.trim()
+  if (!trimmed) return { ok: false, error: '업체 이름을 입력해 주세요.' }
+  const client = await getClient()
+  if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  const me = await uid(client)
+  try {
+    const { error } = await client.from('lead_vendors').insert({ name: trimmed, created_by: me })
+    if (error) {
+      if (String(error.code) === '23505' || /duplicate|unique/i.test(String(error.message))) return { ok: false, error: '이미 있는 업체입니다.' }
+      return { ok: false, error: error.message }
+    }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '추가 중 오류가 발생했습니다.' }
+  }
+}
+
+export async function deleteVendor(id: string): Promise<{ ok: boolean; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  try {
+    const { error } = await client.from('lead_vendors').delete().eq('id', id)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '삭제 중 오류가 발생했습니다.' }
+  }
+}
+
+/** 관리자: 전체 리드를 끝까지(페이지 단위) 가져온다 — FC별 개수·업체별 시트용. */
+export async function listAllLeadsFull(): Promise<{ ok: boolean; leads: Lead[]; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: true, leads: [] }
+  try {
+    const { rows, error } = await fetchAllPages<Record<string, unknown>>(async (from, to) => {
+      const res = await client
+        .from('leads')
+        .select('id, name, phone, source, memo, status, db_type, vendor, assigned_fc_id, assigned_fc_name, assigned_at, first_call_at, created_at')
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(from, to)
+      return { rows: (res.data ?? []) as Record<string, unknown>[], error: res.error }
+    })
+    if (error) return { ok: false, leads: rows.map(mapLead), error: '일부만 불러왔습니다.' }
+    return { ok: true, leads: rows.map(mapLead) }
+  } catch {
+    return { ok: false, leads: [] }
+  }
+}
+
 export async function listDbTypes(): Promise<LeadDbType[]> {
   const client = await getClient()
   if (!client) return []

@@ -214,3 +214,55 @@ test('기존 고객 기준 상위 n명은 허용된 FC만, 없으면 빈 배열'
   assert.deepEqual(lp.affinityTop(aff, ['전남 화순군', '전남 곡성군'], ['x', 'y'], 1), { '전남 화순군': ['x'], '전남 곡성군': [] })
   assert.deepEqual(lp.affinityTop(aff, ['전남 화순군'], ['x', 'y'], 3)['전남 화순군'], ['x', 'y'])
 })
+
+const sh = await load('src/renderer/src/services/commercial/leadSheets.ts')
+const lead = (o) => ({ id: o.id ?? Math.random().toString(36).slice(2), name: 'n', phone: null, source: null, memo: null, status: 'new', dbType: null, vendor: null, assignedFcId: null, assignedFcName: null, assignedAt: null, firstCallAt: null, createdAt: '2026-11-26T00:00:00Z', ...o })
+
+test('시트: 상태를 미콜·진행·계약·종료로 묶는다', () => {
+  assert.equal(sh.bucketOf('new'), 'new')
+  assert.equal(sh.bucketOf('called'), 'working')
+  assert.equal(sh.bucketOf('appointment'), 'working')
+  assert.equal(sh.bucketOf('contracted'), 'won')
+  assert.equal(sh.bucketOf('rejected'), 'closed')
+  assert.equal(sh.bucketOf('invalid'), 'closed')
+})
+
+test('시트: 요약과 FC별 개수(많은 순, 미배정은 마지막)', () => {
+  const ls = [
+    lead({ assignedFcId: 'a', assignedFcName: '김FC', status: 'new' }),
+    lead({ assignedFcId: 'a', assignedFcName: '김FC', status: 'contracted' }),
+    lead({ assignedFcId: 'b', assignedFcName: '이FC', status: 'called' }),
+    lead({ assignedFcId: 'b', assignedFcName: '이FC', status: 'new' }),
+    lead({ assignedFcId: 'b', assignedFcName: '이FC', status: 'rejected' }),
+    lead({})
+  ]
+  const s = sh.summarize(ls)
+  assert.equal(s.total, 6)
+  assert.equal(s.assigned, 5)
+  assert.equal(s.unassigned, 1)
+  assert.equal(s.uncalled, 3)
+  assert.equal(s.won, 1)
+  const rows = sh.fcRows(ls)
+  assert.deepEqual(rows.map((r) => [r.name, r.total]), [['이FC', 3], ['김FC', 2], ['(미배정)', 1]])
+  assert.equal(rows[0].uncalled, 1)
+  assert.equal(rows[0].closed, 1)
+})
+
+test('시트: 업체 탭은 등록 업체(0건 포함) → 데이터에만 있는 업체 → 미지정', () => {
+  const ls = [lead({ vendor: 'B사' }), lead({ vendor: 'B사' }), lead({ vendor: 'C사' }), lead({ vendor: null })]
+  const tabs = sh.vendorTabs(ls, ['A사', 'B사'])
+  assert.deepEqual(tabs, [
+    { name: 'A사', count: 0 },
+    { name: 'B사', count: 2 },
+    { name: 'C사', count: 1 },
+    { name: '(업체 미지정)', count: 1 }
+  ])
+})
+
+test('시트: 엑셀 시트 이름은 금지 문자를 빼고 31자·중복을 피한다', () => {
+  const used = new Set()
+  assert.equal(sh.sheetName('A/B:C?', used), 'A B C')
+  assert.equal(sh.sheetName('a b c', used), 'a b c (2)')
+  const long = sh.sheetName('가'.repeat(40), used)
+  assert.equal(long.length, 31)
+})

@@ -37,6 +37,7 @@ export type View =
   | { name: 'disease-exceptions'; q?: string }
   | { name: 'contacts' }
   | { name: 'leads' }
+  | { name: 'lead-sheets' }
   | { name: 'referrals' }
   | { name: 'today-contacts' }
   | { name: 'plan-request' }
