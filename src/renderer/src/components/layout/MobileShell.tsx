@@ -33,6 +33,7 @@ import TodayContactsPage from '@renderer/pages/TodayContactsPage'
 import PlanRequestPage from '@renderer/pages/PlanRequestPage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import InsuranceClaimAssistantPage from '@renderer/pages/InsuranceClaimAssistantPage'
+import OtpRelayPage from '@renderer/pages/OtpRelayPage'
 import ExemptionsPage from '@renderer/pages/ExemptionsPage'
 import SharedFilesPage from '@renderer/pages/SharedFilesPage'
 import MemoPage from '@renderer/pages/MemoPage'
@@ -297,6 +298,8 @@ function MobileContent({ routeName, role }: { routeName: ViewName; role: UserRol
       return <HospitalCoveragePage />
     case 'claim-assistant':
       return <InsuranceClaimAssistantPage />
+    case 'otp-relay':
+      return <OtpRelayPage />
     case 'exemptions':
       return <ExemptionsPage />
     case 'wiki':
