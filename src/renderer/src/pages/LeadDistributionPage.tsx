@@ -31,6 +31,8 @@ import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import {
   distributeLeads,
   assignLeadsTo,
+  assignByCounts,
+  findExistingPhones,
   listAllLeads,
   listMyLeads,
   listSalesStaff,
@@ -51,6 +53,7 @@ import {
   type SalesStaff
 } from '@renderer/services/commercial/leadService'
 import { parseLeadFile } from '@renderer/services/commercial/leadImport'
+import { analyzeLeads, equalCounts, planByCounts, toCount } from '@renderer/services/commercial/leadPlan'
 import FileDropZone from '@renderer/components/ui/FileDropZone'
 
 const RT_TABLES = ['leads', 'lead_db_types']
@@ -121,10 +124,12 @@ export default function LeadDistributionPage(): JSX.Element {
   const [busy, setBusy] = useState(false)
   const [distMsg, setDistMsg] = useState('')
   // 파일 업로드 판독 결과 (행별 선택 배정)
-  const [imported, setImported] = useState<{ row: LeadInput; checked: boolean }[]>([])
+  const [imported, setImported] = useState<{ row: LeadInput; checked: boolean; dup?: boolean }[]>([])
   const [importSummary, setImportSummary] = useState('')
   // 배정 방식: 'auto' = 최소부하 자동, 그 외 = 선택한 직원 id
   const [assignMode, setAssignMode] = useState('auto')
+  // 개수 지정 배정: 직원 id → 입력한 개수(문자열)
+  const [counts, setCounts] = useState<Record<string, string>>({})
 
   // 콜 완료한 내 리드 → 고객 전환 (보험 허브에 연결해 AI 도구로 직행)
   const [convertBusyId, setConvertBusyId] = useState<string | null>(null)
@@ -162,6 +167,8 @@ export default function LeadDistributionPage(): JSX.Element {
     [parsed, imported]
   )
   const overdue = useMemo(() => leads.filter(isOverdue), [leads])
+  const analysis = useMemo(() => analyzeLeads(imported.map((i) => i.row)), [imported])
+  const countSum = useMemo(() => staff.reduce((a, st) => a + toCount(counts[st.id]), 0), [staff, counts])
   const byStaff = useMemo(() => {
     const m = new Map<string, { name: string; total: number; uncalled: number; overdue: number }>()
     for (const l of leads) {
@@ -186,8 +193,16 @@ export default function LeadDistributionPage(): JSX.Element {
       setDistMsg(res.error ?? '파일 판독에 실패했습니다.')
       return
     }
-    setImported(res.rows.map((row) => ({ row, checked: true })))
-    setImportSummary(res.summary ?? `${res.rows.length}건 판독`)
+    // 이미 등록된 번호는 같은 사람이 두 번 배정되지 않도록 기본으로 선택 해제한다.
+    const existing = await findExistingPhones(res.rows.map((r) => r.phone ?? '').filter(Boolean))
+    const items = res.rows.map((row) => {
+      const digits = (row.phone ?? '').replace(/\D/g, '')
+      const dup = digits.length > 0 && existing.has(digits)
+      return { row, checked: !dup, dup }
+    })
+    const dupCount = items.filter((i) => i.dup).length
+    setImported(items)
+    setImportSummary(`${res.summary ?? `${res.rows.length}건 판독`}${dupCount > 0 ? ` · 이미 등록된 번호 ${dupCount}건(선택 해제됨)` : ''}`)
   }
 
   const distribute = async (): Promise<void> => {
@@ -195,9 +210,38 @@ export default function LeadDistributionPage(): JSX.Element {
       setDistMsg('배정할 리드가 없습니다 — 파일을 올리거나 붙여넣어 주세요.')
       return
     }
+    const typeTag = selectedType ? `[${selectedType}] ` : ''
+    if (assignMode === 'counts') {
+      const plan = planByCounts(pendingRows, staff.map((st) => st.id), counts)
+      if (!plan.ok) {
+        setDistMsg(plan.error ?? '개수를 확인해 주세요.')
+        return
+      }
+      const lines = plan.groups.map((g) => `${staff.find((st) => st.id === g.fcId)?.name ?? '직원'} ${g.rows.length}건`)
+      if (plan.leftover.length > 0) lines.push(`미배정 ${plan.leftover.length}건`)
+      if (typeof window !== 'undefined' && !window.confirm(`${typeTag}아래대로 배정할까요?\n\n${lines.join('\n')}`)) return
+      setBusy(true)
+      setDistMsg('')
+      const res = await assignByCounts(
+        plan.groups.map((g) => ({ fc: { id: g.fcId, name: staff.find((st) => st.id === g.fcId)?.name ?? '' }, rows: g.rows })),
+        plan.leftover,
+        selectedType || undefined
+      )
+      setBusy(false)
+      if (!res.ok) {
+        setDistMsg(res.error ?? '배정에 실패했습니다.')
+        return
+      }
+      setDistMsg(`✅ ${typeTag}${res.assigned}건을 배정했습니다 — ${lines.slice(0, plan.groups.length).join(' · ')}${res.unassigned > 0 ? `. 미배정 ${res.unassigned}건은 목록에서 재배정할 수 있어요` : ''}.`)
+      setPaste('')
+      setImported([])
+      setImportSummary('')
+      setCounts({})
+      await load()
+      return
+    }
     setBusy(true)
     setDistMsg('')
-    const typeTag = selectedType ? `[${selectedType}] ` : ''
     if (assignMode === 'auto') {
       const res = await distributeLeads(pendingRows, selectedType || undefined)
       setBusy(false)
@@ -455,6 +499,22 @@ export default function LeadDistributionPage(): JSX.Element {
                   </button>
                 </div>
               </div>
+              {/* 분석 요약 */}
+              <div className="mb-2 flex flex-wrap gap-1.5 text-[11px]">
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-slate-200">전체 {analysis.total}건</span>
+                <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-slate-200">전화 있음 {analysis.withPhone}건</span>
+                {analysis.invalidPhone > 0 ? (
+                  <span className="rounded-full border border-amber-300/50 bg-amber-500/10 px-2 py-0.5 text-amber-300">전화 형식 확인 {analysis.invalidPhone}건</span>
+                ) : null}
+                {imported.some((i) => i.dup) ? (
+                  <span className="rounded-full border border-rose-300/40 bg-rose-500/10 px-2 py-0.5 text-rose-300">이미 등록 {imported.filter((i) => i.dup).length}건</span>
+                ) : null}
+                {analysis.regions.slice(0, 8).map((r) => (
+                  <span key={r.region} className="rounded-full border border-[#c6982f]/40 bg-[#c6982f]/10 px-2 py-0.5 text-[#e6c877]">{r.region} {r.count}</span>
+                ))}
+                {analysis.regions.length > 8 ? <span className="px-1 py-0.5 text-slate-500">외 {analysis.regions.length - 8}개 지역</span> : null}
+                {analysis.regions.length === 0 ? <span className="px-1 py-0.5 text-slate-500">지역 열을 찾지 못했습니다</span> : null}
+              </div>
               <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-800">
                 <table className="w-full text-left text-[12px]">
                   <thead className="sticky top-0 bg-slate-900">
@@ -479,7 +539,10 @@ export default function LeadDistributionPage(): JSX.Element {
                             aria-label={`${item.row.name} 배정 포함`}
                           />
                         </td>
-                        <td className="px-2 py-1.5 font-semibold text-slate-100">{item.row.name}</td>
+                        <td className="px-2 py-1.5 font-semibold text-slate-100">
+                          {item.row.name}
+                          {item.dup ? <span className="ml-1 rounded bg-rose-500/15 px-1 text-[10px] font-bold text-rose-300">이미 등록</span> : null}
+                        </td>
                         <td className="px-2 py-1.5 text-slate-300">{item.row.phone ?? ''}</td>
                         <td className="max-w-[280px] truncate px-2 py-1.5 text-slate-500">{item.row.memo ?? ''}</td>
                       </tr>
@@ -487,6 +550,51 @@ export default function LeadDistributionPage(): JSX.Element {
                   </tbody>
                 </table>
               </div>
+            </div>
+          ) : null}
+
+          {assignMode === 'counts' ? (
+            <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[12px] font-bold text-slate-200">직원별 배정 개수</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const eq = equalCounts(pendingRows.length, staff.map((st) => st.id))
+                    setCounts(Object.fromEntries(Object.entries(eq).map(([k, v]) => [k, String(v)])))
+                  }}
+                  className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+                >
+                  균등으로 채우기
+                </button>
+              </div>
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {staff.map((st) => (
+                  <label key={st.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-[12px] text-slate-200">
+                    <span className="truncate">{st.name}</span>
+                    <span className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        value={counts[st.id] ?? ''}
+                        onChange={(e) => setCounts((prev) => ({ ...prev, [st.id]: e.target.value }))}
+                        placeholder="0"
+                        className="w-16 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-right text-[12px] text-slate-100 outline-none focus:border-[#c6982f]"
+                      />
+                      <span className="text-slate-500">건</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className={['mt-2 text-[11px]', countSum > pendingRows.length ? 'text-rose-400' : 'text-slate-500'].join(' ')}>
+                합계 {countSum}건 / 배정할 DB {pendingRows.length}건
+                {countSum > pendingRows.length
+                  ? ' — 합계가 DB 건수를 넘습니다'
+                  : pendingRows.length - countSum > 0
+                    ? ` · 남는 ${pendingRows.length - countSum}건은 미배정으로 저장됩니다`
+                    : ''}
+              </p>
             </div>
           ) : null}
 
@@ -516,6 +624,7 @@ export default function LeadDistributionPage(): JSX.Element {
               title="배정 방식 — 자동 또는 직원 직접 선택"
             >
               <option value="auto">자동 배정 (최소부하 균등)</option>
+              <option value="counts">개수 지정 배정</option>
               {staff.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}에게 배정
@@ -534,7 +643,9 @@ export default function LeadDistributionPage(): JSX.Element {
             <span className="text-[12px] text-slate-500">
               {assignMode === 'auto'
                 ? `활성 직원 ${staff.length}명에게 최소부하 순으로 균등 배정`
-                : `${staff.find((s) => s.id === assignMode)?.name ?? '선택 직원'}에게 전량 배정`}
+                : assignMode === 'counts'
+                  ? '직원별로 입력한 개수만큼 파일 순서대로 배정 (저장 전에 확인창이 뜹니다)'
+                  : `${staff.find((s) => s.id === assignMode)?.name ?? '선택 직원'}에게 전량 배정`}
               {selectedType ? ` · [${selectedType}]` : ''}
             </span>
           </div>
