@@ -190,3 +190,46 @@ export function planByRegion(rows: LeadInput[], mapping: Record<string, string[]
   if (received.size === 0) return { ok: false, error: '담당 FC가 지정된 지역의 DB가 없습니다.', groups: [], leftover: rows }
   return { ok: true, groups: [...received.entries()].map(([fcId, r]) => ({ fcId, rows: r })), leftover }
 }
+
+export interface AffinityRow {
+  fcId: string
+  address: string
+}
+
+/**
+ * 기존 고객 위치 기준 담당 후보 — 지역별로 "그 지역에 기존 고객이 많은 FC" 순서.
+ * 주소는 화면에 노출하지 않고 지역별 인원수만 센다.
+ */
+export function customerAffinity(rows: AffinityRow[], level: RegionLevel): Record<string, { fcId: string; count: number }[]> {
+  const byRegion = new Map<string, Map<string, number>>()
+  for (const r of rows) {
+    if (!r.fcId) continue
+    const region = regionFromText(r.address, level)
+    if (!region) continue
+    const m = byRegion.get(region) ?? new Map<string, number>()
+    m.set(r.fcId, (m.get(r.fcId) ?? 0) + 1)
+    byRegion.set(region, m)
+  }
+  const out: Record<string, { fcId: string; count: number }[]> = {}
+  for (const [region, m] of byRegion) {
+    out[region] = [...m.entries()]
+      .map(([fcId, count]) => ({ fcId, count }))
+      .sort((a, b) => b.count - a.count || a.fcId.localeCompare(b.fcId))
+  }
+  return out
+}
+
+/** 지역마다 기존 고객이 많은 FC 상위 n명(허용 FC 안에서만). */
+export function affinityTop(
+  aff: Record<string, { fcId: string; count: number }[]>,
+  regions: string[],
+  allowed: string[],
+  n: number
+): Record<string, string[]> {
+  const ok = new Set(allowed)
+  const out: Record<string, string[]> = {}
+  for (const region of regions) {
+    out[region] = (aff[region] ?? []).filter((x) => ok.has(x.fcId)).slice(0, Math.max(1, n)).map((x) => x.fcId)
+  }
+  return out
+}

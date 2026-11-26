@@ -1,5 +1,6 @@
 import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
 import { regionOfLead } from './leadPlan'
+import { fetchAllPages } from './pagedFetch'
 
 /**
  * DB 배정 서비스.
@@ -399,6 +400,31 @@ export async function assignByCounts(
     return { ok: true, assigned, unassigned: valid.length - assigned }
   } catch {
     return { ok: false, assigned: 0, unassigned: 0, error: '배정 저장 중 오류가 발생했습니다.' }
+  }
+}
+
+/**
+ * 기존 고객의 담당 FC와 주소 — 새 DB를 "기존 고객이 많은 지역"의 FC에게 주기 위한 집계용.
+ * 관리자만 전체가 조회된다(RLS). 주소는 메모리에서 지역 인원수 계산에만 쓰고 화면에 보이지 않는다.
+ */
+export async function listCustomerAddresses(): Promise<{ fcId: string; address: string }[]> {
+  const client = await getClient()
+  if (!client) return []
+  try {
+    const { rows } = await fetchAllPages<Record<string, unknown>>(async (from, to) => {
+      const res = await client
+        .from('customers')
+        .select('owner_staff_id, address')
+        .not('address', 'is', null)
+        .order('id', { ascending: true })
+        .range(from, to)
+      return { rows: (res.data ?? []) as Record<string, unknown>[], error: res.error }
+    })
+    return rows
+      .map((r) => ({ fcId: String(r.owner_staff_id ?? ''), address: String(r.address ?? '').trim() }))
+      .filter((r) => r.fcId && r.address)
+  } catch {
+    return []
   }
 }
 

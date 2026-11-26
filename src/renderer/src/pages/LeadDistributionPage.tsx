@@ -34,6 +34,7 @@ import {
   assignByCounts,
   findExistingPhones,
   listRegionMapping,
+  listCustomerAddresses,
   saveRegionMapping,
   listAllLeads,
   listMyLeads,
@@ -57,7 +58,7 @@ import {
 import { parseLeadFile } from '@renderer/services/commercial/leadImport'
 import { buildSummary, type LeadSummary } from '@renderer/services/commercial/leadSummary'
 import { copySummaryPng, downloadSummaryPng } from '@renderer/services/commercial/leadSummaryImage'
-import { analyzeLeads, equalCounts, planByCounts, planByRegion, toCount, type RegionLevel } from '@renderer/services/commercial/leadPlan'
+import { affinityTop, analyzeLeads, customerAffinity, equalCounts, planByCounts, planByRegion, toCount, type RegionLevel } from '@renderer/services/commercial/leadPlan'
 import FileDropZone from '@renderer/components/ui/FileDropZone'
 
 const RT_TABLES = ['leads', 'lead_db_types']
@@ -142,6 +143,9 @@ export default function LeadDistributionPage(): JSX.Element {
   const [saveLeftover, setSaveLeftover] = useState(false)
   // 지역을 나누는 단위: 기본은 시·군·구(전남 화순군)
   const [regionLevel, setRegionLevel] = useState<RegionLevel>('sigungu')
+  // 기존 고객 위치(담당 FC·주소) — 지역 배정 방식에 들어올 때 한 번 불러온다.
+  const [custAddr, setCustAddr] = useState<{ fcId: string; address: string }[]>([])
+  const [custLoaded, setCustLoaded] = useState(false)
   const [savedMap, setSavedMap] = useState<Record<string, string[]>>({})
   const [regionMsg, setRegionMsg] = useState('')
   // 방금 한 배분의 요약(이미지로 저장·복사). 개인정보 없이 건수만.
@@ -191,23 +195,32 @@ export default function LeadDistributionPage(): JSX.Element {
   // 지역 모드로 들어오거나 파일의 지역이 바뀌면, 아직 정하지 않은 지역은 저장된 담당 FC로 채운다.
   const regionKey = analysis.regions.map((r) => r.region).join('|')
   useEffect(() => {
+    if (!admin || custLoaded || (assignMode !== 'region' && assignMode !== 'region-one')) return
+    setCustLoaded(true)
+    void listCustomerAddresses().then(setCustAddr)
+  }, [admin, custLoaded, assignMode])
+  const affinity = useMemo(() => customerAffinity(custAddr, regionLevel), [custAddr, regionLevel])
+  const staffIds = useMemo(() => staff.map((st) => st.id), [staff])
+  useEffect(() => {
     if (assignMode !== 'region') return
     setRegionMap((prev) => {
       const next = { ...prev }
-      for (const r of analysis.regions) if (!(r.region in next)) next[r.region] = savedMap[r.region] ?? []
+      const top = affinityTop(affinity, analysis.regions.map((r) => r.region), staffIds, 1)
+      for (const r of analysis.regions) if (!(r.region in next)) next[r.region] = savedMap[r.region] ?? top[r.region] ?? []
       return next
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignMode, regionKey, savedMap])
+  }, [assignMode, regionKey, savedMap, affinity, staffIds])
   useEffect(() => {
     if (assignMode !== 'region-one') return
     setRegionOne((prev) => {
       const next = { ...prev }
-      for (const r of analysis.regions) if (!(r.region in next)) next[r.region] = savedMap[r.region]?.[0] ?? ''
+      const top = affinityTop(affinity, analysis.regions.map((r) => r.region), staffIds, 1)
+      for (const r of analysis.regions) if (!(r.region in next)) next[r.region] = savedMap[r.region]?.[0] ?? top[r.region]?.[0] ?? ''
       return next
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignMode, regionKey, savedMap])
+  }, [assignMode, regionKey, savedMap, affinity, staffIds])
   const regionOneMap = useMemo(
     () => Object.fromEntries(Object.entries(regionOne).map(([region, id]) => [region, id ? [id] : []])),
     [regionOne]
@@ -683,7 +696,22 @@ export default function LeadDistributionPage(): JSX.Element {
 
           {assignMode === 'region-one' ? (
             <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-              <div className="mb-2 text-[12px] font-bold text-slate-200">지역마다 담당 FC 한 명 고르기</div>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[12px] font-bold text-slate-200">지역마다 담당 FC 한 명 고르기</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const top = affinityTop(affinity, analysis.regions.map((r) => r.region), staffIds, 1)
+                    setRegionOne((prev) => ({ ...prev, ...Object.fromEntries(analysis.regions.map((r) => [r.region, top[r.region]?.[0] ?? prev[r.region] ?? ''])) }))
+                  }}
+                  className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+                >
+                  기존 고객 지역 기준으로 채우기
+                </button>
+              </div>
+              <p className="mb-2 text-[11px] text-slate-500">
+                {custLoaded ? `기존 고객 ${custAddr.length}명의 주소를 기준으로, 그 지역에 고객이 가장 많은 FC가 기본으로 선택됩니다.` : '기존 고객 위치를 불러오는 중…'}
+              </p>
               <label className="mb-2 flex items-center gap-2 text-[11px] text-slate-400">
                 지역 나누는 단위
                 <select
@@ -710,11 +738,15 @@ export default function LeadDistributionPage(): JSX.Element {
                         className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[12px] text-slate-100 outline-none focus:border-[#c6982f]"
                       >
                         <option value="">배정 안 함</option>
-                        {staff.map((st) => (
-                          <option key={st.id} value={st.id}>
-                            {st.name}
-                          </option>
-                        ))}
+                        {staff.map((st) => {
+                          const near = affinity[r.region]?.find((x) => x.fcId === st.id)?.count ?? 0
+                          return (
+                            <option key={st.id} value={st.id}>
+                              {st.name}
+                              {near > 0 ? ` · 기존 고객 ${near}명` : ''}
+                            </option>
+                          )
+                        })}
                       </select>
                     </label>
                   ))}
@@ -738,6 +770,16 @@ export default function LeadDistributionPage(): JSX.Element {
             <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[12px] font-bold text-slate-200">지역별 담당 FC</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const top = affinityTop(affinity, analysis.regions.map((r) => r.region), staffIds, 3)
+                    setRegionMap((prev) => ({ ...prev, ...Object.fromEntries(analysis.regions.map((r) => [r.region, top[r.region]?.length ? top[r.region] : prev[r.region] ?? []])) }))
+                  }}
+                  className="rounded-lg border border-slate-700 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+                >
+                  기존 고객 지역 기준으로 채우기 (상위 3명)
+                </button>
                 <button
                   type="button"
                   onClick={async () => {
