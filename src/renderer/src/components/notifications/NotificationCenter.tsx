@@ -50,7 +50,9 @@ export default function NotificationCenter(): JSX.Element | null {
     const id = toastSeq++
     setToasts((prev) => [...prev.slice(-3), { ...t, id }])
     // 표시 시간: '알림 설정'에서 고른 값 (기본 5초, 0 = 누를 때까지)
-    const seconds = getNotifySeconds()
+    // 폰은 직접 X로 지울 때까지 남긴다(대표 지시) — 표시 시간 설정은 PC에만 적용.
+    const mobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
+    const seconds = mobile ? 0 : getNotifySeconds()
     if (seconds > 0) window.setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), seconds * 1000)
     // OS 알림 (권한 있으면) — 클릭 시 창 포커스 + 이동
     try {

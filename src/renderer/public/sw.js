@@ -18,7 +18,7 @@ async function readNotifySeconds() {
   }
 }
 
-// 폰은 알림이 알림창(상단 목록)에 남아야 하므로 자동으로 지우지 않는다 — PC만 시간이 지나면 닫는다.
+// 폰은 직접 지울 때까지 알림을 계속 남긴다(대표 지시) — 표시 시간 설정은 PC에만 적용.
 const IS_MOBILE = /android|iphone|ipad|ipod|mobile/i.test((self.navigator && self.navigator.userAgent) || '')
 
 self.addEventListener('push', (event) => {
@@ -37,8 +37,8 @@ self.addEventListener('push', (event) => {
         tag,
         // 같은 건에 메모를 다시 보내도 소리·진동으로 다시 알린다 (조용히 덮어쓰기 방지)
         renotify: true,
-        // 0초(누를 때까지)를 고른 PC에서만 화면에 계속 남긴다.
-        requireInteraction: seconds === 0 && !IS_MOBILE,
+        // 폰: 항상 직접 지울 때까지 / PC: '누를 때까지'(0초)를 고른 경우만 계속 남긴다.
+        requireInteraction: IS_MOBILE || seconds === 0,
         icon: '/sj-icon-512.png',
         badge: '/sj-icon-512.png',
         data: { url: data.url || '/' }

@@ -47,8 +47,9 @@ async function showLocalTest(): Promise<boolean> {
       if (reg) {
         const tag = `local-test-${Date.now()}`
         const sec = getNotifySeconds()
-        await reg.showNotification(title, { body, tag, icon: '/sj-icon-512.png', requireInteraction: sec === 0 })
-        if (sec > 0 && !/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)) {
+        const phone = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
+        await reg.showNotification(title, { body, tag, icon: '/sj-icon-512.png', requireInteraction: phone || sec === 0 })
+        if (sec > 0 && !phone) {
           window.setTimeout(() => {
             void reg.getNotifications({ tag }).then((list) => list.forEach((n) => n.close()))
           }, sec * 1000)
@@ -239,7 +240,7 @@ export default function NotificationSettingsPage(): JSX.Element {
           ))}
         </div>
         <p className="mt-3 text-[11px] text-slate-500">
-          적용: 앱 안 알림 카드와 PC 화면 오른쪽 아래 알림. 폰은 알림이 상단 알림 목록에 남아야 해서 자동으로 지우지 않습니다(잠깐 떴다가 목록으로 들어갑니다).
+          PC에 적용됩니다(사이트 안 알림 카드·화면 오른쪽 아래 알림). 폰은 직접 지울 때까지 알림이 계속 남습니다.
           바꾼 뒤 [알림 테스트]로 확인해 보세요.
         </p>
       </Card>
