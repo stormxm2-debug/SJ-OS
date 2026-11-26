@@ -3,6 +3,24 @@
 self.addEventListener('install', () => self.skipWaiting())
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()))
 
+// 알림 표시 시간(초) — 앱의 '알림 설정'에서 고른 값을 Cache Storage로 넘겨받는다.
+// 0 = 누를 때까지 남김. 값이 없으면 5초.
+async function readNotifySeconds() {
+  try {
+    const cache = await caches.open('sj-settings')
+    const res = await cache.match('/__sj/notify-prefs')
+    if (!res) return 5
+    const j = await res.json()
+    const n = Number(j && j.seconds)
+    return Number.isFinite(n) && n >= 0 ? n : 5
+  } catch {
+    return 5
+  }
+}
+
+// 폰은 직접 지울 때까지 알림을 계속 남긴다(대표 지시) — 표시 시간 설정은 PC에만 적용.
+const IS_MOBILE = /android|iphone|ipad|ipod|mobile/i.test((self.navigator && self.navigator.userAgent) || '')
+
 self.addEventListener('push', (event) => {
   let data = {}
   try {
@@ -11,17 +29,25 @@ self.addEventListener('push', (event) => {
     data = { title: 'SJ', body: event.data ? event.data.text() : '' }
   }
   const title = data.title || 'SJ'
+  const tag = data.tag || `sj-${Date.now()}`
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: data.body || '',
-      tag: data.tag || undefined,
-      // 같은 건에 메모를 다시 보내도 소리·진동으로 다시 알린다 (조용히 덮어쓰기 방지)
-      renotify: Boolean(data.tag),
-      // 누르거나 닫을 때까지 화면에 남긴다(자동으로 사라지지 않음).
-      requireInteraction: true,
-      icon: '/sj-icon-512.png',
-      badge: '/sj-icon-512.png',
-      data: { url: data.url || '/' }
+    readNotifySeconds().then(async (seconds) => {
+      await self.registration.showNotification(title, {
+        body: data.body || '',
+        tag,
+        // 같은 건에 메모를 다시 보내도 소리·진동으로 다시 알린다 (조용히 덮어쓰기 방지)
+        renotify: true,
+        // 폰: 항상 직접 지울 때까지 / PC: '누를 때까지'(0초)를 고른 경우만 계속 남긴다.
+        requireInteraction: IS_MOBILE || seconds === 0,
+        icon: '/sj-icon-512.png',
+        badge: '/sj-icon-512.png',
+        data: { url: data.url || '/' }
+      })
+      if (seconds > 0 && !IS_MOBILE) {
+        await new Promise((r) => setTimeout(r, seconds * 1000))
+        const list = await self.registration.getNotifications({ tag })
+        list.forEach((n) => n.close())
+      }
     })
   )
 })
