@@ -60,7 +60,7 @@ import {
   listAllLeadsFull,
   type SalesStaff
 } from '@renderer/services/commercial/leadService'
-import { parseLeadFile } from '@renderer/services/commercial/leadImport'
+import { parseLeadFiles } from '@renderer/services/commercial/leadImport'
 import { buildSummary, type LeadSummary } from '@renderer/services/commercial/leadSummary'
 import { copySummaryPng, downloadSummaryPng } from '@renderer/services/commercial/leadSummaryImage'
 import { affinityTop, analyzeLeads, customerAffinity, equalCounts, planByCounts, planByRegion, toCount, type RegionLevel } from '@renderer/services/commercial/leadPlan'
@@ -301,25 +301,37 @@ export default function LeadDistributionPage(): JSX.Element {
   }, [leads])
 
   /** 파일 업로드 → 판독 → 미리보기(전체 체크 상태). */
-  const importFile = async (file: File): Promise<void> => {
+  const importFiles = async (files: File[]): Promise<void> => {
+    if (files.length === 0) return
     setDistMsg('')
-    const res = await parseLeadFile(file)
+    const res = await parseLeadFiles(files)
+    const failed = res.files.filter((f) => f.error)
     if (!res.ok) {
-      setImportSummary('')
-      setImported([])
       setDistMsg(res.error ?? '파일 판독에 실패했습니다.')
       return
     }
     // 이미 등록된 번호는 같은 사람이 두 번 배정되지 않도록 기본으로 선택 해제한다.
     const existing = await findExistingPhones(res.rows.map((r) => r.phone ?? '').filter(Boolean))
-    const items = res.rows.map((row) => {
+    const keyOf = (r: LeadInput): string => `${r.name}:${(r.phone ?? '').replace(/\D/g, '')}`
+    // 앞서 올린 파일은 그대로 두고 이어서 붙인다(파일을 나눠서 올려도 됨). 이미 목록에 있는 사람은 한 번만.
+    const have = new Set(imported.map((i) => keyOf(i.row)))
+    const fresh = res.rows.filter((r) => !have.has(keyOf(r)))
+    const items = fresh.map((row) => {
       const digits = (row.phone ?? '').replace(/\D/g, '')
       const dup = digits.length > 0 && existing.has(digits)
       return { row, checked: !dup, dup }
     })
     const dupCount = items.filter((i) => i.dup).length
-    setImported(items)
-    setImportSummary(`${res.summary ?? `${res.rows.length}건 판독`}${dupCount > 0 ? ` · 이미 등록된 번호 ${dupCount}건(선택 해제됨)` : ''}`)
+    const total = imported.length + items.length
+    setImported((prev) => [...prev, ...items])
+    setImportSummary(
+      `${files.length > 1 || imported.length > 0 ? `총 ${total}건 (이번 ${items.length}건 추가)` : res.summary ?? `${items.length}건 판독`}${dupCount > 0 ? ` · 이미 등록된 번호 ${dupCount}건(선택 해제됨)` : ''}`
+    )
+    const perFile = res.files.filter((f) => !f.error).map((f) => `${f.name} ${f.count}건`).join(' · ')
+    const lines: string[] = []
+    if (files.length > 1) lines.push(`📄 ${perFile}${res.summary && res.summary.includes('중복') ? ` — ${res.summary.split(' · ').filter((x) => x.includes('중복')).join(' · ')}` : ''}`)
+    if (failed.length > 0) lines.push(`⚠ 읽지 못한 파일: ${failed.map((f) => `${f.name}(${f.error})`).join(', ')}`)
+    setDistMsg(lines.join('\n'))
   }
 
   const distribute = async (): Promise<void> => {
@@ -699,21 +711,22 @@ export default function LeadDistributionPage(): JSX.Element {
           {/* 파일 업로드 → 판독 → 행 선택 */}
           <FileDropZone
             accept=".xlsx,.xls,.csv"
-            multiple={false}
-            dropLabel="놓으면 DB 파일을 판독합니다"
-            onFiles={(fs) => void importFile(fs[0])}
+            multiple
+            dropLabel="놓으면 DB 파일을 판독합니다 (여러 개 가능)"
+            onFiles={(fs) => void importFiles(fs)}
           >
             <label className="mb-3 flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-700 bg-slate-950 px-4 py-5 text-center transition hover:border-[#c6982f]/60 hover:bg-[#c6982f]/5">
               <UploadCloud className="h-6 w-6 text-[#b0821f]" />
-              <span className="text-[13px] font-semibold text-slate-200">DB 파일을 드래그하거나 클릭해서 선택 (.xlsx · .xls · .csv)</span>
-              <span className="text-[11px] text-slate-500">이름·전화 열을 자동으로 찾고, 나머지 열은 메모로 보존됩니다</span>
+              <span className="text-[13px] font-semibold text-slate-200">DB 파일을 드래그하거나 클릭해서 선택 (.xlsx · .xls · .csv · 여러 개 한꺼번에 가능)</span>
+              <span className="text-[11px] text-slate-500">이름·전화 열을 자동으로 찾고(시트가 여러 장이어도 모두 읽음), 나머지 열은 메모로 보존됩니다</span>
               <input
                 type="file"
                 accept=".xlsx,.xls,.csv"
+                multiple
                 className="hidden"
                 onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) void importFile(f)
+                  const fs = Array.from(e.target.files ?? [])
+                  if (fs.length > 0) void importFiles(fs)
                   e.target.value = ''
                 }}
               />
@@ -777,6 +790,7 @@ export default function LeadDistributionPage(): JSX.Element {
                       <th className="px-2 py-1.5">이름</th>
                       <th className="px-2 py-1.5">전화</th>
                       <th className="px-2 py-1.5">메모</th>
+                      <th className="px-2 py-1.5">파일</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -799,6 +813,7 @@ export default function LeadDistributionPage(): JSX.Element {
                         </td>
                         <td className="px-2 py-1.5 text-slate-300">{item.row.phone ?? ''}</td>
                         <td className="max-w-[280px] truncate px-2 py-1.5 text-slate-500">{item.row.memo ?? ''}</td>
+                        <td className="max-w-[180px] truncate px-2 py-1.5 text-slate-500" title={item.row.origin ?? ''}>{item.row.origin ?? ''}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1125,7 +1140,7 @@ export default function LeadDistributionPage(): JSX.Element {
               {selectedType ? ` · [${selectedType}]` : ''}
             </span>
           </div>
-          {distMsg ? <p className="mt-2 text-[12px] leading-5 text-slate-300">{distMsg}</p> : null}
+          {distMsg ? <p className="mt-2 whitespace-pre-line text-[12px] leading-5 text-slate-300">{distMsg}</p> : null}
           {lastSummary ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
               <span className="text-[12px] font-semibold text-slate-200">배분 결과 요약 이미지 (고객 개인정보 없음)</span>

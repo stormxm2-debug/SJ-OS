@@ -87,6 +87,8 @@ export interface LeadInput {
   phone?: string
   source?: string
   memo?: string
+  /** 화면 표시용: 올린 파일·시트 이름 (저장하지 않는다) */
+  origin?: string
 }
 
 export interface SalesStaff {

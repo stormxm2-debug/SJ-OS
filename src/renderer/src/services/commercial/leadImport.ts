@@ -34,19 +34,8 @@ function normalizePhone(raw: string): string {
   return raw.trim()
 }
 
-export async function parseLeadFile(file: File): Promise<ParsedLeadFile> {
-  let grid: string[][]
-  try {
-    const buf = await file.arrayBuffer()
-    const wb = XLSX.read(buf, { type: 'array' })
-    const sheetName = wb.SheetNames[0]
-    if (!sheetName) return { ok: false, rows: [], error: '시트를 찾지 못했습니다.' }
-    const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, raw: false, defval: '' }) as unknown[][]
-    grid = raw.map((r) => r.map((c) => String(c ?? '').trim()))
-  } catch {
-    return { ok: false, rows: [], error: '파일을 읽지 못했습니다. 엑셀(.xlsx/.xls) 또는 CSV 파일인지 확인해 주세요.' }
-  }
-
+/** 시트 한 장(2차원 표)에서 헤더를 찾아 리드로 바꾼다. 인식할 행이 없으면 빈 배열. */
+function parseGrid(grid: string[][]): { rows: LeadInput[]; headInfo: string; hasHeader: boolean } {
   // 헤더 행 탐지 (앞 5행): 이름 열 + 전화 열이 함께 있는 첫 행.
   let headerRow = -1
   let nameCol = -1
@@ -88,28 +77,101 @@ export async function parseLeadFile(file: File): Promise<ParsedLeadFile> {
     })
     rows.push({ name, phone, memo: memoParts.length > 0 ? memoParts.join(' / ').slice(0, 500) : undefined })
   }
+  const headInfo = headerRow >= 0 ? `헤더 인식(${headers[nameCol]}·${headers[phoneCol]})` : '헤더 없음(1열=이름, 2열=전화)'
+  return { rows, headInfo, hasHeader: headerRow >= 0 }
+}
 
-  // 파일 내 중복(이름+전화) 제거.
+/** 이름+전화(숫자만)가 같은 행은 첫 번째만 남긴다. */
+export function dedupeLeads(rows: LeadInput[]): { rows: LeadInput[]; removed: number } {
   const seen = new Set<string>()
-  const deduped: LeadInput[] = []
-  let dupCount = 0
+  const out: LeadInput[] = []
+  let removed = 0
   for (const r of rows) {
     const key = `${r.name}:${(r.phone ?? '').replace(/\D/g, '')}`
     if (seen.has(key)) {
-      dupCount += 1
+      removed += 1
       continue
     }
     seen.add(key)
-    deduped.push(r)
+    out.push(r)
+  }
+  return { rows: out, removed }
+}
+
+/**
+ * 엑셀·CSV 한 파일을 읽는다. 시트가 여러 장이면 **모든 시트**를 읽어서 합친다
+ * (시트마다 헤더를 따로 찾는다 — 이름·전화 열이 없는 시트는 건너뜀).
+ */
+export async function parseLeadFile(file: File): Promise<ParsedLeadFile> {
+  let sheets: { name: string; grid: string[][] }[]
+  try {
+    const buf = await file.arrayBuffer()
+    const wb = XLSX.read(buf, { type: 'array' })
+    if (wb.SheetNames.length === 0) return { ok: false, rows: [], error: '시트를 찾지 못했습니다.' }
+    sheets = wb.SheetNames.map((name) => {
+      const raw = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '' }) as unknown[][]
+      return { name, grid: raw.map((r) => r.map((c) => String(c ?? '').trim())) }
+    }).filter((s) => s.grid.length > 0)
+  } catch {
+    return { ok: false, rows: [], error: '파일을 읽지 못했습니다. 엑셀(.xlsx/.xls) 또는 CSV 파일인지 확인해 주세요.' }
   }
 
+  const all: LeadInput[] = []
+  let headInfo = ''
+  let usedSheets = 0
+  const parts = sheets.map((sh) => ({ sh, part: parseGrid(sh.grid) }))
+  // 시트가 여러 장일 때, 이름·전화 헤더가 있는 시트가 하나라도 있으면 헤더 없는 시트(설명·표지 등)는 건너뛴다.
+  const anyHeader = parts.some((x) => x.part.hasHeader)
+  for (const { sh, part } of parts) {
+    if (part.rows.length === 0) continue
+    if (anyHeader && !part.hasHeader) continue
+    usedSheets += 1
+    if (!headInfo) headInfo = part.headInfo
+    const origin = sheets.length > 1 ? `${file.name} · ${sh.name}` : file.name
+    for (const r of part.rows) all.push({ ...r, source: file.name.slice(0, 60), origin })
+  }
+
+  const { rows: deduped, removed } = dedupeLeads(all)
   if (deduped.length === 0) {
     return { ok: false, rows: [], error: '판독된 데이터가 없습니다. 이름·전화 열이 있는 파일인지 확인해 주세요.' }
   }
-  const headInfo = headerRow >= 0 ? `헤더 인식(${headers[nameCol]}·${headers[phoneCol]})` : '헤더 없음(1열=이름, 2열=전화)'
   return {
     ok: true,
     rows: deduped,
-    summary: `${deduped.length}건 판독 · ${headInfo}${dupCount > 0 ? ` · 중복 ${dupCount}건 제거` : ''}`
+    summary: `${deduped.length}건 판독${usedSheets > 1 ? ` · 시트 ${usedSheets}장` : ''} · ${headInfo}${removed > 0 ? ` · 중복 ${removed}건 제거` : ''}`
   }
+}
+
+export interface ParsedLeadFiles {
+  ok: boolean
+  rows: LeadInput[]
+  summary?: string
+  /** 파일별 결과(성공 건수 또는 실패 사유) */
+  files: { name: string; count: number; error?: string }[]
+  error?: string
+}
+
+/** 파일 여러 개를 한꺼번에 읽는다. 파일 사이 중복(이름+전화)도 한 건만 남긴다. */
+export async function parseLeadFiles(files: File[]): Promise<ParsedLeadFiles> {
+  const per: { name: string; count: number; error?: string }[] = []
+  const all: LeadInput[] = []
+  for (const file of files) {
+    const res = await parseLeadFile(file)
+    if (!res.ok) {
+      per.push({ name: file.name, count: 0, error: res.error })
+      continue
+    }
+    per.push({ name: file.name, count: res.rows.length })
+    all.push(...res.rows)
+  }
+  if (all.length === 0) {
+    return { ok: false, rows: [], files: per, error: per.length === 1 ? per[0].error ?? '판독된 데이터가 없습니다.' : '읽을 수 있는 파일이 없습니다. 이름·전화 열이 있는 엑셀 또는 CSV인지 확인해 주세요.' }
+  }
+  const { rows, removed } = dedupeLeads(all)
+  const failed = per.filter((p) => p.error).length
+  const summary =
+    files.length === 1
+      ? `${rows.length}건 판독`
+      : `파일 ${files.length}개 · ${rows.length}건 판독${removed > 0 ? ` · 파일 사이 중복 ${removed}건 제거` : ''}${failed > 0 ? ` · 읽지 못한 파일 ${failed}개` : ''}`
+  return { ok: true, rows, summary, files: per }
 }
