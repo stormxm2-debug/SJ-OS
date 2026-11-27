@@ -65,6 +65,10 @@ export interface CustomerRecord {
   rrn?: string
   /** 병력 (보험 심사 참고). */
   medicalHistory?: string
+  /** 직업 (자유 입력) — 보험 심사·직업급수 참고. */
+  job?: string
+  /** 직업급수(상해위험등급) — 보험사 직업급수표 매칭 결과. */
+  jobGrade?: string
   heightCm?: number
   weightKg?: number
   /** 가족 묶음 — 세대주 고객의 id를 공유. */
