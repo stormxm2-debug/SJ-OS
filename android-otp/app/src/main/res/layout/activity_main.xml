@@ -113,5 +113,70 @@
             android:text="※ 내부 전용 앱입니다. 인증번호가 오면 자동으로 전달되며, 앱을 닫아도 동작합니다. (배터리 최적화 예외로 두면 더 안정적)"
             android:textColor="#7E8CA6"
             android:textSize="11sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="20dp"
+            android:background="#2A3C5E" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="최근 감지 기록 (진단용)"
+            android:textColor="#E6C877"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/version"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="버전"
+            android:textColor="#7E8CA6"
+            android:textSize="11sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/refresh"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:backgroundTint="#1B3A6B"
+                android:text="새로고침"
+                android:textColor="#E6C877"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/clearlog"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:backgroundTint="#3A2020"
+                android:text="기록 지우기"
+                android:textColor="#E6A0A0"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/log"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#081426"
+            android:fontFamily="monospace"
+            android:padding="12dp"
+            android:text=""
+            android:textColor="#B7C4DC"
+            android:textSize="11sp" />
     </LinearLayout>
 </ScrollView>
