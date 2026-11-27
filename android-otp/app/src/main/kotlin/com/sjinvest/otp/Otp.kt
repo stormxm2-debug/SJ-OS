@@ -12,14 +12,27 @@ object Otp {
         "한화생명", "교보생명", "라이나"
     )
 
-    /** 인증 키워드 바로 뒤의 숫자를 우선 추출(번호가 여러 개일 때 OTP를 정확히 집음). */
+    // '인증번호' 류 키워드에 바로 붙은 숫자만 추출 (화면 전체의 날짜·전화번호·광고 숫자 오탐 방지).
+    private val CODE_AFTER = Regex(
+        "(?:인증\\s*번호|인증\\s*코드|인증\\s*확인\\s*번호|OTP|verification(?:\\s*code)?)\\D{0,8}(\\d{4,8})",
+        RegexOption.IGNORE_CASE
+    )
+    private val CODE_BEFORE = Regex(
+        "(\\d{4,8})\\D{0,4}(?:인증\\s*번호|인증\\s*코드)",
+        RegexOption.IGNORE_CASE
+    )
+
+    /**
+     * 인증번호 추출. '인증번호/인증코드/OTP' 키워드 바로 옆의 4~8자리만 집는다.
+     * 후보가 여러 개면 6자리를 우선(대부분의 OTP가 6자리). 키워드에 붙은 숫자가 없으면 null.
+     */
     fun extractCode(body: String): String? {
-        val near = Regex(
-            "(?:인증번호|인증|OTP|코드|verification|보안|승인|본인확인)[^0-9]{0,12}(\\d{4,8})",
-            RegexOption.IGNORE_CASE
-        ).find(body)?.groupValues?.getOrNull(1)
-        if (!near.isNullOrBlank()) return near
-        return Regex("(\\d{4,8})").find(body)?.value
+        val cands = (CODE_AFTER.findAll(body).map { it.groupValues[1] } +
+            CODE_BEFORE.findAll(body).map { it.groupValues[1] }).toList()
+        if (cands.isEmpty()) return null
+        // 화면엔 과거 인증번호도 함께 보이므로 가장 최근(아래쪽) 것을 우선, 6자리 우선.
+        val six = cands.filter { it.length == 6 }
+        return if (six.isNotEmpty()) six.last() else cands.last()
     }
 
     private val recent = HashMap<String, Long>()
