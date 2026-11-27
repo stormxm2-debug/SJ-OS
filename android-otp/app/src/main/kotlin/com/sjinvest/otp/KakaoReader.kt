@@ -32,10 +32,9 @@ class KakaoReader : AccessibilityService() {
         }
         val body = sb.toString().trim()
         if (body.isBlank()) return
-        if (Otp.KEYWORDS.none { body.contains(it, ignoreCase = true) }) return
 
-        val code = Otp.extractCode(body)
-        if (code == null) { Otp.log(this, "[카톡화면] 숫자없음: ${body.take(40)}"); return }
+        // 화면 스캔은 매우 자주 발생하므로, '인증번호' 패턴이 실제로 있을 때만 처리(로그 스팸 방지).
+        val code = Otp.extractCode(body) ?: return
         if (Otp.isDuplicate(code)) return
 
         val insurer = Otp.INSURERS.firstOrNull { body.contains(it) }
