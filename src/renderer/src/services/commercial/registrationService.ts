@@ -78,7 +78,13 @@ export interface RegistrationCustomerInfo {
   birthDate?: string
   address?: string
   medicalHistory?: string
+  heightCm?: number
+  weightKg?: number
+  relation?: string
+  memo?: string
+  source?: string
   attachmentCount: number
+  attachments: { path: string; name: string; kind: 'image' | 'pdf' | 'audio' }[]
 }
 
 async function getClient(): Promise<any | null> {
@@ -95,7 +101,7 @@ async function uid(client: any): Promise<string | null> {
 }
 
 const COLS =
-  'id, customer_id, staff_id, insurers, status, note, requested_at, processed_at, customer:customers(id, name, phone, rrn, birth_date, address, medical_history, attachments), staff:profiles(id, name)'
+  'id, customer_id, staff_id, insurers, status, note, requested_at, processed_at, customer:customers(id, name, phone, rrn, birth_date, address, medical_history, height_cm, weight_kg, relation, memo, source, attachments), staff:profiles(id, name)'
 
 function mapRow(r: Record<string, any>): CustomerRegistration {
   const cust = (r.customer as Record<string, any> | null) ?? null
@@ -118,7 +124,13 @@ function mapRow(r: Record<string, any>): CustomerRegistration {
           birthDate: (cust.birth_date as string | null) ?? undefined,
           address: (cust.address as string | null) ?? undefined,
           medicalHistory: (cust.medical_history as string | null) ?? undefined,
-          attachmentCount: Array.isArray(cust.attachments) ? cust.attachments.length : 0
+          heightCm: cust.height_cm != null ? Number(cust.height_cm) : undefined,
+          weightKg: cust.weight_kg != null ? Number(cust.weight_kg) : undefined,
+          relation: (cust.relation as string | null) ?? undefined,
+          memo: (cust.memo as string | null) ?? undefined,
+          source: (cust.source as string | null) ?? undefined,
+          attachmentCount: Array.isArray(cust.attachments) ? cust.attachments.length : 0,
+          attachments: Array.isArray(cust.attachments) ? (cust.attachments as RegistrationCustomerInfo['attachments']) : []
         }
       : undefined
   }
