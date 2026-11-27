@@ -68,6 +68,17 @@ export interface CustomerRegistration {
   note?: string
   requestedAt: string
   processedAt?: string
+  /** FC가 입력한 고객 정보 — 총무가 보험사 전산에 등록할 때 보는 값 (현재 고객 카드 기준). */
+  customer?: RegistrationCustomerInfo
+}
+
+export interface RegistrationCustomerInfo {
+  phone?: string
+  rrn?: string
+  birthDate?: string
+  address?: string
+  medicalHistory?: string
+  attachmentCount: number
 }
 
 async function getClient(): Promise<any | null> {
@@ -84,7 +95,7 @@ async function uid(client: any): Promise<string | null> {
 }
 
 const COLS =
-  'id, customer_id, staff_id, insurers, status, note, requested_at, processed_at, customer:customers(id, name), staff:profiles(id, name)'
+  'id, customer_id, staff_id, insurers, status, note, requested_at, processed_at, customer:customers(id, name, phone, rrn, birth_date, address, medical_history, attachments), staff:profiles(id, name)'
 
 function mapRow(r: Record<string, any>): CustomerRegistration {
   const cust = (r.customer as Record<string, any> | null) ?? null
@@ -99,7 +110,17 @@ function mapRow(r: Record<string, any>): CustomerRegistration {
     status: (r.status as RegistrationStatus) ?? 'requested',
     note: (r.note as string | null) ?? undefined,
     requestedAt: String(r.requested_at ?? ''),
-    processedAt: (r.processed_at as string | null) ?? undefined
+    processedAt: (r.processed_at as string | null) ?? undefined,
+    customer: cust
+      ? {
+          phone: (cust.phone as string | null) ?? undefined,
+          rrn: (cust.rrn as string | null) ?? undefined,
+          birthDate: (cust.birth_date as string | null) ?? undefined,
+          address: (cust.address as string | null) ?? undefined,
+          medicalHistory: (cust.medical_history as string | null) ?? undefined,
+          attachmentCount: Array.isArray(cust.attachments) ? cust.attachments.length : 0
+        }
+      : undefined
   }
 }
 
