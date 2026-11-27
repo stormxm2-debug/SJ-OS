@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ClipboardCheck, Loader2, AlertTriangle, CheckCircle2, XCircle, RefreshCw, MessageSquarePlus, BellRing } from 'lucide-react'
+import { ClipboardCheck, Loader2, AlertTriangle, CheckCircle2, XCircle, RefreshCw, MessageSquarePlus, BellRing, Copy, Check } from 'lucide-react'
 import Card from '@renderer/components/ui/Card'
 import { useSession } from '@renderer/navigation/SessionContext'
 import { isAdminRole, isBackOffice } from '@renderer/navigation/roleAccess'
@@ -9,7 +9,8 @@ import {
   reopenRegistration,
   saveRegistrationNote,
   REGISTRATION_STATUS_LABEL,
-  type CustomerRegistration
+  type CustomerRegistration,
+  type RegistrationCustomerInfo
 } from '@renderer/services/commercial/registrationService'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
 import { ensureWebPushSubscription, webPushSupported } from '@renderer/services/push/webPush'
@@ -243,6 +244,7 @@ export default function BackOfficeDeskPage(): JSX.Element {
                       </span>
                     ))}
                   </div>
+                  {canProcess ? <CustomerInfoBox info={r.customer} /> : null}
                   {r.note && !editing ? (
                     <p className="mt-1.5 rounded-lg bg-white px-2.5 py-1.5 text-[12px] text-slate-300">📝 {canProcess ? '최근 메모' : '총무 메모'}: {r.note}</p>
                   ) : null}
@@ -396,6 +398,55 @@ export default function BackOfficeDeskPage(): JSX.Element {
           </div>
         )}
       </Card>
+    </div>
+  )
+}
+
+/** FC가 입력한 고객 정보 — 보험사 전산 등록용. 값마다 [복사] 버튼. */
+function CustomerInfoBox({ info }: { info?: RegistrationCustomerInfo }): JSX.Element {
+  const [copied, setCopied] = useState<string | null>(null)
+  if (!info) {
+    return <p className="mt-2 text-[12px] text-rose-600">고객 정보를 불러오지 못했습니다. 새로고침해 주세요.</p>
+  }
+  const rows: { label: string; value?: string }[] = [
+    { label: '주민번호', value: info.rrn },
+    { label: info.rrn ? '' : '생년월일', value: info.rrn ? undefined : info.birthDate },
+    { label: '연락처', value: info.phone },
+    { label: '주소', value: info.address },
+    { label: '병력', value: info.medicalHistory }
+  ].filter((r) => r.label)
+  const copy = (label: string, value: string): void => {
+    void navigator.clipboard?.writeText(value).then(() => {
+      setCopied(label)
+      window.setTimeout(() => setCopied((c) => (c === label ? null : c)), 1500)
+    })
+  }
+  return (
+    <div className="mt-2 grid gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-2 text-[12px]">
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-start gap-2">
+          <span className="w-14 shrink-0 font-semibold text-slate-500">{r.label}</span>
+          {r.value ? (
+            <>
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-all font-medium text-[#0e1e3a]">{r.value}</span>
+              <button
+                type="button"
+                onClick={() => copy(r.label, r.value as string)}
+                className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-[#cbd5e1] px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:text-[#0e1e3a]"
+                aria-label={`${r.label} 복사`}
+              >
+                {copied === r.label ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                {copied === r.label ? '복사됨' : '복사'}
+              </button>
+            </>
+          ) : (
+            <span className="text-slate-500">미입력</span>
+          )}
+        </div>
+      ))}
+      {info.attachmentCount > 0 ? (
+        <div className="text-[11px] text-slate-500">첨부 {info.attachmentCount}개 (고객 화면에서 확인)</div>
+      ) : null}
     </div>
   )
 }
