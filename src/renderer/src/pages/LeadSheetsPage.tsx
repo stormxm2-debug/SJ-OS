@@ -1,8 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Download, FileSpreadsheet, Loader2, RefreshCw, Search } from 'lucide-react'
+import { Download, FileSpreadsheet, Loader2, Pencil, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { useNavigation } from '@renderer/navigation/NavigationContext'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
-import { LEAD_STATUS_LABEL, listAllLeadsFull, listVendors, type Lead } from '@renderer/services/commercial/leadService'
+import {
+  LEAD_STATUS_LABEL,
+  deleteLeads,
+  listAllLeadsFull,
+  listDbTypes,
+  listSalesStaff,
+  listVendors,
+  updateLead,
+  updateLeadsBulk,
+  type Lead,
+  type LeadDbType,
+  type SalesStaff
+} from '@renderer/services/commercial/leadService'
 import { NO_FC, bucketOf, fcRows, summarize, vendorOf, vendorTabs, type StatusBucket } from '@renderer/services/commercial/leadSheets'
 import { downloadLeadList, downloadVendorWorkbook } from '@renderer/services/commercial/leadSheetsExport'
 
@@ -34,11 +46,29 @@ export default function LeadSheetsPage(): JSX.Element {
   const [typeFilter, setTypeFilter] = useState('')
   const [q, setQ] = useState('')
   const [shown, setShown] = useState(PAGE)
+  const [batchFilter, setBatchFilter] = useState('')
+  const [staff, setStaff] = useState<SalesStaff[]>([])
+  const [dbTypes, setDbTypes] = useState<LeadDbType[]>([])
+  // 선택·수정·삭제
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkVendor, setBulkVendor] = useState('')
+  const [bulkType, setBulkType] = useState('')
+  const [bulkFc, setBulkFc] = useState('')
+  const [editing, setEditing] = useState<{ id: string; name: string; phone: string; memo: string; vendor: string; dbType: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
 
   const load = async (): Promise<void> => {
-    const [res, vs] = await Promise.all([listAllLeadsFull(), listVendors()])
+    const [res, vs, st, ty] = await Promise.all([listAllLeadsFull(), listVendors(), listSalesStaff(), listDbTypes()])
     setLeads(res.leads)
     setRegistered(vs.map((v) => v.name))
+    setStaff(st)
+    setDbTypes(ty)
+    // 없어진 항목은 선택에서 뺀다
+    setSelected((prev) => {
+      const ids = new Set(res.leads.map((l) => l.id))
+      return new Set([...prev].filter((id) => ids.has(id)))
+    })
     setError(res.ok ? '' : res.error ?? '불러오지 못했습니다.')
     setLoading(false)
   }
@@ -54,6 +84,12 @@ export default function LeadSheetsPage(): JSX.Element {
   const summary = useMemo(() => summarize(inTab), [inTab])
   const fcs = useMemo(() => fcRows(inTab), [inTab])
   const types = useMemo(() => [...new Set(inTab.map((l) => l.dbType ?? '').filter(Boolean))].sort(), [inTab])
+  // 올린 시각(분 단위)별 묶음 — 잘못 올린 파일을 한꺼번에 찾아 고치거나 지우는 데 쓴다.
+  const batches = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const l of inTab) m.set(l.createdAt.slice(0, 16), (m.get(l.createdAt.slice(0, 16)) ?? 0) + 1)
+    return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([key, n]) => ({ key, n }))
+  }, [inTab])
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -61,15 +97,91 @@ export default function LeadSheetsPage(): JSX.Element {
       if (fcFilter === '__none__' ? l.assignedFcId : fcFilter && l.assignedFcId !== fcFilter) return false
       if (bucketFilter && bucketOf(l.status) !== bucketFilter) return false
       if (typeFilter && (l.dbType ?? '') !== typeFilter) return false
+      if (batchFilter && l.createdAt.slice(0, 16) !== batchFilter) return false
       if (needle && !`${l.name} ${l.phone ?? ''} ${l.memo ?? ''}`.toLowerCase().includes(needle)) return false
       return true
     })
-  }, [inTab, fcFilter, bucketFilter, typeFilter, q])
+  }, [inTab, fcFilter, bucketFilter, typeFilter, batchFilter, q])
 
   // 탭·필터를 바꾸면 보이는 줄 수를 처음으로
-  useEffect(() => setShown(PAGE), [tab, fcFilter, bucketFilter, typeFilter, q])
+  useEffect(() => setShown(PAGE), [tab, fcFilter, bucketFilter, typeFilter, batchFilter, q])
 
   const tabLabel = tab === '__all__' ? '전체' : tab
+  const selectedIds = useMemo(() => filtered.filter((l) => selected.has(l.id)).map((l) => l.id), [filtered, selected])
+  const allSelected = filtered.length > 0 && selectedIds.length === filtered.length
+
+  const toggleAll = (): void => setSelected(allSelected ? new Set() : new Set(filtered.map((l) => l.id)))
+  const toggleOne = (id: string): void =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const finish = async (text: string): Promise<void> => {
+    setMsg(text)
+    setBusy(false)
+    setSelected(new Set())
+    await load()
+  }
+
+  const applyBulk = async (kind: 'vendor' | 'type' | 'fc'): Promise<void> => {
+    if (selectedIds.length === 0) return
+    let patch: Parameters<typeof updateLeadsBulk>[1] = {}
+    let label = ''
+    if (kind === 'vendor') {
+      if (bulkVendor === '') return
+      const v = bulkVendor === '__none__' ? '' : bulkVendor
+      patch = { vendor: v }
+      label = `업체를 ${v || '(업체 없음)'}(으)로`
+    } else if (kind === 'type') {
+      if (bulkType === '') return
+      const t = bulkType === '__none__' ? '' : bulkType
+      patch = { dbType: t }
+      label = `DB종류를 ${t || '(없음)'}(으)로`
+    } else {
+      if (bulkFc === '') return
+      if (bulkFc === '__none__') {
+        patch = { fc: null }
+        label = '담당 FC를 미배정으로'
+      } else {
+        const fc = staff.find((x) => x.id === bulkFc)
+        if (!fc) return
+        patch = { fc: { id: fc.id, name: fc.name } }
+        label = `담당 FC를 ${fc.name}님으로 (24시간 콜 시계가 새로 시작되고 상태가 미콜로 돌아갑니다)`
+      }
+    }
+    if (typeof window !== 'undefined' && !window.confirm(`선택한 ${selectedIds.length}건의 ${label} 바꿀까요?`)) return
+    setBusy(true)
+    const res = await updateLeadsBulk(selectedIds, patch)
+    await finish(res.ok ? `✅ ${res.updated}건을 바꿨습니다.` : res.error ?? '수정에 실패했습니다.')
+  }
+
+  const removeSelected = async (): Promise<void> => {
+    if (selectedIds.length === 0) return
+    if (typeof window === 'undefined') return
+    if (!window.confirm(`선택한 ${selectedIds.length}건을 삭제할까요?\n삭제하면 되돌릴 수 없습니다.`)) return
+    // 많이 지울 때는 한 번 더: '삭제'를 직접 입력해야 진행
+    if (selectedIds.length >= 10 && window.prompt(`${selectedIds.length}건을 지웁니다. 계속하려면 "삭제"라고 입력하세요.`) !== '삭제') return
+    setBusy(true)
+    const res = await deleteLeads(selectedIds)
+    await finish(res.ok ? `🗑 ${res.deleted}건을 삭제했습니다.` : res.error ?? '삭제에 실패했습니다.')
+  }
+
+  const saveEdit = async (): Promise<void> => {
+    if (!editing) return
+    setBusy(true)
+    const res = await updateLead(editing.id, editing)
+    setBusy(false)
+    if (!res.ok) {
+      setMsg(res.error ?? '수정에 실패했습니다.')
+      return
+    }
+    setEditing(null)
+    setMsg('✅ 수정했습니다.')
+    await load()
+  }
 
   return (
     <div className="space-y-4">
@@ -230,6 +342,14 @@ export default function LeadSheetsPage(): JSX.Element {
                     ))}
                   </select>
                 ) : null}
+                <select value={batchFilter} onChange={(e) => setBatchFilter(e.target.value)} className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-[12px] text-slate-100 outline-none" title="같은 시각에 올린 DB만 보기">
+                  <option value="">올린 시각 전체</option>
+                  {batches.map((b) => (
+                    <option key={b.key} value={b.key}>
+                      {fmt(`${b.key}:00Z`)} · {b.n}건
+                    </option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={() => downloadLeadList(filtered, tabLabel)}
@@ -241,10 +361,100 @@ export default function LeadSheetsPage(): JSX.Element {
               </div>
             </div>
 
+            {msg ? <p className="mb-2 text-[12px] text-slate-300">{msg}</p> : null}
+
+            {/* 선택한 DB 한꺼번에 고치기·지우기 */}
+            {selectedIds.length > 0 ? (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-[#c6982f]/40 bg-slate-950/60 px-3 py-2">
+                <span className="text-[12px] font-bold text-[#e6c877]">선택 {selectedIds.length}건</span>
+                <select value={bulkVendor} onChange={(e) => setBulkVendor(e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[12px] text-slate-100 outline-none">
+                  <option value="">업체 바꾸기…</option>
+                  <option value="__none__">(업체 없음)</option>
+                  {registered.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" disabled={busy || bulkVendor === ''} onClick={() => void applyBulk('vendor')} className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-40">
+                  적용
+                </button>
+                <select value={bulkType} onChange={(e) => setBulkType(e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[12px] text-slate-100 outline-none">
+                  <option value="">DB종류 바꾸기…</option>
+                  <option value="__none__">(종류 없음)</option>
+                  {dbTypes.map((t) => (
+                    <option key={t.id} value={t.name}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" disabled={busy || bulkType === ''} onClick={() => void applyBulk('type')} className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-40">
+                  적용
+                </button>
+                <select value={bulkFc} onChange={(e) => setBulkFc(e.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[12px] text-slate-100 outline-none">
+                  <option value="">담당 FC 바꾸기…</option>
+                  <option value="__none__">(미배정으로)</option>
+                  {staff.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" disabled={busy || bulkFc === ''} onClick={() => void applyBulk('fc')} className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700 disabled:opacity-40">
+                  적용
+                </button>
+                <button type="button" disabled={busy} onClick={() => void removeSelected()} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-rose-300/50 px-2.5 py-1 text-[11px] font-bold text-rose-400 hover:bg-rose-500/10 disabled:opacity-40">
+                  <Trash2 className="h-3 w-3" /> 삭제
+                </button>
+                <button type="button" onClick={() => setSelected(new Set())} className="text-[11px] text-slate-500 hover:text-slate-300">
+                  선택 해제
+                </button>
+              </div>
+            ) : null}
+
+            {/* 한 건 수정 */}
+            {editing ? (
+              <div className="mb-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                <div className="mb-2 text-[12px] font-bold text-slate-200">DB 수정</div>
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="이름" className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[12px] text-slate-100 outline-none focus:border-[#c6982f]" />
+                  <input value={editing.phone} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} placeholder="전화" className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[12px] text-slate-100 outline-none focus:border-[#c6982f]" />
+                  <select value={editing.vendor} onChange={(e) => setEditing({ ...editing, vendor: e.target.value })} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[12px] text-slate-100 outline-none">
+                    <option value="">(업체 없음)</option>
+                    {[...new Set([...registered, editing.vendor].filter(Boolean))].map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                  <select value={editing.dbType} onChange={(e) => setEditing({ ...editing, dbType: e.target.value })} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[12px] text-slate-100 outline-none">
+                    <option value="">(종류 없음)</option>
+                    {[...new Set([...dbTypes.map((t) => t.name), editing.dbType].filter(Boolean))].map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  <textarea value={editing.memo} onChange={(e) => setEditing({ ...editing, memo: e.target.value })} rows={2} placeholder="메모" className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-[12px] text-slate-100 outline-none focus:border-[#c6982f] sm:col-span-2" />
+                </div>
+                <div className="mt-2 flex justify-end gap-1.5">
+                  <button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-slate-700 px-3 py-1 text-[11px] text-slate-300 hover:bg-slate-800">
+                    취소
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => void saveEdit()} className="rounded-lg bg-[#0e1e3a] px-3 py-1 text-[11px] font-bold text-[#e6c877] hover:brightness-125 disabled:opacity-50">
+                    저장
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="max-h-[60vh] overflow-auto rounded-lg border border-slate-800">
-              <table className="w-full min-w-[760px] text-left text-[12px]">
+              <table className="w-full min-w-[860px] text-left text-[12px]">
                 <thead className="sticky top-0 bg-slate-900">
                   <tr className="text-[11px] text-slate-500">
+                    <th className="w-8 px-2 py-1.5">
+                      <input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-3.5 w-3.5 accent-[#c6982f]" aria-label="필터 결과 전체 선택" />
+                    </th>
                     <th className="px-2 py-1.5">이름</th>
                     <th className="px-2 py-1.5">전화</th>
                     <th className="px-2 py-1.5">업체</th>
@@ -253,11 +463,15 @@ export default function LeadSheetsPage(): JSX.Element {
                     <th className="px-2 py-1.5">상태</th>
                     <th className="px-2 py-1.5">배정</th>
                     <th className="px-2 py-1.5">메모</th>
+                    <th className="px-2 py-1.5"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.slice(0, shown).map((l) => (
                     <tr key={l.id} className="border-t border-slate-800/60">
+                      <td className="px-2 py-1.5">
+                        <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggleOne(l.id)} className="h-3.5 w-3.5 accent-[#c6982f]" aria-label={`${l.name} 선택`} />
+                      </td>
                       <td className="px-2 py-1.5 font-semibold text-slate-100">{l.name}</td>
                       <td className="px-2 py-1.5 text-slate-300">{l.phone ?? ''}</td>
                       <td className="px-2 py-1.5 text-slate-400">{vendorOf(l)}</td>
@@ -266,11 +480,20 @@ export default function LeadSheetsPage(): JSX.Element {
                       <td className="px-2 py-1.5 text-slate-300">{LEAD_STATUS_LABEL[l.status] ?? l.status}</td>
                       <td className="px-2 py-1.5 text-slate-500">{fmt(l.assignedAt)}</td>
                       <td className="max-w-[260px] truncate px-2 py-1.5 text-slate-500">{l.memo ?? ''}</td>
+                      <td className="px-2 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setEditing({ id: l.id, name: l.name, phone: l.phone ?? '', memo: l.memo ?? '', vendor: l.vendor ?? '', dbType: l.dbType ?? '' })}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-1.5 py-0.5 text-[11px] text-slate-300 hover:bg-slate-800"
+                        >
+                          <Pencil className="h-3 w-3" /> 수정
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-2 py-8 text-center text-slate-500">
+                      <td colSpan={10} className="px-2 py-8 text-center text-slate-500">
                         조건에 맞는 DB가 없습니다.
                       </td>
                     </tr>

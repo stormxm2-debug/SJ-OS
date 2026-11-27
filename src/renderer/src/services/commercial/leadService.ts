@@ -479,6 +479,83 @@ export async function saveRegionMapping(map: Record<string, string[]>): Promise<
   }
 }
 
+/** 관리자: 리드 한 건 수정(이름·전화·메모·업체·DB종류). 이름은 비울 수 없다. */
+export async function updateLead(
+  id: string,
+  patch: { name: string; phone: string; memo: string; vendor: string; dbType: string }
+): Promise<{ ok: boolean; error?: string }> {
+  const name = patch.name.trim()
+  if (!name) return { ok: false, error: '이름을 입력해 주세요.' }
+  const client = await getClient()
+  if (!client) return { ok: false, error: '서버 연결 후 사용할 수 있습니다.' }
+  try {
+    const { error } = await client
+      .from('leads')
+      .update({
+        name,
+        phone: patch.phone.trim() || null,
+        memo: patch.memo.trim() || null,
+        vendor: patch.vendor.trim() || null,
+        db_type: patch.dbType.trim() || null
+      })
+      .eq('id', id)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: '수정 중 오류가 발생했습니다.' }
+  }
+}
+
+/**
+ * 관리자: 여러 건 한꺼번에 고치기 — 업체·DB종류·담당 FC.
+ *  - fc 를 넘기면 재배정(콜 24시간 시계 리셋: assigned_at=now, status=new, first_call 초기화). null 이면 미배정으로.
+ *  - 값이 undefined 인 항목은 건드리지 않는다. 빈 문자열은 지움.
+ */
+export async function updateLeadsBulk(
+  ids: string[],
+  patch: { vendor?: string; dbType?: string; fc?: { id: string; name: string } | null }
+): Promise<{ ok: boolean; updated: number; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, updated: 0, error: '서버 연결 후 사용할 수 있습니다.' }
+  const body: Record<string, unknown> = {}
+  if (patch.vendor !== undefined) body.vendor = patch.vendor.trim() || null
+  if (patch.dbType !== undefined) body.db_type = patch.dbType.trim() || null
+  if (patch.fc === null) Object.assign(body, { assigned_fc_id: null, assigned_fc_name: null, assigned_at: null })
+  else if (patch.fc) Object.assign(body, { assigned_fc_id: patch.fc.id, assigned_fc_name: patch.fc.name, assigned_at: new Date().toISOString(), status: 'new', first_call_at: null })
+  if (Object.keys(body).length === 0 || ids.length === 0) return { ok: false, updated: 0, error: '바꿀 항목을 선택해 주세요.' }
+  let updated = 0
+  try {
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100)
+      const { error, count } = await client.from('leads').update(body, { count: 'exact' }).in('id', chunk)
+      if (error) return { ok: false, updated, error: error.message }
+      updated += count ?? chunk.length
+    }
+    return { ok: true, updated }
+  } catch {
+    return { ok: false, updated, error: '수정 중 오류가 발생했습니다.' }
+  }
+}
+
+/** 관리자: 리드 삭제(되돌릴 수 없음). 100건씩 나눠 지운다. */
+export async function deleteLeads(ids: string[]): Promise<{ ok: boolean; deleted: number; error?: string }> {
+  const client = await getClient()
+  if (!client) return { ok: false, deleted: 0, error: '서버 연결 후 사용할 수 있습니다.' }
+  if (ids.length === 0) return { ok: false, deleted: 0, error: '삭제할 항목을 선택해 주세요.' }
+  let deleted = 0
+  try {
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100)
+      const { error, count } = await client.from('leads').delete({ count: 'exact' }).in('id', chunk)
+      if (error) return { ok: false, deleted, error: error.message }
+      deleted += count ?? chunk.length
+    }
+    return { ok: true, deleted }
+  } catch {
+    return { ok: false, deleted, error: '삭제 중 오류가 발생했습니다.' }
+  }
+}
+
 /** 관리자: 리드 재배정 — 24시간 콜 시계를 리셋(assigned_at=now, status=new, first_call 초기화). */
 export async function reassignLead(leadId: string, fcId: string, fcName: string): Promise<{ ok: boolean; error?: string }> {
   const client = await getClient()
