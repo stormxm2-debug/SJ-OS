@@ -49,6 +49,8 @@ export interface CustomerInput {
   memo?: string
   rrn?: string
   medicalHistory?: string
+  job?: string
+  jobGrade?: string
   heightCm?: number
   weightKg?: number
   householdId?: string

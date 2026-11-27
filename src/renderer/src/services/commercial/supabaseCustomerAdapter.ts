@@ -15,7 +15,7 @@ import { getSupabaseClient, initSupabaseClient } from './supabaseClient'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const SELECT_COLS =
-  'id, owner_staff_id, team_id, name, phone, birth_date, address, source, status, tags, memo, rrn, medical_history, height_cm, weight_kg, household_id, relation, attachments, registered_insurers, created_at, updated_at'
+  'id, owner_staff_id, team_id, name, phone, birth_date, address, source, status, tags, memo, rrn, medical_history, job, job_grade, height_cm, weight_kg, household_id, relation, attachments, registered_insurers, created_at, updated_at'
 
 export type AdapterReason = 'not-configured' | 'no-session' | 'error'
 export interface AdapterOk<T> {
@@ -75,6 +75,8 @@ function mapRow(row: Record<string, unknown>, ownerNames?: Map<string, string>):
     memo: (row.memo as string | null) ?? undefined,
     rrn: (row.rrn as string | null) ?? undefined,
     medicalHistory: (row.medical_history as string | null) ?? undefined,
+    job: (row.job as string | null) ?? undefined,
+    jobGrade: (row.job_grade as string | null) ?? undefined,
     heightCm: row.height_cm != null ? Number(row.height_cm) : undefined,
     weightKg: row.weight_kg != null ? Number(row.weight_kg) : undefined,
     householdId: (row.household_id as string | null) ?? undefined,
@@ -139,6 +141,8 @@ export const supabaseCustomerAdapter = {
       memo: input.memo?.trim() || null,
       rrn: input.rrn?.trim() || null,
       medical_history: input.medicalHistory?.trim() || null,
+      job: input.job?.trim() || null,
+      job_grade: input.jobGrade?.trim() || null,
       height_cm: input.heightCm || null,
       weight_kg: input.weightKg || null,
       household_id: input.householdId || null,
@@ -165,6 +169,8 @@ export const supabaseCustomerAdapter = {
     if (input.memo !== undefined) patch.memo = input.memo?.trim() || null
     if (input.rrn !== undefined) patch.rrn = input.rrn?.trim() || null
     if (input.medicalHistory !== undefined) patch.medical_history = input.medicalHistory?.trim() || null
+    if (input.job !== undefined) patch.job = input.job?.trim() || null
+    if (input.jobGrade !== undefined) patch.job_grade = input.jobGrade?.trim() || null
     if (input.heightCm !== undefined) patch.height_cm = input.heightCm || null
     if (input.weightKg !== undefined) patch.weight_kg = input.weightKg || null
     if (input.householdId !== undefined) patch.household_id = input.householdId || null

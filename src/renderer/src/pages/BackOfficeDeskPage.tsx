@@ -428,6 +428,8 @@ function CustomerInfoBox({ info }: { info?: RegistrationCustomerInfo }): JSX.Ele
     { label: '생년월일', value: info.birthDate, copy: true },
     { label: '연락처', value: info.phone, copy: true },
     { label: '주소', value: info.address, copy: true },
+    { label: '직업', value: info.job, copy: true },
+    { label: '직업급수', value: info.jobGrade },
     { label: '키/몸무게', value: body || undefined },
     { label: '관계', value: info.relation },
     { label: '유입경로', value: info.source },

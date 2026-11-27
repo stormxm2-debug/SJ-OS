@@ -122,6 +122,8 @@ export default function CustomerDetailModal({
           <Field label="생년월일" value={rrn?.birthDate ?? customer.birthDate} />
           <Field label="유입경로" value={customer.source} />
           <Field label="관계" value={customer.relation} />
+          <Field label="직업" value={customer.job} />
+          <Field label="직업급수" value={customer.jobGrade} />
           <Field label="키/몸무게" value={heightWeight} />
           <Field label="등록일" value={new Date(customer.createdAt).toLocaleDateString('ko-KR')} />
         </div>
@@ -242,6 +244,8 @@ function buildCustomerText(
   if (rrn) add('나이/성별', `만 ${rrn.age}세 · ${rrn.gender}`)
   add('유입경로', c.source)
   add('관계', c.relation)
+  add('직업', c.job)
+  add('직업급수', c.jobGrade)
   add('키/몸무게', heightWeight)
   add('주소', c.address)
   add('병력', c.medicalHistory)

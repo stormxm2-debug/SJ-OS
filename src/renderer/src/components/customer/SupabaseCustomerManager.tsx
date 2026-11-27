@@ -19,7 +19,8 @@ import {
   Trash2,
   Pencil,
   Mic,
-  Square
+  Square,
+  Briefcase
 } from 'lucide-react'
 import type { CustomerAttachment, CustomerRecord } from '@shared/commercial/models'
 import {
@@ -89,6 +90,8 @@ interface FormState {
   heightCm: string
   weightKg: string
   medicalHistory: string
+  job: string
+  jobGrade: string
   attachments: CustomerAttachment[]
   relation: string
   family: FamilyDraft[]
@@ -106,6 +109,8 @@ function emptyForm(): FormState {
     heightCm: '',
     weightKg: '',
     medicalHistory: '',
+    job: '',
+    jobGrade: '',
     attachments: [],
     relation: '본인',
     family: []
@@ -272,6 +277,8 @@ export default function SupabaseCustomerManager(): JSX.Element {
       heightCm: c.heightCm ? String(c.heightCm) : '',
       weightKg: c.weightKg ? String(c.weightKg) : '',
       medicalHistory: c.medicalHistory ?? '',
+      job: c.job ?? '',
+      jobGrade: c.jobGrade ?? '',
       attachments: c.attachments ?? [],
       relation: c.relation ?? '본인',
       family: []
@@ -441,6 +448,8 @@ export default function SupabaseCustomerManager(): JSX.Element {
     tags: [],
     rrn: form.rrn ? normalizeRrn(form.rrn) : undefined,
     medicalHistory: form.medicalHistory,
+    job: form.job,
+    jobGrade: form.jobGrade,
     heightCm: numOr(form.heightCm),
     weightKg: numOr(form.weightKg),
     attachments: form.attachments,
@@ -701,6 +710,34 @@ export default function SupabaseCustomerManager(): JSX.Element {
                 <MapNavButtons location={form.address.trim()} />
               </div>
             ) : null}
+          </div>
+
+          <div className="mb-3">
+            <Field label="직업 · 직업급수 (상해위험등급)">
+              <div className="flex items-center gap-2">
+                <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-800 bg-white px-3">
+                  <Briefcase className="h-4 w-4 shrink-0 text-slate-500" />
+                  <input
+                    value={form.job}
+                    onChange={(e) => setForm((f) => ({ ...f, job: e.target.value }))}
+                    placeholder="예: 사무직 / 건설현장 작업 / 택시운전"
+                    className="w-full py-2.5 text-sm text-slate-100 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-1 rounded-xl border border-slate-800 bg-white px-3">
+                  <input
+                    value={form.jobGrade}
+                    onChange={(e) => setForm((f) => ({ ...f, jobGrade: e.target.value }))}
+                    placeholder="급수"
+                    className="w-16 py-2.5 text-center text-sm text-slate-100 focus:outline-none"
+                    aria-label="직업급수"
+                  />
+                </div>
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                직업은 자유롭게 입력하세요. 급수(상해위험등급)는 보험사 직업급수표를 연동하면 직업에 맞춰 자동으로 채워집니다.
+              </p>
+            </Field>
           </div>
 
           <div className="mb-3">
