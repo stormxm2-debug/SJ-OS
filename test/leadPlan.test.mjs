@@ -265,6 +265,7 @@ test('시트: 엑셀 시트 이름은 금지 문자를 빼고 31자·중복을 �
   assert.equal(sh.sheetName('a b c', used), 'a b c (2)')
   const long = sh.sheetName('가'.repeat(40), used)
   assert.equal(long.length, 31)
+})
 
 test('지역별 개수: 입력한 개수만큼만 파일 순서대로 배정하고 나머지는 남는다', () => {
   const r = [reg('a', '광주'), reg('b', '광주'), reg('c', '광주'), reg('d', '서울'), reg('e', '서울')]
