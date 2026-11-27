@@ -33,6 +33,7 @@ import ExceptionDiseasePage from '@renderer/pages/ExceptionDiseasePage'
 import ManagerContactsPage from '@renderer/pages/ManagerContactsPage'
 import ManagerContactsExcelPage from '@renderer/pages/ManagerContactsExcelPage'
 import LeadDistributionPage from '@renderer/pages/LeadDistributionPage'
+import LeadSheetsPage from '@renderer/pages/LeadSheetsPage'
 import ReferralEnginePage from '@renderer/pages/ReferralEnginePage'
 import TodayContactsPage from '@renderer/pages/TodayContactsPage'
 import PlanRequestPage from '@renderer/pages/PlanRequestPage'
@@ -160,6 +161,8 @@ export default function Router(): JSX.Element {
       return <ExceptionDiseasePage />
     case 'leads':
       return <LeadDistributionPage />
+    case 'lead-sheets':
+      return <LeadSheetsPage />
     case 'referrals':
       return <ReferralEnginePage />
     case 'today-contacts':

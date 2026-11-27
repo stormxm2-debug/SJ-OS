@@ -144,6 +144,7 @@ export const MOBILE_MENU: MobileMenuCategory[] = [
       { key: 'family-birthdays', label: '직원 생일 복지', icon: Cake, view: { name: 'family-birthdays' }, adminOnly: true },
       { key: 'staff-table', label: '전 직원 정리표', icon: LayoutList, view: { name: 'staff-table' }, adminOnly: true },
       { key: 'registration-admin', label: '고객등록 관리', icon: ClipboardCheck, view: { name: 'registration-admin' }, adminOnly: true },
+      { key: 'lead-sheets', label: 'DB 업체별 시트', icon: FileSpreadsheet, view: { name: 'lead-sheets' }, adminOnly: true },
       // 폰 대표 모드 (2026-07-20 대표 지정 4종)
       { key: 'dashboard', label: 'CEO 대시보드', icon: LayoutDashboard, view: { name: 'dashboard' }, adminOnly: true },
       { key: 'assistant', label: '경영 비서', icon: Sparkles, view: { name: 'assistant' }, adminOnly: true },

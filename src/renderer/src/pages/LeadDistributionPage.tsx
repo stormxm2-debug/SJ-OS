@@ -53,6 +53,11 @@ import {
   type LeadInput,
   type LeadStatus,
   type LeadDbType,
+  type LeadVendor,
+  addVendor,
+  deleteVendor,
+  listVendors,
+  listAllLeadsFull,
   type SalesStaff
 } from '@renderer/services/commercial/leadService'
 import { parseLeadFile } from '@renderer/services/commercial/leadImport'
@@ -61,7 +66,7 @@ import { copySummaryPng, downloadSummaryPng } from '@renderer/services/commercia
 import { affinityTop, analyzeLeads, customerAffinity, equalCounts, planByCounts, planByRegion, toCount, type RegionLevel } from '@renderer/services/commercial/leadPlan'
 import FileDropZone from '@renderer/components/ui/FileDropZone'
 
-const RT_TABLES = ['leads', 'lead_db_types']
+const RT_TABLES = ['leads', 'lead_db_types', 'lead_vendors']
 
 const STATUS_CHIP: Record<LeadStatus, string> = {
   new: 'bg-slate-800 text-slate-300',
@@ -122,6 +127,13 @@ export default function LeadDistributionPage(): JSX.Element {
   const [selectedType, setSelectedType] = useState('') // 배정 시 태깅할 종류
   const [newType, setNewType] = useState('') // 관리: 새 종류 이름
   const [typeMsg, setTypeMsg] = useState('')
+  // DB 업체(회사) — 여러 회사에서 들어오는 DB를 구분한다
+  const [vendors, setVendors] = useState<LeadVendor[]>([])
+  const [selectedVendor, setSelectedVendor] = useState('')
+  const [newVendor, setNewVendor] = useState('')
+  const [vendorMsg, setVendorMsg] = useState('')
+  // FC별 개수 집계용 전체 리드(관리자). 최근 500건 제한 없이 끝까지.
+  const [allLeads, setAllLeads] = useState<Lead[]>([])
   const [typeFilter, setTypeFilter] = useState('all') // 목록 필터
 
   // 관리자 입력
@@ -161,12 +173,43 @@ export default function LeadDistributionPage(): JSX.Element {
     setLeads(res.leads)
     setError(res.ok ? '' : res.error ?? '리드를 불러오지 못했습니다.')
     setLoading(false)
+    if (admin) void listAllLeadsFull().then((r) => setAllLeads(r.leads))
   }
   const loadTypes = async (): Promise<void> => setDbTypes(await listDbTypes())
+  const loadVendors = async (): Promise<void> => setVendors(await listVendors())
+  const fcCounts = useMemo(() => {
+    const m: Record<string, { total: number; uncalled: number }> = {}
+    for (const l of allLeads) {
+      if (!l.assignedFcId) continue
+      const c = (m[l.assignedFcId] ??= { total: 0, uncalled: 0 })
+      c.total += 1
+      if (l.status === 'new') c.uncalled += 1
+    }
+    return m
+  }, [allLeads])
+  const addVendorName = async (): Promise<void> => {
+    setVendorMsg('')
+    const res = await addVendor(newVendor)
+    if (!res.ok) {
+      setVendorMsg(res.error ?? '추가 실패')
+      return
+    }
+    setNewVendor('')
+    await loadVendors()
+  }
+  const removeVendor = async (v: LeadVendor): Promise<void> => {
+    if (typeof window !== 'undefined' && !window.confirm(`'${v.name}' 업체를 삭제할까요? (기존 DB의 업체 표시는 남습니다)`)) return
+    const res = await deleteVendor(v.id)
+    if (res.ok) {
+      if (selectedVendor === v.name) setSelectedVendor('')
+      await loadVendors()
+    }
+  }
 
   useEffect(() => {
     void load()
     void loadTypes()
+    void loadVendors()
     if (admin) {
       void listSalesStaff().then(setStaff)
       void listRegionMapping().then(setSavedMap)
@@ -176,6 +219,7 @@ export default function LeadDistributionPage(): JSX.Element {
   useRealtimeSync(RT_TABLES, () => {
     void load()
     void loadTypes()
+    void loadVendors()
   })
 
   // 남은 시간 실시간 갱신 (1분마다 리렌더).
@@ -294,7 +338,8 @@ export default function LeadDistributionPage(): JSX.Element {
       const res = await assignByCounts(
         plan.groups.map((g) => ({ fc: { id: g.fcId, name: staff.find((st) => st.id === g.fcId)?.name ?? '' }, rows: g.rows })),
         saveLeftover ? plan.leftover : [],
-        selectedType || undefined
+        selectedType || undefined,
+        selectedVendor || undefined
       )
       setBusy(false)
       if (!res.ok) {
@@ -306,7 +351,7 @@ export default function LeadDistributionPage(): JSX.Element {
           plan.leftover.length > 0 ? (saveLeftover ? `. 미배정 ${res.unassigned}건은 목록에서 재배정할 수 있어요` : `. 남은 ${plan.leftover.length}건은 목록에 그대로 있어요`) : ''
         }.`
       )
-      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'region', groups: plan.groups.map((g) => ({ name: staff.find((st) => st.id === g.fcId)?.name ?? '직원', count: g.rows.length })), unassigned: saveLeftover ? res.unassigned : 0, regions: analysis.regions }))
+      setLastSummary(buildSummary({ dbType: [selectedVendor, selectedType].filter(Boolean).join(' · ') || undefined, mode: 'region', groups: plan.groups.map((g) => ({ name: staff.find((st) => st.id === g.fcId)?.name ?? '직원', count: g.rows.length })), unassigned: saveLeftover ? res.unassigned : 0, regions: analysis.regions }))
       // 배정한 행은 목록에서 빼고, 안 한 행은 그대로 남겨 다음에 배정한다.
       if (saveLeftover) {
         setImported([])
@@ -334,7 +379,8 @@ export default function LeadDistributionPage(): JSX.Element {
       const res = await assignByCounts(
         plan.groups.map((g) => ({ fc: { id: g.fcId, name: staff.find((st) => st.id === g.fcId)?.name ?? '' }, rows: g.rows })),
         plan.leftover,
-        selectedType || undefined
+        selectedType || undefined,
+        selectedVendor || undefined
       )
       setBusy(false)
       if (!res.ok) {
@@ -342,7 +388,7 @@ export default function LeadDistributionPage(): JSX.Element {
         return
       }
       setDistMsg(`✅ ${typeTag}${res.assigned}건을 지역별로 배정했습니다 — ${lines.join(' · ')}${res.unassigned > 0 ? `. 미배정 ${res.unassigned}건은 목록에서 재배정할 수 있어요` : ''}.`)
-      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'region', groups: plan.groups.map((g) => ({ name: staff.find((st) => st.id === g.fcId)?.name ?? '직원', count: g.rows.length })), unassigned: res.unassigned, regions: analysis.regions }))
+      setLastSummary(buildSummary({ dbType: [selectedVendor, selectedType].filter(Boolean).join(' · ') || undefined, mode: 'region', groups: plan.groups.map((g) => ({ name: staff.find((st) => st.id === g.fcId)?.name ?? '직원', count: g.rows.length })), unassigned: res.unassigned, regions: analysis.regions }))
       setPaste('')
       setImported([])
       setImportSummary('')
@@ -363,7 +409,8 @@ export default function LeadDistributionPage(): JSX.Element {
       const res = await assignByCounts(
         plan.groups.map((g) => ({ fc: { id: g.fcId, name: staff.find((st) => st.id === g.fcId)?.name ?? '' }, rows: g.rows })),
         plan.leftover,
-        selectedType || undefined
+        selectedType || undefined,
+        selectedVendor || undefined
       )
       setBusy(false)
       if (!res.ok) {
@@ -371,7 +418,7 @@ export default function LeadDistributionPage(): JSX.Element {
         return
       }
       setDistMsg(`✅ ${typeTag}${res.assigned}건을 배정했습니다 — ${lines.slice(0, plan.groups.length).join(' · ')}${res.unassigned > 0 ? `. 미배정 ${res.unassigned}건은 목록에서 재배정할 수 있어요` : ''}.`)
-      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'counts', groups: plan.groups.map((g) => ({ name: staff.find((st) => st.id === g.fcId)?.name ?? '직원', count: g.rows.length })), unassigned: res.unassigned, regions: analysis.regions }))
+      setLastSummary(buildSummary({ dbType: [selectedVendor, selectedType].filter(Boolean).join(' · ') || undefined, mode: 'counts', groups: plan.groups.map((g) => ({ name: staff.find((st) => st.id === g.fcId)?.name ?? '직원', count: g.rows.length })), unassigned: res.unassigned, regions: analysis.regions }))
       setPaste('')
       setImported([])
       setImportSummary('')
@@ -382,7 +429,7 @@ export default function LeadDistributionPage(): JSX.Element {
     setBusy(true)
     setDistMsg('')
     if (assignMode === 'auto') {
-      const res = await distributeLeads(pendingRows, selectedType || undefined)
+      const res = await distributeLeads(pendingRows, selectedType || undefined, selectedVendor || undefined)
       setBusy(false)
       if (!res.ok) {
         setDistMsg(res.error ?? '분배에 실패했습니다.')
@@ -392,7 +439,7 @@ export default function LeadDistributionPage(): JSX.Element {
         .map(([id, n]) => `${staff.find((s) => s.id === id)?.name ?? '직원'} ${n}건`)
         .join(' · ')
       setDistMsg(`✅ ${typeTag}${res.assigned}건을 자동 배정했습니다 — ${names}. 배정된 직원에게 알림이 전송됐어요.`)
-      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'auto', groups: Object.entries(res.perStaff).map(([id, n]) => ({ name: staff.find((st) => st.id === id)?.name ?? '직원', count: n })), unassigned: 0, regions: analysis.regions }))
+      setLastSummary(buildSummary({ dbType: [selectedVendor, selectedType].filter(Boolean).join(' · ') || undefined, mode: 'auto', groups: Object.entries(res.perStaff).map(([id, n]) => ({ name: staff.find((st) => st.id === id)?.name ?? '직원', count: n })), unassigned: 0, regions: analysis.regions }))
     } else {
       const fc = staff.find((s) => s.id === assignMode)
       if (!fc) {
@@ -400,14 +447,14 @@ export default function LeadDistributionPage(): JSX.Element {
         setDistMsg('배정할 직원을 다시 선택해 주세요.')
         return
       }
-      const res = await assignLeadsTo(pendingRows, { id: fc.id, name: fc.name }, selectedType || undefined)
+      const res = await assignLeadsTo(pendingRows, { id: fc.id, name: fc.name }, selectedType || undefined, selectedVendor || undefined)
       setBusy(false)
       if (!res.ok) {
         setDistMsg(res.error ?? '배정에 실패했습니다.')
         return
       }
       setDistMsg(`✅ ${typeTag}${res.assigned}건을 ${fc.name}님에게 배정했습니다. 알림이 전송됐어요.`)
-      setLastSummary(buildSummary({ dbType: selectedType || undefined, mode: 'single', groups: [{ name: fc.name, count: res.assigned }], unassigned: 0, regions: analysis.regions }))
+      setLastSummary(buildSummary({ dbType: [selectedVendor, selectedType].filter(Boolean).join(' · ') || undefined, mode: 'single', groups: [{ name: fc.name, count: res.assigned }], unassigned: 0, regions: analysis.regions }))
     }
     setPaste('')
     setImported([])
@@ -581,6 +628,65 @@ export default function LeadDistributionPage(): JSX.Element {
               </button>
               {typeMsg ? <span className="text-[11px] text-rose-400">{typeMsg}</span> : null}
             </div>
+          </div>
+
+          {/* DB 업체(회사) 관리 */}
+          <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <div className="mb-2 text-[12px] font-bold text-slate-200">DB 업체(회사) 관리</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {vendors.length === 0 ? (
+                <span className="text-[11px] text-slate-500">등록된 업체가 없습니다. 아래에서 DB를 보내 주는 회사 이름을 추가하세요.</span>
+              ) : (
+                vendors.map((v) => (
+                  <span key={v.id} className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[11px] text-slate-200">
+                    {v.name}
+                    <button type="button" onClick={() => void removeVendor(v)} className="text-slate-500 hover:text-rose-400" aria-label={`${v.name} 삭제`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <input
+                value={newVendor}
+                onChange={(e) => setNewVendor(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    void addVendorName()
+                  }
+                }}
+                placeholder="새 업체 이름 (예: ○○디비)"
+                className="w-52 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-[12px] text-slate-100 outline-none placeholder:text-slate-500 focus:border-[#c6982f]"
+              />
+              <button type="button" onClick={() => void addVendorName()} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-semibold text-slate-200 hover:bg-slate-700">
+                <Plus className="h-3 w-3" /> 추가
+              </button>
+              {vendorMsg ? <span className="text-[11px] text-rose-400">{vendorMsg}</span> : null}
+            </div>
+          </div>
+
+          {/* FC별 현재 보유 개수 */}
+          <div className="mb-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-[12px] font-bold text-slate-200">FC별 현재 DB 개수</span>
+              <button type="button" onClick={() => navigate({ name: 'lead-sheets' })} className="text-[11px] font-semibold text-[#b0821f] hover:underline">
+                업체별 시트 보기 →
+              </button>
+            </div>
+            {staff.length === 0 ? (
+              <span className="text-[11px] text-slate-500">활성 직원이 없습니다.</span>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {staff.map((st) => (
+                  <span key={st.id} className="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-0.5 text-[11px] text-slate-200">
+                    {st.name} <b className="text-[#e6c877]">{fcCounts[st.id]?.total ?? 0}</b>
+                    <span className="text-slate-500"> · 미콜 {fcCounts[st.id]?.uncalled ?? 0}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 파일 업로드 → 판독 → 행 선택 */}
@@ -883,7 +989,13 @@ export default function LeadDistributionPage(): JSX.Element {
               <div className="grid gap-1.5 sm:grid-cols-2">
                 {staff.map((st) => (
                   <label key={st.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-[12px] text-slate-200">
-                    <span className="truncate">{st.name}</span>
+                    <span className="truncate">
+                      {st.name}{' '}
+                      <span className="text-[10px] text-slate-500">
+                        보유 {fcCounts[st.id]?.total ?? 0}
+                        {toCount(counts[st.id]) > 0 ? ` → ${(fcCounts[st.id]?.total ?? 0) + toCount(counts[st.id])}` : ''}
+                      </span>
+                    </span>
                     <span className="flex items-center gap-1">
                       <input
                         type="number"
@@ -927,6 +1039,17 @@ export default function LeadDistributionPage(): JSX.Element {
               <option value="">DB종류 선택(선택 안 함)</option>
               {dbTypes.map((t) => (
                 <option key={t.id} value={t.name}>{t.name}</option>
+              ))}
+            </select>
+            <select
+              value={selectedVendor}
+              onChange={(e) => setSelectedVendor(e.target.value)}
+              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-[#c6982f]"
+              title="이번 DB를 보내 준 업체(회사)"
+            >
+              <option value="">업체 선택(선택 안 함)</option>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.name}>{v.name}</option>
               ))}
             </select>
             <select
