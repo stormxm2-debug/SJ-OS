@@ -13,6 +13,7 @@ import {
   type RegistrationCustomerInfo
 } from '@renderer/services/commercial/registrationService'
 import { useRealtimeSync } from '@renderer/services/commercial/useRealtimeSync'
+import { signedUrlsFor } from '@renderer/services/commercial/customerFilesStorage'
 import { ensureWebPushSubscription, webPushSupported } from '@renderer/services/push/webPush'
 
 /**
@@ -402,19 +403,37 @@ export default function BackOfficeDeskPage(): JSX.Element {
   )
 }
 
-/** FC가 입력한 고객 정보 — 보험사 전산 등록용. 값마다 [복사] 버튼. */
+/** FC가 입력한 고객 정보 전부 — 보험사 전산 등록용. 값마다 [복사], 첨부는 바로 열기. */
 function CustomerInfoBox({ info }: { info?: RegistrationCustomerInfo }): JSX.Element {
   const [copied, setCopied] = useState<string | null>(null)
+  const [urls, setUrls] = useState<Map<string, string>>(new Map())
+  const attachments = info?.attachments ?? []
+  useEffect(() => {
+    if (attachments.length === 0) return
+    let active = true
+    void signedUrlsFor(attachments).then((m) => {
+      if (active) setUrls(m)
+    })
+    return () => {
+      active = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachments.map((a) => a.path).join('|')])
   if (!info) {
     return <p className="mt-2 text-[12px] text-rose-600">고객 정보를 불러오지 못했습니다. 새로고침해 주세요.</p>
   }
-  const rows: { label: string; value?: string }[] = [
-    { label: '주민번호', value: info.rrn },
-    { label: info.rrn ? '' : '생년월일', value: info.rrn ? undefined : info.birthDate },
-    { label: '연락처', value: info.phone },
-    { label: '주소', value: info.address },
-    { label: '병력', value: info.medicalHistory }
-  ].filter((r) => r.label)
+  const body = [info.heightCm ? `${info.heightCm}cm` : '', info.weightKg ? `${info.weightKg}kg` : ''].filter(Boolean).join(' / ')
+  const rows: { label: string; value?: string; copy?: boolean }[] = [
+    { label: '주민번호', value: info.rrn, copy: true },
+    { label: '생년월일', value: info.birthDate, copy: true },
+    { label: '연락처', value: info.phone, copy: true },
+    { label: '주소', value: info.address, copy: true },
+    { label: '키/몸무게', value: body || undefined },
+    { label: '관계', value: info.relation },
+    { label: '유입경로', value: info.source },
+    { label: '병력', value: info.medicalHistory, copy: true },
+    { label: '메모', value: info.memo, copy: true }
+  ]
   const copy = (label: string, value: string): void => {
     void navigator.clipboard?.writeText(value).then(() => {
       setCopied(label)
@@ -425,27 +444,57 @@ function CustomerInfoBox({ info }: { info?: RegistrationCustomerInfo }): JSX.Ele
     <div className="mt-2 grid gap-1 rounded-lg border border-amber-200 bg-white px-2.5 py-2 text-[12px]">
       {rows.map((r) => (
         <div key={r.label} className="flex items-start gap-2">
-          <span className="w-14 shrink-0 font-semibold text-slate-500">{r.label}</span>
+          <span className="w-16 shrink-0 font-semibold text-slate-500">{r.label}</span>
           {r.value ? (
             <>
               <span className="min-w-0 flex-1 whitespace-pre-wrap break-all font-medium text-[#0e1e3a]">{r.value}</span>
-              <button
-                type="button"
-                onClick={() => copy(r.label, r.value as string)}
-                className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-[#cbd5e1] px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:text-[#0e1e3a]"
-                aria-label={`${r.label} 복사`}
-              >
-                {copied === r.label ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                {copied === r.label ? '복사됨' : '복사'}
-              </button>
+              {r.copy ? (
+                <button
+                  type="button"
+                  onClick={() => copy(r.label, r.value as string)}
+                  className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-[#cbd5e1] px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:text-[#0e1e3a]"
+                  aria-label={`${r.label} 복사`}
+                >
+                  {copied === r.label ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                  {copied === r.label ? '복사됨' : '복사'}
+                </button>
+              ) : null}
             </>
           ) : (
             <span className="text-slate-500">미입력</span>
           )}
         </div>
       ))}
-      {info.attachmentCount > 0 ? (
-        <div className="text-[11px] text-slate-500">첨부 {info.attachmentCount}개 (고객 화면에서 확인)</div>
+      {attachments.length > 0 ? (
+        <div className="flex items-start gap-2">
+          <span className="w-16 shrink-0 font-semibold text-slate-500">첨부</span>
+          <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+            {attachments.map((a) => {
+              const url = urls.get(a.path)
+              return url ? (
+                a.kind === 'image' ? (
+                  <a key={a.path} href={url} target="_blank" rel="noopener noreferrer" title={a.name}>
+                    <img src={url} alt={a.name} className="h-16 w-16 rounded-md border border-[#cbd5e1] object-cover" />
+                  </a>
+                ) : (
+                  <a
+                    key={a.path}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md border border-[#cbd5e1] px-2 py-1 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50"
+                  >
+                    {a.kind === 'pdf' ? '📄' : '🎙'} {a.name}
+                  </a>
+                )
+              ) : (
+                <span key={a.path} className="rounded-md border border-dashed border-[#cbd5e1] px-2 py-1 text-[11px] text-slate-500">
+                  {a.name}
+                </span>
+              )
+            })}
+          </div>
+        </div>
       ) : null}
     </div>
   )
