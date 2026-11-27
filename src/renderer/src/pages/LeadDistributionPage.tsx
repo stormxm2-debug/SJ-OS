@@ -156,6 +156,13 @@ export default function LeadDistributionPage(): JSX.Element {
   // 지역을 나누는 단위: 기본은 시·군·구(전남 화순군)
   const [regionLevel, setRegionLevel] = useState<RegionLevel>('sigungu')
   // 기존 고객 위치(담당 FC·주소) — 지역 배정 방식에 들어올 때 한 번 불러온다.
+  // 지역별로 이번에 배정할 개수(빈칸 = 전부)
+  const [regionLimit, setRegionLimit] = useState<Record<string, string>>({})
+  const limits = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const [region, v] of Object.entries(regionLimit)) if (v.trim() !== '') out[region] = toCount(v)
+    return out
+  }, [regionLimit])
   const [custAddr, setCustAddr] = useState<{ fcId: string; address: string }[]>([])
   const [custLoaded, setCustLoaded] = useState(false)
   const [savedMap, setSavedMap] = useState<Record<string, string[]>>({})
@@ -272,11 +279,11 @@ export default function LeadDistributionPage(): JSX.Element {
   const regionPreview = useMemo(
     () =>
       assignMode === 'region'
-        ? planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined, regionLevel)
+        ? planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined, regionLevel, limits)
         : assignMode === 'region-one'
-          ? planByRegion(pendingRows, regionOneMap, undefined, regionLevel)
+          ? planByRegion(pendingRows, regionOneMap, undefined, regionLevel, limits)
           : null,
-    [assignMode, pendingRows, regionMap, regionCap, regionOneMap, regionLevel]
+    [assignMode, pendingRows, regionMap, regionCap, regionOneMap, regionLevel, limits]
   )
   const countSum = useMemo(() => staff.reduce((a, st) => a + toCount(counts[st.id]), 0), [staff, counts])
   const byStaff = useMemo(() => {
@@ -322,7 +329,7 @@ export default function LeadDistributionPage(): JSX.Element {
     }
     const typeTag = selectedType ? `[${selectedType}] ` : ''
     if (assignMode === 'region-one') {
-      const plan = planByRegion(pendingRows, regionOneMap, undefined, regionLevel)
+      const plan = planByRegion(pendingRows, regionOneMap, undefined, regionLevel, limits)
       if (!plan.ok) {
         setDistMsg(plan.error ?? '지역별 담당 FC를 골라 주세요.')
         return
@@ -365,7 +372,7 @@ export default function LeadDistributionPage(): JSX.Element {
       return
     }
     if (assignMode === 'region') {
-      const plan = planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined, regionLevel)
+      const plan = planByRegion(pendingRows, regionMap, toCount(regionCap) || undefined, regionLevel, limits)
       if (!plan.ok) {
         setDistMsg(plan.error ?? '지역별 담당 FC를 확인해 주세요.')
         return
@@ -838,6 +845,19 @@ export default function LeadDistributionPage(): JSX.Element {
                       <span>
                         {r.region} <span className="text-slate-500">{r.count}건</span>
                       </span>
+                      <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                        배정
+                        <input
+                          type="number"
+                          min={0}
+                          inputMode="numeric"
+                          value={regionLimit[r.region] ?? ''}
+                          onChange={(e) => setRegionLimit((prev) => ({ ...prev, [r.region]: e.target.value }))}
+                          placeholder="전부"
+                          className="w-16 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-right text-[12px] text-slate-100 outline-none focus:border-[#c6982f]"
+                        />
+                        건 · 남음 {Math.max(0, r.count - (regionPreview?.byRegion?.find((x) => x.region === r.region)?.assigned ?? 0))}
+                      </span>
                       <select
                         value={regionOne[r.region] ?? ''}
                         onChange={(e) => setRegionOne((prev) => ({ ...prev, [r.region]: e.target.value }))}
@@ -917,8 +937,23 @@ export default function LeadDistributionPage(): JSX.Element {
                 <div className="max-h-80 space-y-1.5 overflow-y-auto">
                   {analysis.regions.map((r) => (
                     <div key={r.region} className="rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5">
-                      <div className="mb-1 text-[12px] font-semibold text-slate-100">
-                        {r.region} <span className="font-normal text-slate-500">{r.count}건</span>
+                      <div className="mb-1 flex items-center justify-between gap-2 text-[12px] font-semibold text-slate-100">
+                        <span>
+                          {r.region} <span className="font-normal text-slate-500">{r.count}건</span>
+                        </span>
+                        <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                        배정
+                        <input
+                          type="number"
+                          min={0}
+                          inputMode="numeric"
+                          value={regionLimit[r.region] ?? ''}
+                          onChange={(e) => setRegionLimit((prev) => ({ ...prev, [r.region]: e.target.value }))}
+                          placeholder="전부"
+                          className="w-16 rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-right text-[12px] text-slate-100 outline-none focus:border-[#c6982f]"
+                        />
+                        건 · 남음 {Math.max(0, r.count - (regionPreview?.byRegion?.find((x) => x.region === r.region)?.assigned ?? 0))}
+                      </span>
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {staff.map((st) => {

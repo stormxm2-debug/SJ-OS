@@ -266,3 +266,30 @@ test('시트: 엑셀 시트 이름은 금지 문자를 빼고 31자·중복을 �
   const long = sh.sheetName('가'.repeat(40), used)
   assert.equal(long.length, 31)
 })
+
+test('지역별 개수: 입력한 개수만큼만 파일 순서대로 배정하고 나머지는 남는다', () => {
+  const r = [reg('a', '광주'), reg('b', '광주'), reg('c', '광주'), reg('d', '서울'), reg('e', '서울')]
+  const p = lp.planByRegion(r, { 광주: ['x'], 서울: ['y'] }, undefined, 'sido', { 광주: 2 })
+  assert.equal(p.ok, true)
+  const by = Object.fromEntries(p.groups.map((g) => [g.fcId, g.rows.map((x) => x.name)]))
+  assert.deepEqual(by.x, ['a', 'b'])
+  assert.deepEqual(by.y, ['d', 'e'])
+  assert.deepEqual(p.leftover.map((x) => x.name), ['c'])
+  assert.deepEqual(p.byRegion.find((x) => x.region === '광주'), { region: '광주', total: 3, assigned: 2 })
+  assert.deepEqual(p.byRegion.find((x) => x.region === '서울'), { region: '서울', total: 2, assigned: 2 })
+})
+
+test('지역별 개수: 0을 넣으면 그 지역은 이번에 배정하지 않는다', () => {
+  const r = [reg('a', '광주'), reg('b', '서울')]
+  const p = lp.planByRegion(r, { 광주: ['x'], 서울: ['y'] }, undefined, 'sido', { 광주: 0 })
+  assert.equal(p.ok, true)
+  assert.deepEqual(p.groups.map((g) => g.fcId), ['y'])
+  assert.deepEqual(p.leftover.map((x) => x.name), ['a'])
+})
+
+test('지역별 개수: 전부 0이면 막고, 지역 없는 행은 (지역 없음)으로 센다', () => {
+  const r = [reg('a', '광주'), reg('b', '')]
+  assert.equal(lp.planByRegion(r, { 광주: ['x'] }, undefined, 'sido', { 광주: 0 }).ok, false)
+  const p = lp.planByRegion(r, { 광주: ['x'] })
+  assert.deepEqual(p.byRegion.find((x) => x.region === '(지역 없음)'), { region: '(지역 없음)', total: 1, assigned: 0 })
+})

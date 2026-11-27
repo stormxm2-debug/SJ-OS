@@ -152,8 +152,10 @@ export interface RegionPlan {
   ok: boolean
   error?: string
   groups: { fcId: string; rows: LeadInput[] }[]
-  /** 지역이 없거나 담당 FC가 없거나, FC 상한에 걸린 행 — 미배정으로 저장한다. */
+  /** 지역이 없거나 담당 FC가 없거나, FC 상한·지역 개수에 걸린 행 — 미배정으로 저장하거나 남겨 둔다. */
   leftover: LeadInput[]
+  /** 지역별 전체 건수와 이번에 배정되는 건수 (지역 없는 행은 '(지역 없음)') */
+  byRegion?: { region: string; total: number; assigned: number }[]
 }
 
 /**
@@ -162,7 +164,13 @@ export interface RegionPlan {
  *  - cap(FC당 최대 건수)이 있으면 다 찬 FC는 건너뛰고, 모두 차면 미배정으로 남긴다.
  *  - 지역이 없거나 담당 FC가 없는 행은 미배정.
  */
-export function planByRegion(rows: LeadInput[], mapping: Record<string, string[]>, cap?: number, level: RegionLevel = 'sido'): RegionPlan {
+export function planByRegion(
+  rows: LeadInput[],
+  mapping: Record<string, string[]>,
+  cap?: number,
+  level: RegionLevel = 'sido',
+  limits: Record<string, number> = {}
+): RegionPlan {
   if (rows.length === 0) return { ok: false, error: '배정할 DB가 없습니다.', groups: [], leftover: [] }
   const mappedRegions = Object.entries(mapping).filter(([, ids]) => ids.length > 0)
   if (mappedRegions.length === 0) return { ok: false, error: '지역별 담당 FC를 한 곳 이상 지정해 주세요.', groups: [], leftover: [] }
@@ -170,8 +178,18 @@ export function planByRegion(rows: LeadInput[], mapping: Record<string, string[]
   const limit = cap && cap > 0 ? Math.floor(cap) : Infinity
   const received = new Map<string, LeadInput[]>()
   const leftover: LeadInput[] = []
+  const totals = new Map<string, number>()
+  const assignedBy = new Map<string, number>()
   for (const row of rows) {
     const region = regionOfLead(row, level)
+    const label = region || '(지역 없음)'
+    totals.set(label, (totals.get(label) ?? 0) + 1)
+    // 지역별로 입력한 개수(파일 순서대로 앞에서부터)를 넘으면 이번에는 배정하지 않는다.
+    const regionLimit = region && region in limits ? limits[region] : Infinity
+    if ((assignedBy.get(label) ?? 0) >= regionLimit) {
+      leftover.push(row)
+      continue
+    }
     const candidates = region ? mapping[region] ?? [] : []
     let pick: string | null = null
     for (const id of candidates) {
@@ -186,9 +204,11 @@ export function planByRegion(rows: LeadInput[], mapping: Record<string, string[]
     const list = received.get(pick) ?? []
     list.push(row)
     received.set(pick, list)
+    assignedBy.set(label, (assignedBy.get(label) ?? 0) + 1)
   }
-  if (received.size === 0) return { ok: false, error: '담당 FC가 지정된 지역의 DB가 없습니다.', groups: [], leftover: rows }
-  return { ok: true, groups: [...received.entries()].map(([fcId, r]) => ({ fcId, rows: r })), leftover }
+  const byRegion = [...totals.entries()].map(([region, total]) => ({ region, total, assigned: assignedBy.get(region) ?? 0 }))
+  if (received.size === 0) return { ok: false, error: '배정할 DB가 없습니다. 담당 FC가 없거나 개수가 0입니다.', groups: [], leftover: rows, byRegion }
+  return { ok: true, groups: [...received.entries()].map(([fcId, r]) => ({ fcId, rows: r })), leftover, byRegion }
 }
 
 export interface AffinityRow {
