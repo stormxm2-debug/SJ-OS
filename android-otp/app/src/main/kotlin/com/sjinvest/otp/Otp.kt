@@ -1,6 +1,8 @@
 package com.sjinvest.otp
 
-/** 공용 상수 + 인증번호 추출/중복 판정 (알림 리스너·접근성 리더 공용). */
+import android.content.Context
+
+/** 공용 상수 + 인증번호 추출/중복 판정 + 진단 로그 (알림 리스너·접근성 리더 공용). */
 object Otp {
     const val PREFS = "sj_otp"
     val KEYWORDS = listOf("인증", "OTP", "verification", "코드", "보안", "승인", "본인확인", "인증번호")
@@ -31,5 +33,31 @@ object Otp {
             recent[code] = now
             return false
         }
+    }
+
+    // ── 진단 로그 (앱 화면에 최근 감지 내역 표시) ──
+    private const val LOG_MAX = 25
+
+    fun log(ctx: Context, line: String) {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val ts = android.text.format.DateFormat.format("MM-dd HH:mm:ss", System.currentTimeMillis())
+        val prev = prefs.getString("log", "") ?: ""
+        val combined = "$ts  $line\n$prev"
+        val trimmed = combined.split("\n").filter { it.isNotBlank() }.take(LOG_MAX).joinToString("\n")
+        prefs.edit().putString("log", trimmed).apply()
+    }
+
+    fun readLog(ctx: Context): String =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("log", "") ?: ""
+
+    fun clearLog(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("log").apply()
+    }
+
+    fun resultText(rc: Int): String = when {
+        rc in 200..299 -> "전송성공($rc)"
+        rc == -1 -> "전송오류(네트워크)"
+        rc == -2 -> "URL/토큰 비어있음"
+        else -> "전송실패($rc)"
     }
 }
