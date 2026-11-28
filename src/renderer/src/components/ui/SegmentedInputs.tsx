@@ -5,8 +5,11 @@ import { useRef } from 'react'
  *
  * - 연락처: [010]-[9945]-[8675] 세 칸 (3-4-4), 주민번호: [000000]-[0000000] 두 칸 (6-7).
  * - 숫자만 허용, 칸이 다 차면 다음 칸으로 자동 포커스, 빈 칸에서 백스페이스 → 이전 칸.
- * - 전체 번호를 한 칸에 붙여넣어도 칸별로 자동 분배된다.
+ * - 각 칸은 서로 독립적이다: 앞 칸을 지우거나 고쳐도 뒤 칸 숫자가 당겨오지 않는다.
+ *   (값을 숫자로 뭉쳐 폭대로 다시 자르던 과거 방식이 "데이터가 땡겨오던" 원인이라 제거함.)
+ * - 전체 번호를 한 칸에 붙여넣으면(onPaste) 그 칸부터 칸별로 자동 분배된다.
  * - 부모에게는 기존과 같은 하이픈 문자열("010-9945-8675")로 전달 — 저장/검증 로직 무변경.
+ *   (편집 도중 앞 칸이 덜 찬 상태도 자리값을 지켜 "01-1234-5678"처럼 그대로 전달.)
  */
 
 interface SegmentSpec {
@@ -19,25 +22,18 @@ function digitsOf(v: string): string {
   return v.replace(/\D/g, '')
 }
 
-/** 전체 자릿수 문자열 → 세그먼트 배열로 분할. */
-function splitDigits(digits: string, specs: SegmentSpec[]): string[] {
-  const out: string[] = []
-  let pos = 0
-  for (const s of specs) {
-    out.push(digits.slice(pos, pos + s.max))
-    pos += s.max
-  }
-  return out
+/** 하이픈 문자열 → 칸별 숫자 배열. 각 칸을 독립적으로 유지(폭대로 재분배하지 않음). */
+function splitValue(value: string, specs: SegmentSpec[]): string[] {
+  const raw = value.split('-')
+  return specs.map((s, i) => digitsOf(raw[i] ?? '').slice(0, s.max))
 }
 
-/** 세그먼트 배열 → 진행형 하이픈 문자열 (채워진 데까지만 하이픈). */
+/** 칸 배열 → 하이픈 문자열. 뒤쪽 빈 칸만 잘라내고, 중간·앞 빈 칸은 자리값으로 보존. */
 function joinSegments(parts: string[]): string {
-  let out = ''
-  for (let i = 0; i < parts.length; i++) {
-    if (!parts[i]) break
-    out += (i > 0 ? '-' : '') + parts[i]
-  }
-  return out
+  let last = parts.length - 1
+  while (last >= 0 && !parts[last]) last--
+  if (last < 0) return ''
+  return parts.slice(0, last + 1).join('-')
 }
 
 function SegmentedDigits({
@@ -54,20 +50,32 @@ function SegmentedDigits({
   compact?: boolean
 }): JSX.Element {
   const refs = useRef<(HTMLInputElement | null)[]>([])
-  const totalMax = specs.reduce((a, s) => a + s.max, 0)
-  const parts = splitDigits(digitsOf(value), specs)
+  const parts = splitValue(value, specs)
 
+  /** 한 칸 입력(타이핑·삭제) — 이 칸만 바꾼다. maxLength로 넘침이 없어 당겨오지 않는다. */
   const handleChange = (i: number, raw: string): void => {
-    // 이 칸의 새 입력(붙여넣기 포함)을 앞뒤 칸과 합쳐 전체 자릿수로 재구성 → 재분배
-    const before = parts.slice(0, i).join('')
-    const after = parts.slice(i + 1).join('')
-    const all = (before + digitsOf(raw) + after).slice(0, totalMax)
-    onChange(joinSegments(splitDigits(all, specs)))
-    // 이 칸이 다 찼으면 다음 칸으로
-    const newParts = splitDigits(all, specs)
-    if (newParts[i].length >= specs[i].max && i < specs.length - 1) {
-      refs.current[i + 1]?.focus()
+    const d = digitsOf(raw).slice(0, specs[i].max)
+    const next = [...parts]
+    next[i] = d
+    onChange(joinSegments(next))
+    if (d.length >= specs[i].max && i < specs.length - 1) refs.current[i + 1]?.focus()
+  }
+
+  /** 붙여넣기 — 이 칸부터 칸별로 분배(전체 번호를 한 칸에 붙여도 쪼개짐). */
+  const handlePaste = (i: number, e: React.ClipboardEvent<HTMLInputElement>): void => {
+    const pasted = digitsOf(e.clipboardData.getData('text'))
+    if (!pasted) return
+    e.preventDefault()
+    const next = [...parts]
+    let rest = pasted
+    let lastFilled = i
+    for (let j = i; j < specs.length && rest.length > 0; j++) {
+      next[j] = rest.slice(0, specs[j].max)
+      rest = rest.slice(specs[j].max)
+      lastFilled = j
     }
+    onChange(joinSegments(next))
+    refs.current[lastFilled]?.focus()
   }
 
   const handleKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -88,8 +96,10 @@ function SegmentedDigits({
             }}
             value={parts[i]}
             onChange={(e) => handleChange(i, e.target.value)}
+            onPaste={(e) => handlePaste(i, e)}
             onKeyDown={(e) => handleKeyDown(i, e)}
             inputMode="numeric"
+            maxLength={s.max}
             autoComplete="off"
             placeholder={s.placeholder}
             aria-label={`${ariaLabel} ${i + 1}번째 칸`}
