@@ -20,7 +20,8 @@ import {
   Pencil,
   Mic,
   Square,
-  Briefcase
+  Briefcase,
+  type LucideIcon
 } from 'lucide-react'
 import type { CustomerAttachment, CustomerRecord } from '@shared/commercial/models'
 import {
@@ -603,20 +604,21 @@ export default function SupabaseCustomerManager(): JSX.Element {
             {form.editingId ? '고객 정보 수정' : form.joinHouseholdId ? '가족 등록 (기존 세대)' : '새 고객 등록'}
           </div>
 
-          <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="이름 *">
-              <input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                className="w-full rounded-xl border border-slate-800 bg-white px-3 py-2.5 text-sm text-slate-100 focus:outline-none"
-              />
-            </Field>
-            <Field label="연락처">
-              <PhoneSegments value={form.phone} onChange={(v) => setForm((f) => ({ ...f, phone: v }))} />
-            </Field>
-          </div>
-
-          <div className="mb-3">
+          {/* 1) 기본 정보 — 이름·연락처·주민번호 */}
+          <FormSection icon={UserRound} title="기본 정보">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="이름 *">
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="고객 성함"
+                  className="w-full rounded-xl border border-slate-800 bg-white px-3 py-2.5 text-sm text-slate-100 focus:outline-none"
+                />
+              </Field>
+              <Field label="연락처">
+                <PhoneSegments value={form.phone} onChange={(v) => setForm((f) => ({ ...f, phone: v }))} />
+              </Field>
+            </div>
             <Field label="주민등록번호">
               <div className="flex flex-wrap items-center gap-2">
                 <RrnSegments value={form.rrn} onChange={(v) => setForm((f) => ({ ...f, rrn: v }))} />
@@ -629,9 +631,10 @@ export default function SupabaseCustomerManager(): JSX.Element {
                 ) : null}
               </div>
             </Field>
-          </div>
+          </FormSection>
 
-          <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* 2) 상담 경로 — 유입경로(+관계) */}
+          <FormSection icon={UsersRound} title="상담 경로">
             <Field label={form.joinHouseholdId || form.editingId ? '유입경로 / 관계' : '유입경로 (택1)'}>
               <div className="flex flex-wrap items-center gap-1.5">
                 {CUSTOMER_SOURCES.map((s) => (
@@ -662,8 +665,49 @@ export default function SupabaseCustomerManager(): JSX.Element {
                 ) : null}
               </div>
             </Field>
+          </FormSection>
+
+          {/* 3) 주소 */}
+          <FormSection icon={MapPin} title="주소">
+            <div>
+              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-white px-3">
+                <MapPin className="h-4 w-4 shrink-0 text-slate-500" />
+                <input
+                  value={form.address}
+                  onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                  placeholder="서울 강남구 테헤란로 152, 101동 1001호"
+                  className="w-full py-2.5 text-sm text-slate-100 focus:outline-none"
+                />
+              </div>
+              {form.joinHouseholdId ? (
+                <p className="mt-1 text-[11px] text-slate-500">비우면 세대주 주소가 자동으로 들어갑니다.</p>
+              ) : null}
+              {form.address.trim() ? (
+                <div className="mt-1.5">
+                  <MapNavButtons location={form.address.trim()} />
+                </div>
+              ) : null}
+            </div>
+          </FormSection>
+
+          {/* 4) 보험 심사 참고 — 직업·키/몸무게·병력 */}
+          <FormSection icon={HeartPulse} title="보험 심사 참고">
+            <Field label="직업">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-white px-3">
+                <Briefcase className="h-4 w-4 shrink-0 text-slate-500" />
+                <input
+                  value={form.job}
+                  onChange={(e) => setForm((f) => ({ ...f, job: e.target.value }))}
+                  placeholder="예: 사무직 / 건설현장 작업 / 택시운전"
+                  className="w-full py-2.5 text-sm text-slate-100 focus:outline-none"
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                직업만 적어 주세요. 직업급수(상해위험등급)는 보험사 직업급수표에 맞춰 자동으로 분류됩니다.
+              </p>
+            </Field>
             <Field label="키 · 몸무게">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="flex items-center gap-1 rounded-xl border border-slate-800 bg-white px-3">
                   <input
                     value={form.heightCm}
@@ -687,46 +731,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
                 {bmi ? <span className="rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-semibold text-slate-300">BMI {bmi}</span> : null}
               </div>
             </Field>
-          </div>
-
-          <div className="mb-3">
-            <Field label={form.joinHouseholdId ? '주소 (비우면 세대주 주소 자동)' : '주소'}>
-              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-white px-3">
-                <MapPin className="h-4 w-4 shrink-0 text-slate-500" />
-                <input
-                  value={form.address}
-                  onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-                  placeholder="서울 강남구 테헤란로 152, 101동 1001호"
-                  className="w-full py-2.5 text-sm text-slate-100 focus:outline-none"
-                />
-              </div>
-            </Field>
-            {form.address.trim() ? (
-              <div className="mt-1.5">
-                <MapNavButtons location={form.address.trim()} />
-              </div>
-            ) : null}
-          </div>
-
-          <div className="mb-3">
-            <Field label="직업">
-              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-white px-3">
-                <Briefcase className="h-4 w-4 shrink-0 text-slate-500" />
-                <input
-                  value={form.job}
-                  onChange={(e) => setForm((f) => ({ ...f, job: e.target.value }))}
-                  placeholder="예: 사무직 / 건설현장 작업 / 택시운전"
-                  className="w-full py-2.5 text-sm text-slate-100 focus:outline-none"
-                />
-              </div>
-              <p className="mt-1 text-[11px] text-slate-500">
-                직업만 적어 주세요. 직업급수(상해위험등급)는 보험사 직업급수표에 맞춰 자동으로 분류됩니다.
-              </p>
-            </Field>
-          </div>
-
-          <div className="mb-3">
-            <Field label="병력 (보험 심사 참고)">
+            <Field label="병력">
               <textarea
                 value={form.medicalHistory}
                 onChange={(e) => setForm((f) => ({ ...f, medicalHistory: e.target.value }))}
@@ -734,7 +739,7 @@ export default function SupabaseCustomerManager(): JSX.Element {
                 className="h-20 w-full rounded-xl border border-slate-800 bg-white px-3 py-2 text-[13px] leading-6 text-slate-100 focus:outline-none"
               />
             </Field>
-          </div>
+          </FormSection>
 
           {/* 병력 → 인수 가능 보험사 자동 매칭 (매칭 없으면 렌더링 안 함) */}
           <CustomerUnderwritingHint medicalHistory={form.medicalHistory} />
@@ -1202,5 +1207,28 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="mb-1.5 block text-[11px] font-medium text-slate-500">{label}</span>
       {children}
     </label>
+  )
+}
+
+/** 입력 폼을 주제별로 묶는 섹션 — 아이콘 헤더 + 옅은 카드로 한눈에 구분되게. */
+function FormSection({
+  icon: Icon,
+  title,
+  children
+}: {
+  icon: LucideIcon
+  title: string
+  children: React.ReactNode
+}): JSX.Element {
+  return (
+    <section className="mb-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+      <div className="mb-2.5 flex items-center gap-1.5">
+        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <h3 className="text-[12px] font-bold text-slate-200">{title}</h3>
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
   )
 }
