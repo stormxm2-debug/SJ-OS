@@ -1221,7 +1221,7 @@ function FormSection({
   children: React.ReactNode
 }): JSX.Element {
   return (
-    <section className="mb-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-3">
+    <section className="mb-3 rounded-2xl border border-slate-800 bg-slate-950 p-3">
       <div className="mb-2.5 flex items-center gap-1.5">
         <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
           <Icon className="h-3.5 w-3.5" />
